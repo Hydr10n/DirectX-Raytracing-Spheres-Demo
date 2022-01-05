@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <ItemsProjectGuid>{b11d8857-9791-4c19-a84f-07bced25e882}</ItemsProjectGuid>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectCapability Include="SourceItemsFromImports" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)BottomLevelASGenerator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)RaytracingPipelineGenerator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)RootSignatureGenerator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)TopLevelASGenerator.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)BottomLevelASGenerator.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)RaytracingPipelineGenerator.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)RootSignatureGenerator.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)TopLevelASGenerator.h" />
+  </ItemGroup>
+</Project>
