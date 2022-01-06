@@ -95,7 +95,7 @@ public:
 
 	void OnWindowSizeChanged(const SIZE& size) {
 		RECT rc;
-		GetClientRect(m_deviceResources->GetWindow(), &rc);
+		DX::ThrowIfFailed(GetClientRect(m_deviceResources->GetWindow(), &rc));
 		m_orbitCamera.SetWindow(static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top));
 
 		if (!m_deviceResources->WindowSizeChanged(static_cast<int>(size.cx), static_cast<int>(size.cy))) return;
@@ -377,19 +377,19 @@ private:
 	}
 
 	void CreatePSOs() {
-		nv_helpers_dx12::RayTracingPipelineGenerator rayTracingPipelineGenerator(m_deviceResources->GetD3DDevice());
-		rayTracingPipelineGenerator.AddLibrary({ g_pRaytracing, sizeof(g_pRaytracing) }, { RayGeneration, PrimaryRayMiss, PrimaryRayClosestHit });
+		nv_helpers_dx12::RaytracingPipelineGenerator raytracingPipelineGenerator(m_deviceResources->GetD3DDevice());
+		raytracingPipelineGenerator.AddLibrary({ g_pRaytracing, sizeof(g_pRaytracing) }, { RayGeneration, PrimaryRayMiss, PrimaryRayClosestHit });
 
-		rayTracingPipelineGenerator.AddRootSignatureAssociation(m_rayGenerationSignature.Get(), { RayGeneration });
-		rayTracingPipelineGenerator.AddRootSignatureAssociation(m_primaryRayClosestHitSignature.Get(), { PrimaryRayClosestHit });
+		raytracingPipelineGenerator.AddRootSignatureAssociation(m_rayGenerationSignature.Get(), { RayGeneration });
+		raytracingPipelineGenerator.AddRootSignatureAssociation(m_primaryRayClosestHitSignature.Get(), { PrimaryRayClosestHit });
 
-		rayTracingPipelineGenerator.AddHitGroup(SphereHitGroup, PrimaryRayClosestHit);
+		raytracingPipelineGenerator.AddHitGroup(SphereHitGroup, PrimaryRayClosestHit);
 
-		rayTracingPipelineGenerator.SetMaxPayloadSize(sizeof(DirectX::XMFLOAT4) * 2);
+		raytracingPipelineGenerator.SetMaxPayloadSize(sizeof(DirectX::XMFLOAT4) * 2);
 
-		rayTracingPipelineGenerator.SetMaxTraceRecursionDepth(MaxTraceRecursionDepth);
+		raytracingPipelineGenerator.SetMaxTraceRecursionDepth(MaxTraceRecursionDepth);
 
-		m_PSO = rayTracingPipelineGenerator.Generate();
+		m_PSO = raytracingPipelineGenerator.Generate();
 	}
 
 	void CreateDescriptorHeaps() { m_resourceDescriptors = std::make_unique<DirectX::DescriptorHeap>(m_deviceResources->GetD3DDevice(), static_cast<size_t>(DescriptorHeapIndex::Count)); }
@@ -734,19 +734,23 @@ private:
 			missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),
 			hitGroupSectionSize = m_shaderBindingTableGenerator.GetHitGroupSectionSize();
 
+		const auto rayGenerationShaderRecordStartAddress = m_shaderBindingTable->GetGPUVirtualAddress(),
+			missShaderTableStartAddress = rayGenerationShaderRecordStartAddress + rayGenerationSectionSize,
+			hitGroupTableStartAddress = missShaderTableStartAddress + missSectionSize;
+
 		const auto size = GetOutputSize();
 		const D3D12_DISPATCH_RAYS_DESC raysDesc{
 			.RayGenerationShaderRecord = {
-				.StartAddress = m_shaderBindingTable->GetGPUVirtualAddress(),
+				.StartAddress = rayGenerationShaderRecordStartAddress,
 				.SizeInBytes = rayGenerationSectionSize
 			},
 			.MissShaderTable = {
-				.StartAddress = m_shaderBindingTable->GetGPUVirtualAddress() + rayGenerationSectionSize,
+				.StartAddress = missShaderTableStartAddress,
 				.SizeInBytes = missSectionSize,
 				.StrideInBytes = m_shaderBindingTableGenerator.GetMissEntrySize()
 			},
 			.HitGroupTable = {
-				.StartAddress = m_shaderBindingTable->GetGPUVirtualAddress() + rayGenerationSectionSize + missSectionSize,
+				.StartAddress = hitGroupTableStartAddress,
 				.SizeInBytes = hitGroupSectionSize,
 				.StrideInBytes = m_shaderBindingTableGenerator.GetHitGroupEntrySize()
 			},

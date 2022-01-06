@@ -28,7 +28,7 @@ namespace RaytracingHelpers {
 				ID3D12Device* pDevice,
 				const std::vector<Vertex>& vertices, const std::vector<Index>& indices,
 				D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
-				D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = 0
+				D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL
 			) noexcept(false) : Geometry(D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, flags) {
 				const auto verticesSize = vertices.size(), indicesSize = indices.size();
 
