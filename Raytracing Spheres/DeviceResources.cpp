@@ -134,16 +134,7 @@ void DeviceResources::CreateDeviceResources()
         }
     }
 
-    ComPtr<IDXGIAdapter1> adapter;
-    GetAdapter(adapter.GetAddressOf());
-
-    // Create the DX12 API device object.
-    HRESULT hr = D3D12CreateDevice(
-        adapter.Get(),
-        m_d3dMinFeatureLevel,
-        IID_PPV_ARGS(m_d3dDevice.ReleaseAndGetAddressOf())
-        );
-    ThrowIfFailed(hr);
+    CreateDevice();
 
     m_d3dDevice->SetName(L"DeviceResources");
 
@@ -186,7 +177,7 @@ void DeviceResources::CreateDeviceResources()
         static_cast<UINT>(std::size(s_featureLevels)), s_featureLevels, D3D_FEATURE_LEVEL_12_0
     };
 
-    hr = m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &featLevels, sizeof(featLevels));
+    HRESULT hr = m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &featLevels, sizeof(featLevels));
     if (SUCCEEDED(hr))
     {
         m_d3dFeatureLevel = featLevels.MaxSupportedFeatureLevel;
@@ -194,13 +185,6 @@ void DeviceResources::CreateDeviceResources()
     else
     {
         m_d3dFeatureLevel = m_d3dMinFeatureLevel;
-    }
-
-    D3D12_FEATURE_DATA_D3D12_OPTIONS5 features5;
-    hr = m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &features5, sizeof(D3D12_FEATURE_DATA_D3D12_OPTIONS5));
-    if (FAILED(hr) || features5.RaytracingTier == D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
-    {
-        throw std::runtime_error("Raytracing is not supported on this device. Make sure your GPU supports DXR and you're on the latest drivers. The DXR fallback layer is not supported.");
     }
 
     // Create the command queue.
@@ -618,13 +602,41 @@ void DeviceResources::MoveToNextFrame()
     m_fenceValues[m_backBufferIndex] = currentFenceValue + 1;
 }
 
-// This method acquires the first available hardware adapter that supports Direct3D 12.
+// This method acquires the first available hardware adapter that supports Direct3D 12 Raytracing,
+// then create the DX12 API device object.
 // If no such adapter can be found, try WARP. Otherwise throw an exception.
-void DeviceResources::GetAdapter(IDXGIAdapter1** ppAdapter)
+void DeviceResources::CreateDevice()
 {
-    *ppAdapter = nullptr;
-
     ComPtr<IDXGIAdapter1> adapter;
+
+    const auto CreateRaytracingDevice = [&](auto adapterIndex)
+	{
+        DXGI_ADAPTER_DESC1 desc;
+        ThrowIfFailed(adapter->GetDesc1(&desc));
+
+        if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+        {
+            // Don't select the Basic Render Driver adapter.
+            return false;
+        }
+
+        ThrowIfFailed(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(m_d3dDevice.ReleaseAndGetAddressOf())));
+        D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
+        if (FAILED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
+            || options5.RaytracingTier == D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
+        {
+            m_d3dDevice.Reset();
+            return false;
+        }
+
+#ifdef _DEBUG
+        wchar_t buff[256] = {};
+        swprintf_s(buff, L"Direct3D Adapter (%u): VID:%04X, PID:%04X - %ls\n", adapterIndex, desc.VendorId, desc.DeviceId, desc.Description);
+        OutputDebugStringW(buff);
+#endif
+
+        return true;
+    };
 
     ComPtr<IDXGIFactory6> factory6;
     HRESULT hr = m_dxgiFactory.As(&factory6);
@@ -637,25 +649,7 @@ void DeviceResources::GetAdapter(IDXGIAdapter1** ppAdapter)
                 IID_PPV_ARGS(adapter.ReleaseAndGetAddressOf())));
             adapterIndex++)
         {
-            DXGI_ADAPTER_DESC1 desc;
-            ThrowIfFailed(adapter->GetDesc1(&desc));
-
-            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-            {
-                // Don't select the Basic Render Driver adapter.
-                continue;
-            }
-
-            // Check to see if the adapter supports Direct3D 12, but don't create the actual device yet.
-            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, _uuidof(ID3D12Device), nullptr)))
-            {
-#ifdef _DEBUG
-                wchar_t buff[256] = {};
-                swprintf_s(buff, L"Direct3D Adapter (%u): VID:%04X, PID:%04X - %ls\n", adapterIndex, desc.VendorId, desc.DeviceId, desc.Description);
-                OutputDebugStringW(buff);
-#endif
-                break;
-            }
+            if (CreateRaytracingDevice(adapterIndex)) break;
         }
     }
 
@@ -667,25 +661,7 @@ void DeviceResources::GetAdapter(IDXGIAdapter1** ppAdapter)
                 adapter.ReleaseAndGetAddressOf()));
             ++adapterIndex)
         {
-            DXGI_ADAPTER_DESC1 desc;
-            ThrowIfFailed(adapter->GetDesc1(&desc));
-
-            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-            {
-                // Don't select the Basic Render Driver adapter.
-                continue;
-            }
-
-            // Check to see if the adapter supports Direct3D 12, but don't create the actual device yet.
-            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, _uuidof(ID3D12Device), nullptr)))
-            {
-#ifdef _DEBUG
-                wchar_t buff[256] = {};
-                swprintf_s(buff, L"Direct3D Adapter (%u): VID:%04X, PID:%04X - %ls\n", adapterIndex, desc.VendorId, desc.DeviceId, desc.Description);
-                OutputDebugStringW(buff);
-#endif
-                break;
-            }
+            if (CreateRaytracingDevice(adapterIndex)) break;
         }
     }
 
@@ -707,7 +683,10 @@ void DeviceResources::GetAdapter(IDXGIAdapter1** ppAdapter)
         throw std::runtime_error("No Direct3D 12 device found");
     }
 
-    *ppAdapter = adapter.Detach();
+    if (!m_d3dDevice)
+    {
+        throw std::runtime_error("DXR is not supported on this device. Make sure your GPU supports it and you are on the latest drivers.");
+    }
 }
 
 // Sets the color space for the swap chain in order to handle HDR output.

@@ -43,8 +43,7 @@ namespace nv_helpers_dx12 {
 
 //--------------------------------------------------------------------------------------------------
 // Add a geometry descriptor into the acceleration structure.
-void BottomLevelASGenerator::AddGeometry(
-    const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc) {
+void BottomLevelASGenerator::AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc) {
     m_geometryDescs.push_back(geometryDesc);
 }
 

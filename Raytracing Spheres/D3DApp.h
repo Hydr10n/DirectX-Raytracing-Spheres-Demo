@@ -30,8 +30,8 @@
 #include "BottomLevelASGenerator.h"
 #include "TopLevelASGenerator.h"
 #include "RootSignatureGenerator.h"
-#include "ShaderBindingTableGenerator.h"
 #include "RaytracingPipelineGenerator.h"
+#include "ShaderBindingTableGenerator.h"
 
 #include "RaytracingGeometryHelpers.h"
 
@@ -71,8 +71,6 @@ public:
 
 		m_orbitCamera.SetRadius(m_cameraRadius, MinCameraRadius, MaxCameraRadius);
 	}
-
-	~D3DApp() { m_deviceResources->WaitForGpu(); }
 
 	UINT GetAntiAliasingSampleCount() const { return m_antiAliasingSampleCount; }
 
@@ -217,7 +215,7 @@ private:
 	std::map<std::string, std::shared_ptr<Texture>> m_textures;
 	std::vector<RenderItem> m_renderItems;
 
-	std::shared_ptr<RaytracingHelpers::Geometries::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
+	std::shared_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
 	RaytracingHelpers::AccelerationStructureBuffers m_bottomLevelASBuffers, m_topLevelASBuffers;
 
@@ -227,11 +225,27 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
+	static void CopyOutputToRenderTarget(ID3D12GraphicsCommandList* pCommandList, ID3D12Resource* pOutput, ID3D12Resource* pRenderTarget) {
+		const D3D12_RESOURCE_BARRIER preCopyBarriers[]{
+			CD3DX12_RESOURCE_BARRIER::Transition(pRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
+			CD3DX12_RESOURCE_BARRIER::Transition(pOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
+		};
+		pCommandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+
+		pCommandList->CopyResource(pRenderTarget, pOutput);
+
+		const D3D12_RESOURCE_BARRIER postCopyBarriers[]{
+			CD3DX12_RESOURCE_BARRIER::Transition(pOutput, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(pRenderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT)
+		};
+		pCommandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+	}
+
 	static auto CreateSphere(ID3D12Device* pDevice, float diameter = 1, size_t tessellation = 3) {
 		DirectX::GeometricPrimitive::VertexCollection vertices;
 		DirectX::GeometricPrimitive::IndexCollection indices;
 		DirectX::GeometricPrimitive::CreateGeoSphere(vertices, indices, diameter, tessellation, false);
-		return RaytracingHelpers::Geometries::Triangles(pDevice, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
+		return RaytracingHelpers::Triangles(pDevice, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
 	}
 
 	static TransformCollection CreateTransformsForAstronomicalObject(float orbitRadius = 0, float rotationY = 0, float revolutionY = 0, const DirectX::XMFLOAT3& scaling = { 1, 1, 1 }) { return TransformCollection{ Transform::CreateScaling(scaling), Transform::CreateRotationY(rotationY), Transform::CreateTranslation({ orbitRadius * cos(revolutionY), 0, orbitRadius * sin(revolutionY)}) }; }
@@ -267,7 +281,7 @@ private:
 
 		TraceRays();
 
-		CopyOutputToRenderTarget();
+		CopyOutputToRenderTarget(commandList, m_output.Get(), m_deviceResources->GetRenderTarget());
 
 		PIXEndEvent(commandList);
 
@@ -353,26 +367,60 @@ private:
 
 		{
 			RootSignatureGenerator rootSignatureGenerator;
-			rootSignatureGenerator.AddHeapRangesParameter({
-				{ 0, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0 },
-				{ 0, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1 }
-				});
-			rootSignatureGenerator.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 0);
-			m_rayGenerationSignature = rootSignatureGenerator.Generate(device, true);
+
+			CD3DX12_ROOT_PARAMETER rootParameter{};
+
+			{
+				const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
+					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0),
+					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 1)
+				};
+				rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
+				rootSignatureGenerator.AddRootParameter(rootParameter);
+			}
+
+			{
+				rootParameter.InitAsConstantBufferView(0);
+				rootSignatureGenerator.AddRootParameter(rootParameter);
+			}
+
+			m_rayGenerationSignature.Attach(rootSignatureGenerator.Generate(device, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE));
 		}
 
 		{
 			RootSignatureGenerator rootSignatureGenerator;
-			rootSignatureGenerator.AddHeapRangesParameter({ { 0, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0 } });
-			rootSignatureGenerator.AddHeapRangesParameter({
-				{ 1, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0 },
-				{ 2, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1 }
-				});
-			rootSignatureGenerator.AddHeapRangesParameter({ { 3, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0 } });
-			rootSignatureGenerator.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 0);
-			rootSignatureGenerator.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 1);
-			rootSignatureGenerator.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 2);
-			m_primaryRayClosestHitSignature = rootSignatureGenerator.Generate(device, true);
+
+			CD3DX12_ROOT_PARAMETER rootParameter;
+
+			{
+				const CD3DX12_DESCRIPTOR_RANGE descriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+				rootParameter.InitAsDescriptorTable(1, &descriptorRange);
+				rootSignatureGenerator.AddRootParameter(rootParameter);
+			}
+
+			{
+				const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
+					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0),
+					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 1)
+				};
+				rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
+				rootSignatureGenerator.AddRootParameter(rootParameter);
+			}
+
+			{
+				const CD3DX12_DESCRIPTOR_RANGE descriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
+				rootParameter.InitAsDescriptorTable(1, &descriptorRange);
+				rootSignatureGenerator.AddRootParameter(rootParameter);
+			}
+
+			{
+				for (UINT i = 0; i < 3; i++) {
+					rootParameter.InitAsConstantBufferView(i);
+					rootSignatureGenerator.AddRootParameter(rootParameter);
+				}
+			}
+
+			m_primaryRayClosestHitSignature.Attach(rootSignatureGenerator.Generate(device, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE));
 		}
 	}
 
@@ -389,7 +437,7 @@ private:
 
 		raytracingPipelineGenerator.SetMaxTraceRecursionDepth(MaxTraceRecursionDepth);
 
-		m_PSO = raytracingPipelineGenerator.Generate();
+		m_PSO.Attach(raytracingPipelineGenerator.Generate());
 	}
 
 	void CreateDescriptorHeaps() { m_resourceDescriptors = std::make_unique<DirectX::DescriptorHeap>(m_deviceResources->GetD3DDevice(), static_cast<size_t>(DescriptorHeapIndex::Count)); }
@@ -536,7 +584,7 @@ private:
 
 		m_sphere = std::make_shared<decltype(m_sphere)::element_type>(CreateSphere(device, 1, 6));
 
-		m_sphere->CreateShaderResourceViews(device, m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::SphereVertices)), m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::SphereIndices)));
+		m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::SphereVertices)), m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::SphereIndices)));
 
 		CreateBottomLevelAS({ m_sphere->GetGeometryDesc() }, m_bottomLevelASBuffers);
 
@@ -607,8 +655,8 @@ private:
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		const auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-		const auto size = GetOutputSize();
-		const auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), size.cx, size.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		const auto outputSize = GetOutputSize();
+		const auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 		DX::ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(m_output.ReleaseAndGetAddressOf())));
 
 		const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
@@ -629,21 +677,22 @@ private:
 	void UpdateCamera() {
 		using namespace DirectX;
 		using Key = Keyboard::Keys;
-		using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 		using MouseButtonState = Mouse::ButtonStateTracker::ButtonState;
+		using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
 		for (int i = 0; i < GamePad::MAX_PLAYER_COUNT; i++) {
-			const auto gamePadState = m_gamepad->GetState(i);
-			m_gamepadButtonStateTrackers[i].Update(gamePadState);
+			const auto gamepadState = m_gamepad->GetState(i);
+			m_gamepadButtonStateTrackers[i].Update(gamepadState);
 
-			if (gamePadState.IsConnected()) {
-				if (gamePadState.thumbSticks.leftX || gamePadState.thumbSticks.leftY || gamePadState.thumbSticks.rightX || gamePadState.thumbSticks.rightY) {
+			if (gamepadState.IsConnected()) {
+				if (gamepadState.thumbSticks.leftX || gamepadState.thumbSticks.leftY
+					|| gamepadState.thumbSticks.rightX || gamepadState.thumbSticks.rightY) {
 					m_mouse->SetVisible(false);
 				}
 
-				m_orbitCamera.Update(elapsedSeconds * 2, gamePadState);
+				m_orbitCamera.Update(elapsedSeconds * 2, gamepadState);
 			}
 		}
 
@@ -657,7 +706,9 @@ private:
 		m_mouseButtonStateTracker.Update(mouseState);
 
 		if (m_mouseButtonStateTracker.leftButton == MouseButtonState::PRESSED) m_mouse->SetVisible(false);
-		else if (m_mouseButtonStateTracker.leftButton == MouseButtonState::RELEASED || (m_mouseButtonStateTracker.leftButton == MouseButtonState::UP && (mouseState.x != lastMouseState.x || mouseState.y != lastMouseState.y))) {
+		else if (m_mouseButtonStateTracker.leftButton == MouseButtonState::RELEASED
+			|| (m_mouseButtonStateTracker.leftButton == MouseButtonState::UP
+				&& (mouseState.x != lastMouseState.x || mouseState.y != lastMouseState.y))) {
 			m_mouse->SetVisible(true);
 		}
 
@@ -670,7 +721,7 @@ private:
 			m_orbitCamera.SetRadius(m_cameraRadius, MinCameraRadius, MaxCameraRadius);
 		}
 
-		m_orbitCamera.Update(elapsedSeconds, *m_mouse, *m_keyboard.get());
+		m_orbitCamera.Update(elapsedSeconds, *m_mouse, *m_keyboard);
 	}
 
 	void UpdateSceneConstantBuffer() {
@@ -678,7 +729,13 @@ private:
 
 		auto& sceneConstant = *reinterpret_cast<SceneConstant*>(m_sceneConstantBuffer.Memory());
 
-		XMStoreFloat4x4(&sceneConstant.ProjectionToWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, m_orbitCamera.GetView() * m_orbitCamera.GetProjection())));
+		const auto GetProjection = [&] {
+			const auto outputSize = GetOutputSize();
+			auto projection = m_orbitCamera.GetProjection();
+			projection.r[0].m128_f32[0] = projection.r[1].m128_f32[1] / (static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+			return projection;
+		};
+		XMStoreFloat4x4(&sceneConstant.ProjectionToWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, m_orbitCamera.GetView() * GetProjection())));
 
 		XMStoreFloat3(&sceneConstant.CameraPosition, m_orbitCamera.GetPosition());
 
@@ -725,7 +782,7 @@ private:
 
 		CreateTopLevelAS(true, m_topLevelASBuffers);
 
-		ID3D12DescriptorHeap* descriptorHeaps[]{ m_resourceDescriptors->Heap() };
+		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 		commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
 
 		commandList->SetPipelineState1(m_PSO.Get());
@@ -738,7 +795,8 @@ private:
 			missShaderTableStartAddress = rayGenerationShaderRecordStartAddress + rayGenerationSectionSize,
 			hitGroupTableStartAddress = missShaderTableStartAddress + missSectionSize;
 
-		const auto size = GetOutputSize();
+		const auto outputSize = GetOutputSize();
+
 		const D3D12_DISPATCH_RAYS_DESC raysDesc{
 			.RayGenerationShaderRecord = {
 				.StartAddress = rayGenerationShaderRecordStartAddress,
@@ -754,33 +812,11 @@ private:
 				.SizeInBytes = hitGroupSectionSize,
 				.StrideInBytes = m_shaderBindingTableGenerator.GetHitGroupEntrySize()
 			},
-			.Width = static_cast<UINT>(size.cx),
-			.Height = static_cast<UINT>(size.cy),
+			.Width = static_cast<UINT>(outputSize.cx),
+			.Height = static_cast<UINT>(outputSize.cy),
 			.Depth = 1
 		};
 
 		commandList->DispatchRays(&raysDesc);
-	}
-
-	void CopyOutputToRenderTarget() {
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		const auto renderTarget = m_deviceResources->GetRenderTarget();
-
-		const auto output = m_output.Get();
-
-		const D3D12_RESOURCE_BARRIER preCopyBarriers[]{
-			CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
-			CD3DX12_RESOURCE_BARRIER::Transition(output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
-		};
-		commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
-
-		commandList->CopyResource(renderTarget, output);
-
-		const D3D12_RESOURCE_BARRIER postCopyBarriers[]{
-			CD3DX12_RESOURCE_BARRIER::Transition(output, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT)
-		};
-		commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
 	}
 };

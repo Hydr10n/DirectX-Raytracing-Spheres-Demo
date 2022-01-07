@@ -34,7 +34,7 @@
 #include <DirectXCollision.h>
 #include <DirectXColors.h>
 
-#include <wrl/event.h>
+#include <wrl.h>
 
 #include <algorithm>
 #include <memory>

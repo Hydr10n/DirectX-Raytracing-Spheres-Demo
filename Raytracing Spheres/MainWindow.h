@@ -101,10 +101,6 @@ private:
 			FirstResolution
 		};
 
-		const auto SetWindowMode = [&](WindowMode mode) {
-			if (m_windowModeHelper.SetMode(mode) && m_windowModeHelper.Apply()) SettingsData::Save<SettingsKeys::WindowMode>(mode);
-		};
-
 		switch (uMsg) {
 		case WM_CONTEXTMENU: {
 			ShowCursor(TRUE);
@@ -149,6 +145,10 @@ private:
 		}	break;
 
 		case WM_COMMAND: {
+			const auto SetWindowMode = [&](WindowMode mode) {
+				if (m_windowModeHelper.SetMode(mode) && m_windowModeHelper.Apply()) SettingsData::Save<SettingsKeys::WindowMode>(mode);
+			};
+
 			switch (const auto menuID = static_cast<MenuID>(LOWORD(wParam))) {
 			case MenuID::WindowModeWindowed: SetWindowMode(WindowMode::Windowed); break;
 			case MenuID::WindowModeBorderless: SetWindowMode(WindowMode::Borderless); break;
@@ -158,7 +158,10 @@ private:
 			case MenuID::AntiAliasingSampleCount2:
 			case MenuID::AntiAliasingSampleCount4:
 			case MenuID::AntiAliasingSampleCount8: {
-				const auto antiAliasingSampleCount = menuID == MenuID::AntiAliasingSampleCount1 ? 1 : menuID == MenuID::AntiAliasingSampleCount2 ? 2 : menuID == MenuID::AntiAliasingSampleCount4 ? 4 : 8;
+				const auto antiAliasingSampleCount = menuID == MenuID::AntiAliasingSampleCount1 ? 1 :
+					menuID == MenuID::AntiAliasingSampleCount2 ? 2 :
+					menuID == MenuID::AntiAliasingSampleCount4 ? 4 :
+					8;
 				if (m_app->SetAntiAliasingSampleCount(antiAliasingSampleCount)) {
 					m_antiAliasingSampleCount = antiAliasingSampleCount;
 

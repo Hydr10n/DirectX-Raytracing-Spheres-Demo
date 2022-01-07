@@ -63,6 +63,8 @@ rtStateObject = pipeline.Generate();
 
 #include <d3d12.h>
 
+#include <wrl.h>
+
 #include <string>
 #include <vector>
 
@@ -165,10 +167,6 @@ private:
     D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION m_association = {};
   };
 
-  /// The pipeline creation requires having at least one empty global and local root signatures, so
-  /// we systematically create both
-  void CreateDummyRootSignatures();
-
   /// Build a list containing the export symbols for the ray generation shaders, miss shaders, and
   /// hit group names
   void BuildShaderExportList(std::vector<std::wstring>& exportedSymbols);
@@ -185,8 +183,8 @@ private:
   UINT m_maxTraceRecursionDepth = 1;
 
   ID3D12Device5* m_device;
-  ID3D12RootSignature* m_dummyLocalRootSignature;
-  ID3D12RootSignature* m_dummyGlobalRootSignature;
+  Microsoft::WRL::ComPtr<ID3D12RootSignature> m_dummyLocalRootSignature;
+  Microsoft::WRL::ComPtr<ID3D12RootSignature> m_dummyGlobalRootSignature;
 };
 
 } // namespace nv_helpers_dx12

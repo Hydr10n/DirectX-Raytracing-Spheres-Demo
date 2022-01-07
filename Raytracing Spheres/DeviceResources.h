@@ -83,7 +83,7 @@ namespace DX
 
     private:
         void MoveToNextFrame();
-        void GetAdapter(IDXGIAdapter1** ppAdapter);
+        void CreateDevice();
         void UpdateColorSpace();
 
         static constexpr size_t MAX_BACK_BUFFER_COUNT = 3;

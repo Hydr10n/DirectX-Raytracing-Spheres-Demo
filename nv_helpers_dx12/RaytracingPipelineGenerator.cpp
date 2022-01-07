@@ -41,6 +41,8 @@ compiling in debug mode.
 
 #include "RaytracingPipelineGenerator.h"
 
+#include "RootSignatureGenerator.h"
+
 #include <unordered_set>
 
 #include <stdexcept>
@@ -56,7 +58,9 @@ RaytracingPipelineGenerator::RaytracingPipelineGenerator(ID3D12Device5* device)
 {
   // The pipeline creation requires having at least one empty global and local root signatures, so
   // we systematically create both, as this does not incur any overhead
-  CreateDummyRootSignatures();
+  m_dummyGlobalRootSignature.Attach(RootSignatureGenerator().Generate(device));
+  m_dummyLocalRootSignature.Attach(RootSignatureGenerator().Generate(device,
+                                   D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -242,16 +246,14 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   // The pipeline construction always requires an empty global root signature
   D3D12_STATE_SUBOBJECT globalRootSig;
   globalRootSig.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE;
-  ID3D12RootSignature* dgSig = m_dummyGlobalRootSignature;
-  globalRootSig.pDesc = &dgSig;
+  globalRootSig.pDesc = m_dummyGlobalRootSignature.GetAddressOf();
 
   subobjects[currentIndex++] = globalRootSig;
 
   // The pipeline construction always requires an empty local root signature
   D3D12_STATE_SUBOBJECT dummyLocalRootSig;
   dummyLocalRootSig.Type = D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE;
-  ID3D12RootSignature* dlSig = m_dummyLocalRootSignature;
-  dummyLocalRootSig.pDesc = &dlSig;
+  dummyLocalRootSig.pDesc = m_dummyLocalRootSignature.GetAddressOf();
   subobjects[currentIndex++] = dummyLocalRootSig;
 
   // Add a subobject for the ray tracing pipeline configuration
@@ -279,60 +281,6 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
     throw std::logic_error("Could not create the raytracing state object");
   }
   return rtStateObject;
-}
-
-//--------------------------------------------------------------------------------------------------
-//
-// The pipeline creation requires having at least one empty global and local root signatures, so
-// we systematically create both
-void RaytracingPipelineGenerator::CreateDummyRootSignatures()
-{
-  // Creation of the global root signature
-  D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-  rootDesc.NumParameters = 0;
-  rootDesc.pParameters = nullptr;
-  // A global root signature is the default, hence this flag
-  rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-
-  HRESULT hr = 0;
-
-  ID3DBlob* serializedRootSignature;
-  ID3DBlob* error;
-
-  // Create the empty global root signature
-  hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-                                   &serializedRootSignature, &error);
-  if (FAILED(hr))
-  {
-    throw std::logic_error("Could not serialize the global root signature");
-  }
-  hr = m_device->CreateRootSignature(0, serializedRootSignature->GetBufferPointer(),
-                                     serializedRootSignature->GetBufferSize(),
-                                     IID_PPV_ARGS(&m_dummyGlobalRootSignature));
-
-  serializedRootSignature->Release();
-  if (FAILED(hr))
-  {
-    throw std::logic_error("Could not create the global root signature");
-  }
-
-  // Create the local root signature, reusing the same descriptor but altering the creation flag
-  rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-  hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-                                   &serializedRootSignature, &error);
-  if (FAILED(hr))
-  {
-    throw std::logic_error("Could not serialize the local root signature");
-  }
-  hr = m_device->CreateRootSignature(0, serializedRootSignature->GetBufferPointer(),
-                                     serializedRootSignature->GetBufferSize(),
-                                     IID_PPV_ARGS(&m_dummyLocalRootSignature));
-
-  serializedRootSignature->Release();
-  if (FAILED(hr))
-  {
-    throw std::logic_error("Could not create the local root signature");
-  }
 }
 
 //--------------------------------------------------------------------------------------------------

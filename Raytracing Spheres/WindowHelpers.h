@@ -11,18 +11,6 @@ namespace WindowHelpers {
 		rect.bottom = rect.top + rectHeight;
 	}
 
-	inline BOOL WINAPI CenterWindow(HWND hWnd) {
-		const auto parent = GetParent(hWnd);
-		if (parent != nullptr) {
-			RECT border, rect;
-			if (GetWindowRect(parent, &border) && GetWindowRect(hWnd, &rect)) {
-				CenterRect(border, rect);
-				return SetWindowPos(hWnd, nullptr, static_cast<int>(rect.left), static_cast<int>(rect.top), 0, 0, SWP_NOSIZE);
-			}
-		}
-		return FALSE;
-	}
-
 	struct WindowModeHelper {
 		enum class Mode { Windowed, Borderless, Fullscreen };
 
@@ -47,24 +35,27 @@ namespace WindowHelpers {
 		void ToggleMode() { SetMode(m_currentMode == Mode::Fullscreen ? m_previousMode : Mode::Fullscreen); }
 
 		BOOL Apply() const {
-			const auto ret = (SetWindowLongPtrW(Window, GWL_EXSTYLE, static_cast<LONG_PTR>(m_currentMode == Mode::Fullscreen ? ExStyle | WS_EX_TOPMOST : ExStyle)) || GetLastError() == ERROR_SUCCESS)
-				&& (SetWindowLongPtrW(Window, GWL_STYLE, static_cast<LONG_PTR>(m_currentMode == Mode::Windowed ? Style : Style & ~WS_OVERLAPPEDWINDOW)) || GetLastError() == ERROR_SUCCESS)
-				&& ResizeWindow();
+			const auto exStyle = m_currentMode == Mode::Fullscreen ? ExStyle | WS_EX_TOPMOST : ExStyle,
+				style = m_currentMode == Mode::Windowed ? Style | WS_CAPTION : Style & ~WS_OVERLAPPEDWINDOW;
+			const auto SetWindowStyles = [&]() -> BOOL {
+				return (SetWindowLongPtrW(Window, GWL_EXSTYLE, static_cast<LONG_PTR>(exStyle)) || GetLastError() == ERROR_SUCCESS)
+					&& (SetWindowLongPtrW(Window, GWL_STYLE, static_cast<LONG_PTR>(style)) || GetLastError() == ERROR_SUCCESS);
+			};
+			const auto ResizeWindow = [&]() -> BOOL {
+				MONITORINFO monitorInfo;
+				monitorInfo.cbSize = sizeof(monitorInfo);
+				if (!GetMonitorInfoW(MonitorFromWindow(Window, MONITOR_DEFAULTTONEAREST), &monitorInfo)) return FALSE;
+				RECT rc{ 0, 0, ClientSize.cx, ClientSize.cy };
+				CenterRect(monitorInfo.rcMonitor, rc);
+				return AdjustWindowRectEx(&rc, style, HasMenu, exStyle)
+					&& SetWindowPos(Window, HWND_TOP, static_cast<int>(rc.left), static_cast<int>(rc.top), static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top), SWP_NOZORDER | SWP_FRAMECHANGED);
+			};
+			const auto ret = SetWindowStyles() && ResizeWindow();
 			if (ret) ShowWindow(Window, m_currentMode == Mode::Fullscreen ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
 			return ret;
 		}
 
 	private:
 		Mode m_previousMode = Mode::Fullscreen, m_currentMode = Mode::Windowed;
-
-		BOOL ResizeWindow() const {
-			MONITORINFO monitorInfo;
-			monitorInfo.cbSize = sizeof(monitorInfo);
-			if (!GetMonitorInfoW(MonitorFromWindow(Window, MONITOR_DEFAULTTONEAREST), &monitorInfo)) return FALSE;
-			RECT rc{ 0, 0, ClientSize.cx, ClientSize.cy };
-			CenterRect(monitorInfo.rcMonitor, rc);
-			return AdjustWindowRectEx(&rc, m_currentMode == Mode::Windowed ? Style : Style & ~WS_OVERLAPPEDWINDOW, HasMenu, ExStyle)
-				&& SetWindowPos(Window, HWND_TOP, static_cast<int>(rc.left), static_cast<int>(rc.top), static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top), SWP_NOZORDER | SWP_FRAMECHANGED);
-		}
 	};
 }
