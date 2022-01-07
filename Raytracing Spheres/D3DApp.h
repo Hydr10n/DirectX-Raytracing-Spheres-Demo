@@ -368,21 +368,17 @@ private:
 		{
 			RootSignatureGenerator rootSignatureGenerator;
 
-			CD3DX12_ROOT_PARAMETER rootParameter{};
+			CD3DX12_ROOT_PARAMETER rootParameter;
 
-			{
-				const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
-					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0),
-					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 1)
-				};
-				rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
-				rootSignatureGenerator.AddRootParameter(rootParameter);
-			}
+			const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
+				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0),
+				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 1)
+			};
+			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
+			rootSignatureGenerator.AddRootParameter(rootParameter);
 
-			{
-				rootParameter.InitAsConstantBufferView(0);
-				rootSignatureGenerator.AddRootParameter(rootParameter);
-			}
+			rootParameter.InitAsConstantBufferView(0);
+			rootSignatureGenerator.AddRootParameter(rootParameter);
 
 			m_rayGenerationSignature.Attach(rootSignatureGenerator.Generate(device, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE));
 		}
@@ -392,32 +388,28 @@ private:
 
 			CD3DX12_ROOT_PARAMETER rootParameter;
 
-			{
-				const CD3DX12_DESCRIPTOR_RANGE descriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-				rootParameter.InitAsDescriptorTable(1, &descriptorRange);
-				rootSignatureGenerator.AddRootParameter(rootParameter);
-			}
+			const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
+				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)
+			};
+			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
+			rootSignatureGenerator.AddRootParameter(rootParameter);
 
-			{
-				const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
-					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0),
-					CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 1)
-				};
-				rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
-				rootSignatureGenerator.AddRootParameter(rootParameter);
-			}
+			const D3D12_DESCRIPTOR_RANGE descriptorRanges1[]{
+				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0),
+				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 1)
+			};
+			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges1), descriptorRanges1);
+			rootSignatureGenerator.AddRootParameter(rootParameter);
 
-			{
-				const CD3DX12_DESCRIPTOR_RANGE descriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
-				rootParameter.InitAsDescriptorTable(1, &descriptorRange);
-				rootSignatureGenerator.AddRootParameter(rootParameter);
-			}
+			const D3D12_DESCRIPTOR_RANGE descriptorRanges2[]{
+				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3)
+			};
+			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges2), descriptorRanges2);
+			rootSignatureGenerator.AddRootParameter(rootParameter);
 
-			{
-				for (UINT i = 0; i < 3; i++) {
-					rootParameter.InitAsConstantBufferView(i);
-					rootSignatureGenerator.AddRootParameter(rootParameter);
-				}
+			for (UINT i = 0; i < 3; i++) {
+				rootParameter.InitAsConstantBufferView(i);
+				rootSignatureGenerator.AddRootParameter(rootParameter);
 			}
 
 			m_primaryRayClosestHitSignature.Attach(rootSignatureGenerator.Generate(device, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE));
@@ -614,7 +606,7 @@ private:
 	}
 
 	void CreateShaderBindingTables() {
-		m_shaderBindingTableGenerator.Reset();
+		m_shaderBindingTableGenerator = decltype(m_shaderBindingTableGenerator)();
 
 		m_shaderBindingTableGenerator.AddRayGenerationProgram(RayGeneration,
 			{

@@ -127,20 +127,6 @@ void ShaderBindingTableGenerator::Generate(ID3D12Resource* sbtBuffer,
 }
 
 //--------------------------------------------------------------------------------------------------
-//
-// Reset the sets of programs and hit groups
-void ShaderBindingTableGenerator::Reset()
-{
-  m_rayGeneration.clear();
-  m_miss.clear();
-  m_hitGroup.clear();
-
-  m_rayGenerationEntrySize = 0;
-  m_missEntrySize = 0;
-  m_hitGroupEntrySize = 0;
-}
-
-//--------------------------------------------------------------------------------------------------
 // The following getters are used to simplify the call to DispatchRays where the offsets of the
 // shader programs must be exactly following the SBT layout
 

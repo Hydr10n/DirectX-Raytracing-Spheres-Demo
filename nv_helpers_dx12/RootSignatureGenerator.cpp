@@ -47,7 +47,7 @@ namespace nv_helpers_dx12
 // Add a root parameter to the shader.
 void RootSignatureGenerator::AddRootParameter(const D3D12_ROOT_PARAMETER& parameter)
 {
-  m_parameters.push_back(parameter);
+  m_parameters.emplace_back(parameter);
 }
 
 //--------------------------------------------------------------------------------------------------

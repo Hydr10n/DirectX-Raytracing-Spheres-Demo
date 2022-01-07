@@ -139,9 +139,6 @@ public:
   void Generate(ID3D12Resource* sbtBuffer,
                 ID3D12StateObjectProperties* raytracingPipeline);
 
-  /// Reset the sets of programs and hit groups
-  void Reset();
-
   /// The following getters are used to simplify the call to DispatchRays where the offsets of the
   /// shader programs must be exactly following the SBT layout
 
