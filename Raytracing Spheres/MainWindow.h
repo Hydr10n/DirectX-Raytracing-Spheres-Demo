@@ -55,12 +55,11 @@ public:
 
 	WPARAM Run() {
 		using SettingsData = MyAppData::Settings;
-		using SettingsKeys = SettingsData::Keys;
 
 		m_windowModeHelper.Apply(); // Fix missing icon on title bar when initial WindowMode != Windowed
 
-		WindowHelpers::WindowModeHelper::Mode windowMode;
-		if (SettingsData::Load<SettingsKeys::WindowMode>(windowMode) && m_windowModeHelper.SetMode(windowMode)) {
+		WindowHelpers::WindowMode windowMode;
+		if (SettingsData::Load<SettingsData::Keys::WindowMode>(windowMode) && m_windowModeHelper.SetMode(windowMode)) {
 			m_windowModeHelper.Apply();
 		}
 
@@ -89,9 +88,9 @@ private:
 
 	LRESULT CALLBACK OnMessageReceived(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override {
 		using namespace DirectX;
+		using namespace WindowHelpers;
 		using SettingsData = MyAppData::Settings;
 		using SettingsKeys = SettingsData::Keys;
-		using WindowMode = WindowHelpers::WindowModeHelper::Mode;
 
 		enum class MenuID {
 			WindowModeWindowed, WindowModeBorderless, WindowModeFullscreen,

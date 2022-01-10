@@ -133,7 +133,7 @@ public:
 
 		m_resourceDescriptors.reset();
 
-		m_PSO.Reset();
+		m_pipelineStateObject.Reset();
 
 		m_primaryRayClosestHitSignature.Reset();
 		m_rayGenerationSignature.Reset();
@@ -208,7 +208,7 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rayGenerationSignature, m_primaryRayClosestHitSignature;
 
-	Microsoft::WRL::ComPtr<ID3D12StateObject> m_PSO;
+	Microsoft::WRL::ComPtr<ID3D12StateObject> m_pipelineStateObject;
 
 	std::unique_ptr<DirectX::DescriptorHeap> m_resourceDescriptors;
 
@@ -226,19 +226,15 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
 	static void CopyOutputToRenderTarget(ID3D12GraphicsCommandList* pCommandList, ID3D12Resource* pOutput, ID3D12Resource* pRenderTarget) {
-		const D3D12_RESOURCE_BARRIER preCopyBarriers[]{
-			CD3DX12_RESOURCE_BARRIER::Transition(pRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
-			CD3DX12_RESOURCE_BARRIER::Transition(pOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
-		};
-		pCommandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+		using namespace DirectX;
+
+		TransitionResource(pCommandList, pRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
+		TransitionResource(pCommandList, pOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
 		pCommandList->CopyResource(pRenderTarget, pOutput);
 
-		const D3D12_RESOURCE_BARRIER postCopyBarriers[]{
-			CD3DX12_RESOURCE_BARRIER::Transition(pOutput, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(pRenderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT)
-		};
-		pCommandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+		TransitionResource(pCommandList, pOutput, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		TransitionResource(pCommandList, pRenderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
 	}
 
 	static auto CreateSphere(ID3D12Device* pDevice, float diameter = 1, size_t tessellation = 3) {
@@ -295,9 +291,23 @@ private:
 	}
 
 	void Update() {
+		using namespace DirectX;
+
 		PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
-		UpdateCamera();
+		GamePad::State gamepadStates[GamePad::MAX_PLAYER_COUNT];
+		for (int i = 0; i < GamePad::MAX_PLAYER_COUNT; i++) {
+			gamepadStates[i] = m_gamepad->GetState(i);
+			m_gamepadButtonStateTrackers[i].Update(gamepadStates[i]);
+		}
+
+		const auto keyboardState = m_keyboard->GetState();
+		m_keyboardStateTracker.Update(keyboardState);
+
+		const auto mouseState = m_mouse->GetState(), lastMouseState = m_mouseButtonStateTracker.GetLastState();
+		m_mouseButtonStateTracker.Update(mouseState);
+
+		UpdateCamera(gamepadStates, mouseState, lastMouseState);
 
 		UpdateSceneConstantBuffer();
 
@@ -315,7 +325,7 @@ private:
 
 		CreateRootSignatures();
 
-		CreatePSOs();
+		CreatePipelineStateObjects();
 
 		CreateDescriptorHeaps();
 
@@ -416,7 +426,7 @@ private:
 		}
 	}
 
-	void CreatePSOs() {
+	void CreatePipelineStateObjects() {
 		nv_helpers_dx12::RaytracingPipelineGenerator raytracingPipelineGenerator(m_deviceResources->GetD3DDevice());
 		raytracingPipelineGenerator.AddLibrary({ g_pRaytracing, sizeof(g_pRaytracing) }, { RayGeneration, PrimaryRayMiss, PrimaryRayClosestHit });
 
@@ -429,7 +439,7 @@ private:
 
 		raytracingPipelineGenerator.SetMaxTraceRecursionDepth(MaxTraceRecursionDepth);
 
-		m_PSO.Attach(raytracingPipelineGenerator.Generate());
+		m_pipelineStateObject.Attach(raytracingPipelineGenerator.Generate());
 	}
 
 	void CreateDescriptorHeaps() { m_resourceDescriptors = std::make_unique<DirectX::DescriptorHeap>(m_deviceResources->GetD3DDevice(), static_cast<size_t>(DescriptorHeapIndex::Count)); }
@@ -631,7 +641,7 @@ private:
 		DX::ThrowIfFailed(RaytracingHelpers::CreateUploadBuffer(m_deviceResources->GetD3DDevice(), m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
 
 		Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-		DX::ThrowIfFailed(m_PSO->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
+		DX::ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
 
 		m_shaderBindingTableGenerator.Generate(m_shaderBindingTable.Get(), stateObjectProperties.Get());
 	}
@@ -666,7 +676,7 @@ private:
 		device->CreateShaderResourceView(nullptr, &srvDesc, m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::Scene)));
 	}
 
-	void UpdateCamera() {
+	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Mouse::State& mouseState, const DirectX::Mouse::State& lastMouseState) {
 		using namespace DirectX;
 		using Key = Keyboard::Keys;
 		using MouseButtonState = Mouse::ButtonStateTracker::ButtonState;
@@ -674,28 +684,19 @@ private:
 
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-		for (int i = 0; i < GamePad::MAX_PLAYER_COUNT; i++) {
-			const auto gamepadState = m_gamepad->GetState(i);
-			m_gamepadButtonStateTrackers[i].Update(gamepadState);
-
+		for (const auto& gamepadState : gamepadStates) {
 			if (gamepadState.IsConnected()) {
 				if (gamepadState.thumbSticks.leftX || gamepadState.thumbSticks.leftY
 					|| gamepadState.thumbSticks.rightX || gamepadState.thumbSticks.rightY) {
 					m_mouse->SetVisible(false);
 				}
 
-				m_orbitCamera.Update(elapsedSeconds * 2, gamepadState);
+				m_orbitCamera.Update(elapsedSeconds * 4, gamepadState);
 			}
 		}
 
-		const auto keyboardState = m_keyboard->GetState();
-		m_keyboardStateTracker.Update(keyboardState);
-
 		constexpr Key Keys[]{ Key::W, Key::A, Key::S, Key::D, Key::Up, Key::Left, Key::Down, Key::Right };
 		for (const auto key : Keys) if (m_keyboardStateTracker.IsKeyPressed(key)) m_mouse->SetVisible(false);
-
-		const auto mouseState = m_mouse->GetState(), lastMouseState = m_mouseButtonStateTracker.GetLastState();
-		m_mouseButtonStateTracker.Update(mouseState);
 
 		if (m_mouseButtonStateTracker.leftButton == MouseButtonState::PRESSED) m_mouse->SetVisible(false);
 		else if (m_mouseButtonStateTracker.leftButton == MouseButtonState::RELEASED
@@ -777,7 +778,7 @@ private:
 		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 		commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
 
-		commandList->SetPipelineState1(m_PSO.Get());
+		commandList->SetPipelineState1(m_pipelineStateObject.Get());
 
 		const auto rayGenerationSectionSize = m_shaderBindingTableGenerator.GetRayGenerationSectionSize(),
 			missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),

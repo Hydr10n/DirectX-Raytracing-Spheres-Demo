@@ -11,9 +11,9 @@ namespace WindowHelpers {
 		rect.bottom = rect.top + rectHeight;
 	}
 
-	struct WindowModeHelper {
-		enum class Mode { Windowed, Borderless, Fullscreen };
+	enum class WindowMode { Windowed, Borderless, Fullscreen };
 
+	struct WindowModeHelper {
 		HWND Window{};
 
 		DWORD ExStyle{}, Style = WS_OVERLAPPEDWINDOW;
@@ -21,7 +21,7 @@ namespace WindowHelpers {
 
 		SIZE ClientSize{};
 
-		bool SetMode(Mode mode) {
+		bool SetMode(WindowMode mode) {
 			const auto ret = m_currentMode != mode;
 			if (ret) {
 				m_previousMode = m_currentMode;
@@ -30,13 +30,13 @@ namespace WindowHelpers {
 			return ret;
 		}
 
-		Mode GetMode() const { return m_currentMode; }
+		WindowMode GetMode() const { return m_currentMode; }
 
-		void ToggleMode() { SetMode(m_currentMode == Mode::Fullscreen ? m_previousMode : Mode::Fullscreen); }
+		void ToggleMode() { SetMode(m_currentMode == WindowMode::Fullscreen ? m_previousMode : WindowMode::Fullscreen); }
 
 		BOOL Apply() const {
-			const auto exStyle = m_currentMode == Mode::Fullscreen ? ExStyle | WS_EX_TOPMOST : ExStyle,
-				style = m_currentMode == Mode::Windowed ? Style | WS_CAPTION : Style & ~WS_OVERLAPPEDWINDOW;
+			const auto exStyle = m_currentMode == WindowMode::Fullscreen ? ExStyle | WS_EX_TOPMOST : ExStyle,
+				style = m_currentMode == WindowMode::Windowed ? Style | WS_CAPTION : Style & ~WS_OVERLAPPEDWINDOW;
 			const auto SetWindowStyles = [&]() -> BOOL {
 				return (SetWindowLongPtrW(Window, GWL_EXSTYLE, static_cast<LONG_PTR>(exStyle)) || GetLastError() == ERROR_SUCCESS)
 					&& (SetWindowLongPtrW(Window, GWL_STYLE, static_cast<LONG_PTR>(style)) || GetLastError() == ERROR_SUCCESS);
@@ -51,11 +51,11 @@ namespace WindowHelpers {
 					&& SetWindowPos(Window, HWND_TOP, static_cast<int>(rc.left), static_cast<int>(rc.top), static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top), SWP_NOZORDER | SWP_FRAMECHANGED);
 			};
 			const auto ret = SetWindowStyles() && ResizeWindow();
-			if (ret) ShowWindow(Window, m_currentMode == Mode::Fullscreen ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
+			if (ret) ShowWindow(Window, m_currentMode == WindowMode::Fullscreen ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
 			return ret;
 		}
 
 	private:
-		Mode m_previousMode = Mode::Fullscreen, m_currentMode = Mode::Windowed;
+		WindowMode m_previousMode = WindowMode::Fullscreen, m_currentMode = WindowMode::Windowed;
 	};
 }

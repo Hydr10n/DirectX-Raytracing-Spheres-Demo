@@ -8,32 +8,32 @@ https://user-images.githubusercontent.com/39995363/146579832-2433f438-c669-4486-
 
 ---
 
-## Interactions
+## Controls
 - Xbox Controller
     |||
     |-|-|
-    |D-pad|Translate camera|
+    |D-pad|Translate camera X/Y|
+    |LS/RS (rotate)|Orbit camera X/Y|
+    |LS (press)|Return camera to default focus/radius|
+    |RS (press)|Reset camera|
     |LB/RB|Decrease/increase camera translation sensitivity|
-    |LS/RS (rotate)|Rotate camera|
-    |LS (press)|Reset camera position|
-    |RS (press)|Reset camera direction|
+    |LB + RB|Reset camera translation sensitivity|
 
 - Keyboard
     |||
     |-|-|
     |Alt + Enter|Toggle between windowed/borderless and fullscreen mode|
-    |W A S D ↑ ← ↓ →|Rotate camera|
-    |Shift + W A S D ↑ ← ↓ →|Rotate camera at half speed|
-    |PaUp/PgDn|Decrease/increase camera distance|
-    |Home|Reset camera position and direction|
-    |End|Reset camera position|
+    |W A S D ↑ ← ↓ →|Translate camera X/Y|
+    |Shift + W A S D ↑ ← ↓ →|Translate camera X/Y at half speed|
+    |PageUp/PageDown|Translate camera Z|
+    |Home|Reset camera|
+    |End|Return camera to default focus/radius|
 
 - Mouse
     |||
     |-|-|
-    |Left button (drag)|Rotate camera|
-    |Right button|Open context menu|
-    |Wheel|Decrease/increase camera distance|
+    |Left button (drag)|Orbit camera X/Y|
+    |Scroll wheel|Increase/decrease camera orbit radius|
 
 ### Settings in Content Menu
 - Window Mode: Windowed/borderless/fullscreen
