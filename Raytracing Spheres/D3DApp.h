@@ -511,7 +511,7 @@ private:
 
 					const auto rigidDynamic = AddRenderItem(renderItem, material, PxSphereGeometry(SphereRadius * 0.15f), position);
 
-					rigidDynamic->setLinearVelocity(SimpleHarmonicMotion::CalculateSpringSpeed(A, ω, 0.0f, position.x) * PxVec3(0, -1, 0));
+					rigidDynamic->setLinearVelocity(PxVec3(0, SimpleHarmonicMotion::CalculateSpringVelocity(A, ω, 0.0f, position.x), 0));
 				}
 			}
 		}

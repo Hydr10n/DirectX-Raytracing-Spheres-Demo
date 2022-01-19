@@ -29,7 +29,7 @@ namespace PhysicsHelpers {
 		constexpr T CalculateSpringDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t + φ); }
 
 		template <class T>
-		constexpr T CalculateSpringSpeed(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
+		constexpr T CalculateSpringVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
 	}
 }
 
