@@ -13,8 +13,7 @@ inline float SchlickReflectance(float cosine, float refractiveIndex) {
 
 interface IMaterial { bool Scatter(RayDesc ray, HitRecord hitRecord, out float3 direction, inout Random random); };
 
-struct Lambertian : IMaterial
-{
+struct Lambertian : IMaterial {
 	bool Scatter(RayDesc ray, HitRecord hitRecord, out float3 direction, inout Random random) {
 		direction = hitRecord.Vertex.Normal + random.UnitVector();
 
@@ -42,10 +41,12 @@ struct Dielectric : IMaterial {
 
 	bool Scatter(RayDesc ray, HitRecord hitRecord, out float3 direction, inout Random random) {
 		const float3 unitDirection = normalize(ray.Direction);
-		const float cosTheta = dot(-unitDirection, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta);
-		const float refractionRatio = hitRecord.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
+		const float cosTheta = dot(-unitDirection, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
+			refractionRatio = hitRecord.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 		const bool canRefract = refractionRatio * sinTheta <= 1;
-		direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) < random.Float3() ? refract(unitDirection, hitRecord.Vertex.Normal, refractionRatio) : reflect(unitDirection, hitRecord.Vertex.Normal);
+		direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) < random.Float3() ?
+			refract(unitDirection, hitRecord.Vertex.Normal, refractionRatio) :
+			reflect(unitDirection, hitRecord.Vertex.Normal);
 
 		return true;
 	}

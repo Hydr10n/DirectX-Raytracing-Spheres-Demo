@@ -5,27 +5,40 @@
 #include "WindowHelpers.h"
 
 struct MyAppData {
-	class Settings {
-	public:
+	struct Settings {
+		static constexpr struct { LPCWSTR Graphics = L"Graphics"; } Sections{};
+
 		struct Keys {
-			struct WindowMode;
-			struct Resolution;
-			struct AntiAliasingSampleCount;
+			struct WindowMode {
+				static constexpr LPCWSTR Section = Sections.Graphics;
+				static constexpr auto ToString() { return L"WindowMode"; }
+			};
+
+			struct Resolution {
+				static constexpr LPCWSTR Section = Sections.Graphics;
+				static constexpr auto ToStrings() { return std::pair(L"Width", L"Height"); }
+			};
+
+			struct AntiAliasingSampleCount {
+				static constexpr LPCWSTR Section = Sections.Graphics;
+				static constexpr auto ToString() { return L"AntiAliasingSampleCount"; }
+			};
 		};
 
 		template <class Key, class Data>
 		static BOOL Save(const Data& data) {
 			if constexpr (std::is_same<Key, Keys::WindowMode>()) {
-				return m_appData.Save(StringSections.Graphics, StringKeys.WindowMode, reinterpret_cast<const UINT&>(data));
+				return m_appData.Save(Key::Section, Key::ToString(), reinterpret_cast<const UINT&>(data));
 			}
 
 			if constexpr (std::is_same<Key, Keys::Resolution>()) {
-				return m_appData.Save(StringSections.Graphics, StringKeys.ResolutionWidth, data.cx)
-					&& m_appData.Save(StringSections.Graphics, StringKeys.ResolutionHeight, data.cy);
+				const auto& size = reinterpret_cast<const SIZE&>(data);
+				return m_appData.Save(Key::Section, Key::ToStrings().first, size.cx)
+					&& m_appData.Save(Key::Section, Key::ToStrings().second, size.cy);
 			}
 
 			if constexpr (std::is_same<Key, Keys::AntiAliasingSampleCount>()) {
-				return m_appData.Save(StringSections.Graphics, StringKeys.AntiAliasingSampleCount, data);
+				return m_appData.Save(Key::Section, Key::ToString(), data);
 			}
 
 			throw;
@@ -34,30 +47,23 @@ struct MyAppData {
 		template <class Key, class Data>
 		static BOOL Load(Data& data) {
 			if constexpr (std::is_same<Key, Keys::WindowMode>()) {
-				return m_appData.Load(StringSections.Graphics, StringKeys.WindowMode, reinterpret_cast<UINT&>(data));
+				return m_appData.Load(Key::Section, Key::ToString(), reinterpret_cast<UINT&>(data));
 			}
 
 			if constexpr (std::is_same<Key, Keys::Resolution>()) {
-				return m_appData.Load(StringSections.Graphics, StringKeys.ResolutionWidth, data.cx)
-					&& m_appData.Load(StringSections.Graphics, StringKeys.ResolutionHeight, data.cy);
+				auto& size = reinterpret_cast<SIZE&>(data);
+				return m_appData.Load(Key::Section, Key::ToStrings().first, size.cx)
+					&& m_appData.Load(Key::Section, Key::ToStrings().second, size.cy);
 			}
 
 			if constexpr (std::is_same<Key, Keys::AntiAliasingSampleCount>()) {
-				return m_appData.Load(StringSections.Graphics, StringKeys.AntiAliasingSampleCount, data);
+				return m_appData.Load(Key::Section, Key::ToString(), data);
 			}
 
 			throw;
 		}
 
 	private:
-		static constexpr struct { LPCWSTR Graphics = L"Graphics"; } StringSections{};
-
-		static constexpr struct {
-			LPCWSTR WindowMode = L"WindowMode";
-			LPCWSTR ResolutionWidth = L"ResolutionWidth", ResolutionHeight = L"ResolutionHeight";
-			LPCWSTR AntiAliasingSampleCount = L"AntiAliasingSampleCount";
-		} StringKeys{};
-
 		static const Hydr10n::Data::AppData m_appData;
 	};
 };

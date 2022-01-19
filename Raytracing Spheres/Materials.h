@@ -36,5 +36,5 @@ struct MaterialBase {
 struct Material : MaterialBase {
 	size_t ConstantBufferIndex;
 
-	Material(const MaterialBase& materialBase, size_t constantBufferIndex) : MaterialBase(materialBase), ConstantBufferIndex(constantBufferIndex) {}
+	Material(const MaterialBase& materialBase, size_t constantBufferIndex = SIZE_MAX) : MaterialBase(materialBase), ConstantBufferIndex(constantBufferIndex) {}
 };

@@ -112,7 +112,7 @@ void ShaderBindingTableGenerator::Generate(ID3D12Resource* sbtBuffer,
   }
   // Copy the shader identifiers followed by their resource pointers or root constants: first the
   // ray generation, then the miss shaders, and finally the set of hit groups
-  uint32_t offset = 0;
+  uint32_t offset;
 
   offset = CopyShaderData(raytracingPipeline, pData, m_rayGeneration, m_rayGenerationEntrySize);
   pData += offset;

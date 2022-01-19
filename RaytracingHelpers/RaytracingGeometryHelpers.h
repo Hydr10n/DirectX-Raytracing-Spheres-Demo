@@ -29,8 +29,8 @@ namespace RaytracingHelpers {
 			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL
 		) noexcept(false) :
-			m_device(pDevice),
-			Geometry(D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, flags) {
+			Geometry(D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, flags),
+			m_device(pDevice) {
 			const auto verticesSize = vertices.size(), indicesSize = indices.size();
 
 			DX::ThrowIfFailed(CreateUploadBuffer(pDevice, sizeof(Vertex) * verticesSize, &m_vertexBuffer, vertices.data()));

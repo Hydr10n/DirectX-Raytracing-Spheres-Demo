@@ -162,7 +162,7 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   // Add all the DXIL libraries
   for (const Library& lib : m_libraries)
   {
-    D3D12_STATE_SUBOBJECT libSubobject = {};
+    D3D12_STATE_SUBOBJECT libSubobject;
     libSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
     libSubobject.pDesc = &lib.m_libDesc;
 
@@ -172,7 +172,7 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   // Add all the hit group declarations
   for (const HitGroup& group : m_hitGroups)
   {
-    D3D12_STATE_SUBOBJECT hitGroup = {};
+    D3D12_STATE_SUBOBJECT hitGroup;
     hitGroup.Type = D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP;
     hitGroup.pDesc = &group.m_desc;
 
@@ -180,11 +180,11 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   }
 
   // Add a subobject for the shader payload configuration
-  D3D12_RAYTRACING_SHADER_CONFIG shaderDesc = {};
+  D3D12_RAYTRACING_SHADER_CONFIG shaderDesc;
   shaderDesc.MaxPayloadSizeInBytes = m_maxPayLoadSizeInBytes;
   shaderDesc.MaxAttributeSizeInBytes = m_maxAttributeSizeInBytes;
 
-  D3D12_STATE_SUBOBJECT shaderConfigObject = {};
+  D3D12_STATE_SUBOBJECT shaderConfigObject;
   shaderConfigObject.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG;
   shaderConfigObject.pDesc = &shaderDesc;
 
@@ -192,8 +192,8 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
 
   // Build a list of all the symbols for ray generation, miss and hit groups
   // Those shaders have to be associated with the payload definition
-  std::vector<std::wstring> exportedSymbols = {};
-  std::vector<LPCWSTR> exportedSymbolPointers = {};
+  std::vector<std::wstring> exportedSymbols;
+  std::vector<LPCWSTR> exportedSymbolPointers;
   BuildShaderExportList(exportedSymbols);
 
   // Build an array of the string pointers
@@ -205,7 +205,7 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   const WCHAR** shaderExports = exportedSymbolPointers.data();
 
   // Add a subobject for the association between shaders and the payload
-  D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION shaderPayloadAssociation = {};
+  D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION shaderPayloadAssociation;
   shaderPayloadAssociation.NumExports = static_cast<UINT>(exportedSymbols.size());
   shaderPayloadAssociation.pExports = shaderExports;
 
@@ -213,7 +213,7 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   shaderPayloadAssociation.pSubobjectToAssociate = &subobjects[(currentIndex - 1)];
 
   // Create and store the payload association object
-  D3D12_STATE_SUBOBJECT shaderPayloadAssociationObject = {};
+  D3D12_STATE_SUBOBJECT shaderPayloadAssociationObject;
   shaderPayloadAssociationObject.Type = D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION;
   shaderPayloadAssociationObject.pDesc = &shaderPayloadAssociation;
   subobjects[currentIndex++] = shaderPayloadAssociationObject;
@@ -224,7 +224,7 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   {
 
     // Add a subobject to declare the root signature
-    D3D12_STATE_SUBOBJECT rootSigObject = {};
+    D3D12_STATE_SUBOBJECT rootSigObject;
     rootSigObject.Type = D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE;
     rootSigObject.pDesc = &assoc.m_rootSignature;
 
@@ -236,7 +236,7 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
     assoc.m_association.pExports = assoc.m_symbolPointers.data();
     assoc.m_association.pSubobjectToAssociate = &subobjects[(currentIndex - 1)];
 
-    D3D12_STATE_SUBOBJECT rootSigAssociationObject = {};
+    D3D12_STATE_SUBOBJECT rootSigAssociationObject;
     rootSigAssociationObject.Type = D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION;
     rootSigAssociationObject.pDesc = &assoc.m_association;
 
@@ -257,17 +257,17 @@ ID3D12StateObject* RaytracingPipelineGenerator::Generate()
   subobjects[currentIndex++] = dummyLocalRootSig;
 
   // Add a subobject for the ray tracing pipeline configuration
-  D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig = {};
+  D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig;
   pipelineConfig.MaxTraceRecursionDepth = m_maxTraceRecursionDepth;
 
-  D3D12_STATE_SUBOBJECT pipelineConfigObject = {};
+  D3D12_STATE_SUBOBJECT pipelineConfigObject;
   pipelineConfigObject.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG;
   pipelineConfigObject.pDesc = &pipelineConfig;
 
   subobjects[currentIndex++] = pipelineConfigObject;
 
   // Describe the ray tracing pipeline state object
-  D3D12_STATE_OBJECT_DESC pipelineDesc = {};
+  D3D12_STATE_OBJECT_DESC pipelineDesc;
   pipelineDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
   pipelineDesc.NumSubobjects = currentIndex; // static_cast<UINT>(subobjects.size());
   pipelineDesc.pSubobjects = subobjects.data();
@@ -313,7 +313,7 @@ void RaytracingPipelineGenerator::BuildShaderExportList(std::vector<std::wstring
 
 #ifdef _DEBUG
   // Sanity check in debug mode: verify that the hit groups do not reference an unknown shader name
-  std::unordered_set<std::wstring> all_exports = exports;
+  std::unordered_set<std::wstring> allExports = exports;
 
   for (const auto& hitGroup : m_hitGroups)
   {
@@ -332,7 +332,7 @@ void RaytracingPipelineGenerator::BuildShaderExportList(std::vector<std::wstring
       throw std::logic_error("Intersection symbol not found in the imported DXIL libraries");
     }
 
-    all_exports.insert(hitGroup.m_hitGroupName);
+    allExports.insert(hitGroup.m_hitGroupName);
   }
 
   // Sanity check in debug mode: verify that the root signature associations do not reference an
@@ -341,7 +341,7 @@ void RaytracingPipelineGenerator::BuildShaderExportList(std::vector<std::wstring
   {
     for (const auto& symb : assoc.m_symbols)
     {
-      if (!symb.empty() && !all_exports.contains(symb))
+      if (!symb.empty() && !allExports.contains(symb))
       {
         throw std::logic_error("Root association symbol not found in the "
                                "imported DXIL libraries and hit group names");
@@ -387,7 +387,6 @@ RaytracingPipelineGenerator::Library::Library(const D3D12_SHADER_BYTECODE& dxil,
   // Create one export descriptor per symbol
   for (size_t i = 0; i < m_exportedSymbols.size(); i++)
   {
-    m_exports[i] = {};
     m_exports[i].Name = m_exportedSymbols[i].c_str();
     m_exports[i].ExportToRename = nullptr;
     m_exports[i].Flags = D3D12_EXPORT_FLAG_NONE;

@@ -47,20 +47,19 @@ buffer needs to be kept until the command list execution is finished.
 
 Example:
 
-TopLevelASGenerator topLevelAS;
+TopLevelASGenerator topLevelAS(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 topLevelAS.AddInstance(instances1, matrix1, instanceId1, hitGroupIndex1);
 topLevelAS.AddInstance(instances2, matrix2, instanceId2, hitGroupIndex2);
 ...
 UINT64 scratchSize, resultSize, instanceDescsSize;
-topLevelAS.ComputeASBufferSizes(GetRTDevice(), true, &scratchSize, &resultSize,
-&instanceDescsSize); AccelerationStructureBuffers buffers; buffers.pScratch =
-nv_helpers_dx12::CreateBuffer(..., scratchSizeInBytes, ...); buffers.pResult =
-nv_helpers_dx12::CreateBuffer(..., resultSizeInBytes, ...);
-buffers.pInstanceDesc = nv_helpers_dx12::CreateBuffer(..., resultSizeInBytes,
-...); topLevelAS.Generate(m_commandList.Get(), rtCmdList,
-m_topLevelAS.pScratch.Get(), m_topLevelAS.pResult.Get(),
-m_topLevelAS.pInstanceDesc.Get(), updateOnly, updateOnly ?
-m_topLevelAS.pResult.Get() : nullptr);
+topLevelAS.ComputeASBufferSizes(GetRTDevice(), scratchSize, resultSize, instanceDescsSize);
+AccelerationStructureBuffers buffers;
+buffers.pScratch = nv_helpers_dx12::CreateBuffer(..., scratchSizeInBytes, ...);
+buffers.pResult = nv_helpers_dx12::CreateBuffer(..., resultSizeInBytes, ...);
+buffers.pInstanceDesc = nv_helpers_dx12::CreateBuffer(..., resultSizeInBytes, ...);
+topLevelAS.Generate(m_commandList.Get(), rtCmdList,
+m_topLevelAS.pScratch.Get(), m_topLevelAS.pResult.Get(), m_topLevelAS.pInstanceDesc.Get(),
+updateOnly ? m_topLevelAS.pResult.Get() : nullptr);
 
 return buffers;
 
@@ -81,6 +80,10 @@ namespace nv_helpers_dx12
 class TopLevelASGenerator
 {
 public:
+  TopLevelASGenerator(
+      D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = 
+      D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
+
   /// Add an instance to the top-level acceleration structure. The instance is
   /// represented by a bottom-level AS, a transform, an instance ID and the
   /// index of the hit group indicating which shaders are executed upon hitting
@@ -105,15 +108,13 @@ public:
   /// of the buffers is then left to the application
   void ComputeASBufferSizes(
       ID3D12Device5* device, /// Device on which the build will be performed
-      bool allowUpdate,              /// If true, the resulting acceleration structure will
-                                     /// allow iterative updates
-      UINT64* scratchSizeInBytes,    /// Required scratch memory on the GPU to
-                                     /// build the acceleration structure
-      UINT64* resultSizeInBytes,     /// Required GPU memory to store the
-                                     /// acceleration structure
-      UINT64* descriptorsSizeInBytes /// Required GPU memory to store instance
-                                     /// descriptors, containing the matrices,
-                                     /// indices etc.
+      UINT64& scratchSizeInBytes,      /// Required scratch memory on the GPU to
+                                       /// build the acceleration structure
+      UINT64& resultSizeInBytes,       /// Required GPU memory to store the
+                                       /// acceleration structure
+      UINT64& instanceDescsSizeInBytes /// Required GPU memory to store instance
+                                       /// descriptors, containing the matrices,
+                                       /// indices etc.
   );
 
   /// Enqueue the construction of the acceleration structure on a command list,
@@ -128,7 +129,6 @@ public:
       ID3D12Resource* resultBuffer,      /// Result buffer storing the acceleration structure
       ID3D12Resource* descriptorsBuffer, /// Auxiliary result buffer containing the instance
                                          /// descriptors, has to be in upload heap
-      bool updateOnly = false, /// If true, simply refit the existing acceleration structure
       ID3D12Resource* previousResult = nullptr /// Optional previous acceleration structure, used
                                                /// if an iterative update is requested
   );

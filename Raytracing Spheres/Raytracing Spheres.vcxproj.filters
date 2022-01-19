@@ -67,10 +67,10 @@
     <ClInclude Include="DisplayHelpers.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="TransformCollection.h">
+    <ClInclude Include="Materials.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Materials.h">
+    <ClInclude Include="MyPhysX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -96,42 +96,42 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Textures\Earth.png">
+    <Content Include="Textures\Earth.dds">
       <Filter>Texture Files</Filter>
     </Content>
-    <Content Include="Textures\Moon.png">
+    <Content Include="Textures\Moon.dds">
       <Filter>Texture Files</Filter>
     </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-    <None Include="Materials.hlsli">
+    <None Include="Shaders\Common.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Ray.hlsli">
+    <None Include="Shaders\HitRecord.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="HitRecord.hlsli">
+    <None Include="Shaders\Index.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Random.hlsli">
+    <None Include="Shaders\Materials.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Vertex.hlsli">
+    <None Include="Shaders\PrimaryRay.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="PrimaryRay.hlsli">
+    <None Include="Shaders\Random.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shader.hlsli">
+    <None Include="Shaders\Ray.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Index.hlsli">
+    <None Include="Shaders\Vertex.hlsli">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Raytracing.hlsl">
+    <FxCompile Include="Shaders\Raytracing.hlsl">
       <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>

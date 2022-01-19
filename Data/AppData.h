@@ -1,6 +1,6 @@
 /*
  * Header File: AppData.h
- * Last Update: 2022/01/04
+ * Last Update: 2022/01/12
  *
  * Copyright (C) Hydr10n@GitHub. All Rights Reserved.
  */
@@ -22,7 +22,10 @@ namespace Hydr10n::Data {
 		template <class T>
 		BOOL Save(LPCWSTR lpSection, LPCWSTR lpKey, const T& data) const { return Save(lpSection, lpKey, std::to_wstring(data).c_str()); }
 
-		BOOL Load(LPCWSTR lpSection, LPCWSTR lpKey, LPWSTR data, DWORD nSize) const { return GetPrivateProfileStringW(lpSection, lpKey, nullptr, data, nSize, Path.c_str()), GetLastError() == ERROR_SUCCESS; }
+		BOOL Load(LPCWSTR lpSection, LPCWSTR lpKey, LPWSTR data, DWORD nSize) const {
+			GetPrivateProfileStringW(lpSection, lpKey, nullptr, data, nSize, Path.c_str());
+			return GetLastError() == ERROR_SUCCESS;
+		}
 
 		template <class T>
 		BOOL Load(LPCWSTR lpSection, LPCWSTR lpKey, T& data) const {

@@ -60,7 +60,7 @@ ID3D12RootSignature* RootSignatureGenerator::Generate(
 )
 {
   // Specify the root signature with its set of parameters
-  D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
+  D3D12_ROOT_SIGNATURE_DESC rootDesc;
   rootDesc.NumParameters = static_cast<UINT>(m_parameters.size());
   rootDesc.pParameters = m_parameters.data();
   rootDesc.Flags = flags;

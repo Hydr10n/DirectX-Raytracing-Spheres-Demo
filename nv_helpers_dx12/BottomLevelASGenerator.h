@@ -49,15 +49,14 @@ Example:
 BottomLevelASGenerator bottomLevelAS;
 bottomLevelAS.AddGeometry(geometryDesc);
 ...
-UINT64 scratchSizeInBytes = 0;
-UINT64 resultSizeInBytes = 0;
-bottomLevelAS.ComputeASBufferSizes(GetRTDevice(), false, &scratchSizeInBytes,
-&resultSizeInBytes); AccelerationStructureBuffers buffers; buffers.pScratch =
-nv_helpers_dx12::CreateBuffer(..., scratchSizeInBytes, ...); buffers.pResult =
-nv_helpers_dx12::CreateBuffer(..., resultSizeInBytes, ...);
-
-bottomLevelAS.Generate(m_commandList.Get(), rtCmdList, buffers.pScratch.Get(),
-buffers.pResult.Get(), false, nullptr);
+UINT64 scratchSize, resultSize;
+bottomLevelAS.ComputeASBufferSizes(GetRTDevice(), scratchSize, resultSize);
+AccelerationStructureBuffers buffers;
+buffers.pScratch = nv_helpers_dx12::CreateBuffer(..., scratchSize, ...);
+buffers.pResult = nv_helpers_dx12::CreateBuffer(..., resultSize, ...);
+bottomLevelAS.Generate(m_commandList.Get(), rtCmdList,
+buffers.pScratch.Get(), buffers.pResult.Get(),
+nullptr);
 
 return buffers;
 
@@ -76,6 +75,10 @@ namespace nv_helpers_dx12
 class BottomLevelASGenerator
 {
 public:
+  BottomLevelASGenerator(
+      D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = 
+      D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
+
   /// Add a geometry descriptor into the acceleration structure.
   void AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc);
 
@@ -84,11 +87,9 @@ public:
   /// application
   void ComputeASBufferSizes(
       ID3D12Device5* device, /// Device on which the build will be performed
-      bool allowUpdate,           /// If true, the resulting acceleration structure will
-                                  /// allow iterative updates
-      UINT64* scratchSizeInBytes, /// Required scratch memory on the GPU to
+      UINT64& scratchSizeInBytes, /// Required scratch memory on the GPU to
                                   /// build the acceleration structure
-      UINT64* resultSizeInBytes   /// Required GPU memory to store the
+      UINT64& resultSizeInBytes   /// Required GPU memory to store the
                                   /// acceleration structure
   );
 
@@ -101,7 +102,6 @@ public:
       ID3D12Resource* scratchBuffer, /// Scratch buffer used by the builder to
                                      /// store temporary data
       ID3D12Resource* resultBuffer,  /// Result buffer storing the acceleration structure
-      bool updateOnly = false,       /// If true, simply refit the existing acceleration structure
       ID3D12Resource* previousResult = nullptr /// Optional previous acceleration structure, used
                                                /// if an iterative update is requested
   );

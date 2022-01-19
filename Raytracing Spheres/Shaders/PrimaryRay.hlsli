@@ -1,7 +1,7 @@
 #ifndef PRIMARYRAY_HLSLI
 #define PRIMARYRAY_HLSLI
 
-#include "Shader.hlsli"
+#include "Common.hlsli"
 
 #include "Ray.hlsli"
 
@@ -22,15 +22,19 @@ inline float4 TracePrimaryRay(RayDesc ray, uint traceRecursionDepth, inout Rando
 }
 
 [shader("miss")]
-void PrimaryRayMiss(inout PrimaryRayPayload payload) { payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * (normalize(WorldRayDirection()).y + 1)); }
+void PrimaryRayMiss(inout PrimaryRayPayload payload) {
+	payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * (normalize(WorldRayDirection()).y + 1));
+}
 
 [shader("closesthit")]
 void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleIntersectionAttributes attributes) {
+	const float3 worldRayOrigin = WorldRayOrigin(), worldRayDirection = WorldRayDirection();
+
 	const uint3 indices = Load3x16BitIndices(g_indices, GetTriangleBaseIndex(2));
 	const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 	const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
 	const Vertex vertex = {
-		WorldRayOrigin() + WorldRayDirection() * RayTCurrent(),
+		worldRayOrigin + worldRayDirection * RayTCurrent(),
 		normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3())),
 		VertexAttribute(textureCoordinates, attributes)
 	};
@@ -40,7 +44,7 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		return;
 	}
 
-	const RayDesc ray = CreateRayDesc(WorldRayOrigin(), WorldRayDirection());
+	const RayDesc ray = CreateRayDesc(worldRayOrigin, worldRayDirection);
 
 	HitRecord hitRecord;
 	hitRecord.Vertex.Position = vertex.Position;
@@ -74,10 +78,9 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 	}
 
 	float4 color;
-	if (g_objectConstant.IsTextureUsed) {
-		float2 dimensions;
-		g_texture.GetDimensions(dimensions.x, dimensions.y);
-		color = g_texture[uint2(vertex.TextureCoordinate * dimensions)].rgba;
+	if (g_objectConstant.IsImageTextureUsed) {
+		const float2 textureCoordinate = { 1 - vertex.TextureCoordinate.x, vertex.TextureCoordinate.y };
+		color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	}
 	else color = g_materialConstant.Color;
 	payload.Color = color * TracePrimaryRay(CreateRayDesc(vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);

@@ -53,21 +53,11 @@ void BottomLevelASGenerator::AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& g
 // the buffers is then left to the application
 void BottomLevelASGenerator::ComputeASBufferSizes(
     ID3D12Device5 *device, // Device on which the build will be performed
-    bool allowUpdate,     // If true, the resulting acceleration structure will
-                          // allow iterative updates
-    UINT64 *scratchSizeInBytes, // Required scratch memory on the GPU to build
+    UINT64 &scratchSizeInBytes, // Required scratch memory on the GPU to build
                                 // the acceleration structure
-    UINT64 *resultSizeInBytes   // Required GPU memory to store the acceleration
+    UINT64 &resultSizeInBytes   // Required GPU memory to store the acceleration
                                 // structure
 ) {
-  // The generated AS can support iterative updates. This may change the final
-  // size of the AS as well as the temporary memory requirements, and hence has
-  // to be set before the actual build
-  m_flags =
-      allowUpdate
-          ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
-          : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-
   // Describe the work being requested, in this case the construction of a
   // (possibly dynamic) bottom-level hierarchy, with the given vertex buffers
   
@@ -89,15 +79,14 @@ void BottomLevelASGenerator::ComputeASBufferSizes(
   device->GetRaytracingAccelerationStructurePrebuildInfo(&prebuildDesc, &info);
 
   // Buffer sizes need to be 256-byte-aligned
-  *scratchSizeInBytes =
+  m_scratchSizeInBytes =
       ROUND_UP(info.ScratchDataSizeInBytes,
                D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-  *resultSizeInBytes = ROUND_UP(info.ResultDataMaxSizeInBytes,
+  m_resultSizeInBytes = ROUND_UP(info.ResultDataMaxSizeInBytes,
                                 D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
-  // Store the memory requirements for use during build
-  m_scratchSizeInBytes = *scratchSizeInBytes;
-  m_resultSizeInBytes = *resultSizeInBytes;
+  scratchSizeInBytes = m_scratchSizeInBytes;
+  resultSizeInBytes = m_resultSizeInBytes;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -112,33 +101,18 @@ void BottomLevelASGenerator::Generate(
                                    // store temporary data
     ID3D12Resource
         *resultBuffer, // Result buffer storing the acceleration structure
-    bool updateOnly,   // If true, simply refit the existing
-                       // acceleration structure
     ID3D12Resource *previousResult // Optional previous acceleration
                                    // structure, used if an iterative update
                                    // is requested
 ) {
+  auto updateOnly = previousResult != nullptr;
 
   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = m_flags;
   // The stored flags represent whether the AS has been built for updates or
   // not. If yes and an update is requested, the builder is told to only update
   // the AS instead of fully rebuilding it
-  if (flags ==
-          D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE &&
-      updateOnly) {
-    flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-  }
-
-  // Sanity checks
-  if (m_flags !=
-          D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE &&
-      updateOnly) {
-    throw std::logic_error(
-        "Cannot update a bottom-level AS not originally built for updates");
-  }
-  if (updateOnly && previousResult == nullptr) {
-    throw std::logic_error(
-        "Bottom-level hierarchy update requires the previous hierarchy");
+  if (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && updateOnly) {
+    flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
   }
 
   if (m_resultSizeInBytes == 0 || m_scratchSizeInBytes == 0) {
@@ -150,6 +124,7 @@ void BottomLevelASGenerator::Generate(
   // bottom-level AS from the input parameters
   D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc;
   buildDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+  buildDesc.Inputs.Flags = flags;
   buildDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
   buildDesc.Inputs.NumDescs = static_cast<UINT>(m_geometryDescs.size());
   buildDesc.Inputs.pGeometryDescs = m_geometryDescs.data();
@@ -159,7 +134,6 @@ void BottomLevelASGenerator::Generate(
       scratchBuffer->GetGPUVirtualAddress()};
   buildDesc.SourceAccelerationStructureData =
       previousResult ? previousResult->GetGPUVirtualAddress() : 0;
-  buildDesc.Inputs.Flags = flags;
 
   // Build the AS
   commandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);

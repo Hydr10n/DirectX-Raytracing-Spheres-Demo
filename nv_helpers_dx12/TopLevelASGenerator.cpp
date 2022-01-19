@@ -86,23 +86,15 @@ void TopLevelASGenerator::AddInstance(
 // the buffers is then left to the application
 void TopLevelASGenerator::ComputeASBufferSizes(
     ID3D12Device5* device, // Device on which the build will be performed
-    bool allowUpdate,                        // If true, the resulting acceleration structure will
-                                             // allow iterative updates
-    UINT64* scratchSizeInBytes,              // Required scratch memory on the GPU to build
+    UINT64& scratchSizeInBytes,              // Required scratch memory on the GPU to build
                                              // the acceleration structure
-    UINT64* resultSizeInBytes,               // Required GPU memory to store the acceleration
+    UINT64& resultSizeInBytes,               // Required GPU memory to store the acceleration
                                              // structure
-    UINT64* descriptorsSizeInBytes           // Required GPU memory to store instance
+    UINT64& instanceDescsSizeInBytes         // Required GPU memory to store instance
                                              // descriptors, containing the matrices,
                                              // indices etc.
 )
 {
-  // The generated AS can support iterative updates. This may change the final
-  // size of the AS as well as the temporary memory requirements, and hence has
-  // to be set before the actual build
-  m_flags = allowUpdate ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
-                        : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-
   // Describe the work being requested, in this case the construction of a
   // (possibly dynamic) top-level hierarchy, with the given instance descriptors
   D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS
@@ -133,12 +125,12 @@ void TopLevelASGenerator::ComputeASBufferSizes(
   // The instance descriptors are stored as-is in GPU memory, so we can deduce
   // the required size from the instance count
   m_instanceDescsSizeInBytes =
-      ROUND_UP(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(m_instances.size()),
+      ROUND_UP(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * m_instances.size(),
                D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
-  *scratchSizeInBytes = m_scratchSizeInBytes;
-  *resultSizeInBytes = m_resultSizeInBytes;
-  *descriptorsSizeInBytes = m_instanceDescsSizeInBytes;
+  scratchSizeInBytes = m_scratchSizeInBytes;
+  resultSizeInBytes = m_resultSizeInBytes;
+  instanceDescsSizeInBytes = m_instanceDescsSizeInBytes;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -154,8 +146,6 @@ void TopLevelASGenerator::Generate(
     ID3D12Resource* resultBuffer,      // Result buffer storing the acceleration structure
     ID3D12Resource* descriptorsBuffer, // Auxiliary result buffer containing the instance
                                        // descriptors, has to be in upload heap
-    bool updateOnly /*= false*/,       // If true, simply refit the existing
-                                       // acceleration structure
     ID3D12Resource* previousResult /*= nullptr*/ // Optional previous acceleration
                                                  // structure, used if an iterative update
                                                  // is requested
@@ -166,11 +156,12 @@ void TopLevelASGenerator::Generate(
   descriptorsBuffer->Map(0, nullptr, reinterpret_cast<void**>(&instanceDescs));
   if (!instanceDescs)
   {
-    throw std::logic_error("Cannot map the instance descriptor buffer - is it "
-                           "in the upload heap?");
+    throw std::logic_error("Cannot map the instance descriptor buffer");
   }
 
   auto instanceCount = static_cast<UINT>(m_instances.size());
+
+  auto updateOnly = previousResult != nullptr;
 
   // Initialize the memory to zero on the first time only
   if (!updateOnly)
@@ -188,7 +179,8 @@ void TopLevelASGenerator::Generate(
     // Instance flags, including backface culling, winding, etc
     instanceDescs[i].Flags = m_instances[i].flags;
     // Instance transform matrix
-    DirectX::XMStoreFloat3x4(reinterpret_cast<DirectX::XMFLOAT3X4*>(instanceDescs[i].Transform), m_instances[i].transform);
+    DirectX::XMStoreFloat3x4(reinterpret_cast<DirectX::XMFLOAT3X4*>(instanceDescs[i].Transform),
+        m_instances[i].transform);
     // Get access to the bottom level
     instanceDescs[i].AccelerationStructure = m_instances[i].bottomLevelAS;
     // Visibility mask
@@ -197,32 +189,20 @@ void TopLevelASGenerator::Generate(
 
   descriptorsBuffer->Unmap(0, nullptr);
 
-  // If this in an update operation we need to provide the source buffer
-  D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
-
   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = m_flags;
   // The stored flags represent whether the AS has been built for updates or
   // not. If yes and an update is requested, the builder is told to only update
   // the AS instead of fully rebuilding it
-  if (flags == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && updateOnly)
+  if (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && updateOnly)
   {
-    flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-  }
-
-  // Sanity checks
-  if (m_flags != D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && updateOnly)
-  {
-    throw std::logic_error("Cannot update a top-level AS not originally built for updates");
-  }
-  if (updateOnly && previousResult == nullptr)
-  {
-    throw std::logic_error("Top-level hierarchy update requires the previous hierarchy");
+    flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
   }
 
   // Create a descriptor of the requested builder work, to generate a top-level
   // AS from the input parameters
-  D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+  D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc;
   buildDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+  buildDesc.Inputs.Flags = flags;
   buildDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
   buildDesc.Inputs.InstanceDescs = descriptorsBuffer->GetGPUVirtualAddress();
   buildDesc.Inputs.NumDescs = instanceCount;
@@ -230,8 +210,8 @@ void TopLevelASGenerator::Generate(
                                              };
   buildDesc.ScratchAccelerationStructureData = {scratchBuffer->GetGPUVirtualAddress()
                                                 };
-  buildDesc.SourceAccelerationStructureData = pSourceAS;
-  buildDesc.Inputs.Flags = flags;
+  buildDesc.SourceAccelerationStructureData =
+      previousResult ? previousResult->GetGPUVirtualAddress() : 0;
 
   // Build the top-level AS
   commandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
