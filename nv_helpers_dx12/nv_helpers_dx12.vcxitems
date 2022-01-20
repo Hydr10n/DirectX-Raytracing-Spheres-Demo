@@ -16,14 +16,12 @@
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)BottomLevelASGenerator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)RaytracingPipelineGenerator.cpp" />
-    <ClCompile Include="$(MSBuildThisFileDirectory)RootSignatureGenerator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)TopLevelASGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)BottomLevelASGenerator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)RaytracingPipelineGenerator.h" />
-    <ClInclude Include="$(MSBuildThisFileDirectory)RootSignatureGenerator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)TopLevelASGenerator.h" />
   </ItemGroup>

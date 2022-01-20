@@ -24,7 +24,6 @@
 
 #include "DDSTextureLoader.h"
 
-#include "RootSignatureGenerator.h"
 #include "RaytracingPipelineGenerator.h"
 #include "BottomLevelASGenerator.h"
 #include "TopLevelASGenerator.h"
@@ -140,8 +139,8 @@ public:
 
 		m_pipelineStateObject.Reset();
 
-		m_primaryRayClosestHitSignature.Reset();
-		m_rayGenerationSignature.Reset();
+		m_primaryRayClosestHitRootSignature.Reset();
+		m_globalRootSignature.Reset();
 
 		m_graphicsMemory.reset();
 	}
@@ -153,6 +152,8 @@ public:
 	}
 
 private:
+	enum class GlobalRootParameterIndex { OutputAndSceneDescriptorTable, SceneConstant, Count };
+
 	enum class DescriptorHeapIndex {
 		Output,
 		Scene,
@@ -226,7 +227,7 @@ private:
 
 	std::vector<RenderItem> m_renderItems;
 
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rayGenerationSignature, m_primaryRayClosestHitSignature;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> m_globalRootSignature, m_primaryRayClosestHitRootSignature;
 
 	Microsoft::WRL::ComPtr<ID3D12StateObject> m_pipelineStateObject;
 
@@ -575,58 +576,44 @@ private:
 		const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrapDesc(0);
 
 		{
-			RootSignatureGenerator rootSignatureGenerator;
-
-			CD3DX12_ROOT_PARAMETER rootParameter;
+			CD3DX12_ROOT_PARAMETER rootParameters[static_cast<size_t>(GlobalRootParameterIndex::Count)]{};
 
 			const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
 				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0),
 				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 1)
 			};
-			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
-			rootSignatureGenerator.AddRootParameter(rootParameter);
+			rootParameters[static_cast<size_t>(GlobalRootParameterIndex::OutputAndSceneDescriptorTable)].InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
 
-			rootParameter.InitAsConstantBufferView(0);
-			rootSignatureGenerator.AddRootParameter(rootParameter);
+			rootParameters[static_cast<size_t>(GlobalRootParameterIndex::SceneConstant)].InitAsConstantBufferView(0);
 
-			m_rayGenerationSignature.Attach(rootSignatureGenerator.Generate(device, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE));
+			const CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &anisotropicWrapDesc);
+			DX::ThrowIfFailed(DirectX::CreateRootSignature(device, &rootSignatureDesc, m_globalRootSignature.ReleaseAndGetAddressOf()));
 		}
 
 		{
-			RootSignatureGenerator rootSignatureGenerator;
+			CD3DX12_ROOT_PARAMETER rootParameters[4]{};
 
-			CD3DX12_ROOT_PARAMETER rootParameter;
-
-			const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
-				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)
-			};
-			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
-			rootSignatureGenerator.AddRootParameter(rootParameter);
-
-			const D3D12_DESCRIPTOR_RANGE descriptorRanges1[]{
+			const D3D12_DESCRIPTOR_RANGE descriptorRanges0[]{
 				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0),
 				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 1)
 			};
-			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges1), descriptorRanges1);
-			rootSignatureGenerator.AddRootParameter(rootParameter);
+			rootParameters[0].InitAsDescriptorTable(ARRAYSIZE(descriptorRanges0), descriptorRanges0);
 
-			const D3D12_DESCRIPTOR_RANGE descriptorRanges2[]{
+			const D3D12_DESCRIPTOR_RANGE descriptorRanges1[]{
 				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3)
 			};
-			rootParameter.InitAsDescriptorTable(ARRAYSIZE(descriptorRanges2), descriptorRanges2);
-			rootSignatureGenerator.AddRootParameter(rootParameter);
+			rootParameters[1].InitAsDescriptorTable(ARRAYSIZE(descriptorRanges1), descriptorRanges1);
 
-			for (UINT i = 0; i < 3; i++) {
-				rootParameter.InitAsConstantBufferView(i);
-				rootSignatureGenerator.AddRootParameter(rootParameter);
-			}
+			rootParameters[2].InitAsConstantBufferView(1);
+			rootParameters[3].InitAsConstantBufferView(2);
 
-			m_primaryRayClosestHitSignature.Attach(rootSignatureGenerator.Generate(device, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE, { anisotropicWrapDesc }));
+			const CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+			DX::ThrowIfFailed(DirectX::CreateRootSignature(device, &rootSignatureDesc, m_primaryRayClosestHitRootSignature.ReleaseAndGetAddressOf()));
 		}
 	}
 
 	void CreatePipelineStateObjects() {
-		nv_helpers_dx12::RaytracingPipelineGenerator raytracingPipelineGenerator(m_deviceResources->GetD3DDevice());
+		nv_helpers_dx12::RaytracingPipelineGenerator raytracingPipelineGenerator;
 		raytracingPipelineGenerator.AddLibrary(
 			{
 				.pShaderBytecode = g_pRaytracing,
@@ -638,16 +625,11 @@ private:
 			}
 			);
 
-		raytracingPipelineGenerator.AddRootSignatureAssociation(m_rayGenerationSignature.Get(), { ShaderEntryPoints.RayGeneration });
-		raytracingPipelineGenerator.AddRootSignatureAssociation(m_primaryRayClosestHitSignature.Get(), { ShaderEntryPoints.PrimaryRayClosestHit });
+		raytracingPipelineGenerator.AddLocalRootSignatureAssociation(m_primaryRayClosestHitRootSignature.Get(), { ShaderEntryPoints.PrimaryRayClosestHit });
 
 		raytracingPipelineGenerator.AddHitGroup(ShaderEntryPoints.SphereHitGroup, ShaderEntryPoints.PrimaryRayClosestHit);
 
-		raytracingPipelineGenerator.SetMaxPayloadSize(sizeof(DirectX::XMFLOAT4) * 2);
-
-		raytracingPipelineGenerator.SetMaxTraceRecursionDepth(MaxTraceRecursionDepth);
-
-		m_pipelineStateObject.Attach(raytracingPipelineGenerator.Generate());
+		m_pipelineStateObject.Attach(raytracingPipelineGenerator.Generate(m_deviceResources->GetD3DDevice(), m_globalRootSignature.Get(), MaxTraceRecursionDepth, sizeof(DirectX::XMFLOAT4) * 2));
 	}
 
 	void CreateDescriptorHeaps() { m_resourceDescriptors = std::make_unique<DirectX::DescriptorHeap>(m_deviceResources->GetD3DDevice(), static_cast<size_t>(DescriptorHeapIndex::Count)); }
@@ -744,15 +726,9 @@ private:
 	}
 
 	void CreateShaderBindingTables() {
-		m_shaderBindingTableGenerator = decltype(m_shaderBindingTableGenerator)();
+		m_shaderBindingTableGenerator = {};
 
-		m_shaderBindingTableGenerator.AddRayGenerationProgram(
-			ShaderEntryPoints.RayGeneration,
-			{
-				reinterpret_cast<void*>(m_resourceDescriptors->GetFirstGpuHandle().ptr),
-				reinterpret_cast<void*>(m_sceneConstantBuffer.GpuAddress())
-			}
-		);
+		m_shaderBindingTableGenerator.AddRayGenerationProgram(ShaderEntryPoints.RayGeneration, { nullptr });
 
 		m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints.PrimaryRayMiss, { nullptr });
 
@@ -760,10 +736,8 @@ private:
 			m_shaderBindingTableGenerator.AddHitGroup(
 				renderItem.HitGroup.c_str(),
 				{
-					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(static_cast<size_t>(DescriptorHeapIndex::Scene)).ptr),
 					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesSrvHeapIndex).ptr),
 					reinterpret_cast<void*>(renderItem.Texture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.Texture->SrvHeapIndex).ptr),
-					reinterpret_cast<void*>(m_sceneConstantBuffer.GpuAddress()),
 					reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex,
 					reinterpret_cast<MaterialConstant*>(m_materialConstantBuffer.GpuAddress()) + renderItem.Material->ConstantBufferIndex
 				}
@@ -927,6 +901,12 @@ private:
 
 		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 		commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
+
+		commandList->SetComputeRootSignature(m_globalRootSignature.Get());
+
+		commandList->SetComputeRootDescriptorTable(static_cast<UINT>(GlobalRootParameterIndex::OutputAndSceneDescriptorTable), m_resourceDescriptors->GetFirstGpuHandle());
+
+		commandList->SetComputeRootConstantBufferView(static_cast<UINT>(GlobalRootParameterIndex::SceneConstant), m_sceneConstantBuffer.GpuAddress());
 
 		commandList->SetPipelineState1(m_pipelineStateObject.Get());
 

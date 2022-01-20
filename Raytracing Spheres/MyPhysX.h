@@ -1,11 +1,16 @@
 #pragma once
 
+#pragma warning(push)
+#pragma warning(disable: 26451 26495 26812 33010)
+
 #include "PxPhysicsAPI.h"
 
 #include <stdexcept>
 
 #include <numbers>
 #include <cmath>
+
+#pragma warning(pop)
 
 namespace PhysicsHelpers {
 	namespace Gravity {
