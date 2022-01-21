@@ -482,7 +482,7 @@ private:
 
 					PxVec3 position;
 					position.x = i + 0.7f * Random::Float();
-					position.y = m_spring.PositionY + SimpleHarmonicMotion::CalculateSpringDisplacement(A, ω, 0.0f, position.x);
+					position.y = m_spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, ω, 0.0f, position.x);
 					position.z = j - 0.7f * Random::Float();
 
 					bool collision = false;
@@ -512,7 +512,7 @@ private:
 
 					const auto rigidDynamic = AddRenderItem(renderItem, material, PxSphereGeometry(SphereRadius * 0.15f), position);
 
-					rigidDynamic->setLinearVelocity(PxVec3(0, SimpleHarmonicMotion::CalculateSpringVelocity(A, ω, 0.0f, position.x), 0));
+					rigidDynamic->setLinearVelocity(PxVec3(0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0));
 				}
 			}
 		}
@@ -874,7 +874,7 @@ private:
 		const auto& position = PxShapeExt::getGlobalPose(shape, *rigidBody).p;
 
 		if (renderItem.Name == Objects.HarmonicOscillator) {
-			const auto k = SimpleHarmonicMotion::CalculateSpringConstant(mass, m_spring.Period);
+			const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, m_spring.Period);
 			const PxVec3 x(0, position.y - m_spring.PositionY, 0);
 			rigidBody->addForce(-k * x, PxForceMode::eFORCE);
 		}

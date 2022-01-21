@@ -27,14 +27,16 @@ namespace PhysicsHelpers {
 	}
 
 	namespace SimpleHarmonicMotion {
-		template <class T>
-		constexpr T CalculateSpringConstant(T m, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * m / (t * t)); }
+		namespace Spring {
+			template <class T>
+			constexpr T CalculateConstant(T m, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * m / (t * t)); }
 
-		template <class T>
-		constexpr T CalculateSpringDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t + φ); }
+			template <class T>
+			constexpr T CalculateDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t + φ); }
 
-		template <class T>
-		constexpr T CalculateSpringVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
+			template <class T>
+			constexpr T CalculateVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
+		}
 	}
 }
 
