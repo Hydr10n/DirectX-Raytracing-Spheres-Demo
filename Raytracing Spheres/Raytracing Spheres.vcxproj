@@ -199,7 +199,7 @@
     <None Include="Shaders\Common.hlsli" />
     <None Include="Shaders\HitRecord.hlsli" />
     <None Include="Shaders\Index.hlsli" />
-    <None Include="Shaders\Materials.hlsli" />
+    <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\PrimaryRay.hlsli" />
     <None Include="Shaders\Random.hlsli" />
     <None Include="Shaders\Ray.hlsli" />

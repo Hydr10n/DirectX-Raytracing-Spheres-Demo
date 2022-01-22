@@ -3,6 +3,8 @@
 
 #include "Vertex.hlsli"
 
+#include "Material.hlsli"
+
 #define MAX_TRACE_RECURSION_DEPTH 10
 
 typedef VertexPositionNormalTexture Vertex;
@@ -30,13 +32,7 @@ ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
 struct ObjectConstant {
 	bool IsImageTextureUsed;
 	float3 Padding;
-	struct {
-		uint Type; // 0: Lambertian, 1: Metal, 2: Dielectric
-		float RefractiveIndex; // Dielectric
-		float Roughness; // Metal
-		float Padding;
-		float4 Color;
-	} Material;
+	Material Material;
 };
 ConstantBuffer<ObjectConstant> g_objectConstant : register(b1);
 

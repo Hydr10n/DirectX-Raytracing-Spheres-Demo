@@ -185,11 +185,7 @@ private:
 			HarmonicOscillator = "HarmonicOscillator";
 	} Objects{};
 
-	static constexpr struct {
-		LPCWSTR
-			RayGeneration = L"RayGeneration",
-			PrimaryRayMiss = L"PrimaryRayMiss", PrimaryRayClosestHit = L"PrimaryRayClosestHit";
-	} ShaderEntryPoints{};
+	static constexpr struct { LPCWSTR RayGeneration = L"RayGeneration", PrimaryRayMiss = L"PrimaryRayMiss"; } ShaderEntryPoints{};
 
 	static constexpr struct { LPCWSTR PrimaryRayHitGroup = L"PrimaryRayHitGroup"; } ShaderSubobjects{};
 
@@ -582,7 +578,7 @@ private:
 		dxilLibrary->DefineExport(ShaderEntryPoints.RayGeneration);
 
 		dxilLibrary->DefineExport(ShaderEntryPoints.PrimaryRayMiss);
-		dxilLibrary->DefineExport(ShaderEntryPoints.PrimaryRayClosestHit);
+		dxilLibrary->DefineExport(L"PrimaryRayClosestHit");
 		dxilLibrary->DefineExport(ShaderSubobjects.PrimaryRayHitGroup);
 		dxilLibrary->DefineExport(L"PrimaryRayLocalRootSignatureAssociation");
 

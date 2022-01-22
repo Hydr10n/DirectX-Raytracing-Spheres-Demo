@@ -117,7 +117,7 @@
     <None Include="Shaders\Index.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\Materials.hlsli">
+    <None Include="Shaders\Material.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\PrimaryRay.hlsli">

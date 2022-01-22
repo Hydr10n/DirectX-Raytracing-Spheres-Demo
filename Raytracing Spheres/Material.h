@@ -3,7 +3,7 @@
 #include <DirectXMath.h>
 
 struct MaterialBase {
-	enum class Type { Lambertian, Metal, Dielectric } Type;
+	enum class Type { Lambertian, Metal, Dielectric, DiffuseLight } Type;
 	float RefractiveIndex;
 	float Roughness;
 	float Padding;
@@ -28,6 +28,13 @@ struct MaterialBase {
 		return MaterialBase{
 			.Type = Type::Dielectric,
 			.RefractiveIndex = refractiveIndex,
+			.Color = color
+		};
+	}
+
+	static auto CreateDiffuseLight(const DirectX::XMFLOAT4& color) {
+		return MaterialBase{
+			.Type = Type::DiffuseLight,
 			.Color = color
 		};
 	}

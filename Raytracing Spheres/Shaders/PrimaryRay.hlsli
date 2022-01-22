@@ -5,8 +5,6 @@
 
 #include "Ray.hlsli"
 
-#include "Materials.hlsli"
-
 #include "Index.hlsli"
 
 struct PrimaryRayPayload {
@@ -28,6 +26,11 @@ void PrimaryRayMiss(inout PrimaryRayPayload payload) {
 
 [shader("closesthit")]
 void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleIntersectionAttributes attributes) {
+	if (!payload.TraceRecursionDepth) {
+		payload.Color = 0;
+		return;
+	}
+
 	const float3 worldRayOrigin = WorldRayOrigin(), worldRayDirection = WorldRayDirection();
 
 	const uint3 indices = Load3x16BitIndices(g_indices, GetTriangleBaseIndex(2));
@@ -39,43 +42,11 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		VertexAttribute(textureCoordinates, attributes)
 	};
 
-	if (!payload.TraceRecursionDepth) {
-		payload.Color = 0;
-		return;
-	}
-
 	const RayDesc ray = CreateRayDesc(worldRayOrigin, worldRayDirection);
 
 	HitRecord hitRecord;
 	hitRecord.Vertex.Position = vertex.Position;
 	hitRecord.SetFaceNormal(ray.Direction, vertex.Normal);
-
-	float3 direction;
-	bool isScattered;
-
-	switch (g_objectConstant.Material.Type) {
-	case 0: {
-		Lambertian lambertian;
-		isScattered = lambertian.Scatter(ray, hitRecord, direction, payload.Random);
-	}	break;
-
-	case 1: {
-		Metal metal = { g_objectConstant.Material.Roughness };
-		isScattered = metal.Scatter(ray, hitRecord, direction, payload.Random);
-	}	break;
-
-	case 2: {
-		Dielectric dielectric = { g_objectConstant.Material.RefractiveIndex };
-		isScattered = dielectric.Scatter(ray, hitRecord, direction, payload.Random);
-	}	break;
-
-	default: payload.Color = 0; return;
-	}
-
-	if (!isScattered) {
-		payload.Color = 0;
-		return;
-	}
 
 	float4 color;
 	if (g_objectConstant.IsImageTextureUsed) {
@@ -83,7 +54,13 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	}
 	else color = g_objectConstant.Material.Color;
-	payload.Color = color * TracePrimaryRay(CreateRayDesc(vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
+
+	float3 direction;
+	float4 emitted = 0, attenuation = 0;
+	if (g_objectConstant.Material.Emit()) emitted = color;
+	if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) attenuation = color;
+
+	payload.Color = emitted + attenuation * TracePrimaryRay(CreateRayDesc(vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
 }
 
 TriangleHitGroup PrimaryRayHitGroup = { "", "PrimaryRayClosestHit" };
