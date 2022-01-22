@@ -9,14 +9,14 @@ struct MaterialBase {
 	float Padding;
 	DirectX::XMFLOAT4 Color;
 
-	static MaterialBase CreateLambertian(const DirectX::XMFLOAT4& color) {
+	static auto CreateLambertian(const DirectX::XMFLOAT4& color) {
 		return MaterialBase{
 			.Type = Type::Lambertian,
 			.Color = color
 		};
 	}
 
-	static MaterialBase CreateMetal(const DirectX::XMFLOAT4& color, float roughness) {
+	static auto CreateMetal(const DirectX::XMFLOAT4& color, float roughness) {
 		return MaterialBase{
 			.Type = Type::Metal,
 			.Roughness = roughness,
@@ -24,7 +24,7 @@ struct MaterialBase {
 		};
 	}
 
-	static MaterialBase CreateDielectric(const DirectX::XMFLOAT4& color, float refractiveIndex) {
+	static auto CreateDielectric(const DirectX::XMFLOAT4& color, float refractiveIndex) {
 		return MaterialBase{
 			.Type = Type::Dielectric,
 			.RefractiveIndex = refractiveIndex,

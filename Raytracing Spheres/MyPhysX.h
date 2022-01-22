@@ -10,8 +10,6 @@
 #include <numbers>
 #include <cmath>
 
-#pragma warning(pop)
-
 namespace PhysicsHelpers {
 	namespace Gravity {
 		constexpr auto G = 6.674e-11;
@@ -39,6 +37,8 @@ namespace PhysicsHelpers {
 		}
 	}
 }
+
+#pragma warning(pop)
 
 class MyPhysX {
 public:

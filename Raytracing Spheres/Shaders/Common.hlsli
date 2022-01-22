@@ -3,6 +3,10 @@
 
 #include "Vertex.hlsli"
 
+#define MAX_TRACE_RECURSION_DEPTH 10
+
+typedef VertexPositionNormalTexture Vertex;
+
 SamplerState g_anisotropicWrap : register(s0);
 
 RWTexture2D<float4> g_output : register(u0);
@@ -18,22 +22,39 @@ Texture2D<float4> g_imageTexture : register(t3);
 struct SceneConstant {
 	float4x4 ProjectionToWorld;
 	float3 CameraPosition;
-	uint MaxTraceRecursionDepth;
 	uint AntiAliasingSampleCount;
 	uint FrameCount;
 };
 ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
 
-struct ObjectConstant { bool IsImageTextureUsed; };
+struct ObjectConstant {
+	bool IsImageTextureUsed;
+	float3 Padding;
+	struct {
+		uint Type; // 0: Lambertian, 1: Metal, 2: Dielectric
+		float RefractiveIndex; // Dielectric
+		float Roughness; // Metal
+		float Padding;
+		float4 Color;
+	} Material;
+};
 ConstantBuffer<ObjectConstant> g_objectConstant : register(b1);
 
-struct MaterialConstant {
-	uint Type; // 0: Lambertian, 1: Metal, 2: Dielectric
-	float RefractiveIndex; // Dielectric
-	float Roughness; // Metal
-	float Padding;
-	float4 Color;
+RaytracingPipelineConfig RaytracingPipelineConfig = { MAX_TRACE_RECURSION_DEPTH };
+
+RaytracingShaderConfig RaytracingShaderConfig = { sizeof(float4) * 2, sizeof(BuiltInTriangleIntersectionAttributes) };
+
+GlobalRootSignature GlobalRootSignature = {
+	"StaticSampler(s0),"
+	"DescriptorTable(UAV(u0)),"
+	"SRV(t0),"
+	"CBV(b0)"
 };
-ConstantBuffer<MaterialConstant> g_materialConstant : register(b2);
+
+LocalRootSignature LocalRootSignature = {
+	"DescriptorTable(SRV(t1), SRV(t2)),"
+	"DescriptorTable(SRV(t3)),"
+	"CBV(b1)"
+};
 
 #endif

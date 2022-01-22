@@ -1,10 +1,11 @@
 #ifndef VERTEX_HLSLI
 #define VERTEX_HLSLI
 
-struct Vertex {
-	float3 Position, Normal;
-	float2 TextureCoordinate;
-};
+struct VertexPosition { float3 Position; };
+
+struct VertexPositionNormal : VertexPosition { float3 Normal; };
+
+struct VertexPositionNormalTexture : VertexPositionNormal { float2 TextureCoordinate; };
 
 inline float2 VertexAttribute(float2 vertexAttributes[3], BuiltInTriangleIntersectionAttributes builtInTriangleIntersectionAttributes) {
 	return vertexAttributes[0]

@@ -24,14 +24,14 @@
 
 #include "DDSTextureLoader.h"
 
-#include "RaytracingPipelineGenerator.h"
 #include "BottomLevelASGenerator.h"
 #include "TopLevelASGenerator.h"
 #include "ShaderBindingTableGenerator.h"
 
 #include "RaytracingGeometryHelpers.h"
 
-#include "Materials.h"
+#include "Material.h"
+#include "Texture.h"
 
 #include "Random.h"
 
@@ -122,7 +122,6 @@ public:
 
 		m_shaderBindingTable.Reset();
 
-		m_materialConstantBuffer.Reset();
 		m_objectConstantBuffer.Reset();
 		m_sceneConstantBuffer.Reset();
 
@@ -139,7 +138,6 @@ public:
 
 		m_pipelineStateObject.Reset();
 
-		m_primaryRayClosestHitRootSignature.Reset();
 		m_globalRootSignature.Reset();
 
 		m_graphicsMemory.reset();
@@ -152,26 +150,17 @@ public:
 	}
 
 private:
-	enum class GlobalRootParameterIndex { OutputAndSceneDescriptorTable, SceneConstant, Count };
-
-	enum class DescriptorHeapIndex {
+	enum class Descriptors {
 		Output,
-		Scene,
 		SphereVertices, SphereIndices,
 		EarthImageTexture, MoonImageTexture,
 		Count
 	};
 
-	struct Texture {
-		size_t SrvHeapIndex = SIZE_MAX;
-		std::wstring Path;
-		Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
-	};
-
 	struct RenderItem {
 		std::string Name;
 		std::wstring HitGroup;
-		size_t VerticesSrvHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
+		size_t VerticesDescriptorHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
 		std::shared_ptr<Material> Material;
 		std::shared_ptr<Texture> Texture;
 		physx::PxShape* Shape{};
@@ -180,16 +169,15 @@ private:
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
 		DirectX::XMFLOAT4X4 ProjectionToWorld;
 		DirectX::XMFLOAT3 CameraPosition;
-		UINT MaxTraceRecursionDepth;
 		UINT AntiAliasingSampleCount;
 		UINT FrameCount;
 	};
 
-	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant { BOOL IsImageTextureUsed; };
-
-	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) MaterialConstant : MaterialBase {};
-
-	static constexpr UINT MaxTraceRecursionDepth = 10;
+	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
+		BOOL IsImageTextureUsed;
+		DirectX::XMFLOAT3 Padding;
+		MaterialBase Material;
+	};
 
 	static constexpr struct {
 		LPCSTR
@@ -200,9 +188,10 @@ private:
 	static constexpr struct {
 		LPCWSTR
 			RayGeneration = L"RayGeneration",
-			PrimaryRayMiss = L"PrimaryRayMiss", PrimaryRayClosestHit = L"PrimaryRayClosestHit",
-			SphereHitGroup = L"SphereHitGroup";
+			PrimaryRayMiss = L"PrimaryRayMiss", PrimaryRayClosestHit = L"PrimaryRayClosestHit";
 	} ShaderEntryPoints{};
+
+	static constexpr struct { LPCWSTR PrimaryRayHitGroup = L"PrimaryRayHitGroup"; } ShaderSubobjects{};
 
 	const std::unique_ptr<DirectX::GamePad> m_gamepad = std::make_unique<decltype(m_gamepad)::element_type>();
 	const std::unique_ptr<DirectX::Keyboard> m_keyboard = std::make_unique<decltype(m_keyboard)::element_type>();
@@ -227,13 +216,13 @@ private:
 
 	std::vector<RenderItem> m_renderItems;
 
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> m_globalRootSignature, m_primaryRayClosestHitRootSignature;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	Microsoft::WRL::ComPtr<ID3D12StateObject> m_pipelineStateObject;
 
 	std::unique_ptr<DirectX::DescriptorHeap> m_resourceDescriptors;
 
-	DirectX::GraphicsResource m_sceneConstantBuffer, m_objectConstantBuffer, m_materialConstantBuffer;
+	DirectX::GraphicsResource m_sceneConstantBuffer, m_objectConstantBuffer;
 
 	static constexpr float SphereRadius = 0.5f;
 	std::shared_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
@@ -392,15 +381,15 @@ private:
 		constexpr struct {
 			LPCSTR Name;
 			LPCWSTR Path;
-			DescriptorHeapIndex DescriptorHeapIndex;
+			Descriptors Descriptor;
 		} ImageTextures[]{
-			{ Objects.Earth, L"Earth.dds", DescriptorHeapIndex::EarthImageTexture },
-			{ Objects.Moon, L"Moon.dds", DescriptorHeapIndex::MoonImageTexture }
+			{ Objects.Earth, L"Earth.dds", Descriptors::EarthImageTexture },
+			{ Objects.Moon, L"Moon.dds", Descriptors::MoonImageTexture }
 		};
 
 		for (const auto& imageTexture : ImageTextures) {
 			const auto texture = std::make_shared<Texture>();
-			texture->SrvHeapIndex = static_cast<size_t>(imageTexture.DescriptorHeapIndex);
+			texture->DescriptorHeapIndex = static_cast<size_t>(imageTexture.Descriptor);
 			texture->Path = path + imageTexture.Path;
 			m_textures[imageTexture.Name] = texture;
 		}
@@ -430,9 +419,9 @@ private:
 		if (!m_renderItems.empty()) return;
 
 		const auto AddRenderItem = [&](RenderItem& renderItem, const MaterialBase& material, const PxSphereGeometry& geometry, const PxVec3& position) {
-			renderItem.HitGroup = ShaderEntryPoints.SphereHitGroup;
+			renderItem.HitGroup = ShaderSubobjects.PrimaryRayHitGroup;
 
-			renderItem.VerticesSrvHeapIndex = static_cast<size_t>(DescriptorHeapIndex::SphereVertices);
+			renderItem.VerticesDescriptorHeapIndex = static_cast<size_t>(Descriptors::SphereVertices);
 
 			renderItem.ObjectConstantBufferIndex = m_renderItems.size();
 
@@ -549,9 +538,9 @@ private:
 				const auto rigidDynamic = AddRenderItem(renderItem, object.Material, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
 
 				if (renderItem.Name == Objects.Moon) {
-					const auto down = m_Earth.Position - object.Sphere.Position;
-					const auto magnitude = down.magnitude();
-					const auto normalized = down / magnitude;
+					const auto x = m_Earth.Position - object.Sphere.Position;
+					const auto magnitude = x.magnitude();
+					const auto normalized = x / magnitude;
 					const auto linearSpeed = Gravity::CalculateFirstCosmicSpeed(m_Earth.Mass, magnitude);
 					rigidDynamic->setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 					rigidDynamic->setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
@@ -569,72 +558,48 @@ private:
 	}
 
 	void CreateRootSignatures() {
-		using namespace nv_helpers_dx12;
-
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrapDesc(0);
-
-		{
-			CD3DX12_ROOT_PARAMETER rootParameters[static_cast<size_t>(GlobalRootParameterIndex::Count)]{};
-
-			const D3D12_DESCRIPTOR_RANGE descriptorRanges[]{
-				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0),
-				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 1)
-			};
-			rootParameters[static_cast<size_t>(GlobalRootParameterIndex::OutputAndSceneDescriptorTable)].InitAsDescriptorTable(ARRAYSIZE(descriptorRanges), descriptorRanges);
-
-			rootParameters[static_cast<size_t>(GlobalRootParameterIndex::SceneConstant)].InitAsConstantBufferView(0);
-
-			const CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &anisotropicWrapDesc);
-			DX::ThrowIfFailed(DirectX::CreateRootSignature(device, &rootSignatureDesc, m_globalRootSignature.ReleaseAndGetAddressOf()));
-		}
-
-		{
-			CD3DX12_ROOT_PARAMETER rootParameters[4]{};
-
-			const D3D12_DESCRIPTOR_RANGE descriptorRanges0[]{
-				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0),
-				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 1)
-			};
-			rootParameters[0].InitAsDescriptorTable(ARRAYSIZE(descriptorRanges0), descriptorRanges0);
-
-			const D3D12_DESCRIPTOR_RANGE descriptorRanges1[]{
-				CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3)
-			};
-			rootParameters[1].InitAsDescriptorTable(ARRAYSIZE(descriptorRanges1), descriptorRanges1);
-
-			rootParameters[2].InitAsConstantBufferView(1);
-			rootParameters[3].InitAsConstantBufferView(2);
-
-			const CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
-			DX::ThrowIfFailed(DirectX::CreateRootSignature(device, &rootSignatureDesc, m_primaryRayClosestHitRootSignature.ReleaseAndGetAddressOf()));
-		}
+		DX::ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, ARRAYSIZE(g_pRaytracing), IID_PPV_ARGS(m_globalRootSignature.ReleaseAndGetAddressOf())));
 	}
 
 	void CreatePipelineStateObjects() {
-		nv_helpers_dx12::RaytracingPipelineGenerator raytracingPipelineGenerator;
-		raytracingPipelineGenerator.AddLibrary(
-			{
-				.pShaderBytecode = g_pRaytracing,
-				.BytecodeLength = sizeof(g_pRaytracing)
-			},
-			{
-				ShaderEntryPoints.RayGeneration,
-				ShaderEntryPoints.PrimaryRayMiss, ShaderEntryPoints.PrimaryRayClosestHit
-			}
-			);
+		const auto device = m_deviceResources->GetD3DDevice();
 
-		raytracingPipelineGenerator.AddLocalRootSignatureAssociation(m_primaryRayClosestHitRootSignature.Get(), { ShaderEntryPoints.PrimaryRayClosestHit });
+		CD3DX12_STATE_OBJECT_DESC stateObjectDesc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
 
-		raytracingPipelineGenerator.AddHitGroup(ShaderEntryPoints.SphereHitGroup, ShaderEntryPoints.PrimaryRayClosestHit);
+		const auto dxilLibrary = stateObjectDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
 
-		m_pipelineStateObject.Attach(raytracingPipelineGenerator.Generate(m_deviceResources->GetD3DDevice(), m_globalRootSignature.Get(), MaxTraceRecursionDepth, sizeof(DirectX::XMFLOAT4) * 2));
+		const CD3DX12_SHADER_BYTECODE shader(g_pRaytracing, ARRAYSIZE(g_pRaytracing));
+		dxilLibrary->SetDXILLibrary(&shader);
+
+		dxilLibrary->DefineExport(L"RaytracingShaderConfig");
+		dxilLibrary->DefineExport(L"RaytracingPipelineConfig");
+
+		dxilLibrary->DefineExport(L"GlobalRootSignature");
+		dxilLibrary->DefineExport(L"LocalRootSignature");
+
+		dxilLibrary->DefineExport(ShaderEntryPoints.RayGeneration);
+
+		dxilLibrary->DefineExport(ShaderEntryPoints.PrimaryRayMiss);
+		dxilLibrary->DefineExport(ShaderEntryPoints.PrimaryRayClosestHit);
+		dxilLibrary->DefineExport(ShaderSubobjects.PrimaryRayHitGroup);
+		dxilLibrary->DefineExport(L"PrimaryRayLocalRootSignatureAssociation");
+
+		DX::ThrowIfFailed(device->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(m_pipelineStateObject.ReleaseAndGetAddressOf())));
 	}
 
-	void CreateDescriptorHeaps() { m_resourceDescriptors = std::make_unique<DirectX::DescriptorHeap>(m_deviceResources->GetD3DDevice(), static_cast<size_t>(DescriptorHeapIndex::Count)); }
+	void CreateDescriptorHeaps() {
+		const auto device = m_deviceResources->GetD3DDevice();
 
-	void CreateGeometries() { m_sphere = std::make_shared<decltype(m_sphere)::element_type>(CreateSphere(m_deviceResources->GetD3DDevice(), SphereRadius, 6)); }
+		m_resourceDescriptors = std::make_unique<DirectX::DescriptorHeap>(device, static_cast<size_t>(Descriptors::Count));
+	}
+
+	void CreateGeometries() {
+		const auto device = m_deviceResources->GetD3DDevice();
+
+		m_sphere = std::make_shared<decltype(m_sphere)::element_type>(CreateSphere(device, SphereRadius, 6));
+	}
 
 	void CreateBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, RaytracingHelpers::AccelerationStructureBuffers& buffers) {
 		const auto device = m_deviceResources->GetD3DDevice();
@@ -655,8 +620,6 @@ private:
 		using namespace DirectX;
 		using namespace physx;
 
-		const auto device = m_deviceResources->GetD3DDevice();
-
 		nv_helpers_dx12::TopLevelASGenerator topLevelASGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 
 		for (UINT size = static_cast<UINT>(m_renderItems.size()), i = 0; i < size; i++) {
@@ -668,7 +631,7 @@ private:
 			const auto geometry = shape.getGeometry();
 			switch (shape.getGeometryType()) {
 			case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius / SphereRadius); break;
-			default: throw std::out_of_range("");
+			default: throw;
 			}
 
 			if (updateOnly) UpdateRenderItem(renderItem);
@@ -677,6 +640,8 @@ private:
 			world.scale(PxVec4(scaling, 1));
 			topLevelASGenerator.AddInstance(m_bottomLevelASBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
 		}
+
+		const auto device = m_deviceResources->GetD3DDevice();
 
 		const auto commandList = m_deviceResources->GetCommandList();
 
@@ -710,18 +675,17 @@ private:
 	}
 
 	void CreateConstantBuffers() {
-		m_sceneConstantBuffer = m_graphicsMemory->AllocateConstant(SceneConstant{ .MaxTraceRecursionDepth = MaxTraceRecursionDepth });
+		m_sceneConstantBuffer = m_graphicsMemory->Allocate(sizeof(SceneConstant));
 
 		const auto renderItemsSize = m_renderItems.size();
 
 		m_objectConstantBuffer = m_graphicsMemory->Allocate(sizeof(ObjectConstant) * renderItemsSize);
 
-		m_materialConstantBuffer = m_graphicsMemory->Allocate(sizeof(MaterialConstant) * renderItemsSize);
-
 		for (size_t i = 0; i < renderItemsSize; i++) {
-			reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i] = ObjectConstant{ .IsImageTextureUsed = m_renderItems[i].Texture != nullptr };
-
-			reinterpret_cast<MaterialConstant*>(m_materialConstantBuffer.Memory())[i] = MaterialConstant(*m_renderItems[i].Material);
+			reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i] = {
+				.IsImageTextureUsed = m_renderItems[i].Texture != nullptr,
+				.Material = *m_renderItems[i].Material
+			};
 		}
 	}
 
@@ -736,10 +700,9 @@ private:
 			m_shaderBindingTableGenerator.AddHitGroup(
 				renderItem.HitGroup.c_str(),
 				{
-					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesSrvHeapIndex).ptr),
-					reinterpret_cast<void*>(renderItem.Texture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.Texture->SrvHeapIndex).ptr),
-					reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex,
-					reinterpret_cast<MaterialConstant*>(m_materialConstantBuffer.GpuAddress()) + renderItem.Material->ConstantBufferIndex
+					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesDescriptorHeapIndex).ptr),
+					reinterpret_cast<void*>(renderItem.Texture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.Texture->DescriptorHeapIndex).ptr),
+					reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex
 				}
 			);
 		}
@@ -755,10 +718,10 @@ private:
 	void CreateDeviceDependentShaderResourceViews() {
 		for (const auto& pair : m_textures) {
 			const auto& texture = pair.second;
-			DirectX::CreateShaderResourceView(m_deviceResources->GetD3DDevice(), texture->Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture->SrvHeapIndex));
+			DirectX::CreateShaderResourceView(m_deviceResources->GetD3DDevice(), texture->Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture->DescriptorHeapIndex));
 		}
 
-		m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::SphereVertices)), m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::SphereIndices)));
+		m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(Descriptors::SphereVertices)), m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(Descriptors::SphereIndices)));
 	}
 
 	void CreateWindowSizeDependentShaderResourceViews() {
@@ -769,19 +732,8 @@ private:
 		const auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 		DX::ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(m_output.ReleaseAndGetAddressOf())));
 
-		const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
-			.Format = DXGI_FORMAT_UNKNOWN,
-			.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D
-		};
-		device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::Output)));
-
-		const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-			.Format = DXGI_FORMAT_UNKNOWN,
-			.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE,
-			.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-			.RaytracingAccelerationStructure = { m_topLevelASBuffers.Result->GetGPUVirtualAddress() }
-		};
-		device->CreateShaderResourceView(nullptr, &srvDesc, m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(DescriptorHeapIndex::Scene)));
+		const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
+		device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(Descriptors::Output)));
 	}
 
 	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Mouse::State& mouseState, const DirectX::Mouse::State& lastMouseState) {
@@ -876,7 +828,7 @@ private:
 		if (renderItem.Name == Objects.HarmonicOscillator) {
 			const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, m_spring.Period);
 			const PxVec3 x(0, position.y - m_spring.PositionY, 0);
-			rigidBody->addForce(-k * x, PxForceMode::eFORCE);
+			rigidBody->addForce(-k * x);
 		}
 
 		if ((m_Earth.IsGravityEnabled && renderItem.Name != Objects.Earth)
@@ -904,9 +856,11 @@ private:
 
 		commandList->SetComputeRootSignature(m_globalRootSignature.Get());
 
-		commandList->SetComputeRootDescriptorTable(static_cast<UINT>(GlobalRootParameterIndex::OutputAndSceneDescriptorTable), m_resourceDescriptors->GetFirstGpuHandle());
+		commandList->SetComputeRootDescriptorTable(0, m_resourceDescriptors->GetGpuHandle(static_cast<size_t>(Descriptors::Output)));
 
-		commandList->SetComputeRootConstantBufferView(static_cast<UINT>(GlobalRootParameterIndex::SceneConstant), m_sceneConstantBuffer.GpuAddress());
+		commandList->SetComputeRootShaderResourceView(1, m_topLevelASBuffers.Result->GetGPUVirtualAddress());
+
+		commandList->SetComputeRootConstantBufferView(2, m_sceneConstantBuffer.GpuAddress());
 
 		commandList->SetPipelineState1(m_pipelineStateObject.Get());
 

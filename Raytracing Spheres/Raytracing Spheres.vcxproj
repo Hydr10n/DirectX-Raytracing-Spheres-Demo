@@ -158,6 +158,7 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Texture.h" />
     <ClInclude Include="WindowBase.h" />
     <ClInclude Include="D3DApp.h" />
     <ClInclude Include="d3dx12.h" />
@@ -165,7 +166,7 @@
     <ClInclude Include="DisplayHelpers.h" />
     <ClInclude Include="ErrorHelpers.h" />
     <ClInclude Include="MainWindow.h" />
-    <ClInclude Include="Materials.h" />
+    <ClInclude Include="Material.h" />
     <ClInclude Include="MyAppData.h" />
     <ClInclude Include="MyPhysX.h" />
     <ClInclude Include="Random.h" />

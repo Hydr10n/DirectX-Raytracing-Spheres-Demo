@@ -4,11 +4,11 @@
 #include "Vertex.hlsli"
 
 struct HitRecord {
-	Vertex Vertex;
+	VertexPositionNormal Vertex;
 	bool IsFrontFace;
 
-	void SetFaceNormal(RayDesc ray, float3 outwardNormal) {
-		IsFrontFace = dot(ray.Direction, outwardNormal) < 0;
+	void SetFaceNormal(float3 rayDirection, float3 outwardNormal) {
+		IsFrontFace = dot(rayDirection, outwardNormal) < 0;
 		Vertex.Normal = IsFrontFace ? outwardNormal : -outwardNormal;
 	}
 };

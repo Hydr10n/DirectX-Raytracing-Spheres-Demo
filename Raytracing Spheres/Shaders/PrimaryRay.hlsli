@@ -48,24 +48,24 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 
 	HitRecord hitRecord;
 	hitRecord.Vertex.Position = vertex.Position;
-	hitRecord.SetFaceNormal(ray, vertex.Normal);
+	hitRecord.SetFaceNormal(ray.Direction, vertex.Normal);
 
 	float3 direction;
 	bool isScattered;
 
-	switch (g_materialConstant.Type) {
+	switch (g_objectConstant.Material.Type) {
 	case 0: {
 		Lambertian lambertian;
 		isScattered = lambertian.Scatter(ray, hitRecord, direction, payload.Random);
 	}	break;
 
 	case 1: {
-		Metal metal = { g_materialConstant.Roughness };
+		Metal metal = { g_objectConstant.Material.Roughness };
 		isScattered = metal.Scatter(ray, hitRecord, direction, payload.Random);
 	}	break;
 
 	case 2: {
-		Dielectric dielectric = { g_materialConstant.RefractiveIndex };
+		Dielectric dielectric = { g_objectConstant.Material.RefractiveIndex };
 		isScattered = dielectric.Scatter(ray, hitRecord, direction, payload.Random);
 	}	break;
 
@@ -82,8 +82,12 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		const float2 textureCoordinate = { 1 - vertex.TextureCoordinate.x, vertex.TextureCoordinate.y };
 		color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	}
-	else color = g_materialConstant.Color;
+	else color = g_objectConstant.Material.Color;
 	payload.Color = color * TracePrimaryRay(CreateRayDesc(vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
 }
+
+TriangleHitGroup PrimaryRayHitGroup = { "", "PrimaryRayClosestHit" };
+
+SubobjectToExportsAssociation PrimaryRayLocalRootSignatureAssociation = { "LocalRootSignature", "PrimaryRayHitGroup" };
 
 #endif
