@@ -104,7 +104,7 @@ public:
       ID3D12Resource* resultBuffer,  /// Result buffer storing the acceleration structure
       ID3D12Resource* previousResult = nullptr /// Optional previous acceleration structure, used
                                                /// if an iterative update is requested
-  );
+  ) const;
 
 private:
   /// Geometry descriptors used to generate the AS

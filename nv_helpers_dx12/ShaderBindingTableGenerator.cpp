@@ -85,7 +85,7 @@ void ShaderBindingTableGenerator::AddHitGroup(const std::wstring& entryPoint,
 //--------------------------------------------------------------------------------------------------
 //
 // Compute the size of the SBT based on the set of programs and hit groups it contains
-uint32_t ShaderBindingTableGenerator::ComputeSBTSize()
+uint32_t ShaderBindingTableGenerator::ComputeSBTSize() const
 {
   // The total SBT size is the sum of the entries for ray generation, miss and hit groups, aligned
   // on 256 bytes
@@ -101,7 +101,7 @@ uint32_t ShaderBindingTableGenerator::ComputeSBTSize()
 // Access to the raytracing pipeline object is required to fetch program identifiers using their
 // names
 void ShaderBindingTableGenerator::Generate(ID3D12Resource* sbtBuffer,
-                                           ID3D12StateObjectProperties* raytracingPipeline)
+                                           ID3D12StateObjectProperties* raytracingPipeline) const
 {
   // Map the SBT
   uint8_t* pData;
@@ -157,7 +157,7 @@ UINT ShaderBindingTableGenerator::GetMissSectionSize() const
 //--------------------------------------------------------------------------------------------------
 //
 // Get the size in bytes of one miss program entry in the SBT
-UINT ShaderBindingTableGenerator::GetMissEntrySize()
+UINT ShaderBindingTableGenerator::GetMissEntrySize() const
 {
   return m_missEntrySize;
 }

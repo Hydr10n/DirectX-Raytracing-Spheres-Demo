@@ -149,7 +149,7 @@ void TopLevelASGenerator::Generate(
     ID3D12Resource* previousResult /*= nullptr*/ // Optional previous acceleration
                                                  // structure, used if an iterative update
                                                  // is requested
-)
+) const
 {
   // Copy the descriptors in the target descriptor buffer
   D3D12_RAYTRACING_INSTANCE_DESC* instanceDescs;

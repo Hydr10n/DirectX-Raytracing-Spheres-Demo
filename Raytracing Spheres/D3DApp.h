@@ -18,8 +18,6 @@
 #include "Keyboard.h"
 #include "Mouse.h"
 
-#include "OrbitCamera.h"
-
 #include "GeometricPrimitive.h"
 
 #include "DDSTextureLoader.h"
@@ -34,6 +32,8 @@
 #include "Texture.h"
 
 #include "Random.h"
+
+#include "Camera.h"
 
 #include "MyPhysX.h"
 
@@ -70,8 +70,7 @@ public:
 		CreateWindowSizeDependentResources();
 
 		m_mouse->SetWindow(hWnd);
-
-		m_orbitCamera.SetRadius(m_cameraRadius, MinCameraRadius, MaxCameraRadius);
+		m_mouse->SetMode(DirectX::Mouse::MODE_RELATIVE);
 	}
 
 	~D3DApp() { m_deviceResources->WaitForGpu(); }
@@ -96,10 +95,6 @@ public:
 	}
 
 	void OnWindowSizeChanged(const SIZE& size) {
-		RECT rc;
-		DX::ThrowIfFailed(GetClientRect(m_deviceResources->GetWindow(), &rc));
-		m_orbitCamera.SetWindow(static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top));
-
 		if (!m_deviceResources->WindowSizeChanged(static_cast<int>(size.cx), static_cast<int>(size.cy))) return;
 
 		CreateWindowSizeDependentResources();
@@ -202,10 +197,6 @@ private:
 
 	DX::StepTimer m_stepTimer;
 
-	static constexpr float MinCameraRadius = 1, MaxCameraRadius = 100;
-	float m_cameraRadius = 15;
-	DX::OrbitCamera m_orbitCamera;
-
 	UINT m_antiAliasingSampleCount{};
 
 	std::map<std::string, std::shared_ptr<Texture>> m_textures;
@@ -230,6 +221,8 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
+	Camera m_camera = decltype(m_camera)({ 0, 0, -15 });
+
 	MyPhysX m_myPhysX;
 
 	struct Sphere {
@@ -238,15 +231,15 @@ private:
 		physx::PxReal Radius, RotationPeriod, OrbitalPeriod, Mass;
 	} m_Moon{
 		.Position = { 0, 4, 4 },
-		.Radius = SphereRadius * 0.5f,
+		.Radius = 0.25f,
 		.OrbitalPeriod = 10
 	}, m_Earth{
 		.Position = { 0, m_Moon.Position.y, 0 },
-		.Radius = SphereRadius * 2,
+		.Radius = 1,
 		.RotationPeriod = 15,
 		.Mass = PhysicsHelpers::Gravity::CalculateMass((m_Moon.Position - m_Earth.Position).magnitude(), m_Moon.OrbitalPeriod)
 	}, m_star{
-		.Position = { 0, -50.0f - 0.1f, 0 },
+		.Position = { 0, -50.1f, 0 },
 		.Radius = 50
 	};
 
@@ -316,27 +309,11 @@ private:
 	}
 
 	void Update() {
-		using namespace DirectX;
-
 		PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
-		GamePad::State gamepadStates[GamePad::MAX_PLAYER_COUNT];
-		for (int i = 0; i < GamePad::MAX_PLAYER_COUNT; i++) {
-			gamepadStates[i] = m_gamepad->GetState(i);
-			m_gamepadButtonStateTrackers[i].Update(gamepadStates[i]);
-		}
-
-		const auto keyboardState = m_keyboard->GetState();
-		m_keyboardStateTracker.Update(keyboardState);
-
-		const auto mouseState = m_mouse->GetState(), lastMouseState = m_mouseButtonStateTracker.GetLastState();
-		m_mouseButtonStateTracker.Update(mouseState);
-
-		UpdateCamera(gamepadStates, mouseState, lastMouseState);
+		ProcessInput();
 
 		UpdateSceneConstantBuffer();
-
-		ToggleGravities();
 
 		m_myPhysX.Tick(1.0f / 60);
 
@@ -367,7 +344,12 @@ private:
 		CreateDeviceDependentShaderResourceViews();
 	}
 
-	void CreateWindowSizeDependentResources() { CreateWindowSizeDependentShaderResourceViews(); }
+	void CreateWindowSizeDependentResources() {
+		const auto outputSize = GetOutputSize();
+		m_camera.SetLens(DirectX::XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 0.1f, 10000);
+
+		CreateWindowSizeDependentShaderResourceViews();
+	}
 
 	void BuildTextures() {
 		if (!m_textures.empty()) return;
@@ -443,21 +425,21 @@ private:
 				MaterialBase Material;
 			} objects[]{
 				{
-					{ -2, SphereRadius, 0 },
+					{ -2, 0.5f, 0 },
 					MaterialBase::CreateLambertian({ 0.1f, 0.2f, 0.5f, 1 })
 				},
 				{
-					{ 0, SphereRadius, 0 },
+					{ 0, 0.5f, 0 },
 					MaterialBase::CreateDielectric({ 1, 1, 1, 1 }, 1.5f)
 				},
 				{
-					{ 2, SphereRadius, 0 },
+					{ 2, 0.5f, 0 },
 					MaterialBase::CreateMetal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
 				}
 			};
 			for (const auto& object : objects) {
 				RenderItem renderItem;
-				AddRenderItem(renderItem, object.Material, PxSphereGeometry(SphereRadius), object.Position);
+				AddRenderItem(renderItem, object.Material, PxSphereGeometry(0.5f), object.Position);
 			}
 
 			for (int i = -10; i < 10; i++) {
@@ -466,18 +448,18 @@ private:
 					const auto ω = PxTwoPi / m_spring.Period;
 
 					PxVec3 position;
-					position.x = i + 0.7f * Random::Float();
+					position.x = static_cast<float>(i) + 0.7f * Random::Float();
 					position.y = m_spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, ω, 0.0f, position.x);
-					position.z = j - 0.7f * Random::Float();
+					position.z = static_cast<float>(j) - 0.7f * Random::Float();
 
-					bool collision = false;
+					bool isOverlapped = false;
 					for (const auto& sphere : objects) {
 						if ((position - sphere.Position).magnitude() < 1) {
-							collision = true;
+							isOverlapped = true;
 							break;
 						}
 					}
-					if (collision) continue;
+					if (isOverlapped) continue;
 
 					MaterialBase material;
 					const auto randomValue = Random::Float();
@@ -495,7 +477,7 @@ private:
 
 					renderItem.Name = Objects.HarmonicOscillator;
 
-					const auto rigidDynamic = AddRenderItem(renderItem, material, PxSphereGeometry(SphereRadius * 0.15f), position);
+					const auto rigidDynamic = AddRenderItem(renderItem, material, PxSphereGeometry(0.075f), position);
 
 					rigidDynamic->setLinearVelocity(PxVec3(0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0));
 				}
@@ -732,45 +714,62 @@ private:
 		device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(static_cast<size_t>(Descriptors::Output)));
 	}
 
-	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Mouse::State& mouseState, const DirectX::Mouse::State& lastMouseState) {
+	void ProcessInput() {
 		using namespace DirectX;
-		using Key = Keyboard::Keys;
-		using MouseButtonState = Mouse::ButtonStateTracker::ButtonState;
-		using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
+
+		GamePad::State gamepadStates[GamePad::MAX_PLAYER_COUNT];
+		for (int i = 0; i < GamePad::MAX_PLAYER_COUNT; i++) {
+			gamepadStates[i] = m_gamepad->GetState(i);
+			m_gamepadButtonStateTrackers[i].Update(gamepadStates[i]);
+		}
+
+		const auto keyboardState = m_keyboard->GetState();
+		m_keyboardStateTracker.Update(keyboardState);
+
+		const auto mouseState = m_mouse->GetState();
+		m_mouseButtonStateTracker.Update(mouseState);
+
+		UpdateCamera(gamepadStates, keyboardState, mouseState);
+
+		ToggleGravities();
+	}
+
+	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Keyboard::State& keyboardState, const DirectX::Mouse::State& mouseState) {
+		using namespace DirectX;
 
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-		for (const auto& gamepadState : gamepadStates) {
-			if (gamepadState.IsConnected()) {
-				if (gamepadState.thumbSticks.leftX || gamepadState.thumbSticks.leftY
-					|| gamepadState.thumbSticks.rightX || gamepadState.thumbSticks.rightY) {
-					m_mouse->SetVisible(false);
-				}
+		{
+			const auto rotationSpeed = XM_2PI * 0.4f * elapsedSeconds;
+			for (const auto& gamepadState : gamepadStates) {
+				if (gamepadState.IsConnected()) {
+					const auto translationSpeed = (gamepadState.IsLeftStickPressed() ? 30.0f : 15.0f) * elapsedSeconds;
+					const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
+					m_camera.Translate(displacement);
 
-				m_orbitCamera.Update(elapsedSeconds * 4, gamepadState);
+					m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
+					m_camera.Pitch(gamepadState.thumbSticks.rightY * -rotationSpeed);
+				}
 			}
 		}
 
-		constexpr Key Keys[]{ Key::W, Key::A, Key::S, Key::D, Key::Up, Key::Left, Key::Down, Key::Right };
-		for (const auto key : Keys) if (m_keyboardStateTracker.IsKeyPressed(key)) m_mouse->SetVisible(false);
+		{
+			if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
+				const auto translationSpeed = (keyboardState.LeftShift ? 30.0f : 15.0f) * elapsedSeconds;
+				XMFLOAT3 displacement{};
+				if (keyboardState.A) displacement.x -= translationSpeed;
+				if (keyboardState.D) displacement.x += translationSpeed;
+				if (keyboardState.W) displacement.z += translationSpeed;
+				if (keyboardState.S) displacement.z -= translationSpeed;
+				m_camera.Translate(displacement);
 
-		if (m_mouseButtonStateTracker.leftButton == MouseButtonState::PRESSED) m_mouse->SetVisible(false);
-		else if (m_mouseButtonStateTracker.leftButton == MouseButtonState::RELEASED
-			|| (m_mouseButtonStateTracker.leftButton == MouseButtonState::UP
-				&& (mouseState.x != lastMouseState.x || mouseState.y != lastMouseState.y))) {
-			m_mouse->SetVisible(true);
+				const auto rotationSpeed = 20 * elapsedSeconds;
+				m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
+				m_camera.Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
+			}
 		}
 
-		if (mouseState.scrollWheelValue) {
-			m_mouse->ResetScrollWheelValue();
-
-			m_mouse->SetVisible(false);
-
-			m_cameraRadius = std::clamp(m_cameraRadius - 0.5f * mouseState.scrollWheelValue / WHEEL_DELTA, MinCameraRadius, MaxCameraRadius);
-			m_orbitCamera.SetRadius(m_cameraRadius, MinCameraRadius, MaxCameraRadius);
-		}
-
-		m_orbitCamera.Update(elapsedSeconds, *m_mouse, *m_keyboard);
+		m_camera.UpdateView();
 	}
 
 	void ToggleGravities() {
@@ -779,7 +778,7 @@ private:
 		using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 
 		for (const auto& gamepadButtonStateTracker : m_gamepadButtonStateTrackers) {
-			if (gamepadButtonStateTracker.a == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
+			if (gamepadButtonStateTracker.x == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
 			if (gamepadButtonStateTracker.b == GamepadButtonState::PRESSED) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
 		}
 
@@ -792,22 +791,16 @@ private:
 
 		auto& sceneConstant = *reinterpret_cast<SceneConstant*>(m_sceneConstantBuffer.Memory());
 
-		const auto GetProjection = [&] {
-			const auto outputSize = GetOutputSize();
-			auto projection = m_orbitCamera.GetProjection();
-			projection.r[0].m128_f32[0] = projection.r[1].m128_f32[1] / (static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
-			return projection;
-		};
-		XMStoreFloat4x4(&sceneConstant.ProjectionToWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, m_orbitCamera.GetView() * GetProjection())));
+		XMStoreFloat4x4(&sceneConstant.ProjectionToWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, m_camera.GetView() * m_camera.GetProjection())));
 
-		XMStoreFloat3(&sceneConstant.CameraPosition, m_orbitCamera.GetPosition());
+		sceneConstant.CameraPosition = m_camera.GetPosition();
 
 		sceneConstant.AntiAliasingSampleCount = m_antiAliasingSampleCount;
 
 		sceneConstant.FrameCount = m_stepTimer.GetFrameCount();
 	}
 
-	void UpdateRenderItem(RenderItem& renderItem) {
+	void UpdateRenderItem(RenderItem& renderItem) const {
 		using namespace physx;
 		using namespace PhysicsHelpers;
 

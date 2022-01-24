@@ -63,8 +63,7 @@ public:
 			m_windowModeHelper.Apply();
 		}
 
-		MSG msg;
-		msg.message = WM_QUIT;
+		MSG msg{ .message = WM_QUIT };
 		do {
 			if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
 				TranslateMessage(&msg);
@@ -102,7 +101,12 @@ private:
 
 		switch (uMsg) {
 		case WM_CONTEXTMENU: {
-			ShowCursor(TRUE);
+			CURSORINFO cursorInfo{ sizeof(cursorInfo) };
+			const auto isCursorVisible = GetCursorInfo(&cursorInfo) ? (cursorInfo.flags & CURSOR_SHOWING) != 0 : true;
+			RECT clipCursorRect;
+			GetClipCursor(&clipCursorRect);
+			while (ShowCursor(TRUE) < 0) {}
+			ClipCursor(nullptr);
 
 			const auto menu = CreatePopupMenu(), hMenuWindowMode = CreatePopupMenu(), hMenuResolution = CreatePopupMenu(), hMenuAntiAliasing = CreatePopupMenu();
 
@@ -141,6 +145,9 @@ private:
 			TrackPopupMenu(menu, TPM_LEFTALIGN, static_cast<int>(rc.left), static_cast<int>(rc.top), 0, hWnd, nullptr);
 
 			DestroyMenu(menu);
+
+			ClipCursor(&clipCursorRect);
+			ShowCursor(isCursorVisible);
 		}	break;
 
 		case WM_COMMAND: {
@@ -215,11 +222,12 @@ private:
 		case WM_MOUSEHOVER: Mouse::ProcessMessage(uMsg, wParam, lParam); break;
 
 		case WM_ACTIVATEAPP: {
-			Keyboard::ProcessMessage(uMsg, wParam, lParam);
-			Mouse::ProcessMessage(uMsg, wParam, lParam);
-
 			if (wParam) m_app->OnActivated();
 			else m_app->OnDeactivated();
+		} [[fallthrough]];
+		case WM_ACTIVATE: {
+			Keyboard::ProcessMessage(uMsg, wParam, lParam);
+			Mouse::ProcessMessage(uMsg, wParam, lParam);
 		}	break;
 
 		case WM_DPICHANGED: {

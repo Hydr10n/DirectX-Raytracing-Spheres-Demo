@@ -131,7 +131,7 @@ public:
                                          /// descriptors, has to be in upload heap
       ID3D12Resource* previousResult = nullptr /// Optional previous acceleration structure, used
                                                /// if an iterative update is requested
-  );
+  ) const;
 
 private:
   /// Helper struct storing the instance data

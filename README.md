@@ -15,32 +15,25 @@ https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-
 - Xbox Controller
     |||
     |-|-|
-    |D-pad|Translate camera X/Y|
-    |LS/RS (rotate)|Orbit camera X/Y|
-    |LS (press)|Return camera to default focus/radius|
-    |RS (press)|Reset camera|
-    |LB/RB|Decrease/increase camera translation sensitivity|
-    |LB + RB|Reset camera translation sensitivity|
-    |A button|Toggle gravity of Earth|
+    |LS (rotate)|Move|
+    |LS (rotate + press)|Move faster|
+    |RS (rotate)|Look around|
+    |X button|Toggle gravity of Earth|
     |B button|Toggle gravity of the star|
 
 - Keyboard
     |||
     |-|-|
     |Alt + Enter|Toggle between windowed/borderless and fullscreen mode|
-    |W A S D ↑ ← ↓ →|Translate camera X/Y|
-    |Shift + W A S D ↑ ← ↓ →|Translate camera X/Y at half speed|
-    |PageUp/PageDown|Translate camera Z|
-    |Home|Reset camera|
-    |End|Return camera to default focus/radius|
+    |W A S D|Move|
+    |Left shift + W A S D|Move faster|
     |G|Toggle gravity of Earth|
     |H|Toggle gravity of the star|
 
 - Mouse
     |||
     |-|-|
-    |Left button (drag)|Orbit camera X/Y|
-    |Scroll wheel|Increase/decrease camera orbit radius|
+    |(Move)|Look around|
 
 ### Settings in Content Menu
 - Window Mode: Windowed/borderless/fullscreen

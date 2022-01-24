@@ -104,7 +104,7 @@ void BottomLevelASGenerator::Generate(
     ID3D12Resource *previousResult // Optional previous acceleration
                                    // structure, used if an iterative update
                                    // is requested
-) {
+) const {
   auto updateOnly = previousResult != nullptr;
 
   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = m_flags;
