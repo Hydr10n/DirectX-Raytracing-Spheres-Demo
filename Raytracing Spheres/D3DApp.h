@@ -747,8 +747,8 @@ private:
 					const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
 					m_camera.Translate(displacement);
 
-					m_camera.Yaw += gamepadState.thumbSticks.rightX * rotationSpeed;
-					m_camera.Pitch += gamepadState.thumbSticks.rightY * rotationSpeed;
+					m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
+					m_camera.Pitch(gamepadState.thumbSticks.rightY * -rotationSpeed);
 				}
 			}
 		}
@@ -764,8 +764,8 @@ private:
 				m_camera.Translate(displacement);
 
 				const auto rotationSpeed = 20 * elapsedSeconds;
-				m_camera.Yaw += XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed;
-				m_camera.Pitch -= XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed;
+				m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
+				m_camera.Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 			}
 		}
 
@@ -793,7 +793,7 @@ private:
 
 		XMStoreFloat4x4(&sceneConstant.ProjectionToWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, m_camera.GetView() * m_camera.GetProjection())));
 
-		sceneConstant.CameraPosition = m_camera.Position;
+		sceneConstant.CameraPosition = m_camera.GetPosition();
 
 		sceneConstant.AntiAliasingSampleCount = m_antiAliasingSampleCount;
 
