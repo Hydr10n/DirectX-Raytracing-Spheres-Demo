@@ -12,7 +12,7 @@ inline float SchlickReflectance(float cosine, float refractiveIndex) {
 }
 
 struct Material {
-	enum class Type { Lambertian, Metal, Dielectric, DiffuseLight } Type;
+	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type;
 	float RefractiveIndex;
 	float Roughness;
 	float Padding;
@@ -44,6 +44,12 @@ struct Material {
 			return dot(direction, hitRecord.Vertex.Normal) > 0;
 		}
 
+		case Type::Isotropic: {
+			direction = random.InUnitSphere();
+
+			return true;
+		}
+
 		case Type::Dielectric: {
 			const float3 unitDirection = normalize(ray.Direction);
 			const float cosTheta = dot(-unitDirection, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
@@ -60,4 +66,5 @@ struct Material {
 		}
 	}
 };
+
 #endif

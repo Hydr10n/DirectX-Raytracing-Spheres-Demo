@@ -4,15 +4,25 @@
 
 class Camera {
 public:
-	Camera(
-		const DirectX::XMFLOAT3& position = {},
-		const DirectX::XMFLOAT3 forwardDirection = { 0, 0, 1 }, const DirectX::XMFLOAT3 upDirection = { 0, 1, 0 }
-	) {
+	void SetPosition(const DirectX::XMFLOAT3& position) {
 		m_position = position;
-		m_forwardDirection = forwardDirection;
+		m_viewDirty = true;
+	}
+
+	auto GetPosition() const { return m_position; }
+
+	void SetDirections(const DirectX::XMFLOAT3& forwardDirection, const DirectX::XMFLOAT3& upDirection) {
+		(m_forwardDirection = forwardDirection).Normalize();
 		(m_upDirection = upDirection).Normalize();
 		m_upDirection.Cross(forwardDirection).Normalize(m_rightDirection);
+		m_viewDirty = true;
 	}
+
+	auto GetForwardDirection() const { return m_forwardDirection; }
+
+	auto GetUpDirection() const { return m_upDirection; }
+
+	auto GetRightDirection() const { return m_rightDirection; }
 
 	void SetLens(float fovAngleY, float aspectRatio, float nearZ, float farZ) {
 		m_fovAngleY = fovAngleY;
@@ -22,14 +32,6 @@ public:
 		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
 	}
 
-	auto GetPosition() const { return m_position; }
-
-	auto GetRightDirection() const { return m_rightDirection; }
-
-	auto GetUpDirection() const { return m_upDirection; }
-
-	auto GetForwardDirection() const { return m_forwardDirection; }
-
 	auto GetFovAngleY() const { return m_fovAngleY; }
 
 	auto GetAspectRatio() const { return m_aspectRatio; }
@@ -38,8 +40,20 @@ public:
 
 	auto GetFarZ() const { return m_farZ; }
 
+	void UpdateView() {
+		if (!m_viewDirty) return;
+		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
+		m_view = DirectX::XMMatrixLookAtLH(m_position, m_position + m_forwardDirection, m_upDirection);
+		m_viewDirty = false;
+	}
+
+	auto GetView() const { return m_view; }
+
+	auto GetProjection() const { return m_projection; }
+
 	void Translate(const DirectX::XMFLOAT3& displacement) {
-		m_position += m_rightDirection * displacement.x + m_upDirection * displacement.y + m_forwardDirection * displacement.z;
+		m_position += displacement;
+		m_viewDirty = true;
 	}
 
 	void Yaw(float angle) {
@@ -58,19 +72,8 @@ public:
 		m_viewDirty = true;
 	}
 
-	void UpdateView() {
-		if (!m_viewDirty) return;
-		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
-		m_view = DirectX::XMMatrixLookAtLH(m_position, m_position + m_forwardDirection, m_upDirection);
-		m_viewDirty = false;
-	}
-
-	auto GetView() const { return m_view; }
-
-	auto GetProjection() const { return m_projection; }
-
 private:
-	DirectX::SimpleMath::Vector3 m_position, m_rightDirection, m_upDirection, m_forwardDirection;
+	DirectX::SimpleMath::Vector3 m_position, m_forwardDirection{ 0, 0, 1 }, m_upDirection{ 0, 1, 0 }, m_rightDirection{ 1, 0, 0 };
 
 	float m_fovAngleY{}, m_aspectRatio{}, m_nearZ{}, m_farZ{};
 

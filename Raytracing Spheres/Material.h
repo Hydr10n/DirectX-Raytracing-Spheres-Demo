@@ -3,11 +3,11 @@
 #include <DirectXMath.h>
 
 struct MaterialBase {
-	enum class Type { Lambertian, Metal, Dielectric, DiffuseLight } Type;
-	float RefractiveIndex;
-	float Roughness;
-	float Padding;
-	DirectX::XMFLOAT4 Color;
+	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type{};
+	float RefractiveIndex{};
+	float Roughness{};
+	float Padding{};
+	DirectX::XMFLOAT4 Color{};
 
 	static auto CreateLambertian(const DirectX::XMFLOAT4& color) {
 		return MaterialBase{
@@ -32,6 +32,13 @@ struct MaterialBase {
 		};
 	}
 
+	static auto CreateIsotropic(const DirectX::XMFLOAT4& color) {
+		return MaterialBase{
+			.Type = Type::Isotropic,
+			.Color = color
+		};
+	}
+
 	static auto CreateDiffuseLight(const DirectX::XMFLOAT4& color) {
 		return MaterialBase{
 			.Type = Type::DiffuseLight,
@@ -41,7 +48,9 @@ struct MaterialBase {
 };
 
 struct Material : MaterialBase {
-	size_t ConstantBufferIndex;
+	size_t ConstantBufferIndex = SIZE_MAX;
 
-	Material(const MaterialBase& materialBase, size_t constantBufferIndex = SIZE_MAX) : MaterialBase(materialBase), ConstantBufferIndex(constantBufferIndex) {}
+	Material() = default;
+
+	Material(const MaterialBase& materialBase, size_t constantBufferIndex) : MaterialBase(materialBase), ConstantBufferIndex(constantBufferIndex) {}
 };

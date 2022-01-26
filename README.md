@@ -4,9 +4,6 @@ Real-time rendering using DirectX Raytracing with compatible GPUs and physics si
 
 ![Raytracing Spheres](Screenshots/Raytracing-Spheres.png)
 
-https://user-images.githubusercontent.com/39995363/146579832-2433f438-c669-4486-9e1e-d57950d340fc.mp4
-
-
 https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-98f5-4541a75a80b9.mp4
 
 ---

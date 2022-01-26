@@ -1,11 +1,11 @@
-#ifndef SHADER_HLSLI
-#define SHADER_HLSLI
+#ifndef COMMON_HLSLI
+#define COMMON_HLSLI
 
 #include "Vertex.hlsli"
 
 #include "Material.hlsli"
 
-#define MAX_TRACE_RECURSION_DEPTH 10
+#define MAX_TRACE_RECURSION_DEPTH 8
 
 typedef VertexPositionNormalTexture Vertex;
 

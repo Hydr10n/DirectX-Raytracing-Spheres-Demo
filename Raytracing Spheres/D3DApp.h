@@ -71,6 +71,8 @@ public:
 
 		m_mouse->SetWindow(hWnd);
 		m_mouse->SetMode(DirectX::Mouse::MODE_RELATIVE);
+
+		m_camera.SetPosition({ 0, 0, -15 });
 	}
 
 	~D3DApp() { m_deviceResources->WaitForGpu(); }
@@ -121,11 +123,9 @@ public:
 		m_sceneConstantBuffer.Reset();
 
 		m_topLevelASBuffers = {};
-		m_bottomLevelASBuffers = {};
+		m_sphereBottomLevelASBuffers = {};
 
 		m_sphere.reset();
-
-		for (const auto& renderItem : m_renderItems) renderItem.Texture->Resource.Reset();
 
 		for (const auto& pair : m_textures) pair.second->Resource.Reset();
 
@@ -156,8 +156,8 @@ private:
 		std::string Name;
 		std::wstring HitGroup;
 		size_t VerticesDescriptorHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
-		std::shared_ptr<Material> Material;
-		std::shared_ptr<Texture> Texture;
+		Material Material;
+		Texture* pTexture{};
 		physx::PxShape* Shape{};
 	};
 
@@ -214,14 +214,14 @@ private:
 	static constexpr float SphereRadius = 0.5f;
 	std::shared_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
-	RaytracingHelpers::AccelerationStructureBuffers m_bottomLevelASBuffers, m_topLevelASBuffers;
+	RaytracingHelpers::AccelerationStructureBuffers m_sphereBottomLevelASBuffers, m_topLevelASBuffers;
 
 	nv_helpers_dx12::ShaderBindingTableGenerator m_shaderBindingTableGenerator;
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_shaderBindingTable;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
-	Camera m_camera = decltype(m_camera)({ 0, 0, -15 });
+	Camera m_camera;
 
 	MyPhysX m_myPhysX;
 
@@ -403,7 +403,7 @@ private:
 
 			renderItem.ObjectConstantBufferIndex = m_renderItems.size();
 
-			renderItem.Material = std::make_shared<Material>(material, renderItem.ObjectConstantBufferIndex);
+			renderItem.Material = Material(material, renderItem.ObjectConstantBufferIndex);
 
 			const auto rigidDynamic = m_myPhysX.AddRigidDynamic(geometry, PxTransform(position));
 
@@ -423,7 +423,7 @@ private:
 			const struct {
 				PxVec3 Position;
 				MaterialBase Material;
-			} objects[]{
+			} spheres[]{
 				{
 					{ -2, 0.5f, 0 },
 					MaterialBase::CreateLambertian({ 0.1f, 0.2f, 0.5f, 1 })
@@ -437,9 +437,9 @@ private:
 					MaterialBase::CreateMetal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
 				}
 			};
-			for (const auto& object : objects) {
+			for (const auto& sphere : spheres) {
 				RenderItem renderItem;
-				AddRenderItem(renderItem, object.Material, PxSphereGeometry(0.5f), object.Position);
+				AddRenderItem(renderItem, sphere.Material, PxSphereGeometry(0.5f), sphere.Position);
 			}
 
 			for (int i = -10; i < 10; i++) {
@@ -452,14 +452,14 @@ private:
 					position.y = m_spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, ω, 0.0f, position.x);
 					position.z = static_cast<float>(j) - 0.7f * Random::Float();
 
-					bool isOverlapped = false;
-					for (const auto& sphere : objects) {
+					bool isOverlapping = false;
+					for (const auto& sphere : spheres) {
 						if ((position - sphere.Position).magnitude() < 1) {
-							isOverlapped = true;
+							isOverlapping = true;
 							break;
 						}
 					}
-					if (isOverlapped) continue;
+					if (isOverlapping) continue;
 
 					MaterialBase material;
 					const auto randomValue = Random::Float();
@@ -511,7 +511,7 @@ private:
 
 				renderItem.Name = object.Name;
 
-				if (m_textures.contains(object.Name)) renderItem.Texture = m_textures[object.Name];
+				if (m_textures.contains(object.Name)) renderItem.pTexture = m_textures[object.Name].get();
 
 				const auto rigidDynamic = AddRenderItem(renderItem, object.Material, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
 
@@ -616,7 +616,7 @@ private:
 
 			PxMat44 world(PxShapeExt::getGlobalPose(shape, *shape.getActor()));
 			world.scale(PxVec4(scaling, 1));
-			topLevelASGenerator.AddInstance(m_bottomLevelASBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
+			topLevelASGenerator.AddInstance(m_sphereBottomLevelASBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
 		}
 
 		const auto device = m_deviceResources->GetD3DDevice();
@@ -641,7 +641,7 @@ private:
 
 		commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr);
 
-		CreateBottomLevelAS({ m_sphere->GetGeometryDesc() }, m_bottomLevelASBuffers);
+		CreateBottomLevelAS({ m_sphere->GetGeometryDesc() }, m_sphereBottomLevelASBuffers);
 
 		CreateTopLevelAS(false, m_topLevelASBuffers);
 
@@ -661,8 +661,8 @@ private:
 
 		for (size_t i = 0; i < renderItemsSize; i++) {
 			reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i] = {
-				.IsImageTextureUsed = m_renderItems[i].Texture != nullptr,
-				.Material = *m_renderItems[i].Material
+				.IsImageTextureUsed = m_renderItems[i].pTexture != nullptr,
+				.Material = m_renderItems[i].Material
 			};
 		}
 	}
@@ -679,7 +679,7 @@ private:
 				renderItem.HitGroup.c_str(),
 				{
 					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesDescriptorHeapIndex).ptr),
-					reinterpret_cast<void*>(renderItem.Texture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.Texture->DescriptorHeapIndex).ptr),
+					reinterpret_cast<void*>(renderItem.pTexture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.pTexture->DescriptorHeapIndex).ptr),
 					reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex
 				}
 			);
@@ -739,16 +739,20 @@ private:
 
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
+		const auto Translate = [&](const XMFLOAT3& displacement) {
+			m_camera.Translate(m_camera.GetRightDirection() * displacement.x + m_camera.GetUpDirection() * displacement.y + m_camera.GetForwardDirection() * displacement.z);
+		};
+
 		{
 			const auto rotationSpeed = XM_2PI * 0.4f * elapsedSeconds;
 			for (const auto& gamepadState : gamepadStates) {
 				if (gamepadState.IsConnected()) {
 					const auto translationSpeed = (gamepadState.IsLeftStickPressed() ? 30.0f : 15.0f) * elapsedSeconds;
 					const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
-					m_camera.Translate(displacement);
+					Translate(displacement);
 
 					m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
-					m_camera.Pitch(gamepadState.thumbSticks.rightY * -rotationSpeed);
+					m_camera.Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
 				}
 			}
 		}
@@ -761,7 +765,7 @@ private:
 				if (keyboardState.D) displacement.x += translationSpeed;
 				if (keyboardState.W) displacement.z += translationSpeed;
 				if (keyboardState.S) displacement.z -= translationSpeed;
-				m_camera.Translate(displacement);
+				Translate(displacement);
 
 				const auto rotationSpeed = 20 * elapsedSeconds;
 				m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
