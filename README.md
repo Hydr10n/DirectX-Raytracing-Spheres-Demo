@@ -58,4 +58,7 @@ https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-
 
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 1809
-- Graphics: NVIDIA GeForce GTX 10 Series or AMD Radeon RX 6000 Series
+- Graphics
+    - NVIDIA GeForce GTX 1060 with 6 GB VRAM
+    - NVIDIA GeForce GTX 1660
+    - AMD Radeon RX 6000 Series
