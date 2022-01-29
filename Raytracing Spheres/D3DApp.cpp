@@ -10,8 +10,8 @@
 
 #include "DDSTextureLoader.h"
 
-#include "BottomLevelASGenerator.h"
-#include "TopLevelASGenerator.h"
+#include "BottomLevelAccelerationStructureGenerator.h"
+#include "TopLevelAccelerationStructureGenerator.h"
 
 #include "Random.h"
 
@@ -40,8 +40,7 @@ namespace Descriptors {
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
 	XMFLOAT4X4 ProjectionToWorld;
 	XMFLOAT3 CameraPosition;
-	UINT AntiAliasingSampleCount;
-	UINT FrameCount;
+	UINT AntiAliasingSampleCount, FrameCount;
 };
 
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
@@ -70,13 +69,6 @@ void CopyOutputToRenderTarget(ID3D12GraphicsCommandList* pCommandList, ID3D12Res
 	TransitionResource(pCommandList, pRenderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
 }
 
-auto CreateSphere(ID3D12Device* pDevice, float radius, size_t tessellation) {
-	GeometricPrimitive::VertexCollection vertices;
-	GeometricPrimitive::IndexCollection indices;
-	GeometricPrimitive::CreateGeoSphere(vertices, indices, radius * 2, tessellation, false);
-	return RaytracingHelpers::Triangles(pDevice, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
-}
-
 D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
 	srand(static_cast<UINT>(GetTickCount64()));
 
@@ -97,7 +89,7 @@ D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
 	m_mouse->SetWindow(hWnd);
 	m_mouse->SetMode(Mouse::MODE_RELATIVE);
 
-	m_camera.SetPosition({ 0, 0, -15 });
+	m_camera.SetPosition({ 0, 0, 15 });
 }
 
 D3DApp::~D3DApp() { m_deviceResources->WaitForGpu(); }
@@ -134,12 +126,12 @@ void D3DApp::OnDeviceLost() {
 	m_objectConstantBuffer.Reset();
 	m_sceneConstantBuffer.Reset();
 
-	m_topLevelASBuffers = {};
-	m_sphereBottomLevelASBuffers = {};
+	m_topLevelAccelerationStructureBuffers = {};
+	m_sphereBottomLevelAccelerationStructureBuffers = {};
 
 	m_sphere.reset();
 
-	for (const auto& pair : m_textures) pair.second->Resource.Reset();
+	for (const auto& pair : m_imageTextures) pair.second->Resource.Reset();
 
 	m_resourceDescriptors.reset();
 
@@ -188,6 +180,8 @@ void D3DApp::Render() {
 	PIXBeginEvent(PIX_COLOR_DEFAULT, L"Present");
 
 	m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT);
+
+	m_deviceResources->WaitForGpu();
 
 	m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 
@@ -238,13 +232,13 @@ void D3DApp::CreateDeviceDependentResources() {
 
 void D3DApp::CreateWindowSizeDependentResources() {
 	const auto outputSize = GetOutputSize();
-	m_camera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 0.1f, 10000);
+	m_camera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e5f);
 
 	CreateWindowSizeDependentShaderResourceViews();
 }
 
 void D3DApp::BuildTextures() {
-	if (!m_textures.empty()) return;
+	if (!m_imageTextures.empty()) return;
 
 	const auto path = filesystem::path(*__wargv).replace_filename(L"Textures\\").wstring();
 
@@ -261,7 +255,7 @@ void D3DApp::BuildTextures() {
 		const auto texture = make_shared<Texture>();
 		texture->DescriptorHeapIndex = imageTexture.DescriptorHeapIndex;
 		texture->Path = path + imageTexture.Path;
-		m_textures[imageTexture.Name] = texture;
+		m_imageTextures[imageTexture.Name] = texture;
 	}
 }
 
@@ -271,7 +265,7 @@ void D3DApp::LoadTextures() {
 	ResourceUploadBatch resourceUploadBatch(device);
 	resourceUploadBatch.Begin();
 
-	for (const auto& pair : m_textures) {
+	for (const auto& pair : m_imageTextures) {
 		const auto& texture = pair.second;
 		ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, texture->Path.c_str(), texture->Resource.ReleaseAndGetAddressOf()));
 	}
@@ -286,6 +280,7 @@ void D3DApp::BuildRenderItems() {
 		renderItem.HitGroup = ShaderSubobjects.PrimaryRayHitGroup;
 
 		renderItem.VerticesDescriptorHeapIndex = Descriptors::SphereVertices;
+		renderItem.IndicesDescriptorHeapIndex = Descriptors::SphereIndices;
 
 		renderItem.ObjectConstantBufferIndex = m_renderItems.size();
 
@@ -397,7 +392,7 @@ void D3DApp::BuildRenderItems() {
 
 			renderItem.Name = object.Name;
 
-			if (m_textures.contains(object.Name)) renderItem.pTexture = m_textures[object.Name].get();
+			if (m_imageTextures.contains(object.Name)) renderItem.pImageTexture = m_imageTextures[object.Name].get();
 
 			const auto rigidDynamic = AddRenderItem(renderItem, object.Material, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
 
@@ -462,27 +457,31 @@ void D3DApp::CreateDescriptorHeaps() {
 void D3DApp::CreateGeometries() {
 	const auto device = m_deviceResources->GetD3DDevice();
 
-	m_sphere = make_shared<decltype(m_sphere)::element_type>(CreateSphere(device, SphereRadius, 6));
+	GeometricPrimitive::VertexCollection vertices;
+	GeometricPrimitive::IndexCollection indices;
+
+	GeometricPrimitive::CreateGeoSphere(vertices, indices, SphereRadius * 2, 6, false);
+	m_sphere = make_shared<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
 }
 
-void D3DApp::CreateBottomLevelAS(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs,
+void D3DApp::BuildBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs,
 	RaytracingHelpers::AccelerationStructureBuffers& buffers) {
 	const auto device = m_deviceResources->GetD3DDevice();
 
-	nv_helpers_dx12::BottomLevelASGenerator bottomLevelASGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
+	nv_helpers_dx12::BottomLevelAccelerationStructureGenerator bottomLevelAccelerationStructureGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
 
-	for (const auto& geometryDesc : geometryDescs) bottomLevelASGenerator.AddGeometry(geometryDesc);
+	for (const auto& geometryDesc : geometryDescs) bottomLevelAccelerationStructureGenerator.AddGeometry(geometryDesc);
 
 	UINT64 scratchSize, resultSize;
-	bottomLevelASGenerator.ComputeASBufferSizes(device, scratchSize, resultSize);
+	bottomLevelAccelerationStructureGenerator.ComputeASBufferSizes(device, scratchSize, resultSize);
 
 	buffers = RaytracingHelpers::AccelerationStructureBuffers(device, scratchSize, resultSize);
 
-	bottomLevelASGenerator.Generate(m_deviceResources->GetCommandList(), buffers.Scratch.Get(), buffers.Result.Get());
+	bottomLevelAccelerationStructureGenerator.Generate(m_deviceResources->GetCommandList(), buffers.Scratch.Get(), buffers.Result.Get());
 }
 
-void D3DApp::CreateTopLevelAS(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers) {
-	nv_helpers_dx12::TopLevelASGenerator topLevelASGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+void D3DApp::BuildTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers) {
+	nv_helpers_dx12::TopLevelAccelerationStructureGenerator topLevelAccelerationStructureGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 
 	for (UINT size = static_cast<UINT>(m_renderItems.size()), i = 0; i < size; i++) {
 		auto& renderItem = m_renderItems[i];
@@ -500,7 +499,7 @@ void D3DApp::CreateTopLevelAS(bool updateOnly, RaytracingHelpers::AccelerationSt
 
 		PxMat44 world(PxShapeExt::getGlobalPose(shape, *shape.getActor()));
 		world.scale(PxVec4(scaling, 1));
-		topLevelASGenerator.AddInstance(m_sphereBottomLevelASBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
+		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
 	}
 
 	const auto device = m_deviceResources->GetD3DDevice();
@@ -513,11 +512,11 @@ void D3DApp::CreateTopLevelAS(bool updateOnly, RaytracingHelpers::AccelerationSt
 	}
 	else {
 		UINT64 scratchSize, resultSize, instanceDescsSize;
-		topLevelASGenerator.ComputeASBufferSizes(device, scratchSize, resultSize, instanceDescsSize);
+		topLevelAccelerationStructureGenerator.ComputeASBufferSizes(device, scratchSize, resultSize, instanceDescsSize);
 		buffers = RaytracingHelpers::AccelerationStructureBuffers(device, scratchSize, resultSize, instanceDescsSize);
 	}
 
-	topLevelASGenerator.Generate(commandList, buffers.Scratch.Get(), buffers.Result.Get(), buffers.InstanceDesc.Get(), updateOnly ? buffers.Result.Get() : nullptr);
+	topLevelAccelerationStructureGenerator.Generate(commandList, buffers.Scratch.Get(), buffers.Result.Get(), buffers.InstanceDesc.Get(), updateOnly ? buffers.Result.Get() : nullptr);
 }
 
 void D3DApp::CreateAccelerationStructures() {
@@ -525,9 +524,9 @@ void D3DApp::CreateAccelerationStructures() {
 
 	commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr);
 
-	CreateBottomLevelAS({ m_sphere->GetGeometryDesc() }, m_sphereBottomLevelASBuffers);
+	BuildBottomLevelAccelerationStructure({ m_sphere->GetGeometryDesc() }, m_sphereBottomLevelAccelerationStructureBuffers);
 
-	CreateTopLevelAS(false, m_topLevelASBuffers);
+	BuildTopLevelAccelerationStructure(false, m_topLevelAccelerationStructureBuffers);
 
 	commandList->Close();
 
@@ -545,7 +544,7 @@ void D3DApp::CreateConstantBuffers() {
 
 	for (size_t i = 0; i < renderItemsSize; i++) {
 		reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i] = {
-			.IsImageTextureUsed = m_renderItems[i].pTexture != nullptr,
+			.IsImageTextureUsed = m_renderItems[i].pImageTexture != nullptr,
 			.Material = m_renderItems[i].Material
 		};
 	}
@@ -563,7 +562,8 @@ void D3DApp::CreateShaderBindingTables() {
 			renderItem.HitGroup.c_str(),
 			{
 				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesDescriptorHeapIndex).ptr),
-				reinterpret_cast<void*>(renderItem.pTexture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.pTexture->DescriptorHeapIndex).ptr),
+				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.IndicesDescriptorHeapIndex).ptr),
+				reinterpret_cast<void*>(renderItem.pImageTexture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.pImageTexture->DescriptorHeapIndex).ptr),
 				reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex
 			}
 		);
@@ -578,7 +578,7 @@ void D3DApp::CreateShaderBindingTables() {
 }
 
 void D3DApp::CreateDeviceDependentShaderResourceViews() {
-	for (const auto& pair : m_textures) {
+	for (const auto& pair : m_imageTextures) {
 		const auto& texture = pair.second;
 		CreateShaderResourceView(m_deviceResources->GetD3DDevice(), texture->Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture->DescriptorHeapIndex));
 	}
@@ -616,7 +616,7 @@ void D3DApp::ProcessInput() {
 	ToggleGravities();
 }
 
-void D3DApp::UpdateCamera(const GamePad::State(& gamepadStates)[8],
+void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8],
 	const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
@@ -625,7 +625,7 @@ void D3DApp::UpdateCamera(const GamePad::State(& gamepadStates)[8],
 	};
 
 	{
-		const auto rotationSpeed = XM_2PI * 0.4f * elapsedSeconds;
+		const auto rotationSpeed = -XM_2PI * 0.4f * elapsedSeconds;
 		for (const auto& gamepadState : gamepadStates) {
 			if (gamepadState.IsConnected()) {
 				const auto translationSpeed = (gamepadState.IsLeftStickPressed() ? 30.0f : 15.0f) * elapsedSeconds;
@@ -648,7 +648,7 @@ void D3DApp::UpdateCamera(const GamePad::State(& gamepadStates)[8],
 			if (keyboardState.S) displacement.z -= translationSpeed;
 			Translate(displacement);
 
-			const auto rotationSpeed = 20 * elapsedSeconds;
+			const auto rotationSpeed = -20 * elapsedSeconds;
 			m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
 			m_camera.Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 		}
@@ -714,7 +714,7 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 void D3DApp::DispatchRays() {
 	const auto commandList = m_deviceResources->GetCommandList();
 
-	CreateTopLevelAS(true, m_topLevelASBuffers);
+	BuildTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
 
 	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
@@ -723,19 +723,19 @@ void D3DApp::DispatchRays() {
 
 	commandList->SetComputeRootDescriptorTable(0, m_resourceDescriptors->GetGpuHandle(Descriptors::Output));
 
-	commandList->SetComputeRootShaderResourceView(1, m_topLevelASBuffers.Result->GetGPUVirtualAddress());
+	commandList->SetComputeRootShaderResourceView(1, m_topLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress());
 
 	commandList->SetComputeRootConstantBufferView(2, m_sceneConstantBuffer.GpuAddress());
 
 	commandList->SetPipelineState1(m_pipelineStateObject.Get());
 
 	const auto rayGenerationSectionSize = m_shaderBindingTableGenerator.GetRayGenerationSectionSize(),
-	           missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),
-	           hitGroupSectionSize = m_shaderBindingTableGenerator.GetHitGroupSectionSize();
+		missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),
+		hitGroupSectionSize = m_shaderBindingTableGenerator.GetHitGroupSectionSize();
 
 	const auto rayGenerationShaderRecordStartAddress = m_shaderBindingTable->GetGPUVirtualAddress(),
-	           missShaderTableStartAddress = rayGenerationShaderRecordStartAddress + rayGenerationSectionSize,
-	           hitGroupTableStartAddress = missShaderTableStartAddress + missSectionSize;
+		missShaderTableStartAddress = rayGenerationShaderRecordStartAddress + rayGenerationSectionSize,
+		hitGroupTableStartAddress = missShaderTableStartAddress + missSectionSize;
 
 	const auto outputSize = GetOutputSize();
 

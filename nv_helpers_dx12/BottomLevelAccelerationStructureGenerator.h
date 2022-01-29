@@ -46,7 +46,7 @@ buffer needs to be kept until the command list execution is finished.
 
 Example:
 
-BottomLevelASGenerator bottomLevelAS;
+BottomLevelAccelerationStructureGenerator bottomLevelAS;
 bottomLevelAS.AddGeometry(geometryDesc);
 ...
 UINT64 scratchSize, resultSize;
@@ -72,10 +72,10 @@ namespace nv_helpers_dx12
 {
 
 /// Helper class to generate bottom-level acceleration structures for raytracing
-class BottomLevelASGenerator
+class BottomLevelAccelerationStructureGenerator
 {
 public:
-  BottomLevelASGenerator(
+  BottomLevelAccelerationStructureGenerator(
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = 
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
 
@@ -118,6 +118,7 @@ private:
 
   /// Flags for the builder, specifying whether to allow iterative updates, or
   /// when to perform an update
-  D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+  D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags =
+      D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
 };
 } // namespace nv_helpers_dx12

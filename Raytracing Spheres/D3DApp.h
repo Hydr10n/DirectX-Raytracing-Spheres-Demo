@@ -79,9 +79,9 @@ private:
 	struct RenderItem {
 		std::string Name;
 		std::wstring HitGroup;
-		size_t VerticesDescriptorHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
+		size_t VerticesDescriptorHeapIndex = SIZE_MAX, IndicesDescriptorHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
 		Material Material;
-		Texture* pTexture{};
+		Texture* pImageTexture{};
 		physx::PxShape* Shape{};
 	};
 
@@ -100,7 +100,7 @@ private:
 
 	UINT m_antiAliasingSampleCount{};
 
-	std::map<std::string, std::shared_ptr<Texture>> m_textures;
+	std::map<std::string, std::shared_ptr<Texture>> m_imageTextures;
 
 	std::vector<RenderItem> m_renderItems;
 
@@ -115,14 +115,14 @@ private:
 	static constexpr float SphereRadius = 0.5f;
 	std::shared_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
-	RaytracingHelpers::AccelerationStructureBuffers m_sphereBottomLevelASBuffers, m_topLevelASBuffers;
+	RaytracingHelpers::AccelerationStructureBuffers m_sphereBottomLevelAccelerationStructureBuffers, m_topLevelAccelerationStructureBuffers;
 
 	nv_helpers_dx12::ShaderBindingTableGenerator m_shaderBindingTableGenerator;
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_shaderBindingTable;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
-	Camera m_camera;
+	Camera m_camera = decltype(m_camera)(false);
 
 	MyPhysX m_myPhysX;
 
@@ -170,9 +170,9 @@ private:
 
 	void CreateGeometries();
 
-	void CreateBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, RaytracingHelpers::AccelerationStructureBuffers& buffers);
+	void BuildBottomLevelAccelerationStructure(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, RaytracingHelpers::AccelerationStructureBuffers& buffers);
 
-	void CreateTopLevelAS(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers);
+	void BuildTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers);
 
 	void CreateAccelerationStructures();
 

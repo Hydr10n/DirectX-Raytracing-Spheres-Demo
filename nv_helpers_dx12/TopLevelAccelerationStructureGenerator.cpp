@@ -45,7 +45,7 @@ buffer needs to be kept until the command list execution is finished.
 
 */
 
-#include "TopLevelASGenerator.h"
+#include "TopLevelAccelerationStructureGenerator.h"
 
 #include <stdexcept>
 
@@ -60,7 +60,7 @@ namespace nv_helpers_dx12
 //--------------------------------------------------------------------------------------------------
 //
 // Add an instance decriptor to the top-level acceleration structure.
-void TopLevelASGenerator::AddInstance(
+void TopLevelAccelerationStructureGenerator::AddInstance(
     D3D12_GPU_VIRTUAL_ADDRESS bottomLevelAS, // Bottom-level acceleration structure containing the
                                              // actual geometric data of the instance
     const DirectX::XMMATRIX& transform,      // Transform matrix to apply to the instance, allowing
@@ -84,7 +84,7 @@ void TopLevelASGenerator::AddInstance(
 // Compute the size of the scratch space required to build the acceleration
 // structure, as well as the size of the resulting structure. The allocation of
 // the buffers is then left to the application
-void TopLevelASGenerator::ComputeASBufferSizes(
+void TopLevelAccelerationStructureGenerator::ComputeASBufferSizes(
     ID3D12Device5* device, // Device on which the build will be performed
     UINT64& scratchSizeInBytes,              // Required scratch memory on the GPU to build
                                              // the acceleration structure
@@ -139,7 +139,7 @@ void TopLevelASGenerator::ComputeASBufferSizes(
 // using application-provided buffers and possibly a pointer to the previous
 // acceleration structure in case of iterative updates. Note that the update can
 // be done in place: the result and previousResult pointers can be the same.
-void TopLevelASGenerator::Generate(
+void TopLevelAccelerationStructureGenerator::Generate(
     ID3D12GraphicsCommandList4* commandList, // Command list on which the build will be enqueued
     ID3D12Resource* scratchBuffer,     // Scratch buffer used by the builder to
                                        // store temporary data
@@ -229,7 +229,9 @@ void TopLevelASGenerator::Generate(
 //--------------------------------------------------------------------------------------------------
 //
 //
-TopLevelASGenerator::Instance::Instance(D3D12_GPU_VIRTUAL_ADDRESS blAS, const DirectX::XMMATRIX& tr,
+TopLevelAccelerationStructureGenerator::Instance::Instance(
+                                        D3D12_GPU_VIRTUAL_ADDRESS blAS,
+                                        const DirectX::XMMATRIX& tr,
                                         UINT iID, UINT hgId, UINT iMask,
                                         D3D12_RAYTRACING_INSTANCE_FLAGS flags)
     : bottomLevelAS(blAS), transform(tr), instanceID(iID), hitGroupIndex(hgId), instanceMask(iMask),

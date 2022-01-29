@@ -31,26 +31,20 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		return;
 	}
 
-	const float3 worldRayOrigin = WorldRayOrigin(), worldRayDirection = WorldRayDirection();
-
 	const uint3 indices = Load3x16BitIndices(g_indices, GetTriangleBaseIndex(2));
+
+	const RayDesc ray = CreateRayDesc(WorldRayOrigin(), WorldRayDirection());
+
 	const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
-	const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
-	const Vertex vertex = {
-		worldRayOrigin + worldRayDirection * RayTCurrent(),
-		normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3())),
-		VertexAttribute(textureCoordinates, attributes)
-	};
-
-	const RayDesc ray = CreateRayDesc(worldRayOrigin, worldRayDirection);
-
 	HitRecord hitRecord;
-	hitRecord.Vertex.Position = vertex.Position;
-	hitRecord.SetFaceNormal(ray.Direction, vertex.Normal);
+	hitRecord.Vertex.Position = ray.Origin + ray.Direction * RayTCurrent();
+	hitRecord.SetFaceNormal(ray.Direction, normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3())));
 
 	float4 color;
 	if (g_objectConstant.IsImageTextureUsed) {
-		const float2 textureCoordinate = { 1 - vertex.TextureCoordinate.x, vertex.TextureCoordinate.y };
+		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
+		float2 textureCoordinate = VertexAttribute(textureCoordinates, attributes);
+		textureCoordinate.x = 1 - textureCoordinate.x;
 		color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	}
 	else color = g_objectConstant.Material.Color;
@@ -60,7 +54,7 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 	if (g_objectConstant.Material.Emit()) emitted = color;
 	if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) attenuation = color;
 
-	payload.Color = emitted + attenuation * TracePrimaryRay(CreateRayDesc(vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
+	payload.Color = emitted + attenuation * TracePrimaryRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
 }
 
 TriangleHitGroup PrimaryRayHitGroup = { "", "PrimaryRayClosestHit" };

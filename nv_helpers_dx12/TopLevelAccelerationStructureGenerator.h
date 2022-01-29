@@ -47,7 +47,7 @@ buffer needs to be kept until the command list execution is finished.
 
 Example:
 
-TopLevelASGenerator topLevelAS(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+TopLevelAccelerationStructureGenerator topLevelAS(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 topLevelAS.AddInstance(instances1, matrix1, instanceId1, hitGroupIndex1);
 topLevelAS.AddInstance(instances2, matrix2, instanceId2, hitGroupIndex2);
 ...
@@ -77,10 +77,10 @@ namespace nv_helpers_dx12
 {
 
 /// Helper class to generate top-level acceleration structures for raytracing
-class TopLevelASGenerator
+class TopLevelAccelerationStructureGenerator
 {
 public:
-  TopLevelASGenerator(
+  TopLevelAccelerationStructureGenerator(
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = 
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
 

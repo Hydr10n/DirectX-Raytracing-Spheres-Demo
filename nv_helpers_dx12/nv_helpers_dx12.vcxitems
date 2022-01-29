@@ -14,13 +14,13 @@
     <ProjectCapability Include="SourceItemsFromImports" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="$(MSBuildThisFileDirectory)BottomLevelASGenerator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)BottomLevelAccelerationStructureGenerator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.cpp" />
-    <ClCompile Include="$(MSBuildThisFileDirectory)TopLevelASGenerator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)TopLevelAccelerationStructureGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="$(MSBuildThisFileDirectory)BottomLevelASGenerator.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)BottomLevelAccelerationStructureGenerator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.h" />
-    <ClInclude Include="$(MSBuildThisFileDirectory)TopLevelASGenerator.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)TopLevelAccelerationStructureGenerator.h" />
   </ItemGroup>
 </Project>

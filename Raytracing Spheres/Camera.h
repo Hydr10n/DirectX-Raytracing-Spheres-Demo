@@ -4,6 +4,10 @@
 
 class Camera {
 public:
+	Camera(bool isLeftHanded) :
+		m_isLeftHanded(isLeftHanded),
+		m_forwardDirection(isLeftHanded ? DirectX::XMFLOAT3(0, 0, 1) : DirectX::XMFLOAT3(0, 0, -1)) {}
+
 	void SetPosition(const DirectX::XMFLOAT3& position) {
 		m_position = position;
 		m_viewDirty = true;
@@ -14,7 +18,8 @@ public:
 	void SetDirections(const DirectX::XMFLOAT3& forwardDirection, const DirectX::XMFLOAT3& upDirection) {
 		(m_forwardDirection = forwardDirection).Normalize();
 		(m_upDirection = upDirection).Normalize();
-		m_upDirection.Cross(forwardDirection).Normalize(m_rightDirection);
+		const decltype(m_upDirection) (&directions)[] { m_upDirection, forwardDirection };
+		directions[!m_isLeftHanded].Cross(directions[m_isLeftHanded]).Normalize(m_rightDirection);
 		m_viewDirty = true;
 	}
 
@@ -29,21 +34,18 @@ public:
 		m_aspectRatio = aspectRatio;
 		m_nearZ = nearZ;
 		m_farZ = farZ;
-		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
+		m_projection = m_isLeftHanded ?
+			DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ) :
+			DirectX::XMMatrixPerspectiveFovRH(fovAngleY, aspectRatio, nearZ, farZ);
 	}
-
-	auto GetFovAngleY() const { return m_fovAngleY; }
-
-	auto GetAspectRatio() const { return m_aspectRatio; }
-
-	auto GetNearZ() const { return m_nearZ; }
-
-	auto GetFarZ() const { return m_farZ; }
 
 	void UpdateView() {
 		if (!m_viewDirty) return;
-		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
-		m_view = DirectX::XMMatrixLookAtLH(m_position, m_position + m_forwardDirection, m_upDirection);
+		const decltype(m_forwardDirection) (&directions)[] { m_forwardDirection, m_rightDirection };
+		directions[!m_isLeftHanded].Cross(directions[m_isLeftHanded]).Normalize(m_upDirection);
+		m_view = m_isLeftHanded ?
+			DirectX::XMMatrixLookAtLH(m_position, m_position + m_forwardDirection, m_upDirection) :
+			DirectX::XMMatrixLookAtRH(m_position, m_position + m_forwardDirection, m_upDirection);
 		m_viewDirty = false;
 	}
 
@@ -73,7 +75,9 @@ public:
 	}
 
 private:
-	DirectX::SimpleMath::Vector3 m_position, m_forwardDirection{ 0, 0, 1 }, m_upDirection{ 0, 1, 0 }, m_rightDirection{ 1, 0, 0 };
+	bool m_isLeftHanded;
+
+	DirectX::SimpleMath::Vector3 m_position, m_forwardDirection, m_upDirection{ 0, 1, 0 }, m_rightDirection{ 1, 0, 0 };
 
 	float m_fovAngleY{}, m_aspectRatio{}, m_nearZ{}, m_farZ{};
 

@@ -38,8 +38,7 @@ struct Material {
 		}
 
 		case Type::Metal: {
-			const float3 unitDirection = normalize(ray.Direction);
-			direction = reflect(unitDirection, hitRecord.Vertex.Normal) + Roughness * random.InUnitSphere();
+			direction = reflect(ray.Direction, hitRecord.Vertex.Normal) + Roughness * random.InUnitSphere();
 
 			return dot(direction, hitRecord.Vertex.Normal) > 0;
 		}
@@ -51,13 +50,12 @@ struct Material {
 		}
 
 		case Type::Dielectric: {
-			const float3 unitDirection = normalize(ray.Direction);
-			const float cosTheta = dot(-unitDirection, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
+			const float cosTheta = dot(-ray.Direction, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
 				refractionRatio = hitRecord.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 			const bool canRefract = refractionRatio * sinTheta <= 1;
 			direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) < random.Float3() ?
-				refract(unitDirection, hitRecord.Vertex.Normal, refractionRatio) :
-				reflect(unitDirection, hitRecord.Vertex.Normal);
+				refract(ray.Direction, hitRecord.Vertex.Normal, refractionRatio) :
+				reflect(ray.Direction, hitRecord.Vertex.Normal);
 
 			return true;
 		}

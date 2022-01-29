@@ -29,7 +29,7 @@ Contacts for feedback:
 - mlefrancois@nvidia.com (Martin-Karl Lefrancois)
 */
 
-#include "BottomLevelASGenerator.h"
+#include "BottomLevelAccelerationStructureGenerator.h"
 
 #include <stdexcept>
 
@@ -43,7 +43,9 @@ namespace nv_helpers_dx12 {
 
 //--------------------------------------------------------------------------------------------------
 // Add a geometry descriptor into the acceleration structure.
-void BottomLevelASGenerator::AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc) {
+void BottomLevelAccelerationStructureGenerator::AddGeometry(
+    const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc
+) {
     m_geometryDescs.push_back(geometryDesc);
 }
 
@@ -51,7 +53,7 @@ void BottomLevelASGenerator::AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& g
 // Compute the size of the scratch space required to build the acceleration
 // structure, as well as the size of the resulting structure. The allocation of
 // the buffers is then left to the application
-void BottomLevelASGenerator::ComputeASBufferSizes(
+void BottomLevelAccelerationStructureGenerator::ComputeASBufferSizes(
     ID3D12Device5 *device, // Device on which the build will be performed
     UINT64 &scratchSizeInBytes, // Required scratch memory on the GPU to build
                                 // the acceleration structure
@@ -94,7 +96,7 @@ void BottomLevelASGenerator::ComputeASBufferSizes(
 // using application-provided buffers and possibly a pointer to the previous
 // acceleration structure in case of iterative updates. Note that the update can
 // be done in place: the result and previousResult pointers can be the same.
-void BottomLevelASGenerator::Generate(
+void BottomLevelAccelerationStructureGenerator::Generate(
     ID3D12GraphicsCommandList4
         *commandList, // Command list on which the build will be enqueued
     ID3D12Resource *scratchBuffer, // Scratch buffer used by the builder to
