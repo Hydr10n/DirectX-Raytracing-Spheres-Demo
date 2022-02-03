@@ -180,10 +180,6 @@ private:
 
 	void CreateShaderBindingTables();
 
-	void CreateDeviceDependentShaderResourceViews();
-
-	void CreateWindowSizeDependentShaderResourceViews();
-
 	void ProcessInput();
 
 	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Keyboard::State& keyboardState, const DirectX::Mouse::State& mouseState);

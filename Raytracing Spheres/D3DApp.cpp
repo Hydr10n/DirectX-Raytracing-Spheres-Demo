@@ -212,8 +212,6 @@ void D3DApp::CreateDeviceDependentResources() {
 
 	m_graphicsMemory = make_unique<decltype(m_graphicsMemory)::element_type>(device);
 
-	LoadTextures();
-
 	CreateRootSignatures();
 
 	CreatePipelineStateObjects();
@@ -228,14 +226,23 @@ void D3DApp::CreateDeviceDependentResources() {
 
 	CreateShaderBindingTables();
 
-	CreateDeviceDependentShaderResourceViews();
+	LoadTextures();
 }
 
 void D3DApp::CreateWindowSizeDependentResources() {
 	const auto outputSize = GetOutputSize();
 	m_camera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e5f);
 
-	CreateWindowSizeDependentShaderResourceViews();
+	const auto device = m_deviceResources->GetD3DDevice();
+
+	const auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+
+	const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+	ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(m_output.ReleaseAndGetAddressOf())));
+
+	const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
+	device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(Descriptors::Output));
 }
 
 void D3DApp::BuildTextures() {
@@ -269,6 +276,7 @@ void D3DApp::LoadTextures() {
 	for (const auto& pair : m_imageTextures) {
 		const auto& texture = pair.second;
 		ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, texture->Path.c_str(), texture->Resource.ReleaseAndGetAddressOf()));
+		CreateShaderResourceView(device, texture->Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture->DescriptorHeapIndex));
 	}
 
 	resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
@@ -463,6 +471,7 @@ void D3DApp::CreateGeometries() {
 
 	GeometricPrimitive::CreateGeoSphere(vertices, indices, SphereRadius * 2, 6, false);
 	m_sphere = make_shared<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
+	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(Descriptors::SphereVertices), m_resourceDescriptors->GetCpuHandle(Descriptors::SphereIndices));
 }
 
 void D3DApp::CreateBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs,
@@ -576,27 +585,6 @@ void D3DApp::CreateShaderBindingTables() {
 	ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
 
 	m_shaderBindingTableGenerator.Generate(m_shaderBindingTable.Get(), stateObjectProperties.Get());
-}
-
-void D3DApp::CreateDeviceDependentShaderResourceViews() {
-	for (const auto& pair : m_imageTextures) {
-		const auto& texture = pair.second;
-		CreateShaderResourceView(m_deviceResources->GetD3DDevice(), texture->Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture->DescriptorHeapIndex));
-	}
-
-	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(Descriptors::SphereVertices), m_resourceDescriptors->GetCpuHandle(Descriptors::SphereIndices));
-}
-
-void D3DApp::CreateWindowSizeDependentShaderResourceViews() {
-	const auto device = m_deviceResources->GetD3DDevice();
-
-	const auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-	const auto outputSize = GetOutputSize();
-	const auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-	ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(m_output.ReleaseAndGetAddressOf())));
-
-	const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
-	device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(Descriptors::Output));
 }
 
 void D3DApp::ProcessInput() {
