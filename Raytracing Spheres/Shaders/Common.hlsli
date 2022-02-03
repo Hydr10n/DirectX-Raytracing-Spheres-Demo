@@ -15,7 +15,7 @@ StructuredBuffer<VertexPositionNormalTexture> g_vertices : register(t1);
 
 ByteAddressBuffer g_indices : register(t2);
 
-Texture2D<float4> g_imageTexture : register(t3);
+Texture2D g_imageTexture : register(t3);
 
 struct SceneConstant {
 	float4x4 ProjectionToWorld;

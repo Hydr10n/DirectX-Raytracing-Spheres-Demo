@@ -170,9 +170,9 @@ private:
 
 	void CreateGeometries();
 
-	void BuildBottomLevelAccelerationStructure(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, RaytracingHelpers::AccelerationStructureBuffers& buffers);
+	void CreateBottomLevelAccelerationStructure(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, RaytracingHelpers::AccelerationStructureBuffers& buffers);
 
-	void BuildTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers);
+	void CreateTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers);
 
 	void CreateAccelerationStructures();
 

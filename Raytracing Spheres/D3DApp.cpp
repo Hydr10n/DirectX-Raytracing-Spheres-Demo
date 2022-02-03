@@ -23,6 +23,7 @@ using namespace DirectX;
 using namespace DX;
 using namespace PhysicsHelpers;
 using namespace physx;
+using namespace RaytracingHelpers;
 using namespace std;
 
 using Key = Keyboard::Keys;
@@ -37,7 +38,7 @@ namespace Descriptors {
 	};
 }
 
-struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
+struct SceneConstant {
 	XMFLOAT4X4 ProjectionToWorld;
 	XMFLOAT3 CameraPosition;
 	UINT AntiAliasingSampleCount, FrameCount;
@@ -58,16 +59,6 @@ static constexpr struct {
 static constexpr struct { LPCWSTR RayGeneration = L"RayGeneration", PrimaryRayMiss = L"PrimaryRayMiss"; } ShaderEntryPoints{};
 
 static constexpr struct { LPCWSTR PrimaryRayHitGroup = L"PrimaryRayHitGroup"; } ShaderSubobjects{};
-
-void CopyOutputToRenderTarget(ID3D12GraphicsCommandList* pCommandList, ID3D12Resource* pOutput, ID3D12Resource* pRenderTarget) {
-	TransitionResource(pCommandList, pRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-	TransitionResource(pCommandList, pOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-	pCommandList->CopyResource(pRenderTarget, pOutput);
-
-	TransitionResource(pCommandList, pOutput, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	TransitionResource(pCommandList, pRenderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
-}
 
 D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
 	srand(static_cast<UINT>(GetTickCount64()));
@@ -173,7 +164,17 @@ void D3DApp::Render() {
 
 	DispatchRays();
 
-	CopyOutputToRenderTarget(commandList, m_output.Get(), m_deviceResources->GetRenderTarget());
+	{
+		const auto output = m_output.Get(), renderTarget = m_deviceResources->GetRenderTarget();
+		ScopedBarrier scopedBarrier(
+			commandList,
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
+				CD3DX12_RESOURCE_BARRIER::Transition(output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
+			}
+		);
+		commandList->CopyResource(renderTarget, output);
+	}
 
 	PIXEndEvent(commandList);
 
@@ -464,8 +465,8 @@ void D3DApp::CreateGeometries() {
 	m_sphere = make_shared<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
 }
 
-void D3DApp::BuildBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs,
-	RaytracingHelpers::AccelerationStructureBuffers& buffers) {
+void D3DApp::CreateBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs,
+	AccelerationStructureBuffers& buffers) {
 	const auto device = m_deviceResources->GetD3DDevice();
 
 	nv_helpers_dx12::BottomLevelAccelerationStructureGenerator bottomLevelAccelerationStructureGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
@@ -475,12 +476,12 @@ void D3DApp::BuildBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING
 	UINT64 scratchSize, resultSize;
 	bottomLevelAccelerationStructureGenerator.ComputeASBufferSizes(device, scratchSize, resultSize);
 
-	buffers = RaytracingHelpers::AccelerationStructureBuffers(device, scratchSize, resultSize);
+	buffers = AccelerationStructureBuffers(device, scratchSize, resultSize);
 
 	bottomLevelAccelerationStructureGenerator.Generate(m_deviceResources->GetCommandList(), buffers.Scratch.Get(), buffers.Result.Get());
 }
 
-void D3DApp::BuildTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers) {
+void D3DApp::CreateTopLevelAccelerationStructure(bool updateOnly, AccelerationStructureBuffers& buffers) {
 	nv_helpers_dx12::TopLevelAccelerationStructureGenerator topLevelAccelerationStructureGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 
 	for (UINT size = static_cast<UINT>(m_renderItems.size()), i = 0; i < size; i++) {
@@ -513,7 +514,7 @@ void D3DApp::BuildTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpe
 	else {
 		UINT64 scratchSize, resultSize, instanceDescsSize;
 		topLevelAccelerationStructureGenerator.ComputeASBufferSizes(device, scratchSize, resultSize, instanceDescsSize);
-		buffers = RaytracingHelpers::AccelerationStructureBuffers(device, scratchSize, resultSize, instanceDescsSize);
+		buffers = AccelerationStructureBuffers(device, scratchSize, resultSize, instanceDescsSize);
 	}
 
 	topLevelAccelerationStructureGenerator.Generate(commandList, buffers.Scratch.Get(), buffers.Result.Get(), buffers.InstanceDesc.Get(), updateOnly ? buffers.Result.Get() : nullptr);
@@ -524,9 +525,9 @@ void D3DApp::CreateAccelerationStructures() {
 
 	commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr);
 
-	BuildBottomLevelAccelerationStructure({ m_sphere->GetGeometryDesc() }, m_sphereBottomLevelAccelerationStructureBuffers);
+	CreateBottomLevelAccelerationStructure({ m_sphere->GetGeometryDesc() }, m_sphereBottomLevelAccelerationStructureBuffers);
 
-	BuildTopLevelAccelerationStructure(false, m_topLevelAccelerationStructureBuffers);
+	CreateTopLevelAccelerationStructure(false, m_topLevelAccelerationStructureBuffers);
 
 	commandList->Close();
 
@@ -569,7 +570,7 @@ void D3DApp::CreateShaderBindingTables() {
 		);
 	}
 
-	ThrowIfFailed(RaytracingHelpers::CreateUploadBuffer(m_deviceResources->GetD3DDevice(), m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
+	ThrowIfFailed(CreateUploadBuffer(m_deviceResources->GetD3DDevice(), m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
 
 	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 	ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
@@ -714,7 +715,7 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 void D3DApp::DispatchRays() {
 	const auto commandList = m_deviceResources->GetCommandList();
 
-	BuildTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
+	CreateTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
 
 	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
