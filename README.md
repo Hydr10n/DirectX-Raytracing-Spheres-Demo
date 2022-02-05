@@ -12,6 +12,7 @@ https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-
 - Xbox Controller
     |||
     |-|-|
+    |Menu button|Pause/resume|
     |LS (rotate)|Move|
     |LS (rotate + press)|Move faster|
     |RS (rotate)|Look around|
@@ -22,6 +23,7 @@ https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-
     |||
     |-|-|
     |Alt + Enter|Toggle between windowed/borderless and fullscreen mode|
+    |Esc|Pause/resume|
     |W A S D|Move|
     |Left shift + W A S D|Move faster|
     |G|Toggle gravity of Earth|
