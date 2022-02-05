@@ -12,10 +12,10 @@ RWTexture2D<float4> g_output : register(u0);
 RaytracingAccelerationStructure g_scene : register(t0);
 
 StructuredBuffer<VertexPositionNormalTexture> g_vertices : register(t1);
-
 ByteAddressBuffer g_indices : register(t2);
 
-Texture2D g_imageTexture : register(t3);
+Texture2D<float4> g_imageTexture : register(t3);
+Texture2D<float3> g_normalTexture : register(t4);
 
 struct SceneConstant {
 	float4x4 ProjectionToWorld;
@@ -25,8 +25,8 @@ struct SceneConstant {
 ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
 
 struct ObjectConstant {
-	bool IsImageTextureUsed;
-	float3 Padding;
+	bool IsImageTextureUsed, IsNormalTextureUsed;
+	float2 Padding;
 	Material Material;
 };
 ConstantBuffer<ObjectConstant> g_objectConstant : register(b1);
@@ -46,6 +46,7 @@ LocalRootSignature LocalRootSignature = {
 	"DescriptorTable(SRV(t1)),"
 	"DescriptorTable(SRV(t2)),"
 	"DescriptorTable(SRV(t3)),"
+	"DescriptorTable(SRV(t4)),"
 	"CBV(b1)"
 };
 

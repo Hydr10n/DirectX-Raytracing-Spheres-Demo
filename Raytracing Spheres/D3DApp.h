@@ -31,8 +31,6 @@
 
 #include "MyPhysX.h"
 
-#include <map>
-
 #pragma warning(pop)
 
 class D3DApp : public DX::IDeviceNotify {
@@ -81,7 +79,7 @@ private:
 		std::wstring HitGroup;
 		size_t VerticesDescriptorHeapIndex = SIZE_MAX, IndicesDescriptorHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
 		Material Material;
-		Texture* pImageTexture{};
+		TextureDictionary::mapped_type* pTextures{};
 		physx::PxShape* Shape{};
 	};
 
@@ -100,7 +98,7 @@ private:
 
 	UINT m_antiAliasingSampleCount{};
 
-	std::map<std::string, std::shared_ptr<Texture>> m_imageTextures;
+	TextureDictionary m_textures;
 
 	std::vector<RenderItem> m_renderItems;
 
@@ -113,7 +111,7 @@ private:
 	DirectX::GraphicsResource m_sceneConstantBuffer, m_objectConstantBuffer;
 
 	static constexpr float SphereRadius = 0.5f;
-	std::shared_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
+	std::unique_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
 	RaytracingHelpers::AccelerationStructureBuffers m_sphereBottomLevelAccelerationStructureBuffers, m_topLevelAccelerationStructureBuffers;
 
@@ -123,6 +121,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
 	Camera m_camera = decltype(m_camera)(false);
+
+	bool m_isPaused{};
 
 	MyPhysX m_myPhysX;
 
@@ -183,8 +183,6 @@ private:
 	void ProcessInput();
 
 	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Keyboard::State& keyboardState, const DirectX::Mouse::State& mouseState);
-
-	void ToggleGravities();
 
 	void UpdateSceneConstantBuffer();
 

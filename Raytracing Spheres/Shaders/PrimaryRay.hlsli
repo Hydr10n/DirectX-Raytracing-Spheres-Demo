@@ -5,6 +5,8 @@
 
 #include "Ray.hlsli"
 
+#include "Normal.hlsli"
+
 #include "Index.hlsli"
 
 struct PrimaryRayPayload {
@@ -35,18 +37,31 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 
 	const RayDesc ray = CreateRayDesc(WorldRayOrigin(), WorldRayDirection());
 
-	const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
+	float2 textureCoordinate;
+	{
+		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
+		textureCoordinate = VertexAttribute(textureCoordinates, attributes);
+		textureCoordinate.x = 1 - textureCoordinate.x;
+	}
+
+	float3 normal;
+	{
+		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
+		const float3 worldNormal = normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3()));
+		const float3x3 TBN = CalculateTBN(worldNormal, ray.Direction);
+		if (g_objectConstant.IsNormalTextureUsed) {
+			const float3 localNormal = TwoChannelNormalX2(g_normalTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0).xy);
+			normal = normalize(mul(localNormal, TBN));
+		}
+		else normal = worldNormal;
+	}
+
 	HitRecord hitRecord;
 	hitRecord.Vertex.Position = ray.Origin + ray.Direction * RayTCurrent();
-	hitRecord.SetFaceNormal(ray.Direction, normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3())));
+	hitRecord.SetFaceNormal(ray.Direction, normal);
 
 	float4 color;
-	if (g_objectConstant.IsImageTextureUsed) {
-		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
-		float2 textureCoordinate = VertexAttribute(textureCoordinates, attributes);
-		textureCoordinate.x = 1 - textureCoordinate.x;
-		color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
-	}
+	if (g_objectConstant.IsImageTextureUsed) color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	else color = g_objectConstant.Material.Color;
 
 	float3 direction;

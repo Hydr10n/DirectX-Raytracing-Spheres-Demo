@@ -1,11 +1,5 @@
 #include "MainWindow.h"
 
-// Indicate to hybrid graphics systems to prefer the discrete part by default
-extern "C" {
-	__declspec(dllexport) DWORD NvOptimusEnablement = 1;
-	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
-}
-
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
 	if (!DirectX::XMVerifyCPUSupport()) {
 		MessageBoxA(nullptr, "DirectXMath is not supported", nullptr, MB_OK | MB_ICONERROR);

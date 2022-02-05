@@ -6,8 +6,14 @@
 
 #include <string>
 
+#include <map>
+
+enum class TextureType { Image, Normal };
+
 struct Texture {
 	size_t DescriptorHeapIndex = SIZE_MAX;
 	std::wstring Path;
 	Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
 };
+
+using TextureDictionary = std::map<std::string, std::map<TextureType, Texture>>;

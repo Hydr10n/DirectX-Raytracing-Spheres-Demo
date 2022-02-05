@@ -114,6 +114,12 @@
     <Content Include="Textures\Moon.dds">
       <Filter>Texture Files</Filter>
     </Content>
+    <Content Include="Textures\Earth_Normal.jpg">
+      <Filter>Texture Files</Filter>
+    </Content>
+    <Content Include="Textures\Moon_Normal.jpg">
+      <Filter>Texture Files</Filter>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -139,6 +145,9 @@
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\Vertex.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="Shaders\Normal.hlsli">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>

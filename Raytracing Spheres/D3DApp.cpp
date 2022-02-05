@@ -9,6 +9,7 @@
 #include "GeometricPrimitive.h"
 
 #include "DDSTextureLoader.h"
+#include "WICTextureLoader.h"
 
 #include "BottomLevelAccelerationStructureGenerator.h"
 #include "TopLevelAccelerationStructureGenerator.h"
@@ -29,24 +30,25 @@ using namespace std;
 using Key = Keyboard::Keys;
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 
-namespace Descriptors {
+struct DescriptorHeapIndices {
 	enum {
 		Output,
 		SphereVertices, SphereIndices,
-		EarthImageTexture, MoonImageTexture,
+		MoonImageTexture, MoonNormalTexture,
+		EarthImageTexture, EarthNormalTexture,
 		Count
 	};
-}
+};
 
-struct SceneConstant {
+struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
 	XMFLOAT4X4 ProjectionToWorld;
 	XMFLOAT3 CameraPosition;
 	UINT AntiAliasingSampleCount, FrameCount;
 };
 
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
-	BOOL IsImageTextureUsed;
-	XMFLOAT3 Padding;
+	BOOL IsImageTextureUsed, IsNormalTextureUsed;
+	XMFLOAT2 Padding;
 	MaterialBase Material;
 };
 
@@ -122,7 +124,7 @@ void D3DApp::OnDeviceLost() {
 
 	m_sphere.reset();
 
-	for (const auto& pair : m_imageTextures) pair.second->Resource.Reset();
+	for (auto& pair : m_textures) for (auto& pair1 : pair.second) pair1.second.Resource.Reset();
 
 	m_resourceDescriptors.reset();
 
@@ -146,7 +148,7 @@ void D3DApp::Update() {
 
 	UpdateSceneConstantBuffer();
 
-	m_myPhysX.Tick(1.0f / 60);
+	if (!m_isPaused) m_myPhysX.Tick(1.0f / 60);
 
 	PIXEndEvent();
 }
@@ -166,14 +168,14 @@ void D3DApp::Render() {
 
 	{
 		const auto output = m_output.Get(), renderTarget = m_deviceResources->GetRenderTarget();
-		ScopedBarrier scopedBarrier(
-			commandList,
-			{
-				CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
-				CD3DX12_RESOURCE_BARRIER::Transition(output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
-			}
-		);
+
+		TransitionResource(commandList, renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
+		TransitionResource(commandList, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
 		commandList->CopyResource(renderTarget, output);
+
+		TransitionResource(commandList, output, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		TransitionResource(commandList, renderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
 	}
 
 	PIXEndEvent(commandList);
@@ -182,9 +184,9 @@ void D3DApp::Render() {
 
 	m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT);
 
-	m_deviceResources->WaitForGpu();
-
 	m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
+
+	m_deviceResources->WaitForGpu();
 
 	PIXEndEvent();
 }
@@ -237,33 +239,37 @@ void D3DApp::CreateWindowSizeDependentResources() {
 
 	const auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
+	const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
+
 	const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(m_output.ReleaseAndGetAddressOf())));
 
-	const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
-	device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(Descriptors::Output));
+	device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::Output));
 }
 
 void D3DApp::BuildTextures() {
-	if (!m_imageTextures.empty()) return;
+	if (!m_textures.empty()) return;
 
 	const auto path = filesystem::path(*__wargv).replace_filename(L"Textures\\").wstring();
 
 	constexpr struct {
 		LPCSTR Name;
+		TextureType Type;
 		LPCWSTR Path;
 		size_t DescriptorHeapIndex;
-	} ImageTextures[]{
-		{ Objects.Earth, L"Earth.dds", Descriptors::EarthImageTexture },
-		{ Objects.Moon, L"Moon.dds", Descriptors::MoonImageTexture }
+	} Textures[]{
+		{ Objects.Moon, TextureType::Image, L"Moon.dds", DescriptorHeapIndices::MoonImageTexture },
+		{ Objects.Moon, TextureType::Normal, L"Moon_Normal.jpg", DescriptorHeapIndices::MoonNormalTexture },
+		{ Objects.Earth, TextureType::Image, L"Earth.dds", DescriptorHeapIndices::EarthImageTexture },
+		{ Objects.Earth, TextureType::Normal, L"Earth_Normal.jpg", DescriptorHeapIndices::EarthNormalTexture }
 	};
 
-	for (const auto& imageTexture : ImageTextures) {
-		const auto texture = make_shared<Texture>();
-		texture->DescriptorHeapIndex = imageTexture.DescriptorHeapIndex;
-		texture->Path = path + imageTexture.Path;
-		m_imageTextures[imageTexture.Name] = texture;
+	for (const auto& texture : Textures) {
+		m_textures[texture.Name][texture.Type] = Texture{
+			.DescriptorHeapIndex = texture.DescriptorHeapIndex,
+			.Path = path + texture.Path
+		};
 	}
 }
 
@@ -273,10 +279,19 @@ void D3DApp::LoadTextures() {
 	ResourceUploadBatch resourceUploadBatch(device);
 	resourceUploadBatch.Begin();
 
-	for (const auto& pair : m_imageTextures) {
-		const auto& texture = pair.second;
-		ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, texture->Path.c_str(), texture->Resource.ReleaseAndGetAddressOf()));
-		CreateShaderResourceView(device, texture->Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture->DescriptorHeapIndex));
+	for (auto& pair : m_textures) {
+		for (auto& pair1 : pair.second) {
+			auto& texture = pair1.second;
+
+			if (!lstrcmpiW(filesystem::path(texture.Path).extension().c_str(), L".dds")) {
+				ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, texture.Path.c_str(), texture.Resource.ReleaseAndGetAddressOf()));
+			}
+			else {
+				ThrowIfFailed(CreateWICTextureFromFile(device, resourceUploadBatch, texture.Path.c_str(), texture.Resource.ReleaseAndGetAddressOf()));
+			}
+
+			CreateShaderResourceView(device, texture.Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture.DescriptorHeapIndex));
+		}
 	}
 
 	resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
@@ -288,8 +303,8 @@ void D3DApp::BuildRenderItems() {
 	const auto AddRenderItem = [&](RenderItem& renderItem, const MaterialBase& material, const PxSphereGeometry& geometry, const PxVec3& position) {
 		renderItem.HitGroup = ShaderSubobjects.PrimaryRayHitGroup;
 
-		renderItem.VerticesDescriptorHeapIndex = Descriptors::SphereVertices;
-		renderItem.IndicesDescriptorHeapIndex = Descriptors::SphereIndices;
+		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndices::SphereVertices;
+		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndices::SphereIndices;
 
 		renderItem.ObjectConstantBufferIndex = m_renderItems.size();
 
@@ -388,7 +403,7 @@ void D3DApp::BuildRenderItems() {
 			{
 				Objects.Earth,
 				m_Earth,
-				MaterialBase::CreateLambertian({ 0.5f, 0.5f, 0.5f, 1 })
+				MaterialBase::CreateLambertian({ 0.1f, 0.2f, 0.5f, 1 })
 			},
 			{
 				Objects.Star,
@@ -401,7 +416,7 @@ void D3DApp::BuildRenderItems() {
 
 			renderItem.Name = object.Name;
 
-			if (m_imageTextures.contains(object.Name)) renderItem.pImageTexture = m_imageTextures[object.Name].get();
+			if (m_textures.contains(object.Name)) renderItem.pTextures = &m_textures[object.Name];
 
 			const auto rigidDynamic = AddRenderItem(renderItem, object.Material, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
 
@@ -460,7 +475,7 @@ void D3DApp::CreatePipelineStateObjects() {
 void D3DApp::CreateDescriptorHeaps() {
 	const auto device = m_deviceResources->GetD3DDevice();
 
-	m_resourceDescriptors = make_unique<DescriptorHeap>(device, Descriptors::Count);
+	m_resourceDescriptors = make_unique<DescriptorHeap>(device, DescriptorHeapIndices::Count);
 }
 
 void D3DApp::CreateGeometries() {
@@ -470,12 +485,11 @@ void D3DApp::CreateGeometries() {
 	GeometricPrimitive::IndexCollection indices;
 
 	GeometricPrimitive::CreateGeoSphere(vertices, indices, SphereRadius * 2, 6, false);
-	m_sphere = make_shared<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
-	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(Descriptors::SphereVertices), m_resourceDescriptors->GetCpuHandle(Descriptors::SphereIndices));
+	m_sphere = make_unique<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
+	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::SphereVertices), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::SphereIndices));
 }
 
-void D3DApp::CreateBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs,
-	AccelerationStructureBuffers& buffers) {
+void D3DApp::CreateBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, AccelerationStructureBuffers& buffers) {
 	const auto device = m_deviceResources->GetD3DDevice();
 
 	nv_helpers_dx12::BottomLevelAccelerationStructureGenerator bottomLevelAccelerationStructureGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
@@ -553,10 +567,16 @@ void D3DApp::CreateConstantBuffers() {
 	m_objectConstantBuffer = m_graphicsMemory->Allocate(sizeof(ObjectConstant) * renderItemsSize);
 
 	for (size_t i = 0; i < renderItemsSize; i++) {
-		reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i] = {
-			.IsImageTextureUsed = m_renderItems[i].pImageTexture != nullptr,
-			.Material = m_renderItems[i].Material
-		};
+		const auto& renderItem = m_renderItems[i];
+
+		ObjectConstant& objectConstant = reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i];
+
+		objectConstant.Material = renderItem.Material;
+
+		if (renderItem.pTextures != nullptr) {
+			objectConstant.IsImageTextureUsed = renderItem.pTextures->contains(TextureType::Image);
+			objectConstant.IsNormalTextureUsed = renderItem.pTextures->contains(TextureType::Normal);
+		}
 	}
 }
 
@@ -568,18 +588,32 @@ void D3DApp::CreateShaderBindingTables() {
 	m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints.PrimaryRayMiss, { nullptr });
 
 	for (const auto& renderItem : m_renderItems) {
+		D3D12_GPU_VIRTUAL_ADDRESS pImageTexture = NULL, pNormalTexture = NULL;
+		if (renderItem.pTextures != nullptr) {
+			auto& textures = *renderItem.pTextures;
+			if (textures.contains(TextureType::Image)) {
+				pImageTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::Image].DescriptorHeapIndex).ptr;
+			}
+			if (textures.contains(TextureType::Normal)) {
+				pNormalTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::Normal].DescriptorHeapIndex).ptr;
+			}
+		}
+
 		m_shaderBindingTableGenerator.AddHitGroup(
 			renderItem.HitGroup.c_str(),
 			{
 				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesDescriptorHeapIndex).ptr),
 				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.IndicesDescriptorHeapIndex).ptr),
-				reinterpret_cast<void*>(renderItem.pImageTexture == nullptr ? 0 : m_resourceDescriptors->GetGpuHandle(renderItem.pImageTexture->DescriptorHeapIndex).ptr),
+				reinterpret_cast<void*>(pImageTexture),
+				reinterpret_cast<void*>(pNormalTexture),
 				reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex
 			}
 		);
 	}
 
-	ThrowIfFailed(CreateUploadBuffer(m_deviceResources->GetD3DDevice(), m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
+	const auto device = m_deviceResources->GetD3DDevice();
+
+	ThrowIfFailed(CreateUploadBuffer(device, m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
 
 	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 	ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
@@ -602,11 +636,22 @@ void D3DApp::ProcessInput() {
 
 	UpdateCamera(gamepadStates, keyboardState, mouseState);
 
-	ToggleGravities();
+	{
+		for (const auto& gamepadButtonStateTracker : m_gamepadButtonStateTrackers) {
+			if (gamepadButtonStateTracker.menu == GamepadButtonState::PRESSED) m_isPaused = !m_isPaused;
+			if (gamepadButtonStateTracker.x == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
+			if (gamepadButtonStateTracker.b == GamepadButtonState::PRESSED) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
+		}
+	}
+
+	{
+		if (m_keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isPaused = !m_isPaused;
+		if (m_keyboardStateTracker.IsKeyPressed(Key::G)) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
+		if (m_keyboardStateTracker.IsKeyPressed(Key::H)) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
+	}
 }
 
-void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8],
-	const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
+void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8], const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
 	const auto Translate = [&](const XMFLOAT3& displacement) {
@@ -644,16 +689,6 @@ void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8],
 	}
 
 	m_camera.UpdateView();
-}
-
-void D3DApp::ToggleGravities() {
-	for (const auto& gamepadButtonStateTracker : m_gamepadButtonStateTrackers) {
-		if (gamepadButtonStateTracker.x == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
-		if (gamepadButtonStateTracker.b == GamepadButtonState::PRESSED) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
-	}
-
-	if (m_keyboardStateTracker.IsKeyPressed(Key::G)) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
-	if (m_keyboardStateTracker.IsKeyPressed(Key::H)) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
 }
 
 void D3DApp::UpdateSceneConstantBuffer() {
@@ -703,17 +738,14 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 void D3DApp::DispatchRays() {
 	const auto commandList = m_deviceResources->GetCommandList();
 
-	CreateTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
+	if (!m_isPaused) CreateTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
 
 	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
 
 	commandList->SetComputeRootSignature(m_globalRootSignature.Get());
-
-	commandList->SetComputeRootDescriptorTable(0, m_resourceDescriptors->GetGpuHandle(Descriptors::Output));
-
+	commandList->SetComputeRootDescriptorTable(0, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::Output));
 	commandList->SetComputeRootShaderResourceView(1, m_topLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress());
-
 	commandList->SetComputeRootConstantBufferView(2, m_sceneConstantBuffer.GpuAddress());
 
 	commandList->SetPipelineState1(m_pipelineStateObject.Get());
