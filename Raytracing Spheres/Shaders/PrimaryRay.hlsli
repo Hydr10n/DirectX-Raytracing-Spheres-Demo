@@ -49,7 +49,7 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 		const float3 worldNormal = normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3()));
 		const float3x3 TBN = CalculateTBN(worldNormal, ray.Direction);
-		if (g_objectConstant.IsNormalTextureUsed) {
+		if (g_objectConstant.TextureFlags & TextureFlags::Normal) {
 			const float3 localNormal = TwoChannelNormalX2(g_normalTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0).xy);
 			normal = normalize(mul(localNormal, TBN));
 		}
@@ -61,7 +61,7 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 	hitRecord.SetFaceNormal(ray.Direction, normal);
 
 	float4 color;
-	if (g_objectConstant.IsImageTextureUsed) color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	if (g_objectConstant.TextureFlags & TextureFlags::Image) color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	else color = g_objectConstant.Material.Color;
 
 	float3 direction;

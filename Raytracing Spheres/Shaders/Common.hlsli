@@ -24,9 +24,11 @@ struct SceneConstant {
 };
 ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
 
+struct TextureFlags { enum { Image = 0x1, Normal = 0x2 }; };
+
 struct ObjectConstant {
-	bool IsImageTextureUsed, IsNormalTextureUsed;
-	float2 Padding;
+	uint TextureFlags;
+	float3 Padding;
 	Material Material;
 };
 ConstantBuffer<ObjectConstant> g_objectConstant : register(b1);

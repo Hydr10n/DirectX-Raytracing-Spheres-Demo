@@ -122,7 +122,7 @@ private:
 
 	Camera m_camera = decltype(m_camera)(false);
 
-	bool m_isPaused{};
+	bool m_isRunning = true;
 
 	MyPhysX m_myPhysX;
 

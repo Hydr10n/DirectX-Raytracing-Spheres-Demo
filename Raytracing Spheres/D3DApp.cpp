@@ -46,9 +46,11 @@ struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
 	UINT AntiAliasingSampleCount, FrameCount;
 };
 
+struct TextureFlags { enum { Image = 0x1, Normal = 0x2 }; };
+
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
-	BOOL IsImageTextureUsed, IsNormalTextureUsed;
-	XMFLOAT2 Padding;
+	UINT TextureFlags;
+	XMFLOAT3 Padding;
 	MaterialBase Material;
 };
 
@@ -148,7 +150,7 @@ void D3DApp::Update() {
 
 	UpdateSceneConstantBuffer();
 
-	if (!m_isPaused) m_myPhysX.Tick(1.0f / 60);
+	if (m_isRunning) m_myPhysX.Tick(1.0f / 60);
 
 	PIXEndEvent();
 }
@@ -398,7 +400,7 @@ void D3DApp::BuildRenderItems() {
 			{
 				Objects.Moon,
 				m_Moon,
-				MaterialBase::CreateLambertian({ 0.5f, 0.5f, 0.5f, 1 }),
+				MaterialBase::CreateMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
 			},
 			{
 				Objects.Earth,
@@ -574,8 +576,8 @@ void D3DApp::CreateConstantBuffers() {
 		objectConstant.Material = renderItem.Material;
 
 		if (renderItem.pTextures != nullptr) {
-			objectConstant.IsImageTextureUsed = renderItem.pTextures->contains(TextureType::Image);
-			objectConstant.IsNormalTextureUsed = renderItem.pTextures->contains(TextureType::Normal);
+			if (renderItem.pTextures->contains(TextureType::Image)) objectConstant.TextureFlags |= TextureFlags::Image;
+			if (renderItem.pTextures->contains(TextureType::Normal)) objectConstant.TextureFlags |= TextureFlags::Normal;
 		}
 	}
 }
@@ -638,14 +640,14 @@ void D3DApp::ProcessInput() {
 
 	{
 		for (const auto& gamepadButtonStateTracker : m_gamepadButtonStateTrackers) {
-			if (gamepadButtonStateTracker.menu == GamepadButtonState::PRESSED) m_isPaused = !m_isPaused;
+			if (gamepadButtonStateTracker.menu == GamepadButtonState::PRESSED) m_isRunning = !m_isRunning;
 			if (gamepadButtonStateTracker.x == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
 			if (gamepadButtonStateTracker.b == GamepadButtonState::PRESSED) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
 		}
 	}
 
 	{
-		if (m_keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isPaused = !m_isPaused;
+		if (m_keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isRunning = !m_isRunning;
 		if (m_keyboardStateTracker.IsKeyPressed(Key::G)) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
 		if (m_keyboardStateTracker.IsKeyPressed(Key::H)) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
 	}
@@ -738,7 +740,7 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 void D3DApp::DispatchRays() {
 	const auto commandList = m_deviceResources->GetCommandList();
 
-	if (!m_isPaused) CreateTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
+	if (m_isRunning) CreateTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
 
 	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
