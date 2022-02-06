@@ -261,9 +261,9 @@ void D3DApp::BuildTextures() {
 		LPCWSTR Path;
 		size_t DescriptorHeapIndex;
 	} Textures[]{
-		{ Objects.Moon, TextureType::Image, L"Moon.dds", DescriptorHeapIndices::MoonImageTexture },
+		{ Objects.Moon, TextureType::Image, L"Moon.jpg", DescriptorHeapIndices::MoonImageTexture },
 		{ Objects.Moon, TextureType::Normal, L"Moon_Normal.jpg", DescriptorHeapIndices::MoonNormalTexture },
-		{ Objects.Earth, TextureType::Image, L"Earth.dds", DescriptorHeapIndices::EarthImageTexture },
+		{ Objects.Earth, TextureType::Image, L"Earth.jpg", DescriptorHeapIndices::EarthImageTexture },
 		{ Objects.Earth, TextureType::Normal, L"Earth_Normal.jpg", DescriptorHeapIndices::EarthNormalTexture }
 	};
 

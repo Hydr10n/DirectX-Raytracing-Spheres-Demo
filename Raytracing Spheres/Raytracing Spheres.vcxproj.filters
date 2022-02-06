@@ -108,13 +108,13 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Textures\Earth.dds">
-      <Filter>Texture Files</Filter>
-    </Content>
-    <Content Include="Textures\Moon.dds">
+    <Content Include="Textures\Earth.jpg">
       <Filter>Texture Files</Filter>
     </Content>
     <Content Include="Textures\Earth_Normal.jpg">
+      <Filter>Texture Files</Filter>
+    </Content>
+    <Content Include="Textures\Moon.jpg">
       <Filter>Texture Files</Filter>
     </Content>
     <Content Include="Textures\Moon_Normal.jpg">
