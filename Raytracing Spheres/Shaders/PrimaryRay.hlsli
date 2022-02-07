@@ -23,7 +23,7 @@ inline float4 TracePrimaryRay(RayDesc ray, uint traceRecursionDepth, inout Rando
 
 [shader("miss")]
 void PrimaryRayMiss(inout PrimaryRayPayload payload) {
-	payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * (normalize(WorldRayDirection()).y + 1));
+	payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
 }
 
 [shader("closesthit")]

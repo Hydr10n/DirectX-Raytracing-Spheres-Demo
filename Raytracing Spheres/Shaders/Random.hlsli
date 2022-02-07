@@ -16,7 +16,7 @@ struct Random {
 	}
 
 	float Float(float min = 0, float max = 1) {
-		Seed = (1664525 * Seed + 1013904223);
+		Seed = 1664525 * Seed + 1013904223;
 		return min + (max - min) * float(Seed & 0x00FFFFFF) / float(0x01000000);
 	}
 

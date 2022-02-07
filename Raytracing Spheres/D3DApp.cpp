@@ -654,11 +654,28 @@ void D3DApp::ProcessInput() {
 }
 
 void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8], const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
-	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
+	constexpr auto XMFLOAT3_to_PxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, value.z); };
+
+	const auto rayOrigin = XMFLOAT3_to_PxVec3(m_camera.GetPosition());
+
+	PxScene* scene;
+	m_myPhysX.GetPhysics().getScenes(&scene, sizeof(scene));
 
 	const auto Translate = [&](const XMFLOAT3& displacement) {
-		m_camera.Translate(m_camera.GetRightDirection() * displacement.x + m_camera.GetUpDirection() * displacement.y + m_camera.GetForwardDirection() * displacement.z);
+		if (!displacement.x && !displacement.y && !displacement.z) return;
+
+		auto x = XMFLOAT3_to_PxVec3(m_camera.GetRightDirection() * displacement.x + m_camera.GetUpDirection() * displacement.y + m_camera.GetForwardDirection() * displacement.z);
+		const auto magnitude = x.magnitude();
+		const auto normalized = x / magnitude;
+		PxRaycastBuffer raycastBuffer;
+		if (scene->raycast(rayOrigin, normalized, FLT_MAX, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+			x = normalized * max(raycastBuffer.block.distance - 0.1f, 0.0f);
+		}
+
+		m_camera.Translate({ x.x, x.y, x.z });
 	};
+
+	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
 	{
 		const auto rotationSpeed = -XM_2PI * 0.4f * elapsedSeconds;
