@@ -6,6 +6,8 @@ Real-time rendering using DirectX Raytracing with compatible GPUs and physics si
 
 https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-98f5-4541a75a80b9.mp4
 
+https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-8dd2-16e64f503ce2.mp4
+
 ---
 
 ## Controls

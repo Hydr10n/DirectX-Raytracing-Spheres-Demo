@@ -2,6 +2,8 @@
 
 #include <d3d12.h>
 
+#include <DirectXMath.h>
+
 #include <wrl.h>
 
 #include <string>
@@ -16,4 +18,4 @@ struct Texture {
 	Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
 };
 
-using TextureDictionary = std::map<std::string, std::map<TextureType, Texture>>;
+using TextureDictionary = std::map<std::string, std::tuple<std::map<TextureType, Texture>, DirectX::XMMATRIX /*Transform*/>>;

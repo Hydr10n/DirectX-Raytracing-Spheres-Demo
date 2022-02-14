@@ -22,9 +22,9 @@ inline float4 TracePrimaryRay(RayDesc ray, uint traceRecursionDepth, inout Rando
 [shader("miss")]
 void PrimaryRayMiss(inout PrimaryRayPayload payload) {
 	if (g_sceneConstant.IsEnvironmentCubeMapUsed) {
-		float3 worldRayDirection = WorldRayDirection();
-		if (!g_sceneConstant.IsLeftHandedCoordinateSystem) worldRayDirection.x = -worldRayDirection.x;
-		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, worldRayDirection, 0);
+		float3 textureCoordinate = mul(WorldRayDirection(), (float3x3) g_sceneConstant.EnvironmentMapTransform);
+		if (!g_sceneConstant.IsLeftHandedCoordinateSystem) textureCoordinate.x = -textureCoordinate.x;
+		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	}
 	else {
 		payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
@@ -52,6 +52,7 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		worldNormal = normalize(mul(normal, (float3x3) ObjectToWorld4x3()));
 
 		textureCoordinate = VertexAttribute(textureCoordinates, attributes.barycentrics);
+		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstant.TextureTransform).xy;
 
 		if (g_objectConstant.TextureFlags & TextureFlags::NormalMap) {
 			const float3 positions[] = { g_vertices[indices[0]].Position, g_vertices[indices[1]].Position, g_vertices[indices[2]].Position };

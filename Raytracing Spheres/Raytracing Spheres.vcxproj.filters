@@ -120,6 +120,9 @@
     <Content Include="Textures\Moon_Normal.jpg">
       <Filter>Texture Files</Filter>
     </Content>
+    <Content Include="Textures\Space.dds">
+      <Filter>Texture Files</Filter>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

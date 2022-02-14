@@ -20,7 +20,7 @@ Texture2D<float3> g_normalMap : register(t4);
 TextureCube<float4> g_environmentCubeMap : register(t5);
 
 struct SceneConstant {
-	float4x4 ProjectionToWorld;
+	float4x4 ProjectionToWorld, EnvironmentMapTransform;
 	float3 CameraPosition;
 	uint AntiAliasingSampleCount, FrameCount;
 	bool IsLeftHandedCoordinateSystem, IsEnvironmentCubeMapUsed;
@@ -32,6 +32,7 @@ struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
 struct ObjectConstant {
 	uint TextureFlags;
 	float3 Padding;
+	float4x4 TextureTransform;
 	Material Material;
 };
 ConstantBuffer<ObjectConstant> g_objectConstant : register(b1);

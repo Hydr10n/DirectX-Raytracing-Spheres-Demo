@@ -3,11 +3,9 @@
 #include <DirectXMath.h>
 
 struct MaterialBase {
-	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type{};
-	float RefractiveIndex{};
-	float Roughness{};
-	float Padding{};
-	DirectX::XMFLOAT4 Color{};
+	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type;
+	float RefractiveIndex, Roughness, Padding;
+	DirectX::XMFLOAT4 Color;
 
 	static auto CreateLambertian(const DirectX::XMFLOAT4& color) {
 		return MaterialBase{
