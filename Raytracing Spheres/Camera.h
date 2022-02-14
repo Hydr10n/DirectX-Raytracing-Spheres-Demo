@@ -4,9 +4,9 @@
 
 class Camera {
 public:
-	Camera(bool isLeftHanded) :
-		m_isLeftHanded(isLeftHanded),
-		m_forwardDirection(isLeftHanded ? DirectX::XMFLOAT3(0, 0, 1) : DirectX::XMFLOAT3(0, 0, -1)) {}
+	Camera(bool isLeftHandedCoordinateSystem) :
+		m_isLeftHandedCoordinateSystem(isLeftHandedCoordinateSystem),
+		m_forwardDirection(isLeftHandedCoordinateSystem ? DirectX::XMFLOAT3(0, 0, 1) : DirectX::XMFLOAT3(0, 0, -1)) {}
 
 	void SetPosition(const DirectX::XMFLOAT3& position) {
 		m_position = position;
@@ -19,7 +19,7 @@ public:
 		(m_forwardDirection = forwardDirection).Normalize();
 		(m_upDirection = upDirection).Normalize();
 		const decltype(m_upDirection) (&directions)[] { m_upDirection, forwardDirection };
-		directions[!m_isLeftHanded].Cross(directions[m_isLeftHanded]).Normalize(m_rightDirection);
+		directions[!m_isLeftHandedCoordinateSystem].Cross(directions[m_isLeftHandedCoordinateSystem]).Normalize(m_rightDirection);
 		m_viewDirty = true;
 	}
 
@@ -34,7 +34,7 @@ public:
 		m_aspectRatio = aspectRatio;
 		m_nearZ = nearZ;
 		m_farZ = farZ;
-		m_projection = m_isLeftHanded ?
+		m_projection = m_isLeftHandedCoordinateSystem ?
 			DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ) :
 			DirectX::XMMatrixPerspectiveFovRH(fovAngleY, aspectRatio, nearZ, farZ);
 	}
@@ -42,8 +42,8 @@ public:
 	void UpdateView() {
 		if (!m_viewDirty) return;
 		const decltype(m_forwardDirection) (&directions)[] { m_forwardDirection, m_rightDirection };
-		directions[!m_isLeftHanded].Cross(directions[m_isLeftHanded]).Normalize(m_upDirection);
-		m_view = m_isLeftHanded ?
+		directions[!m_isLeftHandedCoordinateSystem].Cross(directions[m_isLeftHandedCoordinateSystem]).Normalize(m_upDirection);
+		m_view = m_isLeftHandedCoordinateSystem ?
 			DirectX::XMMatrixLookAtLH(m_position, m_position + m_forwardDirection, m_upDirection) :
 			DirectX::XMMatrixLookAtRH(m_position, m_position + m_forwardDirection, m_upDirection);
 		m_viewDirty = false;
@@ -75,7 +75,7 @@ public:
 	}
 
 private:
-	bool m_isLeftHanded;
+	bool m_isLeftHandedCoordinateSystem;
 
 	DirectX::SimpleMath::Vector3 m_position, m_forwardDirection, m_upDirection{ 0, 1, 0 }, m_rightDirection{ 1, 0, 0 };
 

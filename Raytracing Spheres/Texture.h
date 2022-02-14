@@ -8,7 +8,7 @@
 
 #include <map>
 
-enum class TextureType { Image, Normal };
+enum class TextureType { ColorMap, NormalMap, CubeMap };
 
 struct Texture {
 	size_t DescriptorHeapIndex = SIZE_MAX;

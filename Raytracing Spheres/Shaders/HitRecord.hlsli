@@ -1,7 +1,7 @@
 #ifndef HITRECORD_HLSLI
 #define HITRECORD_HLSLI
 
-#include "Vertex.hlsli"
+#include "VertexTypes.hlsli"
 
 struct HitRecord {
 	VertexPositionNormal Vertex;

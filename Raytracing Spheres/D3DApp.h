@@ -120,11 +120,13 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
 
-	Camera m_camera = decltype(m_camera)(false);
+	static constexpr bool IsLeftHandedCoordinateSystem{};
 
-	bool m_isRunning = true;
+	Camera m_camera = decltype(m_camera)(IsLeftHandedCoordinateSystem);
 
 	MyPhysX m_myPhysX;
+
+	bool m_isRunning = true;
 
 	struct Sphere {
 		bool IsGravityEnabled;

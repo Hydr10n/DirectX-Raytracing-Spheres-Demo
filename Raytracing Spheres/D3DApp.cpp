@@ -30,12 +30,24 @@ using namespace std;
 using Key = Keyboard::Keys;
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 
+struct ShaderEntryPoints { static constexpr LPCWSTR RayGeneration = L"RayGeneration", PrimaryRayMiss = L"PrimaryRayMiss"; };
+
+struct ShaderSubobjects { static constexpr LPCWSTR PrimaryRayHitGroup = L"PrimaryRayHitGroup"; };
+
+struct Objects {
+	static constexpr LPCSTR
+		Environment = "Environment",
+		Earth = "Earth", Moon = "Moon", Star = "Star",
+		HarmonicOscillator = "HarmonicOscillator";
+};
+
 struct DescriptorHeapIndices {
 	enum {
 		Output,
 		SphereVertices, SphereIndices,
-		MoonImageTexture, MoonNormalTexture,
-		EarthImageTexture, EarthNormalTexture,
+		EnvironmentCubeMap,
+		MoonColorMap, MoonNormalMap,
+		EarthColorMap, EarthNormalMap,
 		Count
 	};
 };
@@ -44,25 +56,16 @@ struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
 	XMFLOAT4X4 ProjectionToWorld;
 	XMFLOAT3 CameraPosition;
 	UINT AntiAliasingSampleCount, FrameCount;
+	BOOL IsLeftHandedCoordinateSystem, IsEnvironmentCubeMapUsed;
 };
 
-struct TextureFlags { enum { Image = 0x1, Normal = 0x2 }; };
+struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
 
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
 	UINT TextureFlags;
 	XMFLOAT3 Padding;
 	MaterialBase Material;
 };
-
-static constexpr struct {
-	LPCSTR
-		Earth = "Earth", Moon = "Moon", Star = "Star",
-		HarmonicOscillator = "HarmonicOscillator";
-} Objects{};
-
-static constexpr struct { LPCWSTR RayGeneration = L"RayGeneration", PrimaryRayMiss = L"PrimaryRayMiss"; } ShaderEntryPoints{};
-
-static constexpr struct { LPCWSTR PrimaryRayHitGroup = L"PrimaryRayHitGroup"; } ShaderSubobjects{};
 
 D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
 	srand(static_cast<UINT>(GetTickCount64()));
@@ -258,13 +261,13 @@ void D3DApp::BuildTextures() {
 	constexpr struct {
 		LPCSTR Name;
 		TextureType Type;
-		LPCWSTR Path;
 		size_t DescriptorHeapIndex;
+		LPCWSTR Path;
 	} Textures[]{
-		{ Objects.Moon, TextureType::Image, L"Moon.jpg", DescriptorHeapIndices::MoonImageTexture },
-		{ Objects.Moon, TextureType::Normal, L"Moon_Normal.jpg", DescriptorHeapIndices::MoonNormalTexture },
-		{ Objects.Earth, TextureType::Image, L"Earth.jpg", DescriptorHeapIndices::EarthImageTexture },
-		{ Objects.Earth, TextureType::Normal, L"Earth_Normal.jpg", DescriptorHeapIndices::EarthNormalTexture }
+		{ Objects::Moon, TextureType::ColorMap, DescriptorHeapIndices::MoonColorMap, L"Moon.jpg" },
+		{ Objects::Moon, TextureType::NormalMap, DescriptorHeapIndices::MoonNormalMap, L"Moon_Normal.jpg" },
+		{ Objects::Earth, TextureType::ColorMap, DescriptorHeapIndices::EarthColorMap, L"Earth.jpg" },
+		{ Objects::Earth, TextureType::NormalMap, DescriptorHeapIndices::EarthNormalMap, L"Earth_Normal.jpg" }
 	};
 
 	for (const auto& texture : Textures) {
@@ -285,14 +288,16 @@ void D3DApp::LoadTextures() {
 		for (auto& pair1 : pair.second) {
 			auto& texture = pair1.second;
 
+			bool isCubeMap = false;
+
 			if (!lstrcmpiW(filesystem::path(texture.Path).extension().c_str(), L".dds")) {
-				ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, texture.Path.c_str(), texture.Resource.ReleaseAndGetAddressOf()));
+				ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, texture.Path.c_str(), texture.Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap));
 			}
 			else {
 				ThrowIfFailed(CreateWICTextureFromFile(device, resourceUploadBatch, texture.Path.c_str(), texture.Resource.ReleaseAndGetAddressOf()));
 			}
 
-			CreateShaderResourceView(device, texture.Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture.DescriptorHeapIndex));
+			CreateShaderResourceView(device, texture.Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
 		}
 	}
 
@@ -303,7 +308,7 @@ void D3DApp::BuildRenderItems() {
 	if (!m_renderItems.empty()) return;
 
 	const auto AddRenderItem = [&](RenderItem& renderItem, const MaterialBase& material, const PxSphereGeometry& geometry, const PxVec3& position) {
-		renderItem.HitGroup = ShaderSubobjects.PrimaryRayHitGroup;
+		renderItem.HitGroup = ShaderSubobjects::PrimaryRayHitGroup;
 
 		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndices::SphereVertices;
 		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndices::SphereIndices;
@@ -382,7 +387,7 @@ void D3DApp::BuildRenderItems() {
 
 				RenderItem renderItem;
 
-				renderItem.Name = Objects.HarmonicOscillator;
+				renderItem.Name = Objects::HarmonicOscillator;
 
 				const auto rigidDynamic = AddRenderItem(renderItem, material, PxSphereGeometry(0.075f), position);
 
@@ -398,17 +403,17 @@ void D3DApp::BuildRenderItems() {
 			MaterialBase Material;
 		} objects[]{
 			{
-				Objects.Moon,
+				Objects::Moon,
 				m_Moon,
 				MaterialBase::CreateMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
 			},
 			{
-				Objects.Earth,
+				Objects::Earth,
 				m_Earth,
 				MaterialBase::CreateLambertian({ 0.1f, 0.2f, 0.5f, 1 })
 			},
 			{
-				Objects.Star,
+				Objects::Star,
 				m_star,
 				MaterialBase::CreateMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
 			}
@@ -422,7 +427,7 @@ void D3DApp::BuildRenderItems() {
 
 			const auto rigidDynamic = AddRenderItem(renderItem, object.Material, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
 
-			if (renderItem.Name == Objects.Moon) {
+			if (renderItem.Name == Objects::Moon) {
 				const auto x = m_Earth.Position - object.Sphere.Position;
 				const auto magnitude = x.magnitude();
 				const auto normalized = x / magnitude;
@@ -430,12 +435,12 @@ void D3DApp::BuildRenderItems() {
 				rigidDynamic->setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 				rigidDynamic->setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 			}
-			else if (renderItem.Name == Objects.Earth) {
+			else if (renderItem.Name == Objects::Earth) {
 				rigidDynamic->setAngularVelocity({ 0, PxTwoPi / object.Sphere.RotationPeriod, 0 });
 
 				PxRigidBodyExt::setMassAndUpdateInertia(*rigidDynamic, &object.Sphere.Mass, 1);
 			}
-			else if (renderItem.Name == Objects.Star) {
+			else if (renderItem.Name == Objects::Star) {
 				rigidDynamic->setMass(0);
 			}
 		}
@@ -464,11 +469,11 @@ void D3DApp::CreatePipelineStateObjects() {
 	dxilLibrary->DefineExport(L"GlobalRootSignature");
 	dxilLibrary->DefineExport(L"LocalRootSignature");
 
-	dxilLibrary->DefineExport(ShaderEntryPoints.RayGeneration);
+	dxilLibrary->DefineExport(ShaderEntryPoints::RayGeneration);
 
-	dxilLibrary->DefineExport(ShaderEntryPoints.PrimaryRayMiss);
+	dxilLibrary->DefineExport(ShaderEntryPoints::PrimaryRayMiss);
 	dxilLibrary->DefineExport(L"PrimaryRayClosestHit");
-	dxilLibrary->DefineExport(ShaderSubobjects.PrimaryRayHitGroup);
+	dxilLibrary->DefineExport(ShaderSubobjects::PrimaryRayHitGroup);
 	dxilLibrary->DefineExport(L"PrimaryRayLocalRootSignatureAssociation");
 
 	ThrowIfFailed(device->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(m_pipelineStateObject.ReleaseAndGetAddressOf())));
@@ -486,7 +491,7 @@ void D3DApp::CreateGeometries() {
 	GeometricPrimitive::VertexCollection vertices;
 	GeometricPrimitive::IndexCollection indices;
 
-	GeometricPrimitive::CreateGeoSphere(vertices, indices, SphereRadius * 2, 6, false);
+	GeometricPrimitive::CreateGeoSphere(vertices, indices, SphereRadius * 2, 6, !IsLeftHandedCoordinateSystem);
 	m_sphere = make_unique<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
 	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::SphereVertices), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::SphereIndices));
 }
@@ -562,7 +567,12 @@ void D3DApp::CreateAccelerationStructures() {
 }
 
 void D3DApp::CreateConstantBuffers() {
-	m_sceneConstantBuffer = m_graphicsMemory->Allocate(sizeof(SceneConstant));
+	m_sceneConstantBuffer = m_graphicsMemory->AllocateConstant(
+		SceneConstant{
+			.IsLeftHandedCoordinateSystem = IsLeftHandedCoordinateSystem,
+			.IsEnvironmentCubeMapUsed = m_textures.contains(Objects::Environment) && m_textures[Objects::Environment].contains(TextureType::CubeMap)
+		}
+	);
 
 	const auto renderItemsSize = m_renderItems.size();
 
@@ -576,8 +586,8 @@ void D3DApp::CreateConstantBuffers() {
 		objectConstant.Material = renderItem.Material;
 
 		if (renderItem.pTextures != nullptr) {
-			if (renderItem.pTextures->contains(TextureType::Image)) objectConstant.TextureFlags |= TextureFlags::Image;
-			if (renderItem.pTextures->contains(TextureType::Normal)) objectConstant.TextureFlags |= TextureFlags::Normal;
+			if (renderItem.pTextures->contains(TextureType::ColorMap)) objectConstant.TextureFlags |= TextureFlags::ColorMap;
+			if (renderItem.pTextures->contains(TextureType::NormalMap)) objectConstant.TextureFlags |= TextureFlags::NormalMap;
 		}
 	}
 }
@@ -585,19 +595,19 @@ void D3DApp::CreateConstantBuffers() {
 void D3DApp::CreateShaderBindingTables() {
 	m_shaderBindingTableGenerator = {};
 
-	m_shaderBindingTableGenerator.AddRayGenerationProgram(ShaderEntryPoints.RayGeneration, { nullptr });
+	m_shaderBindingTableGenerator.AddRayGenerationProgram(ShaderEntryPoints::RayGeneration, { nullptr });
 
-	m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints.PrimaryRayMiss, { nullptr });
+	m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints::PrimaryRayMiss, { nullptr });
 
 	for (const auto& renderItem : m_renderItems) {
 		D3D12_GPU_VIRTUAL_ADDRESS pImageTexture = NULL, pNormalTexture = NULL;
 		if (renderItem.pTextures != nullptr) {
 			auto& textures = *renderItem.pTextures;
-			if (textures.contains(TextureType::Image)) {
-				pImageTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::Image].DescriptorHeapIndex).ptr;
+			if (textures.contains(TextureType::ColorMap)) {
+				pImageTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::ColorMap].DescriptorHeapIndex).ptr;
 			}
-			if (textures.contains(TextureType::Normal)) {
-				pNormalTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::Normal].DescriptorHeapIndex).ptr;
+			if (textures.contains(TextureType::NormalMap)) {
+				pNormalTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::NormalMap].DescriptorHeapIndex).ptr;
 			}
 		}
 
@@ -656,7 +666,7 @@ void D3DApp::ProcessInput() {
 void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8], const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 	constexpr auto XMFLOAT3_to_PxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, value.z); };
 
-	const auto rayOrigin = XMFLOAT3_to_PxVec3(m_camera.GetPosition());
+	const auto cameraPosition = XMFLOAT3_to_PxVec3(m_camera.GetPosition());
 
 	PxScene* scene;
 	m_myPhysX.GetPhysics().getScenes(&scene, sizeof(scene));
@@ -668,7 +678,7 @@ void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[8], const Keyboar
 		const auto magnitude = x.magnitude();
 		const auto normalized = x / magnitude;
 		PxRaycastBuffer raycastBuffer;
-		if (scene->raycast(rayOrigin, normalized, FLT_MAX, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+		if (scene->raycast(cameraPosition, normalized, FLT_MAX, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 			x = normalized * max(raycastBuffer.block.distance - 0.1f, 0.0f);
 		}
 
@@ -733,21 +743,21 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 
 	const auto& position = PxShapeExt::getGlobalPose(shape, *rigidBody).p;
 
-	if (renderItem.Name == Objects.HarmonicOscillator) {
+	if (renderItem.Name == Objects::HarmonicOscillator) {
 		const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, m_spring.Period);
 		const PxVec3 x(0, position.y - m_spring.PositionY, 0);
 		rigidBody->addForce(-k * x);
 	}
 
-	if ((m_Earth.IsGravityEnabled && renderItem.Name != Objects.Earth)
-		|| renderItem.Name == Objects.Moon) {
+	if ((m_Earth.IsGravityEnabled && renderItem.Name != Objects::Earth)
+		|| renderItem.Name == Objects::Moon) {
 		const auto x = m_Earth.Position - position;
 		const auto magnitude = x.magnitude();
 		const auto normalized = x / magnitude;
 		rigidBody->addForce(Gravity::CalculateAccelerationMagnitude(m_Earth.Mass, magnitude) * normalized, PxForceMode::eACCELERATION);
 	}
 
-	if (m_star.IsGravityEnabled && renderItem.Name != Objects.Star) {
+	if (m_star.IsGravityEnabled && renderItem.Name != Objects::Star) {
 		const auto x = m_star.Position - position;
 		const auto normalized = x.getNormalized();
 		rigidBody->addForce(10 * normalized, PxForceMode::eACCELERATION);
@@ -766,6 +776,7 @@ void D3DApp::DispatchRays() {
 	commandList->SetComputeRootDescriptorTable(0, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::Output));
 	commandList->SetComputeRootShaderResourceView(1, m_topLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress());
 	commandList->SetComputeRootConstantBufferView(2, m_sceneConstantBuffer.GpuAddress());
+	commandList->SetComputeRootDescriptorTable(3, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::EnvironmentCubeMap));
 
 	commandList->SetPipelineState1(m_pipelineStateObject.Get());
 

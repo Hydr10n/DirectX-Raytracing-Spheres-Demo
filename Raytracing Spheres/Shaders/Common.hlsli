@@ -14,17 +14,20 @@ RaytracingAccelerationStructure g_scene : register(t0);
 StructuredBuffer<VertexPositionNormalTexture> g_vertices : register(t1);
 ByteAddressBuffer g_indices : register(t2);
 
-Texture2D<float4> g_imageTexture : register(t3);
-Texture2D<float3> g_normalTexture : register(t4);
+Texture2D<float4> g_colorMap : register(t3);
+Texture2D<float3> g_normalMap : register(t4);
+
+TextureCube<float4> g_environmentCubeMap : register(t5);
 
 struct SceneConstant {
 	float4x4 ProjectionToWorld;
 	float3 CameraPosition;
 	uint AntiAliasingSampleCount, FrameCount;
+	bool IsLeftHandedCoordinateSystem, IsEnvironmentCubeMapUsed;
 };
 ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
 
-struct TextureFlags { enum { Image = 0x1, Normal = 0x2 }; };
+struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
 
 struct ObjectConstant {
 	uint TextureFlags;
@@ -41,7 +44,8 @@ GlobalRootSignature GlobalRootSignature = {
 	"StaticSampler(s0),"
 	"DescriptorTable(UAV(u0)),"
 	"SRV(t0),"
-	"CBV(b0)"
+	"CBV(b0),"
+	"DescriptorTable(SRV(t5))"
 };
 
 LocalRootSignature LocalRootSignature = {

@@ -6,21 +6,21 @@
 
 struct MyAppData {
 	struct Settings {
-		static constexpr struct { LPCWSTR Graphics = L"Graphics"; } Sections{};
+		struct Sections { static constexpr LPCWSTR Graphics = L"Graphics"; };
 
 		struct Keys {
 			struct WindowMode {
-				static constexpr LPCWSTR Section = Sections.Graphics;
+				static constexpr LPCWSTR Section = Sections::Graphics;
 				static constexpr auto ToString() { return L"WindowMode"; }
 			};
 
 			struct Resolution {
-				static constexpr LPCWSTR Section = Sections.Graphics;
+				static constexpr LPCWSTR Section = Sections::Graphics;
 				static constexpr auto ToStrings() { return std::pair(L"Width", L"Height"); }
 			};
 
 			struct AntiAliasingSampleCount {
-				static constexpr LPCWSTR Section = Sections.Graphics;
+				static constexpr LPCWSTR Section = Sections::Graphics;
 				static constexpr auto ToString() { return L"AntiAliasingSampleCount"; }
 			};
 		};

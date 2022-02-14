@@ -1,7 +1,21 @@
-#ifndef INDEX_HLSLI
-#define INDEX_HLSLI
+#ifndef UTILS_HLSLI
+#define UTILS_HLSLI
 
-inline uint GetTriangleBaseIndex(uint indexStrideInBytes) { return PrimitiveIndex() * indexStrideInBytes * 3; }
+inline float2 VertexAttribute(float2 vertexAttributes[3], float2 barycentrics) {
+	return vertexAttributes[0]
+		+ barycentrics.x * (vertexAttributes[1] - vertexAttributes[0])
+		+ barycentrics.y * (vertexAttributes[2] - vertexAttributes[0]);
+}
+
+inline float3 VertexAttribute(float3 vertexAttributes[3], float2 barycentrics) {
+	return vertexAttributes[0]
+		+ barycentrics.x * (vertexAttributes[1] - vertexAttributes[0])
+		+ barycentrics.y * (vertexAttributes[2] - vertexAttributes[0]);
+}
+
+inline uint GetTriangleBaseIndex(uint indexStrideInBytes, uint primitiveIndex = PrimitiveIndex()) {
+	return indexStrideInBytes * primitiveIndex * 3;
+}
 
 // Load 3 16-bit indices from a byte addressed buffer.
 inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint offset) {
@@ -29,6 +43,12 @@ inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint offset
 	}
 
 	return indices;
+}
+
+// http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-13-normal-mapping/
+inline float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3]) {
+	const float2 d0 = textureCoordinates[1] - textureCoordinates[0], d1 = textureCoordinates[2] - textureCoordinates[0];
+	return ((positions[1] - positions[0]) * d1.y - (positions[2] - positions[0]) * d0.y) / (d0.x * d1.y - d0.y * d1.x);
 }
 
 #endif

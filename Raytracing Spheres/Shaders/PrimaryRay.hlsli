@@ -5,9 +5,7 @@
 
 #include "Ray.hlsli"
 
-#include "Normal.hlsli"
-
-#include "Index.hlsli"
+#include "Utils.hlsli"
 
 struct PrimaryRayPayload {
 	float4 Color;
@@ -17,13 +15,20 @@ struct PrimaryRayPayload {
 
 inline float4 TracePrimaryRay(RayDesc ray, uint traceRecursionDepth, inout Random random) {
 	PrimaryRayPayload payload = { (float4) 0, traceRecursionDepth - 1, random };
-	TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
+	TraceRay(g_scene, g_sceneConstant.IsLeftHandedCoordinateSystem ? RAY_FLAG_CULL_BACK_FACING_TRIANGLES : RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
 	return payload.Color;
 }
 
 [shader("miss")]
 void PrimaryRayMiss(inout PrimaryRayPayload payload) {
-	payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
+	if (g_sceneConstant.IsEnvironmentCubeMapUsed) {
+		float3 worldRayDirection = WorldRayDirection();
+		if (!g_sceneConstant.IsLeftHandedCoordinateSystem) worldRayDirection.x = -worldRayDirection.x;
+		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, worldRayDirection, 0);
+	}
+	else {
+		payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
+	}
 }
 
 [shader("closesthit")]
@@ -37,31 +42,32 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 
 	const RayDesc ray = CreateRayDesc(WorldRayOrigin(), WorldRayDirection());
 
+	float3 worldNormal;
 	float2 textureCoordinate;
 	{
-		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
-		textureCoordinate = VertexAttribute(textureCoordinates, attributes);
-		textureCoordinate.x = 1 - textureCoordinate.x;
-	}
-
-	float3 normal;
-	{
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
-		const float3 worldNormal = normalize(mul(VertexAttribute(normals, attributes), (float3x3) ObjectToWorld4x3()));
-		const float3x3 TBN = CalculateTBN(worldNormal, ray.Direction);
-		if (g_objectConstant.TextureFlags & TextureFlags::Normal) {
-			const float3 localNormal = TwoChannelNormalX2(g_normalTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0).xy);
-			normal = normalize(mul(localNormal, TBN));
+		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
+
+		const float3 normal = VertexAttribute(normals, attributes.barycentrics);
+		worldNormal = normalize(mul(normal, (float3x3) ObjectToWorld4x3()));
+
+		textureCoordinate = VertexAttribute(textureCoordinates, attributes.barycentrics);
+
+		if (g_objectConstant.TextureFlags & TextureFlags::NormalMap) {
+			const float3 positions[] = { g_vertices[indices[0]].Position, g_vertices[indices[1]].Position, g_vertices[indices[2]].Position };
+			const float3 tangent = CalculateTangent(positions, textureCoordinates);
+			const float3x3 TBN = float3x3(tangent, cross(tangent, worldNormal), worldNormal);
+
+			worldNormal = normalize(mul(normalize(g_normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
 		}
-		else normal = worldNormal;
 	}
 
 	HitRecord hitRecord;
 	hitRecord.Vertex.Position = ray.Origin + ray.Direction * RayTCurrent();
-	hitRecord.SetFaceNormal(ray.Direction, normal);
+	hitRecord.SetFaceNormal(ray.Direction, worldNormal);
 
 	float4 color;
-	if (g_objectConstant.TextureFlags & TextureFlags::Image) color = g_imageTexture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	if (g_objectConstant.TextureFlags & TextureFlags::ColorMap) color = g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	else color = g_objectConstant.Material.Color;
 
 	float3 direction;
