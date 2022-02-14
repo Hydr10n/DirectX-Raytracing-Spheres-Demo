@@ -55,7 +55,7 @@ https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-
 ### Dependencies
 - [PhysX](https://github.com/NVIDIAGameWorks/PhysX)
 ```cmd
-> .\vcpkg\vcpkg install physx physx:x64-windows
+> .\vcpkg\vcpkg install physx:x64-windows
 ```
 
 ## Minimum System Requirements
