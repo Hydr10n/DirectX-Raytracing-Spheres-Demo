@@ -15,16 +15,6 @@ using namespace WindowHelpers;
 using SettingsData = MyAppData::Settings;
 using SettingsKeys = SettingsData::Keys;
 
-namespace MenuID {
-	enum {
-		WindowModeWindowed, WindowModeBorderless, WindowModeFullscreen,
-		AntiAliasingSampleCount1, AntiAliasingSampleCount2, AntiAliasingSampleCount4, AntiAliasingSampleCount8,
-		ViewSourceCodeOnGitHub,
-		Exit,
-		FirstResolution
-	};
-}
-
 MainWindow::MainWindow() noexcept(false) :
 	WindowBase(
 		WNDCLASSEXW{
@@ -83,6 +73,16 @@ WPARAM MainWindow::Run() {
 }
 
 LRESULT MainWindow::OnMessageReceived(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	struct MenuID {
+		enum {
+			WindowModeWindowed, WindowModeBorderless, WindowModeFullscreen,
+			AntiAliasingSampleCount1, AntiAliasingSampleCount2, AntiAliasingSampleCount4, AntiAliasingSampleCount8,
+			ViewSourceCodeOnGitHub,
+			Exit,
+			FirstResolution
+		};
+	};
+
 	switch (uMsg) {
 	case WM_CONTEXTMENU: {
 		CURSORINFO cursorInfo{ sizeof(cursorInfo) };
