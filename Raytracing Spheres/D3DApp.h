@@ -27,6 +27,8 @@
 #include "Material.h"
 #include "Texture.h"
 
+#include "Random.h"
+
 #include "Camera.h"
 
 #include "MyPhysX.h"
@@ -119,6 +121,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_shaderBindingTable;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
+
+	Random m_random;
 
 	static constexpr bool IsLeftHandedCoordinateSystem{};
 

@@ -69,8 +69,6 @@ struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
 };
 
 D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
-	srand(static_cast<UINT>(GetTickCount64()));
-
 	BuildTextures();
 
 	BuildRenderItems();
@@ -404,9 +402,9 @@ void D3DApp::BuildRenderItems() {
 				const auto ω = PxTwoPi / m_spring.Period;
 
 				PxVec3 position;
-				position.x = static_cast<float>(i) + 0.7f * Random::Float();
+				position.x = static_cast<float>(i) + 0.7f * m_random.Float();
 				position.y = m_spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, ω, 0.0f, position.x);
-				position.z = static_cast<float>(j) - 0.7f * Random::Float();
+				position.z = static_cast<float>(j) - 0.7f * m_random.Float();
 
 				bool isOverlapping = false;
 				for (const auto& sphere : spheres) {
@@ -418,15 +416,15 @@ void D3DApp::BuildRenderItems() {
 				if (isOverlapping) continue;
 
 				MaterialBase material;
-				const auto randomValue = Random::Float();
+				const auto randomValue = m_random.Float();
 				if (randomValue < 0.5f) {
-					material = MaterialBase::CreateLambertian(Random::Float4());
+					material = MaterialBase::CreateLambertian(m_random.Float4());
 				}
 				else if (randomValue < 0.75f) {
-					material = MaterialBase::CreateMetal(Random::Float4(0.5f, 1), Random::Float(0, 0.5f));
+					material = MaterialBase::CreateMetal(m_random.Float4(0.5f, 1), m_random.Float(0, 0.5f));
 				}
 				else {
-					material = MaterialBase::CreateDielectric(Random::Float4(), 1.5f);
+					material = MaterialBase::CreateDielectric(m_random.Float4(), 1.5f);
 				}
 
 				RenderItem renderItem;
