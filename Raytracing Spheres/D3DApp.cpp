@@ -740,8 +740,8 @@ void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[GamePad::MAX_PLAY
 
 	const auto Pitch = [&](float angle) {
 		const auto pitch = asin(m_camera.GetForwardDirection().y);
-		if (pitch + angle > XM_PIDIV2) angle = max(0.0f, XM_PIDIV2 - pitch - 0.1f);
-		else if (pitch + angle < -XM_PIDIV2) angle = min(0.0f, XM_PIDIV2 + pitch + 0.1f);
+		if (pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
+		else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
 		m_camera.Pitch(angle);
 	};
 

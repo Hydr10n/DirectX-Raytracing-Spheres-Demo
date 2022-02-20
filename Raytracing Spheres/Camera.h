@@ -34,7 +34,9 @@ public:
 
 	void UpdateView() {
 		if (!m_viewDirty) return;
-		m_forwardDirection.Cross( m_rightDirection).Normalize(m_upDirection);
+		m_forwardDirection.Normalize();
+		m_rightDirection.Normalize();
+		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
 		m_view = DirectX::XMMatrixLookToLH(m_position, m_forwardDirection, m_upDirection);
 		m_viewDirty = false;
 	}
