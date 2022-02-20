@@ -71,7 +71,7 @@ void TopLevelAccelerationStructureGenerator::AddInstance(
     UINT hitGroupIndex,                      // Hit group index, corresponding the the index of the
                                              // hit group in the Shader Binding Table that will be
                                              // invocated upon hitting the geometry
-    UINT instanceMask                        /*= 0xFF*/,
+    UINT instanceMask                        /*= ~0*/,
     D3D12_RAYTRACING_INSTANCE_FLAGS flags    /*= D3D12_RAYTRACING_INSTANCE_FLAG_NONE*/
 )
 {

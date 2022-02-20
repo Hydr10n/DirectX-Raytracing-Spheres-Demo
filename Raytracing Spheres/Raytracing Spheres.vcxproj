@@ -145,7 +145,6 @@
     <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\PrimaryRay.hlsli" />
     <None Include="Shaders\Random.hlsli" />
-    <None Include="Shaders\Ray.hlsli" />
     <None Include="Shaders\Utils.hlsli" />
     <None Include="Shaders\VertexTypes.hlsli" />
   </ItemGroup>

@@ -1,6 +1,22 @@
 #ifndef UTILS_HLSLI
 #define UTILS_HLSLI
 
+inline RayDesc CreateRayDesc(float3 origin, float3 direction, float tMin = 1e-4, float tMax = 1e32) {
+	const RayDesc ray = { origin, tMin, direction, tMax };
+	return ray;
+}
+
+inline RayDesc GenerateCameraRay(uint3 raysIndex, uint3 raysDimensions, float3 origin, float4x4 projectionToWorld, float offset = 0.5) {
+	const float2 xy = raysIndex.xy + offset;
+	float2 screenPosition = xy / raysDimensions.xy * 2 - 1;
+	screenPosition.y = -screenPosition.y;
+
+	float4 world = mul(float4(screenPosition, 0, 1), projectionToWorld);
+	world.xyz /= world.w;
+
+	return CreateRayDesc(origin, normalize(world.xyz - origin));
+}
+
 inline float2 VertexAttribute(float2 vertexAttributes[3], float2 barycentrics) {
 	return vertexAttributes[0]
 		+ barycentrics.x * (vertexAttributes[1] - vertexAttributes[0])
@@ -17,11 +33,11 @@ inline uint GetTriangleBaseIndex(uint indexStrideInBytes, uint primitiveIndex = 
 	return indexStrideInBytes * primitiveIndex * 3;
 }
 
-// Load 3 16-bit indices from a byte addressed buffer.
+// Load 3 16-bit indices from a ByteAddressBuffer.
 inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint offset) {
-	// ByteAddressBuffer loads must be aligned at a 4 byte boundary.
+	// ByteAddressBuffer loads must be aligned at a 4-byte boundary.
 	// Since we need to read 3 16-bit indices: { 0, 1, 2 }
-	// aligned at a 4 byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
+	// aligned at a 4-byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
 	// we will load 8 bytes (~ 4 indices { a b | c d }) to handle two possible index triplet layouts,
 	// based on the first index's offset in bytes being aligned at the 4-byte boundary or not:
 	// Aligned:     { 0 1 | 2 - }
@@ -45,10 +61,9 @@ inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint offset
 	return indices;
 }
 
-// http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-13-normal-mapping/
-inline float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3]) {
-	const float2 d0 = textureCoordinates[1] - textureCoordinates[0], d1 = textureCoordinates[2] - textureCoordinates[0];
-	return ((positions[1] - positions[0]) * d1.y - (positions[2] - positions[0]) * d0.y) / (d0.x * d1.y - d0.y * d1.x);
+inline float3x3 CalculateTBN(float3 normal, float3 rayDirection) {
+	const float3 T = normalize(cross(rayDirection, normal)), B = cross(normal, T);
+	return float3x3(T, B, normal);
 }
 
 #endif

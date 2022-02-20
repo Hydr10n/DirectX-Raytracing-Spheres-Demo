@@ -19,7 +19,6 @@ namespace RaytracingHelpers {
 
 	template <class Vertex, class Index>
 	class Triangles : public Geometry {
-		static_assert(std::is_class<Vertex>() && sizeof(Vertex) >= sizeof(float) * 3, "Unsupported vertex format");
 		static_assert(std::is_same<Index, UINT16>() || std::is_same<Index, UINT32>(), "Unsupported index format");
 
 	public:
@@ -27,7 +26,8 @@ namespace RaytracingHelpers {
 			ID3D12Device* pDevice,
 			const std::vector<Vertex>& vertices, const std::vector<Index>& indices,
 			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
-			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL
+			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
+			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 		) noexcept(false) :
 			Geometry(D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, flags),
 			m_device(pDevice) {
@@ -40,7 +40,7 @@ namespace RaytracingHelpers {
 			m_geometryDesc.Triangles = {
 				.Transform3x4 = transform3x4,
 				.IndexFormat = std::is_same<Index, UINT16>() ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
-				.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
+				.VertexFormat = vertexFormat,
 				.IndexCount = static_cast<UINT>(indicesSize),
 				.VertexCount = static_cast<UINT>(verticesSize),
 				.IndexBuffer = m_indexBuffer->GetGPUVirtualAddress(),

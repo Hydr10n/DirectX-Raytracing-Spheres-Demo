@@ -3,8 +3,6 @@
 
 #include "Common.hlsli"
 
-#include "Ray.hlsli"
-
 #include "Utils.hlsli"
 
 struct PrimaryRayPayload {
@@ -15,24 +13,20 @@ struct PrimaryRayPayload {
 
 inline float4 TracePrimaryRay(RayDesc ray, uint traceRecursionDepth, inout Random random) {
 	PrimaryRayPayload payload = { (float4) 0, traceRecursionDepth - 1, random };
-	TraceRay(g_scene, g_sceneConstant.IsLeftHandedCoordinateSystem ? RAY_FLAG_CULL_BACK_FACING_TRIANGLES : RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
+	TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 	return payload.Color;
 }
 
 [shader("miss")]
-void PrimaryRayMiss(inout PrimaryRayPayload payload) {
+void PrimaryRayMiss(inout PrimaryRayPayload payload : SV_RayPayload) {
 	if (g_sceneConstant.IsEnvironmentCubeMapUsed) {
-		float3 textureCoordinate = mul(WorldRayDirection(), (float3x3) g_sceneConstant.EnvironmentMapTransform);
-		if (!g_sceneConstant.IsLeftHandedCoordinateSystem) textureCoordinate.x = -textureCoordinate.x;
-		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_sceneConstant.EnvironmentMapTransform), 0);
 	}
-	else {
-		payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
-	}
+	else payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
 }
 
 [shader("closesthit")]
-void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleIntersectionAttributes attributes) {
+void PrimaryRayClosestHit(inout PrimaryRayPayload payload : SV_RayPayload, BuiltInTriangleIntersectionAttributes attributes : SV_IntersectionAttributes) {
 	if (!payload.TraceRecursionDepth) {
 		payload.Color = 0;
 		return;
@@ -55,9 +49,7 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstant.TextureTransform).xy;
 
 		if (g_objectConstant.TextureFlags & TextureFlags::NormalMap) {
-			const float3 positions[] = { g_vertices[indices[0]].Position, g_vertices[indices[1]].Position, g_vertices[indices[2]].Position };
-			const float3 tangent = CalculateTangent(positions, textureCoordinates);
-			const float3x3 TBN = float3x3(tangent, cross(tangent, worldNormal), worldNormal);
+			const float3x3 TBN = CalculateTBN(worldNormal, ray.Direction);
 
 			worldNormal = normalize(mul(normalize(g_normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
 		}
@@ -71,12 +63,12 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload, BuiltInTriangleInters
 	if (g_objectConstant.TextureFlags & TextureFlags::ColorMap) color = g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	else color = g_objectConstant.Material.Color;
 
-	float3 direction;
-	float4 emitted = 0, attenuation = 0;
-	if (g_objectConstant.Material.Emit()) emitted = color;
-	if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) attenuation = color;
+	float3 direction = 0;
+	float4 emission = 0, attenuation = 0;
+	if (g_objectConstant.Material.IsEmissive()) emission = color;
+	else if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) attenuation = color;
 
-	payload.Color = emitted + attenuation * TracePrimaryRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
+	payload.Color = emission + attenuation * TracePrimaryRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
 }
 
 TriangleHitGroup PrimaryRayHitGroup = { "", "PrimaryRayClosestHit" };

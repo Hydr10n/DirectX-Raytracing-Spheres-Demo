@@ -124,9 +124,7 @@ private:
 
 	Random m_random;
 
-	static constexpr bool IsLeftHandedCoordinateSystem{};
-
-	Camera m_camera = decltype(m_camera)(IsLeftHandedCoordinateSystem);
+	Camera m_camera;
 
 	MyPhysX m_myPhysX;
 

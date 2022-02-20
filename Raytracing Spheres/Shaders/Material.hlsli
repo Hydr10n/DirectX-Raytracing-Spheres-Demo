@@ -16,7 +16,7 @@ struct Material {
 	float RefractiveIndex, Roughness, Padding;
 	float4 Color;
 
-	bool Emit() {
+	bool IsEmissive() {
 		switch (Type) {
 		case Type::DiffuseLight: return true;
 		default: return false;

@@ -23,7 +23,7 @@ struct SceneConstant {
 	float4x4 ProjectionToWorld, EnvironmentMapTransform;
 	float3 CameraPosition;
 	uint AntiAliasingSampleCount, FrameCount;
-	bool IsLeftHandedCoordinateSystem, IsEnvironmentCubeMapUsed;
+	bool IsEnvironmentCubeMapUsed;
 };
 ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
 
