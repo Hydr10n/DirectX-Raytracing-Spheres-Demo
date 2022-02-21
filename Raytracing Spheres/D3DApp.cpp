@@ -168,9 +168,9 @@ void D3DApp::Render() {
 
 	PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
-	DispatchRays();
-
 	{
+		DispatchRays();
+
 		const auto output = m_output.Get(), renderTarget = m_deviceResources->GetRenderTarget();
 
 		TransitionResource(commandList, renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -595,13 +595,13 @@ void D3DApp::CreateTopLevelAccelerationStructure(bool updateOnly, AccelerationSt
 void D3DApp::CreateAccelerationStructures() {
 	const auto commandList = m_deviceResources->GetCommandList();
 
-	commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr);
+	ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
 
 	CreateBottomLevelAccelerationStructure({ m_sphere->GetGeometryDesc() }, m_sphereBottomLevelAccelerationStructureBuffers);
 
 	CreateTopLevelAccelerationStructure(false, m_topLevelAccelerationStructureBuffers);
 
-	commandList->Close();
+	ThrowIfFailed(commandList->Close());
 
 	m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
 

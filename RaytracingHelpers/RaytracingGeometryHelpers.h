@@ -61,16 +61,12 @@ namespace RaytracingHelpers {
 				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
 			};
 
-			srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-			srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 			srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.VertexCount;
 			srvDesc.Buffer.StructureByteStride = sizeof(Vertex);
 			m_device->CreateShaderResourceView(m_vertexBuffer.Get(), &srvDesc, vertexDescriptor);
 
-			srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-			srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-			srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.IndexCount / sizeof(Index);
-			srvDesc.Buffer.StructureByteStride = 0;
+			srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.IndexCount;
+			srvDesc.Buffer.StructureByteStride = sizeof(Index);
 			m_device->CreateShaderResourceView(m_indexBuffer.Get(), &srvDesc, indexDescriptor);
 		}
 

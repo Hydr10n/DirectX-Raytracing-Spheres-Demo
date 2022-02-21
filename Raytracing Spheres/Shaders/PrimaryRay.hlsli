@@ -22,7 +22,7 @@ void PrimaryRayMiss(inout PrimaryRayPayload payload : SV_RayPayload) {
 	if (g_sceneConstant.IsEnvironmentCubeMapUsed) {
 		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_sceneConstant.EnvironmentMapTransform), 0);
 	}
-	else payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5, 0.7, 1, 1), 0.5 * normalize(WorldRayDirection()).y + 0.5);
+	else payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5f, 0.7f, 1, 1), 0.5f * normalize(WorldRayDirection()).y + 0.5f);
 }
 
 [shader("closesthit")]
@@ -32,13 +32,12 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload : SV_RayPayload, Built
 		return;
 	}
 
-	const uint3 indices = Load3x16BitIndices(g_indices, GetTriangleBaseIndex(2));
-
 	const RayDesc ray = CreateRayDesc(WorldRayOrigin(), WorldRayDirection());
 
 	float3 worldNormal;
 	float2 textureCoordinate;
 	{
+		const uint3 indices = Load3Indices(g_indices);
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
 
@@ -50,7 +49,6 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload : SV_RayPayload, Built
 
 		if (g_objectConstant.TextureFlags & TextureFlags::NormalMap) {
 			const float3x3 TBN = CalculateTBN(worldNormal, ray.Direction);
-
 			worldNormal = normalize(mul(normalize(g_normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
 		}
 	}
