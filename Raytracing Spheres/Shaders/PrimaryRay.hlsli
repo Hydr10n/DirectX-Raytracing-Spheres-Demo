@@ -57,16 +57,15 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload : SV_RayPayload, Built
 	hitRecord.Vertex.Position = ray.Origin + ray.Direction * RayTCurrent();
 	hitRecord.SetFaceNormal(ray.Direction, worldNormal);
 
-	float4 color;
-	if (g_objectConstant.TextureFlags & TextureFlags::ColorMap) color = g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
-	else color = g_objectConstant.Material.Color;
+	const float4 color = g_objectConstant.TextureFlags & TextureFlags::ColorMap ?
+		g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) :
+		g_objectConstant.Material.Color;
 
 	float3 direction = 0;
-	float4 emission = 0, attenuation = 0;
-	if (g_objectConstant.Material.IsEmissive()) emission = color;
-	else if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) attenuation = color;
-
-	payload.Color = emission + attenuation * TracePrimaryRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
+	if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) {
+		payload.Color = color * TracePrimaryRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
+	}
+	else payload.Color = g_objectConstant.Material.IsEmissive() ? color : 0;
 }
 
 TriangleHitGroup PrimaryRayHitGroup = { "", "PrimaryRayClosestHit" };

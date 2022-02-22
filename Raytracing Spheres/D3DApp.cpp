@@ -731,7 +731,7 @@ void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[GamePad::MAX_PLAY
 		PxScene* scene;
 		m_myPhysX.GetPhysics().getScenes(&scene, sizeof(scene));
 		PxRaycastBuffer raycastBuffer;
-		if (scene->raycast(To_PxVec3(m_camera.GetPosition()), normalized, FLT_MAX, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+		if (scene->raycast(To_PxVec3(m_camera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 			x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 		}
 

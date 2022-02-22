@@ -48,10 +48,11 @@ struct Material {
 		}
 
 		case Type::Dielectric: {
-			const float cosTheta = dot(-ray.Direction, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
+			const float
+				cosTheta = dot(-ray.Direction, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
 				refractionRatio = hitRecord.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 			const bool canRefract = refractionRatio * sinTheta <= 1;
-			direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) < random.Float3() ?
+			direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) <= random.Float3() ?
 				refract(ray.Direction, hitRecord.Vertex.Normal, refractionRatio) :
 				reflect(ray.Direction, hitRecord.Vertex.Normal);
 
