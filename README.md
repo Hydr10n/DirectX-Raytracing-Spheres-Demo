@@ -48,17 +48,18 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 - Microsoft Visual Studio 2022
 
 - vcpkg
-```cmd
-> git clone https://github.com/Microsoft/vcpkg
-> .\vcpkg\bootstrap-vcpkg.bat
-> .\vcpkg\vcpkg integrate install
-```
+    ```cmd
+    > git clone https://github.com/Microsoft/vcpkg
+    > .\vcpkg\bootstrap-vcpkg.bat
+    > .\vcpkg\vcpkg integrate install
+    ```
 
 ### Dependencies
+- [DirectXTK12](https://github.com/Microsoft/DirectXTK12)
 - [PhysX](https://github.com/NVIDIAGameWorks/PhysX)
-```cmd
-> .\vcpkg\vcpkg install physx:x64-windows
-```
+    ```cmd
+    > .\vcpkg\vcpkg install physx:x64-windows
+    ```
 
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 1809
