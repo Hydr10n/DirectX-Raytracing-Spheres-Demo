@@ -22,7 +22,5 @@ private:
 
 	std::vector<DisplayHelpers::Resolution> m_displayResolutions;
 
-	UINT m_antiAliasingSampleCount{};
-
 	LRESULT CALLBACK OnMessageReceived(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 };
