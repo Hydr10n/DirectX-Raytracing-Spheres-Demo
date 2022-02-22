@@ -80,7 +80,7 @@ public:
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
 
   /// Add a geometry descriptor into the acceleration structure.
-  void AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc);
+  void AddGeometry(const D3D12_RAYTRACING_GEOMETRY_DESC& geometry);
 
   /// Compute the size of the scratch space required to build the acceleration structure, as well as
   /// the size of the resulting structure. The allocation of the buffers is then left to the

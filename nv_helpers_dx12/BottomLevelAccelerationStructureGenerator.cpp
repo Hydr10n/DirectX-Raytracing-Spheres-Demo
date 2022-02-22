@@ -44,9 +44,9 @@ namespace nv_helpers_dx12 {
 //--------------------------------------------------------------------------------------------------
 // Add a geometry descriptor into the acceleration structure.
 void BottomLevelAccelerationStructureGenerator::AddGeometry(
-    const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc
+    const D3D12_RAYTRACING_GEOMETRY_DESC& geometry
 ) {
-    m_geometryDescs.push_back(geometryDesc);
+    m_geometryDescs.push_back(geometry);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -107,13 +107,12 @@ void BottomLevelAccelerationStructureGenerator::Generate(
                                    // structure, used if an iterative update
                                    // is requested
 ) const {
-  auto updateOnly = previousResult != nullptr;
-
   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = m_flags;
   // The stored flags represent whether the AS has been built for updates or
   // not. If yes and an update is requested, the builder is told to only update
   // the AS instead of fully rebuilding it
-  if (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && updateOnly) {
+  if (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
+      && previousResult != nullptr) {
     flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
   }
 

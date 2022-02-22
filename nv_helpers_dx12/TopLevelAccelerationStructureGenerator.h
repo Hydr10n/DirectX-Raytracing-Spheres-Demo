@@ -47,7 +47,8 @@ buffer needs to be kept until the command list execution is finished.
 
 Example:
 
-TopLevelAccelerationStructureGenerator topLevelAS(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+TopLevelAccelerationStructureGenerator topLevelAS(
+D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 topLevelAS.AddInstance(instances1, matrix1, instanceId1, hitGroupIndex1);
 topLevelAS.AddInstance(instances2, matrix2, instanceId2, hitGroupIndex2);
 ...
@@ -134,30 +135,11 @@ public:
   ) const;
 
 private:
-  /// Helper struct storing the instance data
-  struct Instance
-  {
-    Instance(D3D12_GPU_VIRTUAL_ADDRESS blAS, const DirectX::XMMATRIX& tr, UINT iID, UINT hgId,
-             UINT iMask, D3D12_RAYTRACING_INSTANCE_FLAGS flags);
-    /// Bottom-level AS
-    D3D12_GPU_VIRTUAL_ADDRESS bottomLevelAS;
-    /// Transform matrix
-    DirectX::XMMATRIX transform;
-    /// Instance ID visible in the shader
-    UINT instanceID;
-    /// Hit group index used to fetch the shaders from the SBT
-    UINT hitGroupIndex;
-
-    UINT instanceMask;
-
-    D3D12_RAYTRACING_INSTANCE_FLAGS flags;
-  };
-
   /// Construction flags, indicating whether the AS supports iterative updates
   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags =
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-  /// Instances contained in the top-level AS
-  std::vector<Instance> m_instances;
+  /// Instance descriptors contained in the top-level AS
+  std::vector<D3D12_RAYTRACING_INSTANCE_DESC> m_instanceDescs;
 
   /// Size of the temporary memory used by the TLAS builder
   UINT64 m_scratchSizeInBytes = 0;

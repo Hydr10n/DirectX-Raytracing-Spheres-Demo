@@ -66,17 +66,23 @@ void TopLevelAccelerationStructureGenerator::AddInstance(
     const DirectX::XMMATRIX& transform,      // Transform matrix to apply to the instance, allowing
                                              // the same bottom-level AS to be used at several
                                              // world-space positions
-    UINT instanceID,                         // Instance ID, which can be used in the shaders to
+    UINT ID,                                 // Instance ID, which can be used in the shaders to
                                              // identify this specific instance
     UINT hitGroupIndex,                      // Hit group index, corresponding the the index of the
                                              // hit group in the Shader Binding Table that will be
                                              // invocated upon hitting the geometry
-    UINT instanceMask                        /*= ~0*/,
+    UINT mask                                /*= ~0*/,
     D3D12_RAYTRACING_INSTANCE_FLAGS flags    /*= D3D12_RAYTRACING_INSTANCE_FLAG_NONE*/
 )
 {
-  m_instances.emplace_back(
-      Instance(bottomLevelAS, transform, instanceID, hitGroupIndex, instanceMask, flags));
+  D3D12_RAYTRACING_INSTANCE_DESC instance;
+  DirectX::XMStoreFloat3x4(reinterpret_cast<DirectX::XMFLOAT3X4*>(instance.Transform), transform);
+  instance.InstanceID = ID;
+  instance.InstanceMask = mask;
+  instance.InstanceContributionToHitGroupIndex = hitGroupIndex;
+  instance.Flags = flags;
+  instance.AccelerationStructure = bottomLevelAS;
+  m_instanceDescs.emplace_back(instance);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -101,7 +107,7 @@ void TopLevelAccelerationStructureGenerator::ComputeASBufferSizes(
   prebuildDesc = {};
   prebuildDesc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
   prebuildDesc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-  prebuildDesc.NumDescs = static_cast<UINT>(m_instances.size());
+  prebuildDesc.NumDescs = static_cast<UINT>(m_instanceDescs.size());
   prebuildDesc.Flags = m_flags;
 
   // This structure is used to hold the sizes of the required scratch memory and
@@ -125,7 +131,7 @@ void TopLevelAccelerationStructureGenerator::ComputeASBufferSizes(
   // The instance descriptors are stored as-is in GPU memory, so we can deduce
   // the required size from the instance count
   m_instanceDescsSizeInBytes =
-      ROUND_UP(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * m_instances.size(),
+      ROUND_UP(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * prebuildDesc.NumDescs,
                D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
   scratchSizeInBytes = m_scratchSizeInBytes;
@@ -159,33 +165,7 @@ void TopLevelAccelerationStructureGenerator::Generate(
     throw std::logic_error("Cannot map the instance descriptor buffer");
   }
 
-  auto instanceCount = static_cast<UINT>(m_instances.size());
-
-  auto updateOnly = previousResult != nullptr;
-
-  // Initialize the memory to zero on the first time only
-  if (!updateOnly)
-  {
-    ZeroMemory(instanceDescs, m_instanceDescsSizeInBytes);
-  }
-
-  // Create the description for each instance
-  for (uint32_t i = 0; i < instanceCount; i++)
-  {
-    // Instance ID visible in the shader in InstanceID()
-    instanceDescs[i].InstanceID = m_instances[i].instanceID;
-    // Index of the hit group invoked upon intersection
-    instanceDescs[i].InstanceContributionToHitGroupIndex = m_instances[i].hitGroupIndex;
-    // Instance flags, including backface culling, winding, etc
-    instanceDescs[i].Flags = m_instances[i].flags;
-    // Instance transform matrix
-    DirectX::XMStoreFloat3x4(reinterpret_cast<DirectX::XMFLOAT3X4*>(instanceDescs[i].Transform),
-        m_instances[i].transform);
-    // Get access to the bottom level
-    instanceDescs[i].AccelerationStructure = m_instances[i].bottomLevelAS;
-    // Visibility mask
-    instanceDescs[i].InstanceMask = m_instances[i].instanceMask;
-  }
+  std::copy(m_instanceDescs.cbegin(), m_instanceDescs.cend(), instanceDescs);
 
   descriptorsBuffer->Unmap(0, nullptr);
 
@@ -193,7 +173,8 @@ void TopLevelAccelerationStructureGenerator::Generate(
   // The stored flags represent whether the AS has been built for updates or
   // not. If yes and an update is requested, the builder is told to only update
   // the AS instead of fully rebuilding it
-  if (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && updateOnly)
+  if (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
+      && previousResult != nullptr)
   {
     flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
   }
@@ -205,7 +186,7 @@ void TopLevelAccelerationStructureGenerator::Generate(
   buildDesc.Inputs.Flags = flags;
   buildDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
   buildDesc.Inputs.InstanceDescs = descriptorsBuffer->GetGPUVirtualAddress();
-  buildDesc.Inputs.NumDescs = instanceCount;
+  buildDesc.Inputs.NumDescs = static_cast<UINT>(m_instanceDescs.size());
   buildDesc.DestAccelerationStructureData = {resultBuffer->GetGPUVirtualAddress()
                                              };
   buildDesc.ScratchAccelerationStructureData = {scratchBuffer->GetGPUVirtualAddress()
@@ -226,16 +207,4 @@ void TopLevelAccelerationStructureGenerator::Generate(
   commandList->ResourceBarrier(1, &uavBarrier);
 }
 
-//--------------------------------------------------------------------------------------------------
-//
-//
-TopLevelAccelerationStructureGenerator::Instance::Instance(
-                                        D3D12_GPU_VIRTUAL_ADDRESS blAS,
-                                        const DirectX::XMMATRIX& tr,
-                                        UINT iID, UINT hgId, UINT iMask,
-                                        D3D12_RAYTRACING_INSTANCE_FLAGS flags)
-    : bottomLevelAS(blAS), transform(tr), instanceID(iID), hitGroupIndex(hgId), instanceMask(iMask),
-      flags(flags)
-{
-}
 } // namespace nv_helpers_dx12

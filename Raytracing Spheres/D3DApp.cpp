@@ -65,7 +65,7 @@ struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
 	UINT TextureFlags;
 	XMFLOAT3 Padding;
 	XMFLOAT4X4 TextureTransform;
-	MaterialBase Material;
+	Material Material;
 };
 
 D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
@@ -354,15 +354,13 @@ void D3DApp::LoadTextures() {
 void D3DApp::BuildRenderItems() {
 	if (!m_renderItems.empty()) return;
 
-	const auto AddRenderItem = [&](RenderItem& renderItem, const MaterialBase& material, const PxSphereGeometry& geometry, const PxVec3& position) {
+	const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) {
 		renderItem.HitGroup = ShaderSubobjects::PrimaryRayHitGroup;
 
 		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndices::SphereVertices;
 		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndices::SphereIndices;
 
 		renderItem.ObjectConstantBufferIndex = m_renderItems.size();
-
-		renderItem.Material = Material(material, renderItem.ObjectConstantBufferIndex);
 
 		const auto rigidDynamic = m_myPhysX.AddRigidDynamic(geometry, PxTransform(position));
 
@@ -381,24 +379,27 @@ void D3DApp::BuildRenderItems() {
 	{
 		const struct {
 			PxVec3 Position;
-			MaterialBase Material;
+			Material Material;
 		} spheres[]{
 			{
 				{ -2, 0.5f, 0 },
-				MaterialBase::CreateLambertian({ 0.1f, 0.2f, 0.5f, 1 })
+				Material().AsLambertian({ 0.1f, 0.2f, 0.5f, 1 })
 			},
 			{
 				{ 0, 0.5f, 0 },
-				MaterialBase::CreateDielectric({ 1, 1, 1, 1 }, 1.5f)
+				Material().AsDielectric({ 1, 1, 1, 1 }, 1.5f)
 			},
 			{
 				{ 2, 0.5f, 0 },
-				MaterialBase::CreateMetal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
+				Material().AsMetal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
 			}
 		};
 		for (const auto& sphere : spheres) {
 			RenderItem renderItem;
-			AddRenderItem(renderItem, sphere.Material, PxSphereGeometry(0.5f), sphere.Position);
+
+			renderItem.Material = sphere.Material;
+
+			AddRenderItem(renderItem, PxSphereGeometry(0.5f), sphere.Position);
 		}
 
 		for (int i = -10; i < 10; i++) {
@@ -420,17 +421,16 @@ void D3DApp::BuildRenderItems() {
 				}
 				if (isOverlapping) continue;
 
-				MaterialBase material;
-				const auto randomValue = m_random.Float();
-				if (randomValue < 0.5f) material = MaterialBase::CreateLambertian(m_random.Float4());
-				else if (randomValue < 0.75f) material = MaterialBase::CreateMetal(m_random.Float4(0.5f, 1), m_random.Float(0, 0.5f));
-				else material = MaterialBase::CreateDielectric(m_random.Float4(), 1.5f);
-
 				RenderItem renderItem;
 
 				renderItem.Name = Objects::HarmonicOscillator;
 
-				const auto rigidDynamic = AddRenderItem(renderItem, material, PxSphereGeometry(0.075f), position);
+				const auto randomValue = m_random.Float();
+				if (randomValue < 0.5f) renderItem.Material.AsLambertian(m_random.Float4());
+				else if (randomValue < 0.75f) renderItem.Material.AsMetal(m_random.Float4(0.5f, 1), m_random.Float(0, 0.5f));
+				else renderItem.Material.AsDielectric(m_random.Float4(), 1.5f);
+
+				const auto rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(0.075f), position);
 
 				rigidDynamic->setLinearVelocity(PxVec3(0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0));
 			}
@@ -441,22 +441,22 @@ void D3DApp::BuildRenderItems() {
 		const struct {
 			LPCSTR Name;
 			Sphere& Sphere;
-			MaterialBase Material;
+			Material Material;
 		} objects[]{
 			{
 				Objects::Moon,
 				m_Moon,
-				MaterialBase::CreateMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
+				Material().AsMetal({0.5f, 0.5f, 0.5f, 1}, 0.8f)
 			},
 			{
 				Objects::Earth,
 				m_Earth,
-				MaterialBase::CreateLambertian({ 0.1f, 0.2f, 0.5f, 1 })
+				Material().AsLambertian({ 0.1f, 0.2f, 0.5f, 1 })
 			},
 			{
 				Objects::Star,
 				m_star,
-				MaterialBase::CreateMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
+				Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
 			}
 		};
 		for (const auto& object : objects) {
@@ -464,9 +464,11 @@ void D3DApp::BuildRenderItems() {
 
 			renderItem.Name = object.Name;
 
+			renderItem.Material = object.Material;
+
 			if (m_textures.contains(object.Name)) renderItem.pTextures = &m_textures[object.Name];
 
-			const auto rigidDynamic = AddRenderItem(renderItem, object.Material, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
+			const auto rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
 
 			if (renderItem.Name == Objects::Moon) {
 				const auto x = m_Earth.Position - object.Sphere.Position;
@@ -572,7 +574,7 @@ void D3DApp::CreateTopLevelAccelerationStructure(bool updateOnly, AccelerationSt
 		PxMat44 world(PxVec4(1, 1, -1, 1));
 		world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
 		world.scale(PxVec4(scaling, 1));
-		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i, 0xFF, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
+		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
 	}
 
 	const auto device = m_deviceResources->GetD3DDevice();

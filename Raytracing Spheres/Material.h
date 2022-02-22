@@ -2,53 +2,40 @@
 
 #include <DirectXMath.h>
 
-struct MaterialBase {
-	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type;
-	float RefractiveIndex, Roughness, Padding;
-	DirectX::XMFLOAT4 Color;
+struct Material {
+	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type{};
+	float RefractiveIndex{}, Roughness{}, Padding{};
+	DirectX::XMFLOAT4 Color{};
 
-	static auto CreateLambertian(const DirectX::XMFLOAT4& color) {
-		return MaterialBase{
-			.Type = Type::Lambertian,
-			.Color = color
-		};
+	auto& AsLambertian(const DirectX::XMFLOAT4& color) {
+		Type = Type::Lambertian;
+		Color = color;
+		return *this;
 	}
 
-	static auto CreateMetal(const DirectX::XMFLOAT4& color, float roughness) {
-		return MaterialBase{
-			.Type = Type::Metal,
-			.Roughness = roughness,
-			.Color = color
-		};
+	auto& AsMetal(const DirectX::XMFLOAT4& color, float roughness) {
+		Type = Type::Metal;
+		Roughness = roughness;
+		Color = color;
+		return *this;
 	}
 
-	static auto CreateDielectric(const DirectX::XMFLOAT4& color, float refractiveIndex) {
-		return MaterialBase{
-			.Type = Type::Dielectric,
-			.RefractiveIndex = refractiveIndex,
-			.Color = color
-		};
+	auto& AsDielectric(const DirectX::XMFLOAT4& color, float refractiveIndex) {
+		Type = Type::Dielectric;
+		RefractiveIndex = refractiveIndex;
+		Color = color;
+		return *this;
 	}
 
-	static auto CreateIsotropic(const DirectX::XMFLOAT4& color) {
-		return MaterialBase{
-			.Type = Type::Isotropic,
-			.Color = color
-		};
+	auto& AsIsotropic(const DirectX::XMFLOAT4& color) {
+		Type = Type::Isotropic;
+		Color = color;
+		return *this;
 	}
 
-	static auto CreateDiffuseLight(const DirectX::XMFLOAT4& color) {
-		return MaterialBase{
-			.Type = Type::DiffuseLight,
-			.Color = color
-		};
+	auto& AsDiffuseLight(const DirectX::XMFLOAT4& color) {
+		Type = Type::DiffuseLight;
+		Color = color;
+		return *this;
 	}
-};
-
-struct Material : MaterialBase {
-	size_t ConstantBufferIndex = SIZE_MAX;
-
-	Material() = default;
-
-	Material(const MaterialBase& materialBase, size_t constantBufferIndex) : MaterialBase(materialBase), ConstantBufferIndex(constantBufferIndex) {}
 };
