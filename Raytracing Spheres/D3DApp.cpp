@@ -22,6 +22,7 @@
 
 using namespace DirectX;
 using namespace DX;
+using namespace Microsoft::WRL;
 using namespace PhysicsHelpers;
 using namespace physx;
 using namespace RaytracingHelpers;
@@ -682,7 +683,7 @@ void D3DApp::CreateShaderBindingTables() {
 
 	ThrowIfFailed(CreateUploadBuffer(device, m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
 
-	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
+	ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 	ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
 
 	m_shaderBindingTableGenerator.Generate(m_shaderBindingTable.Get(), stateObjectProperties.Get());
@@ -852,28 +853,30 @@ void D3DApp::DispatchRays() {
 
 	commandList->SetPipelineState1(m_pipelineStateObject.Get());
 
-	const auto rayGenerationSectionSize = m_shaderBindingTableGenerator.GetRayGenerationSectionSize(),
+	const auto
+		rayGenerationSectionSize = m_shaderBindingTableGenerator.GetRayGenerationSectionSize(),
 		missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),
 		hitGroupSectionSize = m_shaderBindingTableGenerator.GetHitGroupSectionSize();
 
-	const auto rayGenerationShaderRecordStartAddress = m_shaderBindingTable->GetGPUVirtualAddress(),
-		missShaderTableStartAddress = rayGenerationShaderRecordStartAddress + rayGenerationSectionSize,
-		hitGroupTableStartAddress = missShaderTableStartAddress + missSectionSize;
+	const auto
+		pRayGenerationShaderRecord = m_shaderBindingTable->GetGPUVirtualAddress(),
+		pMissShaderTable = pRayGenerationShaderRecord + rayGenerationSectionSize,
+		pHitGroupTable = pMissShaderTable + missSectionSize;
 
 	const auto outputSize = GetOutputSize();
 
 	const D3D12_DISPATCH_RAYS_DESC raysDesc{
 		.RayGenerationShaderRecord = {
-			.StartAddress = rayGenerationShaderRecordStartAddress,
+			.StartAddress = pRayGenerationShaderRecord,
 			.SizeInBytes = rayGenerationSectionSize
 		},
 		.MissShaderTable = {
-			.StartAddress = missShaderTableStartAddress,
+			.StartAddress = pMissShaderTable,
 			.SizeInBytes = missSectionSize,
 			.StrideInBytes = m_shaderBindingTableGenerator.GetMissEntrySize()
 		},
 		.HitGroupTable = {
-			.StartAddress = hitGroupTableStartAddress,
+			.StartAddress = pHitGroupTable,
 			.SizeInBytes = hitGroupSectionSize,
 			.StrideInBytes = m_shaderBindingTableGenerator.GetHitGroupEntrySize()
 		},

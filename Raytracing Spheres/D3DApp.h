@@ -115,7 +115,9 @@ private:
 	static constexpr float SphereRadius = 0.5f;
 	std::unique_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
-	RaytracingHelpers::AccelerationStructureBuffers m_sphereBottomLevelAccelerationStructureBuffers, m_topLevelAccelerationStructureBuffers;
+	RaytracingHelpers::AccelerationStructureBuffers
+		m_sphereBottomLevelAccelerationStructureBuffers,
+		m_topLevelAccelerationStructureBuffers;
 
 	nv_helpers_dx12::ShaderBindingTableGenerator m_shaderBindingTableGenerator;
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_shaderBindingTable;
