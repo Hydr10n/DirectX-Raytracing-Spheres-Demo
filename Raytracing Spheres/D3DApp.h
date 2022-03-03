@@ -22,7 +22,7 @@
 
 #include "ShaderBindingTableGenerator.h"
 
-#include "RaytracingGeometryHelpers.h"
+#include "DirectXRaytracingHelpers.h"
 
 #include "Material.h"
 #include "Texture.h"
@@ -113,9 +113,9 @@ private:
 	DirectX::GraphicsResource m_sceneConstantBuffer, m_objectConstantBuffer;
 
 	static constexpr float SphereRadius = 0.5f;
-	std::unique_ptr<RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
+	std::unique_ptr<DirectX::RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
-	RaytracingHelpers::AccelerationStructureBuffers
+	DirectX::RaytracingHelpers::AccelerationStructureBuffers
 		m_sphereBottomLevelAccelerationStructureBuffers,
 		m_topLevelAccelerationStructureBuffers;
 
@@ -176,9 +176,9 @@ private:
 
 	void CreateGeometries();
 
-	void CreateBottomLevelAccelerationStructure(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, RaytracingHelpers::AccelerationStructureBuffers& buffers);
+	void CreateBottomLevelAccelerationStructure(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, DirectX::RaytracingHelpers::AccelerationStructureBuffers& buffers);
 
-	void CreateTopLevelAccelerationStructure(bool updateOnly, RaytracingHelpers::AccelerationStructureBuffers& buffers);
+	void CreateTopLevelAccelerationStructure(bool updateOnly, DirectX::RaytracingHelpers::AccelerationStructureBuffers& buffers);
 
 	void CreateAccelerationStructures();
 

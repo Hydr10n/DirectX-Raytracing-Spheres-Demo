@@ -93,27 +93,64 @@ LRESULT MainWindow::OnMessageReceived(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 		while (ShowCursor(TRUE) < 0) {}
 		ClipCursor(nullptr);
 
-		const auto menu = CreatePopupMenu(), hMenuWindowMode = CreatePopupMenu(), hMenuResolution = CreatePopupMenu(), hMenuAntiAliasing = CreatePopupMenu();
+		const auto menu = CreatePopupMenu();
 
-		const auto mode = m_windowModeHelper.GetMode();
-		AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hMenuWindowMode), L"Window Mode");
-		AppendMenuW(hMenuWindowMode, MF_STRING | (mode == WindowMode::Windowed ? MF_CHECKED : MF_UNCHECKED), MenuID::WindowModeWindowed, L"Windowed");
-		AppendMenuW(hMenuWindowMode, MF_STRING | (mode == WindowMode::Borderless ? MF_CHECKED : MF_UNCHECKED), MenuID::WindowModeBorderless, L"Borderless");
-		AppendMenuW(hMenuWindowMode, MF_STRING | (mode == WindowMode::Fullscreen ? MF_CHECKED : MF_UNCHECKED), MenuID::WindowModeFullscreen, L"Fullscreen");
+		{
+			const auto windowModeMenu = CreatePopupMenu();
 
-		AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hMenuResolution), L"Resolution");
-		for (size_t size = m_displayResolutions.size(), i = 0; i < size; i++) {
-			AppendMenuW(hMenuResolution, MF_STRING | (m_windowModeHelper.ClientSize == m_displayResolutions[i] ? MF_CHECKED : MF_UNCHECKED), MenuID::FirstResolution + i, (to_wstring(m_displayResolutions[i].cx) + L" × " + to_wstring(m_displayResolutions[i].cy)).c_str());
+			AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(windowModeMenu), L"Window Mode");
+
+			AppendMenuW(windowModeMenu, MF_STRING, MenuID::WindowModeWindowed, L"Windowed");
+			AppendMenuW(windowModeMenu, MF_STRING, MenuID::WindowModeBorderless, L"Borderless");
+			AppendMenuW(windowModeMenu, MF_STRING, MenuID::WindowModeFullscreen, L"Fullscreen");
+
+			const auto CheckItem = [&](UINT ID) {
+				CheckMenuRadioItem(windowModeMenu, MenuID::WindowModeWindowed, ID, ID, MF_BYCOMMAND);
+			};
+			switch (m_windowModeHelper.GetMode()) {
+			case WindowMode::Windowed: CheckItem(MenuID::WindowModeWindowed); break;
+			case WindowMode::Borderless: CheckItem(MenuID::WindowModeBorderless); break;
+			case WindowMode::Fullscreen: CheckItem(MenuID::WindowModeFullscreen); break;
+			}
+		}
+
+		{
+			const auto resolutionMenu = CreatePopupMenu();
+
+			AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(resolutionMenu), L"Resolution");
+
+			for (size_t size = m_displayResolutions.size(), i = 0; i < size; i++) {
+				const auto menuID = static_cast<UINT>(MenuID::FirstResolution + i);
+
+				AppendMenuW(resolutionMenu, MF_STRING, menuID, (to_wstring(m_displayResolutions[i].cx) + L" × " + to_wstring(m_displayResolutions[i].cy)).c_str());
+
+				if (m_windowModeHelper.ClientSize == m_displayResolutions[i]) {
+					CheckMenuRadioItem(resolutionMenu, MenuID::FirstResolution, menuID, menuID, MF_BYCOMMAND);
+				}
+			}
 		}
 
 		AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
-		const auto antiAliasingSampleCount = m_app->GetAntiAliasingSampleCount();
-		AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hMenuAntiAliasing), L"Anti-Aliasing");
-		AppendMenuW(hMenuAntiAliasing, MF_STRING | (antiAliasingSampleCount == 1 ? MF_CHECKED : MF_UNCHECKED), MenuID::AntiAliasingSampleCount1, L"Off");
-		AppendMenuW(hMenuAntiAliasing, MF_STRING | (antiAliasingSampleCount == 2 ? MF_CHECKED : MF_UNCHECKED), MenuID::AntiAliasingSampleCount2, L"2x");
-		AppendMenuW(hMenuAntiAliasing, MF_STRING | (antiAliasingSampleCount == 4 ? MF_CHECKED : MF_UNCHECKED), MenuID::AntiAliasingSampleCount4, L"4x");
-		AppendMenuW(hMenuAntiAliasing, MF_STRING | (antiAliasingSampleCount == 8 ? MF_CHECKED : MF_UNCHECKED), MenuID::AntiAliasingSampleCount8, L"8x");
+		{
+			const auto antiAliasingMenu = CreatePopupMenu();
+
+			AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(antiAliasingMenu), L"Anti-Aliasing");
+			AppendMenuW(antiAliasingMenu, MF_STRING, MenuID::AntiAliasingSampleCount1, L"Off");
+			AppendMenuW(antiAliasingMenu, MF_STRING, MenuID::AntiAliasingSampleCount2, L"2x");
+			AppendMenuW(antiAliasingMenu, MF_STRING, MenuID::AntiAliasingSampleCount4, L"4x");
+			AppendMenuW(antiAliasingMenu, MF_STRING, MenuID::AntiAliasingSampleCount8, L"8x");
+
+			const auto CheckItem = [&](UINT ID) {
+				CheckMenuRadioItem(antiAliasingMenu, MenuID::AntiAliasingSampleCount1, ID, ID, MF_BYCOMMAND);
+			};
+			switch (m_app->GetAntiAliasingSampleCount()) {
+			case 1: CheckItem(MenuID::AntiAliasingSampleCount1); break;
+			case 2: CheckItem(MenuID::AntiAliasingSampleCount2); break;
+			case 4: CheckItem(MenuID::AntiAliasingSampleCount4); break;
+			case 8: CheckItem(MenuID::AntiAliasingSampleCount8); break;
+			}
+		}
 
 		AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 

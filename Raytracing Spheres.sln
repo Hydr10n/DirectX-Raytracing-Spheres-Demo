@@ -9,16 +9,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nv_helpers_dx12", "nv_helpe
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Data", "Data\Data.vcxitems", "{926F440C-2F0A-4452-A781-66226763BEBA}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RaytracingHelpers", "RaytracingHelpers\RaytracingHelpers.vcxitems", "{AC2048F3-0E37-4822-BAF0-D6E7CF6203B3}"
-EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		Data\Data.vcxitems*{926f440c-2f0a-4452-a781-66226763beba}*SharedItemsImports = 9
-		RaytracingHelpers\RaytracingHelpers.vcxitems*{ac2048f3-0e37-4822-baf0-d6e7cf6203b3}*SharedItemsImports = 9
 		nv_helpers_dx12\nv_helpers_dx12.vcxitems*{b11d8857-9791-4c19-a84f-07bced25e882}*SharedItemsImports = 9
 		Data\Data.vcxitems*{c3328e2b-f852-401c-b0b8-8a91b522204e}*SharedItemsImports = 4
 		nv_helpers_dx12\nv_helpers_dx12.vcxitems*{c3328e2b-f852-401c-b0b8-8a91b522204e}*SharedItemsImports = 4
-		RaytracingHelpers\RaytracingHelpers.vcxitems*{c3328e2b-f852-401c-b0b8-8a91b522204e}*SharedItemsImports = 4
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
