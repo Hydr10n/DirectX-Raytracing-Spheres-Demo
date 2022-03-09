@@ -450,7 +450,7 @@ void D3DApp::BuildRenderItems() {
 			{
 				Objects::Moon,
 				m_Moon,
-				Material().AsMetal({0.5f, 0.5f, 0.5f, 1}, 0.8f)
+				Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
 			},
 			{
 				Objects::Earth,
@@ -830,9 +830,9 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 }
 
 void D3DApp::DispatchRays() {
-	const auto commandList = m_deviceResources->GetCommandList();
-
 	if (m_isRunning) CreateTopLevelAccelerationStructure(true, m_topLevelAccelerationStructureBuffers);
+
+	const auto commandList = m_deviceResources->GetCommandList();
 
 	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
 	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);

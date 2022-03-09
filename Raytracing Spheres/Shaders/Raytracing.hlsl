@@ -2,7 +2,7 @@
 
 [shader("raygeneration")]
 void RayGeneration() {
-	const uint3 raysIndex = DispatchRaysIndex(), raysDimensions = DispatchRaysDimensions();
+	const uint2 raysIndex = DispatchRaysIndex().xy, raysDimensions = DispatchRaysDimensions().xy;
 
 	Random random;
 	random.Initialize(raysIndex.x + raysIndex.y * raysDimensions.x, g_sceneConstant.FrameCount);
@@ -13,5 +13,5 @@ void RayGeneration() {
 		color += TracePrimaryRay(ray, MAX_TRACE_RECURSION_DEPTH, random);
 	}
 
-	g_output[raysIndex.xy] = color / g_sceneConstant.AntiAliasingSampleCount;
+	g_output[raysIndex] = color / g_sceneConstant.AntiAliasingSampleCount;
 }
