@@ -665,27 +665,9 @@ void DeviceResources::CreateDevice()
         }
     }
 
-#if !defined(NDEBUG)
-    if (!adapter)
-    {
-        // Try WARP12 instead
-        if (FAILED(m_dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(adapter.ReleaseAndGetAddressOf()))))
-        {
-            throw std::runtime_error("WARP12 not available. Enable the 'Graphics Tools' optional feature");
-        }
-
-        OutputDebugStringA("Direct3D Adapter - WARP12\n");
-    }
-#endif
-
-    if (!adapter)
-    {
-        throw std::runtime_error("No Direct3D 12 device found");
-    }
-
     if (!m_d3dDevice)
     {
-        throw std::runtime_error("DXR is not supported on this device. Make sure your GPU supports it and you are on the latest drivers.");
+        throw std::runtime_error("DXR is not supported on this device. Make sure your GPU supports it and your drivers are up to date.");
     }
 }
 
