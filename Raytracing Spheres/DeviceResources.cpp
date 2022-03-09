@@ -667,7 +667,7 @@ void DeviceResources::CreateDevice()
 
     if (!m_d3dDevice)
     {
-        throw std::runtime_error("DXR is not supported on this device. Make sure your GPU supports it and your drivers are up to date.");
+        throw std::runtime_error("DXR is not supported on this device. Make sure your GPU supports it and drivers are up to date.");
     }
 }
 
