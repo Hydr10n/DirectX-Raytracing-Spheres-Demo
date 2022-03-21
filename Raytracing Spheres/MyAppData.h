@@ -2,7 +2,7 @@
 
 #include "AppData.h"
 
-#include "WindowHelpers.h"
+#include <filesystem>
 
 struct MyAppData {
 	struct Settings {
@@ -16,7 +16,7 @@ struct MyAppData {
 
 			struct Resolution {
 				static constexpr LPCWSTR Section = Sections::Graphics;
-				static constexpr auto ToStrings() { return std::pair(L"Width", L"Height"); }
+				static constexpr auto ToStrings() { return std::pair(L"ResolutionWidth", L"ResolutionHeight"); }
 			};
 
 			struct AntiAliasingSampleCount {
@@ -32,9 +32,10 @@ struct MyAppData {
 			}
 
 			if constexpr (std::is_same<Key, Keys::Resolution>()) {
+				constexpr auto Keys = Key::ToStrings();
 				const auto& size = reinterpret_cast<const SIZE&>(data);
-				return m_appData.Save(Key::Section, Key::ToStrings().first, size.cx)
-					&& m_appData.Save(Key::Section, Key::ToStrings().second, size.cy);
+				return m_appData.Save(Key::Section, Keys.first, size.cx)
+					&& m_appData.Save(Key::Section, Keys.second, size.cy);
 			}
 
 			if constexpr (std::is_same<Key, Keys::AntiAliasingSampleCount>()) {
@@ -51,9 +52,10 @@ struct MyAppData {
 			}
 
 			if constexpr (std::is_same<Key, Keys::Resolution>()) {
+				constexpr auto Keys = Key::ToStrings();
 				auto& size = reinterpret_cast<SIZE&>(data);
-				return m_appData.Load(Key::Section, Key::ToStrings().first, size.cx)
-					&& m_appData.Load(Key::Section, Key::ToStrings().second, size.cy);
+				return m_appData.Load(Key::Section, Keys.first, size.cx)
+					&& m_appData.Load(Key::Section, Keys.second, size.cy);
 			}
 
 			if constexpr (std::is_same<Key, Keys::AntiAliasingSampleCount>()) {
@@ -64,6 +66,6 @@ struct MyAppData {
 		}
 
 	private:
-		static const Hydr10n::Data::AppData m_appData;
+		inline static const Hydr10n::Data::AppData m_appData = std::filesystem::path(*__wargv).replace_filename("Settings.ini").c_str();
 	};
 };

@@ -12,34 +12,36 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 
 ## Controls
 - Xbox Controller
-    |||
-    |-|-|
-    |Menu button|Pause/resume|
-    |LS (rotate)|Move|
-    |LS (rotate + press)|Move faster|
-    |RS (rotate)|Look around|
-    |X button|Toggle gravity of Earth|
-    |B button|Toggle gravity of the star|
+	|||
+	|-|-|
+	|Menu|Open/close menu|
+	|View|Pause/resume|
+	|LS (rotate)|Move|
+	|LS (rotate + press)|Move faster|
+	|RS (rotate)|Look around|
+	|X|Toggle gravity of Earth|
+	|B|Toggle gravity of the star|
 
 - Keyboard
-    |||
-    |-|-|
-    |Alt + Enter|Toggle between windowed/borderless and fullscreen mode|
-    |Esc|Pause/resume|
-    |W A S D|Move|
-    |Left shift + W A S D|Move faster|
-    |G|Toggle gravity of Earth|
-    |H|Toggle gravity of the star|
+	|||
+	|-|-|
+	|Alt + Enter|Toggle between windowed/borderless and fullscreen modes|
+	|Esc|Open/close menu|
+	|Tab|Pause/resume|
+	|W A S D|Move|
+	|Left shift + W A S D|Move faster|
+	|G|Toggle gravity of Earth|
+	|H|Toggle gravity of the star|
 
 - Mouse
-    |||
-    |-|-|
-    |(Move)|Look around|
+	|||
+	|-|-|
+	|(Move)|Look around|
 
-### Settings in Content Menu
+### Settings in Menu
 - Window Mode: Windowed/borderless/fullscreen
 - Resolution
-- Anti-Aliasing: Off/2x/4x/8x
+- Anti-Aliasing Sample Count
 
 ---
 
@@ -48,22 +50,27 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 - Microsoft Visual Studio 2022
 
 - vcpkg
-    ```cmd
-    > git clone https://github.com/Microsoft/vcpkg
-    > .\vcpkg\bootstrap-vcpkg.bat
-    > .\vcpkg\vcpkg integrate install
-    ```
+	```cmd
+	> git clone https://github.com/Microsoft/vcpkg
+	> cd vcpkg
+	> .\bootstrap-vcpkg.bat
+	> .\vcpkg integrate install
+	```
 
 ### Dependencies
 - [DirectXTK12](https://github.com/Microsoft/DirectXTK12)
 - [PhysX](https://github.com/NVIDIAGameWorks/PhysX)
-    ```cmd
-    > .\vcpkg\vcpkg install physx:x64-windows
-    ```
+	```cmd
+	> .\vcpkg install physx:x64-windows
+	```
+- [Dear ImGui](https://github.com/ocornut/imgui)
+	```cmd
+	> .\vcpkg install imgui[core,win32-binding,dx12-binding]:x64-windows
+	```
 
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 1809
 - Graphics
-    - NVIDIA GeForce GTX 1060 with 6 GB VRAM
-    - NVIDIA GeForce GTX 1660
-    - AMD Radeon RX 6000 Series
+	- NVIDIA GeForce GTX 1060 with 6 GB VRAM
+	- NVIDIA GeForce GTX 1660
+	- AMD Radeon RX 6000 Series

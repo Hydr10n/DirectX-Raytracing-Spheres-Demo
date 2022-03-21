@@ -1,24 +1,24 @@
-#ifndef PRIMARYRAY_HLSLI
-#define PRIMARYRAY_HLSLI
+#ifndef RADIANCERAY_HLSLI
+#define RADIANCERAY_HLSLI
 
 #include "Common.hlsli"
 
 #include "Utils.hlsli"
 
-struct PrimaryRayPayload {
+struct RadianceRayPayload {
 	float4 Color;
 	uint TraceRecursionDepth;
 	Random Random;
 };
 
-inline float4 TracePrimaryRay(RayDesc ray, uint traceRecursionDepth, inout Random random) {
-	PrimaryRayPayload payload = { (float4) 0, traceRecursionDepth - 1, random };
+inline float4 TraceRadianceRay(RayDesc ray, uint traceRecursionDepth, inout Random random) {
+	RadianceRayPayload payload = { (float4) 0, traceRecursionDepth - 1, random };
 	TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 	return payload.Color;
 }
 
 [shader("miss")]
-void PrimaryRayMiss(inout PrimaryRayPayload payload : SV_RayPayload) {
+void RadianceRayMiss(inout RadianceRayPayload payload : SV_RayPayload) {
 	if (g_sceneConstant.IsEnvironmentCubeMapUsed) {
 		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_sceneConstant.EnvironmentMapTransform), 0);
 	}
@@ -26,7 +26,7 @@ void PrimaryRayMiss(inout PrimaryRayPayload payload : SV_RayPayload) {
 }
 
 [shader("closesthit")]
-void PrimaryRayClosestHit(inout PrimaryRayPayload payload : SV_RayPayload, BuiltInTriangleIntersectionAttributes attributes : SV_IntersectionAttributes) {
+void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, BuiltInTriangleIntersectionAttributes attributes : SV_IntersectionAttributes) {
 	if (!payload.TraceRecursionDepth) {
 		payload.Color = 0;
 		return;
@@ -63,13 +63,13 @@ void PrimaryRayClosestHit(inout PrimaryRayPayload payload : SV_RayPayload, Built
 
 	float3 direction = 0;
 	if (g_objectConstant.Material.Scatter(ray, hitRecord, direction, payload.Random)) {
-		payload.Color = color * TracePrimaryRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
+		payload.Color = color * TraceRadianceRay(CreateRayDesc(hitRecord.Vertex.Position, direction), payload.TraceRecursionDepth, payload.Random);
 	}
 	else payload.Color = g_objectConstant.Material.IsEmissive() ? color : 0;
 }
 
-TriangleHitGroup PrimaryRayHitGroup = { "", "PrimaryRayClosestHit" };
+TriangleHitGroup RadianceRayHitGroup = { "", "RadianceRayClosestHit" };
 
-SubobjectToExportsAssociation PrimaryRayLocalRootSignatureAssociation = { "LocalRootSignature", "PrimaryRayHitGroup" };
+SubobjectToExportsAssociation RadianceRayLocalRootSignatureAssociation = { "LocalRootSignature", "RadianceRayHitGroup" };
 
 #endif

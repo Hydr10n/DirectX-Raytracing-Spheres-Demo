@@ -18,22 +18,33 @@
 
 #include "Shaders/Raytracing.hlsl.h"
 
-#include <filesystem>
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
+#include "ImGuiEx.h"
+
+#include "SharedData.h"
+#include "MyAppData.h"
+
+#include <shellapi.h>
 
 using namespace DirectX;
+using namespace DirectX::RaytracingHelpers;
+using namespace DisplayHelpers;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace PhysicsHelpers;
 using namespace physx;
-using namespace RaytracingHelpers;
 using namespace std;
+using namespace WindowHelpers;
 
 using Key = Keyboard::Keys;
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
+using SettingsData = MyAppData::Settings;
+using SettingsKeys = SettingsData::Keys;
 
-struct ShaderEntryPoints { static constexpr LPCWSTR RayGeneration = L"RayGeneration", PrimaryRayMiss = L"PrimaryRayMiss"; };
+struct ShaderEntryPoints { static constexpr LPCWSTR RayGeneration = L"RayGeneration", RadianceRayMiss = L"RadianceRayMiss"; };
 
-struct ShaderSubobjects { static constexpr LPCWSTR PrimaryRayHitGroup = L"PrimaryRayHitGroup"; };
+struct ShaderSubobjects { static constexpr LPCWSTR RadianceRayHitGroup = L"RadianceRayHitGroup"; };
 
 struct Objects {
 	static constexpr LPCSTR
@@ -49,6 +60,7 @@ struct DescriptorHeapIndices {
 		EnvironmentCubeMap,
 		MoonColorMap, MoonNormalMap,
 		EarthColorMap, EarthNormalMap,
+		Font,
 		Count
 	};
 };
@@ -69,14 +81,37 @@ struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
 	Material Material;
 };
 
-D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
+constexpr UINT MaxAntiAliasingSampleCount = 8;
+
+constexpr float SphereRadius = 0.5f;
+
+D3DApp::D3DApp() {
+	if (!SettingsData::Load<SettingsKeys::AntiAliasingSampleCount>(m_antiAliasingSampleCount) || m_antiAliasingSampleCount > MaxAntiAliasingSampleCount) {
+		m_antiAliasingSampleCount = MaxAntiAliasingSampleCount;
+	}
+
+	{
+		ImGui::CreateContext();
+
+		ImGui::StyleColorsDark();
+
+		auto& IO = ImGui::GetIO();
+
+		IO.IniFilename = IO.LogFilename = nullptr;
+
+		IO.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard;
+		IO.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+
+		ImGui_ImplWin32_Init(g_windowModeHelper->hWnd);
+	}
+
 	BuildTextures();
 
 	BuildRenderItems();
 
 	m_deviceResources->RegisterDeviceNotify(this);
 
-	m_deviceResources->SetWindow(hWnd, static_cast<int>(outputSize.cx), static_cast<int>(outputSize.cy));
+	m_deviceResources->SetWindow(g_windowModeHelper->hWnd, static_cast<int>(g_windowModeHelper->Resolution.cx), static_cast<int>(g_windowModeHelper->Resolution.cy));
 
 	m_deviceResources->CreateDeviceResources();
 	CreateDeviceDependentResources();
@@ -84,22 +119,48 @@ D3DApp::D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false) {
 	m_deviceResources->CreateWindowSizeDependentResources();
 	CreateWindowSizeDependentResources();
 
-	m_mouse->SetWindow(hWnd);
-	m_mouse->SetMode(Mouse::MODE_RELATIVE);
+	m_mouse->SetWindow(g_windowModeHelper->hWnd);
 
 	m_camera.SetPosition({ 0, 0, -15 });
+	m_camera.UpdateView();
 }
 
-D3DApp::~D3DApp() { m_deviceResources->WaitForGpu(); }
+D3DApp::~D3DApp() {
+	m_deviceResources->WaitForGpu();
+
+	{
+		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
+
+		ImGui_ImplWin32_Shutdown();
+
+		ImGui::DestroyContext();
+	}
+}
 
 void D3DApp::Tick() {
 	m_stepTimer.Tick([&] { Update(); });
 
+	const auto windowMode = g_windowModeHelper->GetMode();
+	const auto resolution = g_windowModeHelper->Resolution;
+	const auto windowedStyle = g_windowModeHelper->WindowedStyle, windowedExStyle = g_windowModeHelper->WindowedExStyle;
+
 	Render();
+
+	const auto newWindowMode = g_windowModeHelper->GetMode();
+	const auto newResolution = g_windowModeHelper->Resolution;
+	const auto isWindowModeChanged = newWindowMode != windowMode, isResolutionChanged = newResolution != resolution;
+	if (isWindowModeChanged || isResolutionChanged || g_windowModeHelper->WindowedStyle != windowedStyle || g_windowModeHelper->WindowedExStyle != windowedExStyle) {
+		ThrowIfFailed(g_windowModeHelper->Apply());
+
+		if (isWindowModeChanged) SettingsData::Save<SettingsKeys::WindowMode>(newWindowMode);
+		if (isResolutionChanged) SettingsData::Save<SettingsKeys::Resolution>(newResolution);
+	}
 }
 
-void D3DApp::OnWindowSizeChanged(const SIZE& size) {
-	if (!m_deviceResources->WindowSizeChanged(static_cast<int>(size.cx), static_cast<int>(size.cy))) return;
+void D3DApp::OnWindowSizeChanged() {
+	if (!m_deviceResources->WindowSizeChanged(static_cast<int>(g_windowModeHelper->Resolution.cx), static_cast<int>(g_windowModeHelper->Resolution.cy))) {
+		return;
+	}
 
 	CreateWindowSizeDependentResources();
 }
@@ -117,6 +178,8 @@ void D3DApp::OnResuming() {
 void D3DApp::OnSuspending() { m_gamepad->Suspend(); }
 
 void D3DApp::OnDeviceLost() {
+	ImGui_ImplDX12_Shutdown();
+
 	m_output.Reset();
 
 	m_shaderBindingTable.Reset();
@@ -169,25 +232,32 @@ void D3DApp::Render() {
 
 	PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
+	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
+	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
+
 	{
 		DispatchRays();
 
 		const auto renderTarget = m_deviceResources->GetRenderTarget(), output = m_output.Get();
 
-		TransitionResource(commandList, renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-		TransitionResource(commandList, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		const ScopedBarrier scopedBarrier(
+			commandList,
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
+				CD3DX12_RESOURCE_BARRIER::Transition(output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
+			}
+		);
 
 		commandList->CopyResource(renderTarget, output);
-
-		TransitionResource(commandList, output, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		TransitionResource(commandList, renderTarget, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
 	}
+
+	DrawMenu();
 
 	PIXEndEvent(commandList);
 
 	PIXBeginEvent(PIX_COLOR_DEFAULT, L"Present");
 
-	m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT);
+	m_deviceResources->Present();
 
 	m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 
@@ -201,10 +271,10 @@ void D3DApp::Clear() {
 
 	PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Clear");
 
-	const auto rtvDescriptor = m_deviceResources->GetRenderTargetView(), dsvDescriptor = m_deviceResources->GetDepthStencilView();
-	commandList->OMSetRenderTargets(1, &rtvDescriptor, FALSE, &dsvDescriptor);
-	commandList->ClearRenderTargetView(rtvDescriptor, Colors::Black, 0, nullptr);
-	commandList->ClearDepthStencilView(dsvDescriptor, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1, 0, 0, nullptr);
+	const auto renderTargetView = m_deviceResources->GetRenderTargetView(), depthStencilView = m_deviceResources->GetDepthStencilView();
+	commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &depthStencilView);
+	commandList->ClearRenderTargetView(renderTargetView, Colors::Black, 0, nullptr);
+	commandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1, 0, 0, nullptr);
 
 	const auto viewport = m_deviceResources->GetScreenViewport();
 	const auto scissorRect = m_deviceResources->GetScissorRect();
@@ -237,9 +307,9 @@ void D3DApp::CreateDeviceDependentResources() {
 }
 
 void D3DApp::CreateWindowSizeDependentResources() {
-	const auto outputSize = GetOutputSize();
-
 	const auto device = m_deviceResources->GetD3DDevice();
+
+	const auto outputSize = GetOutputSize();
 
 	{
 		const auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -254,6 +324,16 @@ void D3DApp::CreateWindowSizeDependentResources() {
 	}
 
 	m_camera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
+
+	{
+		auto& IO = ImGui::GetIO();
+
+		if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
+		ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptors->Heap(), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::Font), m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::Font));
+
+		IO.Fonts->Clear();
+		IO.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\segoeui.ttf)", static_cast<float>(outputSize.cy) * 0.025f);
+	}
 }
 
 void D3DApp::BuildTextures() {
@@ -359,7 +439,7 @@ void D3DApp::BuildRenderItems() {
 	if (!m_renderItems.empty()) return;
 
 	const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) {
-		renderItem.HitGroup = ShaderSubobjects::PrimaryRayHitGroup;
+		renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
 		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndices::SphereVertices;
 		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndices::SphereIndices;
@@ -518,10 +598,10 @@ void D3DApp::CreatePipelineStateObjects() {
 
 	dxilLibrary->DefineExport(ShaderEntryPoints::RayGeneration);
 
-	dxilLibrary->DefineExport(ShaderEntryPoints::PrimaryRayMiss);
-	dxilLibrary->DefineExport(L"PrimaryRayClosestHit");
-	dxilLibrary->DefineExport(ShaderSubobjects::PrimaryRayHitGroup);
-	dxilLibrary->DefineExport(L"PrimaryRayLocalRootSignatureAssociation");
+	dxilLibrary->DefineExport(ShaderEntryPoints::RadianceRayMiss);
+	dxilLibrary->DefineExport(L"RadianceRayClosestHit");
+	dxilLibrary->DefineExport(ShaderSubobjects::RadianceRayHitGroup);
+	dxilLibrary->DefineExport(L"RadianceRayLocalRootSignatureAssociation");
 
 	ThrowIfFailed(device->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(m_pipelineStateObject.ReleaseAndGetAddressOf())));
 }
@@ -656,7 +736,7 @@ void D3DApp::CreateShaderBindingTables() {
 
 	m_shaderBindingTableGenerator.AddRayGenerationProgram(ShaderEntryPoints::RayGeneration, { nullptr });
 
-	m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints::PrimaryRayMiss, { nullptr });
+	m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints::RadianceRayMiss, { nullptr });
 
 	for (const auto& renderItem : m_renderItems) {
 		D3D12_GPU_VIRTUAL_ADDRESS pImageTexture = NULL, pNormalTexture = NULL;
@@ -693,11 +773,8 @@ void D3DApp::CreateShaderBindingTables() {
 }
 
 void D3DApp::ProcessInput() {
-	GamePad::State gamepadStates[GamePad::MAX_PLAYER_COUNT];
-	for (int i = 0; i < GamePad::MAX_PLAYER_COUNT; i++) {
-		gamepadStates[i] = m_gamepad->GetState(i);
-		m_gamepadButtonStateTrackers[i].Update(gamepadStates[i]);
-	}
+	const auto gamepadState = m_gamepad->GetState(0);
+	m_gamepadButtonStateTracker.Update(gamepadState);
 
 	const auto keyboardState = m_keyboard->GetState();
 	m_keyboardStateTracker.Update(keyboardState);
@@ -705,26 +782,31 @@ void D3DApp::ProcessInput() {
 	const auto mouseState = m_mouse->GetState();
 	m_mouseButtonStateTracker.Update(mouseState);
 
-	UpdateCamera(gamepadStates, keyboardState, mouseState);
+	if (m_gamepadButtonStateTracker.menu == GamepadButtonState::PRESSED) m_isMenuOpen = !m_isMenuOpen;
 
-	{
+	if (m_keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isMenuOpen = !m_isMenuOpen;
+
+	if (m_isMenuOpen) m_mouse->SetMode(Mouse::MODE_ABSOLUTE);
+	else {
 		{
-			for (const auto& gamepadButtonStateTracker : m_gamepadButtonStateTrackers) {
-				if (gamepadButtonStateTracker.menu == GamepadButtonState::PRESSED) m_isRunning = !m_isRunning;
-				if (gamepadButtonStateTracker.x == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
-				if (gamepadButtonStateTracker.b == GamepadButtonState::PRESSED) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
-			}
+			if (m_gamepadButtonStateTracker.view == GamepadButtonState::PRESSED) m_isRunning = !m_isRunning;
+			if (m_gamepadButtonStateTracker.x == GamepadButtonState::PRESSED) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
+			if (m_gamepadButtonStateTracker.b == GamepadButtonState::PRESSED) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
 		}
 
 		{
-			if (m_keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isRunning = !m_isRunning;
+			if (m_keyboardStateTracker.IsKeyPressed(Key::Tab)) m_isRunning = !m_isRunning;
 			if (m_keyboardStateTracker.IsKeyPressed(Key::G)) m_Earth.IsGravityEnabled = !m_Earth.IsGravityEnabled;
 			if (m_keyboardStateTracker.IsKeyPressed(Key::H)) m_star.IsGravityEnabled = !m_star.IsGravityEnabled;
+
+			m_mouse->SetMode(Mouse::MODE_RELATIVE);
 		}
+
+		UpdateCamera(gamepadState, keyboardState, mouseState);
 	}
 }
 
-void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[GamePad::MAX_PLAYER_COUNT], const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
+void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 	const auto Translate = [&](const XMFLOAT3& displacement) {
 		if (!displacement.x && !displacement.y && !displacement.z) return;
 
@@ -754,16 +836,14 @@ void D3DApp::UpdateCamera(const GamePad::State(&gamepadStates)[GamePad::MAX_PLAY
 	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
 	{
-		const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
-		for (const auto& gamepadState : gamepadStates) {
-			if (gamepadState.IsConnected()) {
-				const auto translationSpeed = elapsedSeconds * (gamepadState.IsLeftStickPressed() ? 30.0f : 15.0f);
-				const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
-				Translate(displacement);
+		if (gamepadState.IsConnected()) {
+			const auto translationSpeed = elapsedSeconds * (gamepadState.IsLeftStickPressed() ? 30.0f : 15.0f);
+			const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
+			Translate(displacement);
 
-				m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
-				Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
-			}
+			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
+			m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
+			Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
 		}
 	}
 
@@ -834,24 +914,28 @@ void D3DApp::DispatchRays() {
 
 	const auto commandList = m_deviceResources->GetCommandList();
 
-	ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
-	commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
+	commandList->SetComputeRootSignature(m_globalRootSignature.Get());
 
 	UINT rootParameterIndex = 0;
 
-	commandList->SetComputeRootSignature(m_globalRootSignature.Get());
 	commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::Output));
+
 	commandList->SetComputeRootShaderResourceView(rootParameterIndex++, m_topLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress());
+
 	commandList->SetComputeRootConstantBufferView(rootParameterIndex++, m_sceneConstantBuffer.GpuAddress());
 
 	{
 		const auto resource = reinterpret_cast<SceneConstant*>(m_sceneConstantBuffer.Memory())->IsEnvironmentCubeMapUsed ? get<0>(m_textures[Objects::Environment])[TextureType::CubeMap].Resource.Get() : nullptr;
+		if (resource != nullptr) {
+			const ScopedBarrier scopedBarrier(
+				commandList,
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+				}
+			);
 
-		if (resource != nullptr) TransitionResource(commandList, resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-		commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::EnvironmentCubeMap));
-
-		if (resource != nullptr) TransitionResource(commandList, resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::EnvironmentCubeMap));
+		}
 	}
 
 	commandList->SetPipelineState1(m_pipelineStateObject.Get());
@@ -889,4 +973,133 @@ void D3DApp::DispatchRays() {
 	};
 
 	commandList->DispatchRays(&raysDesc);
+}
+
+void D3DApp::DrawMenu() {
+	if (!m_isMenuOpen) return;
+
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	{
+		const auto outputSize = GetOutputSize();
+
+		ImGui::SetNextWindowPos({});
+		ImGui::SetNextWindowSize({ static_cast<float>(outputSize.cx), 0 });
+
+		ImGui::Begin("##Menu", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing);
+
+		if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
+
+		if (ImGui::CollapsingHeader("Graphics Settings")) {
+			{
+				{
+					constexpr LPCSTR WindowModes[]{ "Windowed", "Borderless", "Fullscreen" };
+					auto windowMode = g_windowModeHelper->GetMode();
+					if (ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), WindowModes, ARRAYSIZE(WindowModes))) {
+						g_windowModeHelper->SetMode(windowMode);
+					}
+				}
+
+				{
+					constexpr auto ToString = [](const SIZE& size) { return to_string(size.cx) + " × " + to_string(size.cy); };
+
+					if (ImGui::BeginCombo("Resolution", ToString(outputSize).c_str())) {
+						for (const auto& displayResolution : g_displayResolutions) {
+							const bool isSelected = outputSize == displayResolution;
+							if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
+								g_windowModeHelper->Resolution = displayResolution;
+							}
+							if (isSelected) ImGui::SetItemDefaultFocus();
+						}
+
+						ImGui::EndCombo();
+					}
+				}
+			}
+
+			ImGui::Separator();
+
+			if (ImGui::SliderInt("Anti-Aliasing Sample Count", reinterpret_cast<int*>(&m_antiAliasingSampleCount), 1, static_cast<int>(MaxAntiAliasingSampleCount), "%d", ImGuiSliderFlags_NoInput)) {
+				SettingsData::Save<SettingsKeys::AntiAliasingSampleCount>(m_antiAliasingSampleCount);
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Controls")) {
+			const auto AddControls = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& controls) {
+				if (ImGui::TreeNode(treeLabel)) {
+					if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInner)) {
+						for (const auto& control : controls) {
+							ImGui::TableNextRow();
+
+							ImGui::TableSetColumnIndex(0);
+							ImGui::Text(control.first);
+
+							ImGui::TableSetColumnIndex(1);
+							ImGui::Text(control.second);
+						}
+
+						ImGui::EndTable();
+					}
+
+					ImGui::TreePop();
+				}
+			};
+
+			AddControls(
+				"Xbox Controller",
+				"XboxController",
+				{
+					{ "Menu", "Open/close menu" },
+					{ "View", "Pause/resume" },
+					{ "LS (rotate)", "Move" },
+					{ "LS (rotate + press)", "Move faster" },
+					{ "RS (rotate)", "Look around" },
+					{ "X", "Toggle gravity of Earth" },
+					{ "B", "Toggle gravity of the star" }
+				}
+			);
+
+			AddControls(
+				"Keyboard",
+				"Keyboard",
+				{
+					{ "Alt + Enter", "Toggle between windowed/borderless and fullscreen modes" },
+					{ "Esc", "Open/close menu" },
+					{ "Tab", "Pause/resume" },
+					{ "W A S D", "Move" },
+					{ "Left shift + W A S D", "Move faster" },
+					{ "G", "Toggle gravity of Earth" },
+					{ "H", "Toggle gravity of the star" }
+				}
+			);
+
+			AddControls(
+				"Mouse",
+				"Mouse",
+				{
+					{ "(Move)", "Look around" }
+				}
+			);
+		}
+
+		if (ImGui::CollapsingHeader("About")) {
+			ImGui::Text("© Hydr10n. All rights reserved.");
+
+			const auto URL = "https://github.com/Hydr10n/DirectX-Raytracing-Spheres-Demo";
+			if (ImGuiEx::Hyperlink("GitHub repository", URL)) ShellExecuteA(nullptr, "open", URL, nullptr, nullptr, SW_SHOW);
+		}
+
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, { 0, 0.5f });
+			if (ImGui::Button("Exit", { -FLT_MIN, 0 })) PostQuitMessage(ERROR_SUCCESS);
+			ImGui::PopStyleVar();
+		}
+
+		ImGui::End();
+	}
+
+	ImGui::Render();
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_deviceResources->GetCommandList());
 }

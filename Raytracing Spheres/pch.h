@@ -9,22 +9,10 @@
 #define _WIN32_WINNT 0x0A00
 #include <sdkddkver.h>
 
+#include <windowsx.h>
+
 // Use the C++ standard templated min/max
 #define NOMINMAX
-
-// DirectX apps don't need GDI
-#define NODRAWTEXT
-#define NOGDI
-#define NOBITMAP
-
-// Include <mcx.h> if you need this
-#define NOMCX
-
-// Include <winsvc.h> if you need this
-#define NOSERVICE
-
-// WinHelp is deprecated
-#define NOHELP
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -38,7 +26,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <system_error>
 
 // To use graphics and CPU markup events with the latest version of PIX, change this to include <pix3.h>
 // then add the NuGet package WinPixEventRuntime to the project.

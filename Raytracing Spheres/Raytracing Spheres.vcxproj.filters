@@ -31,9 +31,6 @@
     <ClInclude Include="D3DApp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="MainWindow.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -47,9 +44,6 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="WindowHelpers.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="WindowBase.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
@@ -82,21 +76,21 @@
     <ClInclude Include="DirectXRaytracingHelpers.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="ImGuiEx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SharedData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DeviceResources.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="App.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="MyAppData.cpp">
+    <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="D3DApp.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="MainWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -138,7 +132,7 @@
     <None Include="Shaders\Material.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\PrimaryRay.hlsli">
+    <None Include="Shaders\RadianceRay.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\Random.hlsli">

@@ -1,4 +1,4 @@
-#include "PrimaryRay.hlsli"
+#include "RadianceRay.hlsli"
 
 [shader("raygeneration")]
 void RayGeneration() {
@@ -10,7 +10,7 @@ void RayGeneration() {
 	float4 color = 0;
 	for (uint i = 0; i < g_sceneConstant.AntiAliasingSampleCount; i++) {
 		const RayDesc ray = GenerateCameraRay(raysIndex, raysDimensions, g_sceneConstant.CameraPosition, g_sceneConstant.ProjectionToWorld, random.Float());
-		color += TracePrimaryRay(ray, MAX_TRACE_RECURSION_DEPTH, random);
+		color += TraceRadianceRay(ray, MAX_TRACE_RECURSION_DEPTH, random);
 	}
 
 	g_output[raysIndex] = color / g_sceneConstant.AntiAliasingSampleCount;

@@ -2,7 +2,7 @@
 
 #include <Windows.h>
 
-#include <vector>
+#include <set>
 
 namespace DisplayHelpers {
 	struct Resolution : SIZE {
@@ -12,27 +12,50 @@ namespace DisplayHelpers {
 			return lhs.cy < rhs.cy;
 		}
 
-		friend bool operator>=(const SIZE& lhs, const SIZE& rhs) { return !(lhs < Resolution{ rhs.cx, rhs.cy }); }
+		friend bool operator>=(const SIZE& lhs, const SIZE& rhs) { return !(lhs < Resolution(rhs)); }
 
-		friend bool operator>(const SIZE& lhs, const SIZE& rhs) { return Resolution{ rhs.cx, rhs.cy } < lhs; }
+		friend bool operator>(const SIZE& lhs, const SIZE& rhs) { return Resolution(rhs) < lhs; }
 
-		friend bool operator<=(const SIZE& lhs, const SIZE& rhs) { return !(lhs > Resolution{ rhs.cx, rhs.cy }); }
+		friend bool operator<=(const SIZE& lhs, const SIZE& rhs) { return !(lhs > Resolution(rhs)); }
 
 		friend bool operator==(const SIZE& lhs, const SIZE& rhs) { return lhs.cx == rhs.cx && lhs.cy == rhs.cy; }
 
-		friend bool operator!=(const SIZE& lhs, const SIZE& rhs) { return !(Resolution{ lhs.cx, lhs.cy } == rhs); }
+		friend bool operator!=(const SIZE& lhs, const SIZE& rhs) { return !(Resolution(lhs) == rhs); }
 	};
 
-	inline BOOL WINAPI GetDisplayResolutions(std::vector<Resolution>& resolutions, LPCWSTR lpszDeviceName = nullptr) {
+	using ResolutionSet = std::set<Resolution>;
+
+	inline BOOL WINAPI GetDisplayResolutions(ResolutionSet& resolutions, LPCWSTR lpDeviceName = nullptr) {
 		DEVMODEW devMode;
 		devMode.dmSize = sizeof(devMode);
-		for (DWORD i = 0; EnumDisplaySettingsW(lpszDeviceName, i++, &devMode);) {
-			const auto& iteratorEnd = resolutions.cend();
-			const Resolution resolution{ static_cast<LONG>(devMode.dmPelsWidth), static_cast<LONG>(devMode.dmPelsHeight) };
-			if (std::find(resolutions.cbegin(), iteratorEnd, resolution) == iteratorEnd) resolutions.push_back(resolution);
+		DWORD i;
+		for (i = 0; EnumDisplaySettingsW(lpDeviceName, i, &devMode); i++) {
+			resolutions.insert({ static_cast<LONG>(devMode.dmPelsWidth), static_cast<LONG>(devMode.dmPelsHeight) });
 		}
+		return i != 0;
+	}
 
-		const auto lastError = GetLastError();
-		return lastError == ERROR_SUCCESS || GetLastError() == ERROR_MOD_NOT_FOUND;
+	inline BOOL WINAPI GetDisplayResolutions(ResolutionSet& resolutions, HMONITOR hMonitor) {
+		MONITORINFOEXW monitorInfoEx;
+		monitorInfoEx.cbSize = sizeof(monitorInfoEx);
+		return GetMonitorInfoW(hMonitor, &monitorInfoEx) && GetDisplayResolutions(resolutions, monitorInfoEx.szDevice);
+	}
+
+	inline BOOL WINAPI GetDisplayResolutions(ResolutionSet& resolutions, HWND hWnd) {
+		const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+		return monitor != nullptr && GetDisplayResolutions(resolutions, monitor);
+	}
+
+	inline BOOL WINAPI GetDisplayRect(RECT& rect, HMONITOR hMonitor) {
+		MONITORINFO monitorInfo;
+		monitorInfo.cbSize = sizeof(monitorInfo);
+		const auto ret = GetMonitorInfoW(hMonitor, &monitorInfo);
+		if (ret) rect = monitorInfo.rcMonitor;
+		return ret;
+	}
+
+	inline BOOL WINAPI GetDisplayRect(RECT& rect, HWND hWnd) {
+		const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+		return monitor != nullptr && GetDisplayRect(rect, monitor);
 	}
 }

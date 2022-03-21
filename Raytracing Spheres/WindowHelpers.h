@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Windows.h>
+#include "DisplayHelpers.h"
 
 namespace WindowHelpers {
 	constexpr void CenterRect(_In_ const RECT& border, _Inout_ RECT& rect) {
@@ -14,44 +14,49 @@ namespace WindowHelpers {
 	enum class WindowMode { Windowed, Borderless, Fullscreen };
 
 	struct WindowModeHelper {
-		HWND Window{};
+		const HWND hWnd;
 
-		DWORD ExStyle{}, Style = WS_OVERLAPPEDWINDOW;
-		BOOL HasMenu{};
+		DWORD WindowedStyle = WS_OVERLAPPEDWINDOW, WindowedExStyle{};
 
-		SIZE ClientSize{};
+		DisplayHelpers::Resolution Resolution{};
 
-		bool SetMode(WindowMode mode) {
-			const auto ret = m_currentMode != mode;
-			if (ret) {
-				m_previousMode = m_currentMode;
-				m_currentMode = mode;
-			}
-			return ret;
+		WindowModeHelper(HWND hWnd) : hWnd(hWnd) {}
+
+		void SetMode(WindowMode mode) {
+			if (m_currentMode == mode) return;
+			m_previousMode = m_currentMode;
+			m_currentMode = mode;
 		}
-
-		WindowMode GetMode() const { return m_currentMode; }
 
 		void ToggleMode() { SetMode(m_currentMode == WindowMode::Fullscreen ? m_previousMode : WindowMode::Fullscreen); }
 
+		WindowMode GetMode() const { return m_currentMode; }
+
 		BOOL Apply() const {
-			const auto exStyle = m_currentMode == WindowMode::Fullscreen ? ExStyle | WS_EX_TOPMOST : ExStyle,
-				style = m_currentMode == WindowMode::Windowed ? Style | WS_CAPTION : Style & ~WS_OVERLAPPEDWINDOW;
-			const auto SetWindowStyles = [&]() -> BOOL {
-				return (SetWindowLongPtrW(Window, GWL_EXSTYLE, static_cast<LONG_PTR>(exStyle)) || GetLastError() == ERROR_SUCCESS)
-					&& (SetWindowLongPtrW(Window, GWL_STYLE, static_cast<LONG_PTR>(style)) || GetLastError() == ERROR_SUCCESS);
+			const auto
+				style = m_currentMode == WindowMode::Windowed ? WindowedStyle | WS_CAPTION : WindowedStyle & ~WS_OVERLAPPEDWINDOW,
+				exStyle = m_currentMode == WindowMode::Fullscreen ? WindowedExStyle | WS_EX_TOPMOST : WindowedExStyle;
+
+			const auto SetWindowStyles = [&] {
+				SetLastError(ERROR_SUCCESS);
+				return (SetWindowLongPtrW(hWnd, GWL_EXSTYLE, static_cast<LONG_PTR>(exStyle)) || GetLastError() == ERROR_SUCCESS)
+					&& (SetWindowLongPtrW(hWnd, GWL_STYLE, static_cast<LONG_PTR>(style)) || GetLastError() == ERROR_SUCCESS);
 			};
-			const auto ResizeWindow = [&]() -> BOOL {
-				MONITORINFO monitorInfo;
-				monitorInfo.cbSize = sizeof(monitorInfo);
-				if (!GetMonitorInfoW(MonitorFromWindow(Window, MONITOR_DEFAULTTONEAREST), &monitorInfo)) return FALSE;
-				RECT rc{ 0, 0, ClientSize.cx, ClientSize.cy };
-				CenterRect(monitorInfo.rcMonitor, rc);
-				return AdjustWindowRectEx(&rc, style, HasMenu, exStyle)
-					&& SetWindowPos(Window, HWND_TOP, static_cast<int>(rc.left), static_cast<int>(rc.top), static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top), SWP_NOZORDER | SWP_FRAMECHANGED);
+
+			const auto SetWindowSize = [&] {
+				RECT displayRect;
+				if (!DisplayHelpers::GetDisplayRect(displayRect, hWnd)) return false;
+				RECT rect{ 0, 0, Resolution.cx, Resolution.cy };
+				CenterRect(displayRect, rect);
+				return AdjustWindowRectExForDpi(&rect, style, GetMenu(hWnd) != nullptr, exStyle, GetDpiForWindow(hWnd))
+					&& SetWindowPos(hWnd, HWND_TOP, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW) != 0;
 			};
-			const auto ret = SetWindowStyles() && ResizeWindow();
-			if (ret) ShowWindow(Window, m_currentMode == WindowMode::Fullscreen ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
+
+			auto ret = SetWindowStyles();
+			if (ret) {
+				if (m_currentMode == WindowMode::Fullscreen) ShowWindow(hWnd, SW_SHOWMAXIMIZED);
+				else ret = SetWindowSize();
+			}
 			return ret;
 		}
 

@@ -37,31 +37,21 @@
 
 class D3DApp : public DX::IDeviceNotify {
 public:
-	static constexpr UINT MaxAntiAliasingSampleCount = 8;
-
 	D3DApp(const D3DApp&) = delete;
 	D3DApp& operator=(const D3DApp&) = delete;
 
-	D3DApp(HWND hWnd, const SIZE& outputSize) noexcept(false);
+	D3DApp() noexcept(false);
 
 	~D3DApp();
 
-	UINT GetAntiAliasingSampleCount() const { return m_antiAliasingSampleCount; }
-
-	bool SetAntiAliasingSampleCount(UINT count) {
-		if (count < 1 || count > MaxAntiAliasingSampleCount) return false;
-		m_antiAliasingSampleCount = count;
-		return true;
-	}
-
 	SIZE GetOutputSize() const {
-		const auto rc = m_deviceResources->GetOutputSize();
-		return { rc.right - rc.left, rc.bottom - rc.top };
+		const auto outputSize = m_deviceResources->GetOutputSize();
+		return { outputSize.right - outputSize.left, outputSize.bottom - outputSize.top };
 	}
 
 	void Tick();
 
-	void OnWindowSizeChanged(const SIZE& size);
+	void OnWindowSizeChanged();
 
 	void OnActivated();
 
@@ -85,20 +75,23 @@ private:
 		physx::PxShape* Shape{};
 	};
 
-	const std::unique_ptr<DirectX::GamePad> m_gamepad = std::make_unique<decltype(m_gamepad)::element_type>();
-	const std::unique_ptr<DirectX::Keyboard> m_keyboard = std::make_unique<decltype(m_keyboard)::element_type>();
-	const std::unique_ptr<DirectX::Mouse> m_mouse = std::make_unique<decltype(m_mouse)::element_type>();
-
-	DirectX::GamePad::ButtonStateTracker m_gamepadButtonStateTrackers[DirectX::GamePad::MAX_PLAYER_COUNT];
-	DirectX::Keyboard::KeyboardStateTracker m_keyboardStateTracker;
-	DirectX::Mouse::ButtonStateTracker m_mouseButtonStateTracker;
-
 	std::unique_ptr<DX::DeviceResources> m_deviceResources = std::make_unique<decltype(m_deviceResources)::element_type>();
 	std::unique_ptr<DirectX::GraphicsMemory> m_graphicsMemory;
 
 	DX::StepTimer m_stepTimer;
 
-	UINT m_antiAliasingSampleCount{};
+	const std::unique_ptr<DirectX::GamePad> m_gamepad = std::make_unique<decltype(m_gamepad)::element_type>();
+	DirectX::GamePad::ButtonStateTracker m_gamepadButtonStateTracker;
+
+	const std::unique_ptr<DirectX::Keyboard> m_keyboard = std::make_unique<decltype(m_keyboard)::element_type>();
+	DirectX::Keyboard::KeyboardStateTracker m_keyboardStateTracker;
+
+	const std::unique_ptr<DirectX::Mouse> m_mouse = std::make_unique<decltype(m_mouse)::element_type>();
+	DirectX::Mouse::ButtonStateTracker m_mouseButtonStateTracker;
+
+	bool m_isMenuOpen{};
+
+	UINT m_antiAliasingSampleCount = 2;
 
 	TextureDictionary m_textures;
 
@@ -112,7 +105,6 @@ private:
 
 	DirectX::GraphicsResource m_sceneConstantBuffer, m_objectConstantBuffer;
 
-	static constexpr float SphereRadius = 0.5f;
 	std::unique_ptr<DirectX::RaytracingHelpers::Triangles<DirectX::VertexPositionNormalTexture, UINT16>> m_sphere;
 
 	DirectX::RaytracingHelpers::AccelerationStructureBuffers
@@ -188,11 +180,13 @@ private:
 
 	void ProcessInput();
 
-	void UpdateCamera(const DirectX::GamePad::State(&gamepadStates)[DirectX::GamePad::MAX_PLAYER_COUNT], const DirectX::Keyboard::State& keyboardState, const DirectX::Mouse::State& mouseState);
+	void UpdateCamera(const DirectX::GamePad::State& gamepadStates, const DirectX::Keyboard::State& keyboardState, const DirectX::Mouse::State& mouseState);
 
 	void UpdateSceneConstantBuffer();
 
 	void UpdateRenderItem(RenderItem& renderItem) const;
 
 	void DispatchRays();
+
+	void DrawMenu();
 };

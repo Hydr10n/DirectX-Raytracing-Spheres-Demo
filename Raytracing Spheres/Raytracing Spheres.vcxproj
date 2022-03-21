@@ -91,14 +91,14 @@
   <ItemGroup>
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectXRaytracingHelpers.h" />
+    <ClInclude Include="ImGuiEx.h" />
+    <ClInclude Include="SharedData.h" />
     <ClInclude Include="Texture.h" />
-    <ClInclude Include="WindowBase.h" />
     <ClInclude Include="D3DApp.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="DeviceResources.h" />
     <ClInclude Include="DisplayHelpers.h" />
     <ClInclude Include="ErrorHelpers.h" />
-    <ClInclude Include="MainWindow.h" />
     <ClInclude Include="Material.h" />
     <ClInclude Include="MyAppData.h" />
     <ClInclude Include="MyPhysX.h" />
@@ -109,11 +109,9 @@
     <ClInclude Include="WindowHelpers.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="App.cpp" />
+    <ClCompile Include="Main.cpp" />
     <ClCompile Include="D3DApp.cpp" />
     <ClCompile Include="DeviceResources.cpp" />
-    <ClCompile Include="MainWindow.cpp" />
-    <ClCompile Include="MyAppData.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Direct3D 12 Win32 App.rc" />
@@ -143,7 +141,7 @@
     <None Include="Shaders\Common.hlsli" />
     <None Include="Shaders\HitRecord.hlsli" />
     <None Include="Shaders\Material.hlsli" />
-    <None Include="Shaders\PrimaryRay.hlsli" />
+    <None Include="Shaders\RadianceRay.hlsli" />
     <None Include="Shaders\Random.hlsli" />
     <None Include="Shaders\Utils.hlsli" />
     <None Include="Shaders\VertexTypes.hlsli" />
