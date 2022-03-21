@@ -86,7 +86,7 @@ constexpr UINT MaxAntiAliasingSampleCount = 8;
 constexpr float SphereRadius = 0.5f;
 
 D3DApp::D3DApp() {
-	if (!SettingsData::Load<SettingsKeys::AntiAliasingSampleCount>(m_antiAliasingSampleCount) || m_antiAliasingSampleCount > MaxAntiAliasingSampleCount) {
+	if (SettingsData::Load<SettingsKeys::AntiAliasingSampleCount>(m_antiAliasingSampleCount) && m_antiAliasingSampleCount > MaxAntiAliasingSampleCount) {
 		m_antiAliasingSampleCount = MaxAntiAliasingSampleCount;
 	}
 

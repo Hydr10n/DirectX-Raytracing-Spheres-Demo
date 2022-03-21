@@ -76,8 +76,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 			ThrowIfFailed(GetClientRect(g_windowModeHelper->hWnd, &rect));
 			g_windowModeHelper->Resolution = { rect.right - rect.left, rect.bottom - rect.top };
 		}
-		else if (!g_displayResolutions.contains(g_windowModeHelper->Resolution)
-			&& !g_displayResolutions.contains({ g_windowModeHelper->Resolution.cy, g_windowModeHelper->Resolution.cx })) {
+		else if (!g_displayResolutions.contains(g_windowModeHelper->Resolution)) {
 			g_windowModeHelper->Resolution = *--g_displayResolutions.cend();
 		}
 
