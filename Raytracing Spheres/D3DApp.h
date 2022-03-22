@@ -91,7 +91,7 @@ private:
 
 	bool m_isMenuOpen{};
 
-	UINT m_antiAliasingSampleCount = 2;
+	UINT m_raytracingSamplesPerPixel = 2;
 
 	TextureDictionary m_textures;
 

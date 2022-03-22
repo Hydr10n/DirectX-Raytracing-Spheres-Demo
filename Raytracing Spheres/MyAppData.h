@@ -19,9 +19,9 @@ struct MyAppData {
 				static constexpr auto ToStrings() { return std::pair(L"ResolutionWidth", L"ResolutionHeight"); }
 			};
 
-			struct AntiAliasingSampleCount {
+			struct RaytracingSamplesPerPixel {
 				static constexpr LPCWSTR Section = Sections::Graphics;
-				static constexpr auto ToString() { return L"AntiAliasingSampleCount"; }
+				static constexpr auto ToString() { return L"RaytracingSamplesPerPixel"; }
 			};
 		};
 
@@ -38,7 +38,7 @@ struct MyAppData {
 					&& m_appData.Save(Key::Section, Keys.second, size.cy);
 			}
 
-			if constexpr (std::is_same<Key, Keys::AntiAliasingSampleCount>()) {
+			if constexpr (std::is_same<Key, Keys::RaytracingSamplesPerPixel>()) {
 				return m_appData.Save(Key::Section, Key::ToString(), data);
 			}
 
@@ -58,7 +58,7 @@ struct MyAppData {
 					&& m_appData.Load(Key::Section, Keys.second, size.cy);
 			}
 
-			if constexpr (std::is_same<Key, Keys::AntiAliasingSampleCount>()) {
+			if constexpr (std::is_same<Key, Keys::RaytracingSamplesPerPixel>()) {
 				return m_appData.Load(Key::Section, Key::ToString(), data);
 			}
 

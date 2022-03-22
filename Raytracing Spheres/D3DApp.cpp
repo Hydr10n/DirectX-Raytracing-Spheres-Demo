@@ -68,7 +68,7 @@ struct DescriptorHeapIndices {
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
 	XMFLOAT4X4 ProjectionToWorld, EnvironmentMapTransform;
 	XMFLOAT3 CameraPosition;
-	UINT AntiAliasingSampleCount, FrameCount;
+	UINT RaytracingSamplesPerPixel, FrameCount;
 	BOOL IsEnvironmentCubeMapUsed;
 };
 
@@ -81,13 +81,13 @@ struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
 	Material Material;
 };
 
-constexpr UINT MaxAntiAliasingSampleCount = 8;
+constexpr auto MaxRaytracingSamplesPerPixel = 8u;
 
-constexpr float SphereRadius = 0.5f;
+constexpr auto SphereRadius = 0.5f;
 
 D3DApp::D3DApp() {
-	if (SettingsData::Load<SettingsKeys::AntiAliasingSampleCount>(m_antiAliasingSampleCount) && m_antiAliasingSampleCount > MaxAntiAliasingSampleCount) {
-		m_antiAliasingSampleCount = MaxAntiAliasingSampleCount;
+	if (SettingsData::Load<SettingsKeys::RaytracingSamplesPerPixel>(m_raytracingSamplesPerPixel)) {
+		m_raytracingSamplesPerPixel = clamp(m_raytracingSamplesPerPixel, 1u, MaxRaytracingSamplesPerPixel);
 	}
 
 	{
@@ -873,7 +873,7 @@ void D3DApp::UpdateSceneConstantBuffer() {
 
 	sceneConstant.CameraPosition = m_camera.GetPosition();
 
-	sceneConstant.AntiAliasingSampleCount = m_antiAliasingSampleCount;
+	sceneConstant.RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel;
 
 	sceneConstant.FrameCount = m_stepTimer.GetFrameCount();
 }
@@ -1021,8 +1021,8 @@ void D3DApp::DrawMenu() {
 
 			ImGui::Separator();
 
-			if (ImGui::SliderInt("Anti-Aliasing Sample Count", reinterpret_cast<int*>(&m_antiAliasingSampleCount), 1, static_cast<int>(MaxAntiAliasingSampleCount), "%d", ImGuiSliderFlags_NoInput)) {
-				SettingsData::Save<SettingsKeys::AntiAliasingSampleCount>(m_antiAliasingSampleCount);
+			if (ImGui::SliderInt("Raytracing Samples Per Pixel", reinterpret_cast<int*>(&m_raytracingSamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
+				SettingsData::Save<SettingsKeys::RaytracingSamplesPerPixel>(m_raytracingSamplesPerPixel);
 			}
 		}
 

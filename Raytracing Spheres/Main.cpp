@@ -17,7 +17,7 @@ using namespace WindowHelpers;
 using SettingsData = MyAppData::Settings;
 using SettingsKeys = SettingsData::Keys;
 
-constexpr LPCWSTR DefaultWindowTitle = L"Raytracing Spheres";
+constexpr auto DefaultWindowTitle = L"Raytracing Spheres";
 
 exception_ptr g_exception;
 

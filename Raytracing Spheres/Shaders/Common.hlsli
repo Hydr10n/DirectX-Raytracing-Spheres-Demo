@@ -22,7 +22,7 @@ TextureCube<float4> g_environmentCubeMap : register(t5);
 struct SceneConstant {
 	float4x4 ProjectionToWorld, EnvironmentMapTransform;
 	float3 CameraPosition;
-	uint AntiAliasingSampleCount, FrameCount;
+	uint RaytracingSamplesPerPixel, FrameCount;
 	bool IsEnvironmentCubeMapUsed;
 };
 ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);

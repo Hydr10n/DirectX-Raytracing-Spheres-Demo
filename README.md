@@ -38,10 +38,10 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	|-|-|
 	|(Move)|Look around|
 
-### Settings in Menu
+### Settings
 - Window Mode: Windowed/borderless/fullscreen
 - Resolution
-- Anti-Aliasing Sample Count
+- Raytracing Samples Per Pixel
 
 ---
 
