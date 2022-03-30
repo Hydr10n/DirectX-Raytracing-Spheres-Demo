@@ -10,14 +10,16 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 
 ---
 
-## Controls
+## Features
+### Controls
 - Xbox Controller
 	|||
 	|-|-|
 	|Menu|Open/close menu|
 	|View|Pause/resume|
 	|LS (rotate)|Move|
-	|LS (rotate + press)|Move faster|
+	|LT (hold)|Move slower|
+	|RT (hold)|Move faster|
 	|RS (rotate)|Look around|
 	|X|Toggle gravity of Earth|
 	|B|Toggle gravity of the star|
@@ -29,7 +31,8 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	|Esc|Open/close menu|
 	|Tab|Pause/resume|
 	|W A S D|Move|
-	|Left shift + W A S D|Move faster|
+	|Left Ctrl (hold)|Move slower|
+	|Left Shift (hold)|Move faster|
 	|G|Toggle gravity of Earth|
 	|H|Toggle gravity of the star|
 

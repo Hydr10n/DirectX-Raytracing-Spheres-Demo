@@ -97,7 +97,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 				TranslateMessage(&msg);
 				DispatchMessageW(&msg);
 
-				if (g_exception != nullptr) rethrow_exception(g_exception);
+				if (g_exception) rethrow_exception(g_exception);
 			}
 			else g_app->Tick();
 		} while (msg.message != WM_QUIT);
@@ -169,7 +169,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			case SIZE_MINIMIZED: g_app->OnSuspending(); break;
 
 			case SIZE_RESTORED: g_app->OnResuming(); [[fallthrough]];
-			default: g_app->OnWindowSizeChanged(); break;
+			default: {
+				//g_windowModeHelper->Resolution = { LOWORD(lParam), HIWORD(lParam) };
+
+				g_app->OnWindowSizeChanged();
+			}	break;
 			}
 		}	break;
 

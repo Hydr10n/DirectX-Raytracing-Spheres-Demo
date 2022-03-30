@@ -3,7 +3,7 @@
 
 #include "Material.hlsli"
 
-#define MAX_TRACE_RECURSION_DEPTH 8
+#define MAX_TRACE_RECURSION_DEPTH 7
 
 SamplerState g_anisotropicWrap : register(s0);
 

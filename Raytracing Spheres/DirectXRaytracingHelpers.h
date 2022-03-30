@@ -22,10 +22,9 @@ namespace DirectX::RaytracingHelpers {
 		const void* pData = nullptr
 	) {
 		PVOID pMappedData;
-		HRESULT ret;
-		if (SUCCEEDED(ret = CreateBuffer(pDevice, size, D3D12_RESOURCE_STATE_GENERIC_READ, ppBuffer, D3D12_RESOURCE_FLAG_NONE, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD)))
-			&& pData != nullptr && SUCCEEDED(ret = (*ppBuffer)->Map(0, nullptr, &pMappedData))) {
-			memcpy(pMappedData, pData, size);
+		auto ret = CreateBuffer(pDevice, size, D3D12_RESOURCE_STATE_GENERIC_READ, ppBuffer, D3D12_RESOURCE_FLAG_NONE, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD));
+		if (SUCCEEDED(ret) && pData != nullptr && SUCCEEDED(ret = (*ppBuffer)->Map(0, nullptr, &pMappedData))) {
+			memcpy(pMappedData, pData, static_cast<size_t>(size));
 			(*ppBuffer)->Unmap(0, nullptr);
 		}
 		return ret;

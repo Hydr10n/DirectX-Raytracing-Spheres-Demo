@@ -1,7 +1,9 @@
 #ifndef MATERIAL_HLSLI
 #define MATERIAL_HLSLI
 
-#include "HitRecord.hlsli"
+#include "Ray.hlsli"
+
+#include "HitInfo.hlsli"
 
 #include "Random.hlsli"
 
@@ -23,22 +25,22 @@ struct Material {
 		}
 	}
 
-	bool Scatter(RayDesc ray, HitRecord hitRecord, out float3 direction, inout Random random) {
+	bool Scatter(Ray ray, HitInfo hitInfo, out float3 direction, inout Random random) {
 		switch (Type) {
 		case Type::Lambertian: {
-			direction = hitRecord.Vertex.Normal + random.UnitVector();
+			direction = hitInfo.Vertex.Normal + random.UnitVector();
 
 			// Catch degenerate scatter direction
 			const float O = 1e-8;
-			if (abs(direction[0]) < O && abs(direction[1]) < O && abs(direction[2]) < O) direction = hitRecord.Vertex.Normal;
+			if (abs(direction[0]) < O && abs(direction[1]) < O && abs(direction[2]) < O) direction = hitInfo.Vertex.Normal;
 
 			return true;
 		}
 
 		case Type::Metal: {
-			direction = reflect(ray.Direction, hitRecord.Vertex.Normal) + Roughness * random.InUnitSphere();
+			direction = reflect(ray.Direction, hitInfo.Vertex.Normal) + Roughness * random.InUnitSphere();
 
-			return dot(direction, hitRecord.Vertex.Normal) > 0;
+			return dot(direction, hitInfo.Vertex.Normal) > 0;
 		}
 
 		case Type::Isotropic: {
@@ -49,12 +51,12 @@ struct Material {
 
 		case Type::Dielectric: {
 			const float
-				cosTheta = dot(-ray.Direction, hitRecord.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
-				refractionRatio = hitRecord.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
+				cosTheta = dot(-ray.Direction, hitInfo.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
+				refractionRatio = hitInfo.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 			const bool canRefract = refractionRatio * sinTheta <= 1;
 			direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) <= random.Float3() ?
-				refract(ray.Direction, hitRecord.Vertex.Normal, refractionRatio) :
-				reflect(ray.Direction, hitRecord.Vertex.Normal);
+				refract(ray.Direction, hitInfo.Vertex.Normal, refractionRatio) :
+				reflect(ray.Direction, hitInfo.Vertex.Normal);
 
 			return true;
 		}

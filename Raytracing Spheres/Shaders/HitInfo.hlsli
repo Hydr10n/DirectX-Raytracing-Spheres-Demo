@@ -1,9 +1,9 @@
-#ifndef HITRECORD_HLSLI
-#define HITRECORD_HLSLI
+#ifndef HITINFO_HLSLI
+#define HITINFO_HLSLI
 
 #include "VertexTypes.hlsli"
 
-struct HitRecord {
+struct HitInfo {
 	VertexPositionNormal Vertex;
 	bool IsFrontFace;
 

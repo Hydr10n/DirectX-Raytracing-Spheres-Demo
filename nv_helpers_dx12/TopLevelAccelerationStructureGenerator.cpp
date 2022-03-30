@@ -63,7 +63,7 @@ namespace nv_helpers_dx12
 void TopLevelAccelerationStructureGenerator::AddInstance(
     D3D12_GPU_VIRTUAL_ADDRESS bottomLevelAS, // Bottom-level acceleration structure containing the
                                              // actual geometric data of the instance
-    const DirectX::XMMATRIX& transform,      // Transform matrix to apply to the instance, allowing
+    DirectX::FXMMATRIX transform,            // Transform matrix to apply to the instance, allowing
                                              // the same bottom-level AS to be used at several
                                              // world-space positions
     UINT ID,                                 // Instance ID, which can be used in the shaders to

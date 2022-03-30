@@ -2,6 +2,9 @@
 
 #include "D3DApp.h"
 
+#include "SharedData.h"
+#include "MyAppData.h"
+
 #include "DirectXHelpers.h"
 
 #include "ResourceUploadBatch.h"
@@ -16,14 +19,11 @@
 
 #include "Random.h"
 
-#include "Shaders/Raytracing.hlsl.h"
-
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
 #include "ImGuiEx.h"
 
-#include "SharedData.h"
-#include "MyAppData.h"
+#include "Shaders/Raytracing.hlsl.h"
 
 #include <shellapi.h>
 
@@ -42,6 +42,22 @@ using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 using SettingsData = MyAppData::Settings;
 using SettingsKeys = SettingsData::Keys;
 
+struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
+	XMMATRIX ProjectionToWorld, EnvironmentMapTransform;
+	XMFLOAT3 CameraPosition;
+	UINT RaytracingSamplesPerPixel, FrameCount;
+	BOOL IsEnvironmentCubeMapUsed;
+};
+
+struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
+
+struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
+	UINT TextureFlags;
+	XMFLOAT3 Padding;
+	XMMATRIX TextureTransform;
+	Material Material;
+};
+
 struct ShaderEntryPoints { static constexpr LPCWSTR RayGeneration = L"RayGeneration", RadianceRayMiss = L"RadianceRayMiss"; };
 
 struct ShaderSubobjects { static constexpr LPCWSTR RadianceRayHitGroup = L"RadianceRayHitGroup"; };
@@ -53,7 +69,7 @@ struct Objects {
 		HarmonicOscillator = "HarmonicOscillator";
 };
 
-struct DescriptorHeapIndices {
+struct DescriptorHeapIndex {
 	enum {
 		Output,
 		SphereVertices, SphereIndices,
@@ -63,22 +79,6 @@ struct DescriptorHeapIndices {
 		Font,
 		Count
 	};
-};
-
-struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstant {
-	XMFLOAT4X4 ProjectionToWorld, EnvironmentMapTransform;
-	XMFLOAT3 CameraPosition;
-	UINT RaytracingSamplesPerPixel, FrameCount;
-	BOOL IsEnvironmentCubeMapUsed;
-};
-
-struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
-
-struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstant {
-	UINT TextureFlags;
-	XMFLOAT3 Padding;
-	XMFLOAT4X4 TextureTransform;
-	Material Material;
 };
 
 constexpr auto MaxRaytracingSamplesPerPixel = 8u;
@@ -320,7 +320,7 @@ void D3DApp::CreateWindowSizeDependentResources() {
 
 		ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(m_output.ReleaseAndGetAddressOf())));
 
-		device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::Output));
+		device->CreateUnorderedAccessView(m_output.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::Output));
 	}
 
 	m_camera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
@@ -329,7 +329,7 @@ void D3DApp::CreateWindowSizeDependentResources() {
 		auto& IO = ImGui::GetIO();
 
 		if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-		ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptors->Heap(), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::Font), m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::Font));
+		ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptors->Heap(), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::Font), m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::Font));
 
 		IO.Fonts->Clear();
 		IO.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\segoeui.ttf)", static_cast<float>(outputSize.cy) * 0.025f);
@@ -347,7 +347,7 @@ void D3DApp::BuildTextures() {
 					{
 						TextureType::CubeMap,
 						Texture{
-							.DescriptorHeapIndex = DescriptorHeapIndices::EnvironmentCubeMap,
+							.DescriptorHeapIndex = DescriptorHeapIndex::EnvironmentCubeMap,
 							.Path = L"Space.dds"
 						}
 					}
@@ -362,14 +362,14 @@ void D3DApp::BuildTextures() {
 					{
 						TextureType::ColorMap,
 						Texture{
-							.DescriptorHeapIndex = DescriptorHeapIndices::MoonColorMap,
+							.DescriptorHeapIndex = DescriptorHeapIndex::MoonColorMap,
 							.Path = L"Moon.jpg"
 						}
 					},
 					{
 						TextureType::NormalMap,
 						Texture{
-							.DescriptorHeapIndex = DescriptorHeapIndices::MoonNormalMap,
+							.DescriptorHeapIndex = DescriptorHeapIndex::MoonNormalMap,
 							.Path = L"Moon_Normal.jpg"
 						}
 					}
@@ -384,14 +384,14 @@ void D3DApp::BuildTextures() {
 					{
 						TextureType::ColorMap,
 						Texture{
-							.DescriptorHeapIndex = DescriptorHeapIndices::EarthColorMap,
+							.DescriptorHeapIndex = DescriptorHeapIndex::EarthColorMap,
 							.Path = L"Earth.jpg"
 						}
 					},
 					{
 						TextureType::NormalMap,
 						Texture{
-							.DescriptorHeapIndex = DescriptorHeapIndices::EarthNormalMap,
+							.DescriptorHeapIndex = DescriptorHeapIndex::EarthNormalMap,
 							.Path = L"Earth_Normal.jpg"
 						}
 					}
@@ -403,36 +403,55 @@ void D3DApp::BuildTextures() {
 }
 
 void D3DApp::LoadTextures() {
-	const auto device = m_deviceResources->GetD3DDevice();
+	exception_ptr exception;
 
-	ResourceUploadBatch resourceUploadBatch(device);
-	resourceUploadBatch.Begin();
+	vector<thread> threads;
+	threads.reserve(8);
 
-	const auto directoryPath = filesystem::path(*__wargv).replace_filename(L"Textures\\");
+	const auto directoryPath = filesystem::path(*__wargv).replace_filename(LR"(Textures\)");
 	for (auto& pair : m_textures) {
 		for (auto& pair1 : get<0>(pair.second)) {
-			auto& texture = pair1.second;
+			threads.push_back(thread([&] {
+				try {
+					auto& texture = pair1.second;
 
-			bool isCubeMap = false;
+					const auto device = m_deviceResources->GetD3DDevice();
 
-			const auto filePath = filesystem::path(directoryPath).append(texture.Path);
-			const auto filePathString = filePath.string();
-			if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
-				ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
+					ResourceUploadBatch resourceUploadBatch(device);
+					resourceUploadBatch.Begin();
 
-				if ((isCubeMap && pair1.first != TextureType::CubeMap) || (!isCubeMap && pair1.first == TextureType::CubeMap)) {
-					throw runtime_error(filePathString + ": Invalid texture");
+					bool isCubeMap = false;
+
+					const auto filePath = filesystem::path(directoryPath).append(texture.Path);
+					const auto filePathString = filePath.string();
+					if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
+						ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
+
+						if ((isCubeMap && pair1.first != TextureType::CubeMap) || (!isCubeMap && pair1.first == TextureType::CubeMap)) {
+							throw runtime_error(filePathString + ": Invalid texture");
+						}
+					}
+					else {
+						ThrowIfFailed(CreateWICTextureFromFile(device, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf()), filePathString.c_str());
+					}
+
+					resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
+
+					CreateShaderResourceView(device, texture.Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
 				}
-			}
-			else {
-				ThrowIfFailed(CreateWICTextureFromFile(device, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf()), filePathString.c_str());
-			}
+				catch (...) { if (!exception) exception = current_exception(); }
+				}));
 
-			CreateShaderResourceView(device, texture.Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
+			if (threads.size() == threads.capacity()) {
+				for (auto& thread : threads) thread.join();
+				threads.clear();
+			}
 		}
 	}
 
-	resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
+	if (!threads.empty()) for (auto& thread : threads) thread.join();
+
+	if (exception) rethrow_exception(exception);
 }
 
 void D3DApp::BuildRenderItems() {
@@ -441,8 +460,8 @@ void D3DApp::BuildRenderItems() {
 	const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) {
 		renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
-		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndices::SphereVertices;
-		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndices::SphereIndices;
+		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndex::SphereVertices;
+		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndex::SphereIndices;
 
 		renderItem.ObjectConstantBufferIndex = m_renderItems.size();
 
@@ -486,15 +505,16 @@ void D3DApp::BuildRenderItems() {
 			AddRenderItem(renderItem, PxSphereGeometry(0.5f), sphere.Position);
 		}
 
+		Random random;
 		for (int i = -10; i < 10; i++) {
 			for (int j = -10; j < 10; j++) {
 				constexpr auto A = 0.5f;
 				const auto ω = PxTwoPi / m_spring.Period;
 
 				PxVec3 position;
-				position.x = static_cast<float>(i) + 0.7f * m_random.Float();
+				position.x = static_cast<float>(i) + 0.7f * random.Float();
 				position.y = m_spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, ω, 0.0f, position.x);
-				position.z = static_cast<float>(j) - 0.7f * m_random.Float();
+				position.z = static_cast<float>(j) - 0.7f * random.Float();
 
 				bool isOverlapping = false;
 				for (const auto& sphere : spheres) {
@@ -509,10 +529,10 @@ void D3DApp::BuildRenderItems() {
 
 				renderItem.Name = Objects::HarmonicOscillator;
 
-				const auto randomValue = m_random.Float();
-				if (randomValue < 0.5f) renderItem.Material.AsLambertian(m_random.Float4());
-				else if (randomValue < 0.75f) renderItem.Material.AsMetal(m_random.Float4(0.5f, 1), m_random.Float(0, 0.5f));
-				else renderItem.Material.AsDielectric(m_random.Float4(), 1.5f);
+				const auto randomValue = random.Float();
+				if (randomValue < 0.5f) renderItem.Material.AsLambertian(random.Float4());
+				else if (randomValue < 0.75f) renderItem.Material.AsMetal(random.Float4(0.5f, 1), random.Float(0, 0.5f));
+				else renderItem.Material.AsDielectric(random.Float4(), 1.5f);
 
 				const auto rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(0.075f), position);
 
@@ -609,7 +629,7 @@ void D3DApp::CreatePipelineStateObjects() {
 void D3DApp::CreateDescriptorHeaps() {
 	const auto device = m_deviceResources->GetD3DDevice();
 
-	m_resourceDescriptors = make_unique<DescriptorHeap>(device, DescriptorHeapIndices::Count);
+	m_resourceDescriptors = make_unique<DescriptorHeap>(device, DescriptorHeapIndex::Count);
 }
 
 void D3DApp::CreateGeometries() {
@@ -620,7 +640,7 @@ void D3DApp::CreateGeometries() {
 
 	GeometricPrimitive::CreateGeoSphere(vertices, indices, SphereRadius * 2, 6);
 	m_sphere = make_unique<decltype(m_sphere)::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
-	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::SphereVertices), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndices::SphereIndices));
+	m_sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::SphereVertices), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::SphereIndices));
 }
 
 void D3DApp::CreateBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, AccelerationStructureBuffers& buffers) {
@@ -658,7 +678,7 @@ void D3DApp::CreateTopLevelAccelerationStructure(bool updateOnly, AccelerationSt
 		PxMat44 world(PxVec4(1, 1, -1, 1));
 		world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
 		world.scale(PxVec4(scaling, 1));
-		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
+		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
 	}
 
 	const auto device = m_deviceResources->GetD3DDevice();
@@ -704,7 +724,7 @@ void D3DApp::CreateConstantBuffers() {
 			const auto& textures = m_textures[Objects::Environment];
 			if (get<0>(textures).contains(TextureType::CubeMap)) sceneConstant.IsEnvironmentCubeMapUsed = TRUE;
 
-			XMStoreFloat4x4(&sceneConstant.EnvironmentMapTransform, XMMatrixTranspose(get<1>(textures) * XMMatrixScaling(1, 1, -1)));
+			sceneConstant.EnvironmentMapTransform = XMMatrixTranspose(get<1>(textures) * XMMatrixScaling(1, 1, -1));
 		}
 	}
 
@@ -725,7 +745,7 @@ void D3DApp::CreateConstantBuffers() {
 				if (textures.contains(TextureType::ColorMap)) objectConstant.TextureFlags |= TextureFlags::ColorMap;
 				if (textures.contains(TextureType::NormalMap)) objectConstant.TextureFlags |= TextureFlags::NormalMap;
 
-				XMStoreFloat4x4(&objectConstant.TextureTransform, XMMatrixTranspose(get<1>(*renderItem.pTextures) * XMMatrixTranslation(0.5f, 0, 0)));
+				objectConstant.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures) * XMMatrixTranslation(0.5f, 0, 0));
 			}
 		}
 	}
@@ -837,7 +857,7 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 
 	{
 		if (gamepadState.IsConnected()) {
-			const auto translationSpeed = elapsedSeconds * (gamepadState.IsLeftStickPressed() ? 30.0f : 15.0f);
+			const auto translationSpeed = elapsedSeconds * 15 * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1) * (gamepadState.IsRightTriggerPressed() ? 2 : 1);
 			const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
 			Translate(displacement);
 
@@ -849,7 +869,7 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 
 	{
 		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
-			const auto translationSpeed = elapsedSeconds * (keyboardState.LeftShift ? 30.0f : 15.0f);
+			const auto translationSpeed = elapsedSeconds * 15 * (keyboardState.LeftControl ? 0.5f : 1) * (keyboardState.LeftShift ? 2 : 1);
 			XMFLOAT3 displacement{};
 			if (keyboardState.A) displacement.x -= translationSpeed;
 			if (keyboardState.D) displacement.x += translationSpeed;
@@ -869,7 +889,7 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 void D3DApp::UpdateSceneConstantBuffer() {
 	auto& sceneConstant = *reinterpret_cast<SceneConstant*>(m_sceneConstantBuffer.Memory());
 
-	XMStoreFloat4x4(&sceneConstant.ProjectionToWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, m_camera.GetView() * m_camera.GetProjection())));
+	sceneConstant.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_camera.GetView() * m_camera.GetProjection()));
 
 	sceneConstant.CameraPosition = m_camera.GetPosition();
 
@@ -918,7 +938,7 @@ void D3DApp::DispatchRays() {
 
 	UINT rootParameterIndex = 0;
 
-	commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::Output));
+	commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::Output));
 
 	commandList->SetComputeRootShaderResourceView(rootParameterIndex++, m_topLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress());
 
@@ -934,7 +954,7 @@ void D3DApp::DispatchRays() {
 				}
 			);
 
-			commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndices::EnvironmentCubeMap));
+			commandList->SetComputeRootDescriptorTable(rootParameterIndex++, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::EnvironmentCubeMap));
 		}
 	}
 
@@ -1049,12 +1069,13 @@ void D3DApp::DrawMenu() {
 
 			AddControls(
 				"Xbox Controller",
-				"XboxController",
+				"##XboxController",
 				{
 					{ "Menu", "Open/close menu" },
 					{ "View", "Pause/resume" },
 					{ "LS (rotate)", "Move" },
-					{ "LS (rotate + press)", "Move faster" },
+					{ "LT (hold)", "Move slower" },
+					{ "RT (hold)", "Move faster" },
 					{ "RS (rotate)", "Look around" },
 					{ "X", "Toggle gravity of Earth" },
 					{ "B", "Toggle gravity of the star" }
@@ -1063,13 +1084,14 @@ void D3DApp::DrawMenu() {
 
 			AddControls(
 				"Keyboard",
-				"Keyboard",
+				"##Keyboard",
 				{
 					{ "Alt + Enter", "Toggle between windowed/borderless and fullscreen modes" },
 					{ "Esc", "Open/close menu" },
 					{ "Tab", "Pause/resume" },
 					{ "W A S D", "Move" },
-					{ "Left shift + W A S D", "Move faster" },
+					{ "Left Ctrl (hold)", "Move slower" },
+					{ "Left Shift (hold)", "Move faster" },
 					{ "G", "Toggle gravity of Earth" },
 					{ "H", "Toggle gravity of the star" }
 				}
@@ -1087,7 +1109,7 @@ void D3DApp::DrawMenu() {
 		if (ImGui::CollapsingHeader("About")) {
 			ImGui::Text("© Hydr10n. All rights reserved.");
 
-			const auto URL = "https://github.com/Hydr10n/DirectX-Raytracing-Spheres-Demo";
+			constexpr auto URL = "https://github.com/Hydr10n/DirectX-Raytracing-Spheres-Demo";
 			if (ImGuiEx::Hyperlink("GitHub repository", URL)) ShellExecuteA(nullptr, "open", URL, nullptr, nullptr, SW_SHOW);
 		}
 
