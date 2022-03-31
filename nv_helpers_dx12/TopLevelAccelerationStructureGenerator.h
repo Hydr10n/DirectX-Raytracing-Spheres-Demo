@@ -95,12 +95,12 @@ public:
       DirectX::FXMMATRIX transform,            /// Transform matrix to apply to the instance,
                                                /// allowing the same bottom-level AS to be used
                                                /// at several world-space positions
-      UINT instanceID,                         /// Instance ID, which can be used in the shaders to
+      UINT ID,                                 /// Instance ID, which can be used in the shaders to
                                                /// identify this specific instance
       UINT hitGroupIndex,                      /// Hit group index, corresponding the the index of the
                                                /// hit group in the Shader Binding Table that will be
                                                /// invocated upon hitting the geometry
-      UINT instanceMask = ~0,
+      UINT mask = ~0,
       D3D12_RAYTRACING_INSTANCE_FLAGS flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE
   );
 
