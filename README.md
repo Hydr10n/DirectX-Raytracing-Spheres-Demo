@@ -11,6 +11,11 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 ---
 
 ## Features
+### Graphics Settings
+- Window Mode
+- Resolution
+- Raytracing Samples Per Pixel
+
 ### Controls
 - Xbox Controller
 	|||
@@ -41,11 +46,6 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	|-|-|
 	|(Move)|Look around|
 
-### Settings
-- Window Mode: Windowed/borderless/fullscreen
-- Resolution
-- Raytracing Samples Per Pixel
-
 ---
 
 ## Minimum Build Requirements
@@ -62,10 +62,12 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 
 ### Dependencies
 - [DirectXTK12](https://github.com/Microsoft/DirectXTK12)
+
 - [PhysX](https://github.com/NVIDIAGameWorks/PhysX)
 	```cmd
 	> .\vcpkg install physx:x64-windows
 	```
+
 - [Dear ImGui](https://github.com/ocornut/imgui)
 	```cmd
 	> .\vcpkg install imgui[core,win32-binding,dx12-binding]:x64-windows
