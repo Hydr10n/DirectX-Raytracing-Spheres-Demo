@@ -177,9 +177,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			}
 		}	break;
 
+		case WM_DISPLAYCHANGE: g_app->OnDisplayChange(); break;
+
 		case WM_DPICHANGED: {
 			const auto& rect = *reinterpret_cast<PRECT>(lParam);
 			SetWindowPos(hWnd, nullptr, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER);
+		}	break;
+
+		case WM_ACTIVATEAPP: {
+			if (wParam) {
+				g_app->OnActivated();
+
+				SetForegroundWindow(hWnd);
+			}
+			else g_app->OnDeactivated();
+		} [[fallthrough]];
+		case WM_ACTIVATE: {
+			Keyboard::ProcessMessage(uMsg, wParam, lParam);
+			Mouse::ProcessMessage(uMsg, wParam, lParam);
 		}	break;
 
 		case WM_SYSKEYDOWN: {
@@ -211,19 +226,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		case WM_MOUSEMOVE:
 		case WM_MOUSEWHEEL:
 		case WM_MOUSEHOVER: Mouse::ProcessMessage(uMsg, wParam, lParam); break;
-
-		case WM_ACTIVATEAPP: {
-			if (wParam) {
-				g_app->OnActivated();
-
-				SetForegroundWindow(hWnd);
-			}
-			else g_app->OnDeactivated();
-		} [[fallthrough]];
-		case WM_ACTIVATE: {
-			Keyboard::ProcessMessage(uMsg, wParam, lParam);
-			Mouse::ProcessMessage(uMsg, wParam, lParam);
-		}	break;
 
 			//case WM_MOUSEACTIVATE: return MA_ACTIVATEANDEAT;
 

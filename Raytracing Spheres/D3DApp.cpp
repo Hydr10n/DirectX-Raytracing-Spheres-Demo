@@ -165,6 +165,8 @@ void D3DApp::OnWindowSizeChanged() {
 	CreateWindowSizeDependentResources();
 }
 
+void D3DApp::OnDisplayChange() { m_deviceResources->UpdateColorSpace(); }
+
 void D3DApp::OnActivated() {}
 
 void D3DApp::OnDeactivated() {}

@@ -51,6 +51,8 @@ public:
 
 	void OnWindowSizeChanged();
 
+	void OnDisplayChange();
+
 	void OnActivated();
 
 	void OnDeactivated();
