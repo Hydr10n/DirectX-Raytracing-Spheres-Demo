@@ -76,6 +76,7 @@ private:
 	};
 
 	std::unique_ptr<DX::DeviceResources> m_deviceResources = std::make_unique<decltype(m_deviceResources)::element_type>();
+
 	std::unique_ptr<DirectX::GraphicsMemory> m_graphicsMemory;
 
 	DX::StepTimer m_stepTimer;

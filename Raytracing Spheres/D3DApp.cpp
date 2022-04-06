@@ -81,7 +81,7 @@ struct DescriptorHeapIndex {
 	};
 };
 
-constexpr auto MaxRaytracingSamplesPerPixel = 8u;
+constexpr auto MaxRaytracingSamplesPerPixel = 16u;
 
 constexpr auto SphereRadius = 0.5f;
 
@@ -253,7 +253,7 @@ void D3DApp::Render() {
 		commandList->CopyResource(renderTarget, output);
 	}
 
-	DrawMenu();
+	if (m_isMenuOpen) DrawMenu();
 
 	PIXEndEvent(commandList);
 
@@ -354,7 +354,7 @@ void D3DApp::BuildTextures() {
 						}
 					}
 				},
-				XMMatrixRotationRollPitchYaw(XM_PI, XM_PI * 0.8f, 0)
+				XMMatrixRotationRollPitchYaw(XM_PI, XM_PI * 0.2f, 0)
 			}
 		},
 		{
@@ -726,7 +726,7 @@ void D3DApp::CreateConstantBuffers() {
 			const auto& textures = m_textures[Objects::Environment];
 			if (get<0>(textures).contains(TextureType::CubeMap)) sceneConstant.IsEnvironmentCubeMapUsed = TRUE;
 
-			sceneConstant.EnvironmentMapTransform = XMMatrixTranspose(get<1>(textures) * XMMatrixScaling(1, 1, -1));
+			sceneConstant.EnvironmentMapTransform = XMMatrixTranspose(get<1>(textures));
 		}
 	}
 
@@ -998,8 +998,6 @@ void D3DApp::DispatchRays() {
 }
 
 void D3DApp::DrawMenu() {
-	if (!m_isMenuOpen) return;
-
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -1010,7 +1008,7 @@ void D3DApp::DrawMenu() {
 		ImGui::SetNextWindowPos({});
 		ImGui::SetNextWindowSize({ static_cast<float>(outputSize.cx), 0 });
 
-		ImGui::Begin("##Menu", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing);
+		ImGui::Begin("##Menu", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBackground);
 
 		if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
 
