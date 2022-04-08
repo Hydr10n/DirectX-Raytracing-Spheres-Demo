@@ -376,7 +376,7 @@ void D3DApp::BuildTextures() {
 						}
 					}
 				},
-				XMMatrixIdentity()
+				XMMatrixTranslation(0.5f, 0, 0)
 			}
 		},
 		{
@@ -736,9 +736,9 @@ void D3DApp::CreateConstantBuffers() {
 		m_objectConstantBuffer = m_graphicsMemory->Allocate(sizeof(ObjectConstant) * renderItemsSize);
 
 		for (size_t i = 0; i < renderItemsSize; i++) {
-			const auto& renderItem = m_renderItems[i];
-
 			auto& objectConstant = reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i];
+
+			const auto& renderItem = m_renderItems[i];
 
 			objectConstant.Material = renderItem.Material;
 
@@ -747,7 +747,7 @@ void D3DApp::CreateConstantBuffers() {
 				if (textures.contains(TextureType::ColorMap)) objectConstant.TextureFlags |= TextureFlags::ColorMap;
 				if (textures.contains(TextureType::NormalMap)) objectConstant.TextureFlags |= TextureFlags::NormalMap;
 
-				objectConstant.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures) * XMMatrixTranslation(0.5f, 0, 0));
+				objectConstant.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
 			}
 		}
 	}

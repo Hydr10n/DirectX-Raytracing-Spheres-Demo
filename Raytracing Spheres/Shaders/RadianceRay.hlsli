@@ -41,10 +41,10 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
 
-		const float3 normal = VertexAttribute(normals, attributes.barycentrics);
+		const float3 normal = GetVertexAttribute(normals, attributes.barycentrics);
 		worldNormal = normalize(mul(normal, (float3x3) ObjectToWorld4x3()));
 
-		textureCoordinate = VertexAttribute(textureCoordinates, attributes.barycentrics);
+		textureCoordinate = GetVertexAttribute(textureCoordinates, attributes.barycentrics);
 		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstant.TextureTransform).xy;
 
 		if (g_objectConstant.TextureFlags & TextureFlags::NormalMap) {

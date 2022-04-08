@@ -12,11 +12,11 @@ inline RayDesc GenerateCameraRay(uint2 raysIndex, uint2 raysDimensions, float3 o
 	return CreateRayDesc(origin, normalize(world.xyz / world.w - origin));
 }
 
-inline float2 VertexAttribute(float2 attributes[3], float2 barycentrics) {
+inline float2 GetVertexAttribute(float2 attributes[3], float2 barycentrics) {
 	return attributes[0] + barycentrics.x * (attributes[1] - attributes[0]) + barycentrics.y * (attributes[2] - attributes[0]);
 }
 
-inline float3 VertexAttribute(float3 attributes[3], float2 barycentrics) {
+inline float3 GetVertexAttribute(float3 attributes[3], float2 barycentrics) {
 	return attributes[0] + barycentrics.x * (attributes[1] - attributes[0]) + barycentrics.y * (attributes[2] - attributes[0]);
 }
 
