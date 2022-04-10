@@ -37,8 +37,8 @@ using namespace physx;
 using namespace std;
 using namespace WindowHelpers;
 
-using Key = Keyboard::Keys;
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
+using Key = Keyboard::Keys;
 using SettingsData = MyAppData::Settings;
 using SettingsKeys = SettingsData::Keys;
 
@@ -838,10 +838,8 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 		const auto magnitude = x.magnitude();
 		const auto normalized = x / magnitude;
 
-		PxScene* scene;
-		m_myPhysX.GetPhysics().getScenes(&scene, sizeof(scene));
 		PxRaycastBuffer raycastBuffer;
-		if (scene->raycast(To_PxVec3(m_camera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+		if (m_myPhysX.GetScene().raycast(To_PxVec3(m_camera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 			x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 		}
 
@@ -857,32 +855,28 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 
 	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-	{
-		if (gamepadState.IsConnected()) {
-			const auto translationSpeed = elapsedSeconds * 15 * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1) * (gamepadState.IsRightTriggerPressed() ? 2 : 1);
-			const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
-			Translate(displacement);
+	if (gamepadState.IsConnected()) {
+		const auto translationSpeed = elapsedSeconds * 15 * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1) * (gamepadState.IsRightTriggerPressed() ? 2 : 1);
+		const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
+		Translate(displacement);
 
-			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
-			m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
-			Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
-		}
+		const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
+		m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
+		Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
 	}
 
-	{
-		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
-			const auto translationSpeed = elapsedSeconds * 15 * (keyboardState.LeftControl ? 0.5f : 1) * (keyboardState.LeftShift ? 2 : 1);
-			XMFLOAT3 displacement{};
-			if (keyboardState.A) displacement.x -= translationSpeed;
-			if (keyboardState.D) displacement.x += translationSpeed;
-			if (keyboardState.W) displacement.z += translationSpeed;
-			if (keyboardState.S) displacement.z -= translationSpeed;
-			Translate(displacement);
+	if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
+		const auto translationSpeed = elapsedSeconds * 15 * (keyboardState.LeftControl ? 0.5f : 1) * (keyboardState.LeftShift ? 2 : 1);
+		XMFLOAT3 displacement{};
+		if (keyboardState.A) displacement.x -= translationSpeed;
+		if (keyboardState.D) displacement.x += translationSpeed;
+		if (keyboardState.W) displacement.z += translationSpeed;
+		if (keyboardState.S) displacement.z -= translationSpeed;
+		Translate(displacement);
 
-			const auto rotationSpeed = elapsedSeconds * 20;
-			m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
-			Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
-		}
+		const auto rotationSpeed = elapsedSeconds * 20;
+		m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
+		Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 	}
 
 	m_camera.UpdateView();

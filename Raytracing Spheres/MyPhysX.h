@@ -24,17 +24,15 @@ namespace PhysicsHelpers {
 		constexpr T CalculateFirstCosmicSpeed(T m, T r) { return static_cast<T>(sqrt(G * m / r)); }
 	}
 
-	namespace SimpleHarmonicMotion {
-		namespace Spring {
-			template <class T>
-			constexpr T CalculateConstant(T m, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * m / (t * t)); }
+	namespace SimpleHarmonicMotion::Spring {
+		template <class T>
+		constexpr T CalculateConstant(T m, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * m / (t * t)); }
 
-			template <class T>
-			constexpr T CalculateDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t + φ); }
+		template <class T>
+		constexpr T CalculateDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t + φ); }
 
-			template <class T>
-			constexpr T CalculateVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
-		}
+		template <class T>
+		constexpr T CalculateVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
 	}
 }
 
@@ -89,6 +87,8 @@ public:
 	}
 
 	physx::PxPhysics& GetPhysics() const { return *m_physics; }
+
+	physx::PxScene& GetScene() const { return *m_scene; }
 
 	void Tick(physx::PxReal elapsedTime, bool block = true) {
 		m_scene->simulate(elapsedTime);
