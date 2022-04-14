@@ -42,6 +42,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 		ThrowIfFailed(roInitializeWrapper);
 
 		ThrowIfFailed(GetDisplayResolutions(g_displayResolutions));
+		for (const auto& displayResolution : g_displayResolutions) {
+			if (displayResolution >= Resolution{ 800, 600 }) break;
+			g_displayResolutions.erase(displayResolution);
+		}
 
 		const WNDCLASSEXW wndClassEx{
 			.cbSize = sizeof(wndClassEx),
