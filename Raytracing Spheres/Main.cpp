@@ -189,11 +189,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		}	break;
 
 		case WM_ACTIVATEAPP: {
-			if (wParam) {
-				g_app->OnActivated();
-
-				SetForegroundWindow(hWnd);
-			}
+			if (wParam) g_app->OnActivated();
 			else g_app->OnDeactivated();
 		} [[fallthrough]];
 		case WM_ACTIVATE: {
