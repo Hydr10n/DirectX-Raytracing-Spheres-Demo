@@ -42,9 +42,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 		ThrowIfFailed(roInitializeWrapper);
 
 		ThrowIfFailed(GetDisplayResolutions(g_displayResolutions));
-		for (const auto& displayResolution : g_displayResolutions) {
-			if (displayResolution >= Resolution{ 800, 600 }) break;
-			g_displayResolutions.erase(displayResolution);
+		for (
+			auto iterator = g_displayResolutions.begin(), end = g_displayResolutions.end();
+			iterator != end && *iterator < Resolution{ 800, 600 };
+			iterator = g_displayResolutions.erase(iterator)
+			) {
 		}
 
 		const WNDCLASSEXW wndClassEx{
