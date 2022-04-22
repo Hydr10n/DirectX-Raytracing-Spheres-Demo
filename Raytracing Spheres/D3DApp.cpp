@@ -138,8 +138,6 @@ D3DApp::~D3DApp() {
 }
 
 void D3DApp::Tick() {
-	m_stepTimer.Tick([&] { Update(); });
-
 	const auto windowMode = g_windowModeHelper->GetMode();
 	const auto resolution = g_windowModeHelper->Resolution;
 	const auto windowedStyle = g_windowModeHelper->WindowedStyle, windowedExStyle = g_windowModeHelper->WindowedExStyle;
@@ -155,6 +153,8 @@ void D3DApp::Tick() {
 		if (isWindowModeChanged) SettingsData::Save<SettingsKeys::WindowMode>(newWindowMode);
 		if (isResolutionChanged) SettingsData::Save<SettingsKeys::Resolution>(newResolution);
 	}
+
+	m_stepTimer.Tick([&] { Update(); });
 }
 
 void D3DApp::OnWindowSizeChanged() {
