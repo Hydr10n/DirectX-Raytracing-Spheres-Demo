@@ -2,7 +2,7 @@
 
 #include "pch.h"
 
-namespace DirectX::RaytracingHelpers {
+namespace DirectX {
 	inline HRESULT CreateBuffer(
 		ID3D12Device* pDevice,
 		UINT64 size,
@@ -30,84 +30,86 @@ namespace DirectX::RaytracingHelpers {
 		return ret;
 	}
 
-	struct AccelerationStructureBuffers {
-		Microsoft::WRL::ComPtr<ID3D12Resource> Scratch, Result, InstanceDesc;
+	namespace RaytracingHelpers {
+		struct AccelerationStructureBuffers {
+			Microsoft::WRL::ComPtr<ID3D12Resource> Scratch, Result, InstanceDesc;
 
-		AccelerationStructureBuffers() = default;
+			AccelerationStructureBuffers() = default;
 
-		AccelerationStructureBuffers(
-			ID3D12Device* pDevice,
-			UINT64 scratchSize, UINT64 resultSize,
-			UINT64 instanceDescsSize = 0
-		) noexcept(false) {
-			DX::ThrowIfFailed(CreateBuffer(pDevice, scratchSize, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &Scratch, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
-			DX::ThrowIfFailed(CreateBuffer(pDevice, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, &Result, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
-			if (instanceDescsSize) DX::ThrowIfFailed(CreateUploadBuffer(pDevice, instanceDescsSize, &InstanceDesc));
-		}
-	};
+			AccelerationStructureBuffers(
+				ID3D12Device* pDevice,
+				UINT64 scratchSize, UINT64 resultSize,
+				UINT64 instanceDescsSize = 0
+			) noexcept(false) {
+				DX::ThrowIfFailed(CreateBuffer(pDevice, scratchSize, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &Scratch, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
+				DX::ThrowIfFailed(CreateBuffer(pDevice, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, &Result, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
+				if (instanceDescsSize) DX::ThrowIfFailed(CreateUploadBuffer(pDevice, instanceDescsSize, &InstanceDesc));
+			}
+		};
 
-	template <class Vertex, class Index>
-	class Triangles {
-		static_assert(std::is_same<Index, UINT16>() || std::is_same<Index, UINT32>(), "Unsupported index format");
+		template <class Vertex, class Index>
+		class Triangles {
+			static_assert(std::is_same<Index, UINT16>() || std::is_same<Index, UINT32>(), "Unsupported index format");
 
-	public:
-		Triangles(
-			ID3D12Device* pDevice,
-			const std::vector<Vertex>& vertices, const std::vector<Index>& indices,
-			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
-			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
-			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
-		) noexcept(false) : m_device(pDevice) {
-			const auto verticesSize = vertices.size(), indicesSize = indices.size();
+		public:
+			Triangles(
+				ID3D12Device* pDevice,
+				const std::vector<Vertex>& vertices, const std::vector<Index>& indices,
+				D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
+				D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
+				DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
+			) noexcept(false) : m_device(pDevice) {
+				const auto verticesSize = vertices.size(), indicesSize = indices.size();
 
-			DX::ThrowIfFailed(CreateUploadBuffer(pDevice, sizeof(Vertex) * verticesSize, &m_vertexBuffer, vertices.data()));
+				DX::ThrowIfFailed(CreateUploadBuffer(pDevice, sizeof(Vertex) * verticesSize, &m_vertexBuffer, vertices.data()));
 
-			DX::ThrowIfFailed(CreateUploadBuffer(pDevice, sizeof(Index) * indicesSize, &m_indexBuffer, indices.data()));
+				DX::ThrowIfFailed(CreateUploadBuffer(pDevice, sizeof(Index) * indicesSize, &m_indexBuffer, indices.data()));
 
-			m_geometryDesc = {
-				.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
-				.Flags = flags,
-				.Triangles = {
-					.Transform3x4 = transform3x4,
-					.IndexFormat = std::is_same<Index, UINT16>() ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
-					.VertexFormat = vertexFormat,
-					.IndexCount = static_cast<UINT>(indicesSize),
-					.VertexCount = static_cast<UINT>(verticesSize),
-					.IndexBuffer = m_indexBuffer->GetGPUVirtualAddress(),
-					.VertexBuffer = {
-						.StartAddress = m_vertexBuffer->GetGPUVirtualAddress(),
-						.StrideInBytes = sizeof(Vertex),
+				m_geometryDesc = {
+					.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+					.Flags = flags,
+					.Triangles = {
+						.Transform3x4 = transform3x4,
+						.IndexFormat = std::is_same<Index, UINT16>() ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
+						.VertexFormat = vertexFormat,
+						.IndexCount = static_cast<UINT>(indicesSize),
+						.VertexCount = static_cast<UINT>(verticesSize),
+						.IndexBuffer = m_indexBuffer->GetGPUVirtualAddress(),
+						.VertexBuffer = {
+							.StartAddress = m_vertexBuffer->GetGPUVirtualAddress(),
+							.StrideInBytes = sizeof(Vertex),
+						}
 					}
-				}
-			};
-		}
+				};
+			}
 
-		ID3D12Resource* GetVertexBuffer() const { return m_vertexBuffer.Get(); }
+			ID3D12Resource* GetVertexBuffer() const { return m_vertexBuffer.Get(); }
 
-		ID3D12Resource* GetIndexBuffer() const { return m_indexBuffer.Get(); }
+			ID3D12Resource* GetIndexBuffer() const { return m_indexBuffer.Get(); }
 
-		const D3D12_RAYTRACING_GEOMETRY_DESC& GetGeometryDesc() const { return m_geometryDesc; }
+			const D3D12_RAYTRACING_GEOMETRY_DESC& GetGeometryDesc() const { return m_geometryDesc; }
 
-		void CreateShaderResourceViews(D3D12_CPU_DESCRIPTOR_HANDLE vertexDescriptor, D3D12_CPU_DESCRIPTOR_HANDLE indexDescriptor) const {
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
-			};
+			void CreateShaderResourceViews(D3D12_CPU_DESCRIPTOR_HANDLE vertexDescriptor, D3D12_CPU_DESCRIPTOR_HANDLE indexDescriptor) const {
+				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
+					.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+					.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
+				};
 
-			srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.VertexCount;
-			srvDesc.Buffer.StructureByteStride = sizeof(Vertex);
-			m_device->CreateShaderResourceView(m_vertexBuffer.Get(), &srvDesc, vertexDescriptor);
+				srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.VertexCount;
+				srvDesc.Buffer.StructureByteStride = sizeof(Vertex);
+				m_device->CreateShaderResourceView(m_vertexBuffer.Get(), &srvDesc, vertexDescriptor);
 
-			srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.IndexCount;
-			srvDesc.Buffer.StructureByteStride = sizeof(Index);
-			m_device->CreateShaderResourceView(m_indexBuffer.Get(), &srvDesc, indexDescriptor);
-		}
+				srvDesc.Buffer.NumElements = m_geometryDesc.Triangles.IndexCount;
+				srvDesc.Buffer.StructureByteStride = sizeof(Index);
+				m_device->CreateShaderResourceView(m_indexBuffer.Get(), &srvDesc, indexDescriptor);
+			}
 
-	private:
-		ID3D12Device* m_device;
+		private:
+			ID3D12Device* m_device;
 
-		Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer, m_indexBuffer;
+			Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer, m_indexBuffer;
 
-		D3D12_RAYTRACING_GEOMETRY_DESC m_geometryDesc;
-	};
+			D3D12_RAYTRACING_GEOMETRY_DESC m_geometryDesc;
+		};
+	}
 }
