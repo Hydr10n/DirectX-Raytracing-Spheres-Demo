@@ -61,7 +61,7 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	```
 
 ### Dependencies
-- [DirectXTK12](https://github.com/Microsoft/DirectXTK12)
+- [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
 
 - [PhysX](https://github.com/NVIDIAGameWorks/PhysX)
 	```cmd

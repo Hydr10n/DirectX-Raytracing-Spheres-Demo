@@ -7,9 +7,9 @@ struct HitInfo {
 	VertexPositionNormal Vertex;
 	bool IsFrontFace;
 
-	void SetFaceNormal(float3 rayDirection, float3 outwardNormal) {
-		IsFrontFace = dot(rayDirection, outwardNormal) < 0;
-		Vertex.Normal = IsFrontFace ? outwardNormal : -outwardNormal;
+	void SetFaceNormal(float3 outwardNormal, bool isFrontFace = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE) {
+		Vertex.Normal = isFrontFace ? outwardNormal : -outwardNormal;
+		IsFrontFace = isFrontFace;
 	}
 };
 

@@ -55,7 +55,7 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 
 	HitInfo hitInfo;
 	hitInfo.Vertex.Position = worldRay.Origin + worldRay.Direction * RayTCurrent();
-	hitInfo.SetFaceNormal(worldRay.Direction, worldNormal);
+	hitInfo.SetFaceNormal(worldNormal);
 
 	const float4 color = g_objectConstant.TextureFlags & TextureFlags::ColorMap ?
 		g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) :

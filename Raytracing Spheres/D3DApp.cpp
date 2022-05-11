@@ -501,9 +501,7 @@ void D3DApp::BuildRenderItems() {
 		};
 		for (const auto& sphere : spheres) {
 			RenderItem renderItem;
-
 			renderItem.Material = sphere.Material;
-
 			AddRenderItem(renderItem, PxSphereGeometry(0.5f), sphere.Position);
 		}
 
@@ -533,11 +531,10 @@ void D3DApp::BuildRenderItems() {
 
 				const auto randomValue = random.Float();
 				if (randomValue < 0.5f) renderItem.Material.AsLambertian(random.Float4());
-				else if (randomValue < 0.75f) renderItem.Material.AsMetal(random.Float4(0.5f, 1), random.Float(0, 0.5f));
+				else if (randomValue < 0.75f) renderItem.Material.AsMetal(random.Float4(0.5f), random.Float(0, 0.5f));
 				else renderItem.Material.AsDielectric(random.Float4(), 1.5f);
 
 				const auto rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(0.075f), position);
-
 				rigidDynamic->setLinearVelocity(PxVec3(0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0));
 			}
 		}
@@ -575,7 +572,6 @@ void D3DApp::BuildRenderItems() {
 			if (m_textures.contains(object.Name)) renderItem.pTextures = &m_textures[object.Name];
 
 			const auto rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(object.Sphere.Radius), object.Sphere.Position);
-
 			if (renderItem.Name == Objects::Moon) {
 				const auto x = m_Earth.Position - object.Sphere.Position;
 				const auto magnitude = x.magnitude();
@@ -586,12 +582,9 @@ void D3DApp::BuildRenderItems() {
 			}
 			else if (renderItem.Name == Objects::Earth) {
 				rigidDynamic->setAngularVelocity({ 0, PxTwoPi / object.Sphere.RotationPeriod, 0 });
-
 				PxRigidBodyExt::setMassAndUpdateInertia(*rigidDynamic, &object.Sphere.Mass, 1);
 			}
-			else if (renderItem.Name == Objects::Star) {
-				rigidDynamic->setMass(0);
-			}
+			else if (renderItem.Name == Objects::Star) rigidDynamic->setMass(0);
 		}
 	}
 }
@@ -680,7 +673,7 @@ void D3DApp::CreateTopLevelAccelerationStructure(bool updateOnly, AccelerationSt
 		PxMat44 world(PxVec4(1, 1, -1, 1));
 		world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
 		world.scale(PxVec4(scaling, 1));
-		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i);
+		topLevelAccelerationStructureGenerator.AddInstance(m_sphereBottomLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
 	}
 
 	const auto device = m_deviceResources->GetD3DDevice();

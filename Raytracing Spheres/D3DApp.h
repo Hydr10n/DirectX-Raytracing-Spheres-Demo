@@ -128,7 +128,7 @@ private:
 		physx::PxVec3 Position;
 		physx::PxReal Radius, RotationPeriod, OrbitalPeriod, Mass;
 	} m_Moon{
-		.Position = { 0, 4, 4 },
+		.Position = { -4, 4, 0 },
 		.Radius = 0.25f,
 		.OrbitalPeriod = 10
 	}, m_Earth{
