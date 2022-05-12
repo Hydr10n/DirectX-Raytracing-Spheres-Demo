@@ -724,14 +724,10 @@ void D3DApp::CreateConstantBuffers() {
 	}
 
 	{
-		const auto renderItemsSize = m_renderItems.size();
+		m_objectConstantBuffer = m_graphicsMemory->Allocate(sizeof(ObjectConstant) * m_renderItems.size());
 
-		m_objectConstantBuffer = m_graphicsMemory->Allocate(sizeof(ObjectConstant) * renderItemsSize);
-
-		for (size_t i = 0; i < renderItemsSize; i++) {
-			auto& objectConstant = reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[i];
-
-			const auto& renderItem = m_renderItems[i];
+		for (const auto& renderItem : m_renderItems) {
+			auto& objectConstant = reinterpret_cast<ObjectConstant*>(m_objectConstantBuffer.Memory())[renderItem.ObjectConstantBufferIndex];
 
 			objectConstant.Material = renderItem.Material;
 
