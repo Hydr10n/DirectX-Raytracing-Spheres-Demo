@@ -11,7 +11,7 @@
 #include <cmath>
 
 namespace PhysicsHelpers {
-	namespace Gravity {
+	namespace UniversalGravitation {
 		constexpr auto G = 6.674e-11;
 
 		template <class T>

@@ -135,7 +135,7 @@ private:
 		.Position = { 0, m_Moon.Position.y, 0 },
 		.Radius = 1,
 		.RotationPeriod = 15,
-		.Mass = PhysicsHelpers::Gravity::CalculateMass((m_Moon.Position - m_Earth.Position).magnitude(), m_Moon.OrbitalPeriod)
+		.Mass = PhysicsHelpers::UniversalGravitation::CalculateMass((m_Moon.Position - m_Earth.Position).magnitude(), m_Moon.OrbitalPeriod)
 	}, m_star{
 		.Position = { 0, -50.1f, 0 },
 		.Radius = 50

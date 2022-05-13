@@ -576,7 +576,7 @@ void D3DApp::BuildRenderItems() {
 				const auto x = m_Earth.Position - object.Sphere.Position;
 				const auto magnitude = x.magnitude();
 				const auto normalized = x / magnitude;
-				const auto linearSpeed = Gravity::CalculateFirstCosmicSpeed(m_Earth.Mass, magnitude);
+				const auto linearSpeed = UniversalGravitation::CalculateFirstCosmicSpeed(m_Earth.Mass, magnitude);
 				rigidDynamic->setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 				rigidDynamic->setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 			}
@@ -904,7 +904,7 @@ void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
 		const auto x = m_Earth.Position - position;
 		const auto magnitude = x.magnitude();
 		const auto normalized = x / magnitude;
-		rigidBody->addForce(Gravity::CalculateAccelerationMagnitude(m_Earth.Mass, magnitude) * normalized, PxForceMode::eACCELERATION);
+		rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(m_Earth.Mass, magnitude) * normalized, PxForceMode::eACCELERATION);
 	}
 
 	if (m_star.IsGravityEnabled && renderItem.Name != Objects::Star) {
