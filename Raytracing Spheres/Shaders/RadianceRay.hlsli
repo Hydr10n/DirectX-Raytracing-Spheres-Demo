@@ -37,7 +37,7 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 	float3 worldNormal;
 	float2 textureCoordinate;
 	{
-		const uint3 indices = Load3Indices(g_indices);
+		const uint3 indices = Load3x16BitIndices(g_indices, GetTriangleBaseIndex(2));
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
 

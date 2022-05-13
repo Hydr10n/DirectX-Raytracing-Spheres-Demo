@@ -12,7 +12,7 @@ RWTexture2D<float4> g_output : register(u0);
 RaytracingAccelerationStructure g_scene : register(t0);
 
 StructuredBuffer<VertexPositionNormalTexture> g_vertices : register(t1);
-StructuredBuffer<uint> g_indices : register(t2);
+ByteAddressBuffer g_indices : register(t2);
 
 Texture2D<float4> g_colorMap : register(t3);
 Texture2D<float3> g_normalMap : register(t4);
