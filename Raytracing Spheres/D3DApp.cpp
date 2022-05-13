@@ -218,7 +218,7 @@ void D3DApp::Update() {
 
 	UpdateSceneConstantBuffer();
 
-	if (m_isRunning) m_myPhysX.Tick(1.0f / 60);
+	if (m_isRunning) m_myPhysX.Tick(static_cast<PxReal>(m_stepTimer.GetElapsedSeconds()));
 
 	PIXEndEvent();
 }
