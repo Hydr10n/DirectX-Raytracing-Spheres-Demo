@@ -29,10 +29,10 @@ namespace PhysicsHelpers {
 		constexpr T CalculateConstant(T m, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * m / (t * t)); }
 
 		template <class T>
-		constexpr T CalculateDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t + φ); }
+		constexpr T CalculateDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t - φ); }
 
 		template <class T>
-		constexpr T CalculateVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t + φ); }
+		constexpr T CalculateVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t - φ); }
 	}
 }
 
