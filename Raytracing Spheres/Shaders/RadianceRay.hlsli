@@ -19,8 +19,8 @@ inline float4 TraceRadianceRay(RayDesc ray, uint traceRecursionDepth, inout Rand
 
 [shader("miss")]
 void RadianceRayMiss(inout RadianceRayPayload payload : SV_RayPayload) {
-	if (g_sceneConstant.IsEnvironmentCubeMapUsed) {
-		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_sceneConstant.EnvironmentMapTransform), 0);
+	if (g_sceneConstants.IsEnvironmentCubeMapUsed) {
+		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_sceneConstants.EnvironmentMapTransform), 0);
 	}
 	else payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5f, 0.7f, 1, 1), 0.5f * normalize(WorldRayDirection()).y + 0.5f);
 }
@@ -45,9 +45,9 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 		worldNormal = normalize(mul(normal, (float3x3) ObjectToWorld4x3()));
 
 		textureCoordinate = GetVertexAttribute(textureCoordinates, attributes.barycentrics);
-		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstant.TextureTransform).xy;
+		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstants.TextureTransform).xy;
 
-		if (g_objectConstant.TextureFlags & TextureFlags::NormalMap) {
+		if (g_objectConstants.TextureFlags & TextureFlags::NormalMap) {
 			const float3x3 TBN = CalculateTBN(worldNormal, worldRay.Direction);
 			worldNormal = normalize(mul(normalize(g_normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
 		}
@@ -57,16 +57,16 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 	hitInfo.Vertex.Position = worldRay.Origin + worldRay.Direction * RayTCurrent();
 	hitInfo.SetFaceNormal(worldNormal);
 
-	const float4 color = g_objectConstant.TextureFlags & TextureFlags::ColorMap ?
+	const float4 color = g_objectConstants.TextureFlags & TextureFlags::ColorMap ?
 		g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) :
-		g_objectConstant.Material.Color;
+		g_objectConstants.Material.Color;
 
 	float3 direction = 0;
-	if (g_objectConstant.Material.Scatter(worldRay, hitInfo, direction, payload.Random)) {
+	if (g_objectConstants.Material.Scatter(worldRay, hitInfo, direction, payload.Random)) {
 		const RayDesc ray = CreateRayDesc(hitInfo.Vertex.Position, direction);
 		payload.Color = color * TraceRadianceRay(ray, payload.TraceRecursionDepth, payload.Random);
 	}
-	else payload.Color = g_objectConstant.Material.IsEmissive() ? color : 0;
+	else payload.Color = g_objectConstants.Material.IsEmissive() ? color : 0;
 }
 
 TriangleHitGroup RadianceRayHitGroup = { "", "RadianceRayClosestHit" };

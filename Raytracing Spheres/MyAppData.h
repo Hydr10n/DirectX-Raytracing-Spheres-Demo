@@ -4,68 +4,73 @@
 
 #include <filesystem>
 
+#define MAKESECTION(SectionName, Members) struct SectionName { static constexpr LPCWSTR Name = L#SectionName; Members };
+
+#define MAKEKEY(KeyName) struct KeyName { static constexpr LPCWSTR Section = Name, Key = L#KeyName; };
+
 struct MyAppData {
 	struct Settings {
-		struct Sections { static constexpr LPCWSTR Graphics = L"Graphics"; };
+		struct Graphics {
+			static constexpr LPCWSTR Name = L"";
 
-		struct Keys {
-			struct WindowMode {
-				static constexpr LPCWSTR Section = Sections::Graphics;
-				static constexpr auto ToString() { return L"WindowMode"; }
-			};
+			MAKEKEY(WindowMode);
 
-			struct Resolution {
-				static constexpr LPCWSTR Section = Sections::Graphics;
-				static constexpr auto ToStrings() { return std::pair(L"ResolutionWidth", L"ResolutionHeight"); }
-			};
+			MAKESECTION(Resolution, MAKEKEY(Width) MAKEKEY(Height));
 
-			struct RaytracingSamplesPerPixel {
-				static constexpr LPCWSTR Section = Sections::Graphics;
-				static constexpr auto ToString() { return L"RaytracingSamplesPerPixel"; }
-			};
+			MAKESECTION(Raytracing, MAKEKEY(SamplesPerPixel));
+
+			MAKESECTION(TemporalAntiAliasing, MAKEKEY(IsEnabled) MAKEKEY(Alpha) MAKEKEY(ColorBoxSigma));
+
+			template <class Key, class Data>
+			static BOOL Save(const Data& data) {
+				if constexpr (std::is_same<Key, WindowMode>()) {
+					return m_appData.Save(Key::Section, Key::Key, reinterpret_cast<const UINT&>(data));
+				}
+
+				if constexpr (std::is_same<Key, Resolution>()) {
+					const auto& size = reinterpret_cast<const SIZE&>(data);
+					return m_appData.Save(Key::Width::Section, Key::Width::Key, size.cx)
+						&& m_appData.Save(Key::Height::Section, Key::Height::Key, size.cy);
+				}
+
+				if constexpr (
+					std::is_same<Key, Raytracing::SamplesPerPixel>()
+					|| std::is_same<Key, TemporalAntiAliasing::IsEnabled>()
+					|| std::is_same<Key, TemporalAntiAliasing::Alpha>()
+					|| std::is_same<Key, TemporalAntiAliasing::ColorBoxSigma>()
+					) {
+					return m_appData.Save(Key::Section, Key::Key, data);
+				}
+
+				throw;
+			}
+
+			template <class Key, class Data>
+			static BOOL Load(Data& data) {
+				if constexpr (std::is_same<Key, WindowMode>()) {
+					return m_appData.Load(Key::Section, Key::Key, reinterpret_cast<UINT&>(data));
+				}
+
+				if constexpr (std::is_same<Key, Resolution>()) {
+					auto& size = reinterpret_cast<SIZE&>(data);
+					return m_appData.Load(Key::Width::Section, Key::Width::Key, size.cx)
+						&& m_appData.Load(Key::Height::Section, Key::Height::Key, size.cy);
+				}
+
+				if constexpr (
+					std::is_same<Key, Raytracing::SamplesPerPixel>()
+					|| std::is_same<Key, TemporalAntiAliasing::IsEnabled>()
+					|| std::is_same<Key, TemporalAntiAliasing::Alpha>()
+					|| std::is_same<Key, TemporalAntiAliasing::ColorBoxSigma>()
+					) {
+					return m_appData.Load(Key::Section, Key::Key, data);
+				}
+
+				throw;
+			}
+
+		private:
+			inline static const Hydr10n::Data::AppData m_appData = std::filesystem::path(*__wargv).replace_filename("GraphicsSettings.ini").c_str();
 		};
-
-		template <class Key, class Data>
-		static BOOL Save(const Data& data) {
-			if constexpr (std::is_same<Key, Keys::WindowMode>()) {
-				return m_appData.Save(Key::Section, Key::ToString(), reinterpret_cast<const UINT&>(data));
-			}
-
-			if constexpr (std::is_same<Key, Keys::Resolution>()) {
-				constexpr auto Keys = Key::ToStrings();
-				const auto& size = reinterpret_cast<const SIZE&>(data);
-				return m_appData.Save(Key::Section, Keys.first, size.cx)
-					&& m_appData.Save(Key::Section, Keys.second, size.cy);
-			}
-
-			if constexpr (std::is_same<Key, Keys::RaytracingSamplesPerPixel>()) {
-				return m_appData.Save(Key::Section, Key::ToString(), data);
-			}
-
-			throw;
-		}
-
-		template <class Key, class Data>
-		static BOOL Load(Data& data) {
-			if constexpr (std::is_same<Key, Keys::WindowMode>()) {
-				return m_appData.Load(Key::Section, Key::ToString(), reinterpret_cast<UINT&>(data));
-			}
-
-			if constexpr (std::is_same<Key, Keys::Resolution>()) {
-				constexpr auto Keys = Key::ToStrings();
-				auto& size = reinterpret_cast<SIZE&>(data);
-				return m_appData.Load(Key::Section, Keys.first, size.cx)
-					&& m_appData.Load(Key::Section, Keys.second, size.cy);
-			}
-
-			if constexpr (std::is_same<Key, Keys::RaytracingSamplesPerPixel>()) {
-				return m_appData.Load(Key::Section, Key::ToString(), data);
-			}
-
-			throw;
-		}
-
-	private:
-		inline static const Hydr10n::Data::AppData m_appData = std::filesystem::path(*__wargv).replace_filename("Settings.ini").c_str();
 	};
 };

@@ -24,6 +24,8 @@
 
 #include "DirectXRaytracingHelpers.h"
 
+#include "TemporalAntiAliasingEffect.h"
+
 #include "Material.h"
 #include "Texture.h"
 
@@ -90,19 +92,22 @@ private:
 	const std::unique_ptr<DirectX::Mouse> m_mouse = std::make_unique<decltype(m_mouse)::element_type>();
 	DirectX::Mouse::ButtonStateTracker m_mouseButtonStateTracker;
 
-	bool m_isMenuOpen{};
-
 	UINT m_raytracingSamplesPerPixel = 2;
+
+	bool m_isTemporalAntiAliasingEnabled = true;
+	decltype(DirectX::TemporalAntiAliasingEffect::Constants) m_temporalAntiAliasingConstants;
 
 	TextureDictionary m_textures;
 
 	std::vector<RenderItem> m_renderItems;
 
+	std::unique_ptr<DirectX::DescriptorHeap> m_resourceDescriptors;
+
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	Microsoft::WRL::ComPtr<ID3D12StateObject> m_pipelineStateObject;
 
-	std::unique_ptr<DirectX::DescriptorHeap> m_resourceDescriptors;
+	std::unique_ptr<DirectX::TemporalAntiAliasingEffect> m_temporalAntiAliasingEffect;
 
 	DirectX::GraphicsResource m_sceneConstantBuffer, m_objectConstantBuffer;
 
@@ -115,13 +120,14 @@ private:
 	nv_helpers_dx12::ShaderBindingTableGenerator m_shaderBindingTableGenerator;
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_shaderBindingTable;
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> m_output;
+	Microsoft::WRL::ComPtr<ID3D12Resource> m_previousOutput, m_currentOutput, m_motionVectors, m_finalOutput;
 
 	Camera m_camera;
 
-	MyPhysX m_myPhysX;
+	bool m_isMenuOpen{};
 
-	bool m_isRunning = true;
+	bool m_isPhysicsSimulationRunning = true;
+	MyPhysX m_myPhysX;
 
 	struct Sphere {
 		bool IsGravityEnabled;
@@ -159,11 +165,13 @@ private:
 
 	void BuildRenderItems();
 
+	void CreateDescriptorHeaps();
+
 	void CreateRootSignatures();
 
 	void CreatePipelineStateObjects();
 
-	void CreateDescriptorHeaps();
+	void CreateEffects();
 
 	void CreateGeometries();
 

@@ -82,6 +82,9 @@
     <ClInclude Include="SharedData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="TemporalAntiAliasingEffect.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DeviceResources.cpp">
@@ -91,6 +94,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="D3DApp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TemporalAntiAliasingEffect.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -150,6 +156,9 @@
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Raytracing.hlsl">
+      <Filter>Shader Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\TemporalAntiAliasing.hlsl">
       <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>

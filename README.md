@@ -14,14 +14,18 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 ### Graphics Settings
 - Window Mode
 - Resolution
-- Raytracing Samples Per Pixel
+- Raytracing 
+	- Samples Per Pixel
+- Temporal Anti-Aliasing
+	- Alpha
+	- Color-Box Sigma
 
 ### Controls
 - Xbox Controller
 	|||
 	|-|-|
 	|Menu|Open/close menu|
-	|View|Pause/resume|
+	|View|Run/pause physics simulation|
 	|LS (rotate)|Move|
 	|LT (hold)|Move slower|
 	|RT (hold)|Move faster|
@@ -34,7 +38,7 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	|-|-|
 	|Alt + Enter|Toggle between windowed/borderless and fullscreen modes|
 	|Esc|Open/close menu|
-	|Tab|Pause/resume|
+	|Tab|Run/pause physics simulation|
 	|W A S D|Move|
 	|Left Ctrl (hold)|Move slower|
 	|Left Shift (hold)|Move faster|

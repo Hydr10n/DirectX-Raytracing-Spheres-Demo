@@ -14,8 +14,7 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace std;
 using namespace WindowHelpers;
 
-using SettingsData = MyAppData::Settings;
-using SettingsKeys = SettingsData::Keys;
+using GraphicsSettingsData = MyAppData::Settings::Graphics;
 
 constexpr auto DefaultWindowTitle = L"Raytracing Spheres";
 
@@ -77,7 +76,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 
 		g_windowModeHelper->WindowedStyle = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 
-		if (!SettingsData::Load<SettingsKeys::Resolution>(g_windowModeHelper->Resolution)) {
+		if (!GraphicsSettingsData::Load<GraphicsSettingsData::Resolution>(g_windowModeHelper->Resolution)) {
 			RECT rect;
 			ThrowIfFailed(GetClientRect(g_windowModeHelper->hWnd, &rect));
 			g_windowModeHelper->Resolution = { rect.right - rect.left, rect.bottom - rect.top };
@@ -91,7 +90,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 		ThrowIfFailed(g_windowModeHelper->Apply()); // Fix missing icon on title bar when initial WindowMode != Windowed
 
 		WindowMode windowMode;
-		if (SettingsData::Load<SettingsData::Keys::WindowMode>(windowMode)) {
+		if (GraphicsSettingsData::Load<GraphicsSettingsData::WindowMode>(windowMode)) {
 			g_windowModeHelper->SetMode(windowMode);
 			ThrowIfFailed(g_windowModeHelper->Apply());
 		}
@@ -204,7 +203,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				g_windowModeHelper->ToggleMode();
 				ThrowIfFailed(g_windowModeHelper->Apply());
 
-				SettingsData::Save<SettingsKeys::WindowMode>(g_windowModeHelper->GetMode());
+				GraphicsSettingsData::Save<GraphicsSettingsData::WindowMode>(g_windowModeHelper->GetMode());
 			}
 		} [[fallthrough]];
 		case WM_SYSKEYUP:

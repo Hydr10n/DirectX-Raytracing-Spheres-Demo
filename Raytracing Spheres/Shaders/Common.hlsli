@@ -19,23 +19,23 @@ Texture2D<float3> g_normalMap : register(t4);
 
 TextureCube<float4> g_environmentCubeMap : register(t5);
 
-struct SceneConstant {
+struct SceneConstants {
 	float4x4 ProjectionToWorld, EnvironmentMapTransform;
 	float3 CameraPosition;
 	uint RaytracingSamplesPerPixel, FrameCount;
 	bool IsEnvironmentCubeMapUsed;
 };
-ConstantBuffer<SceneConstant> g_sceneConstant : register(b0);
+ConstantBuffer<SceneConstants> g_sceneConstants : register(b0);
 
 struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
 
-struct ObjectConstant {
+struct ObjectConstants {
 	uint TextureFlags;
 	float3 Padding;
 	float4x4 TextureTransform;
 	Material Material;
 };
-ConstantBuffer<ObjectConstant> g_objectConstant : register(b1);
+ConstantBuffer<ObjectConstants> g_objectConstants : register(b1);
 
 RaytracingPipelineConfig RaytracingPipelineConfig = { MAX_TRACE_RECURSION_DEPTH };
 

@@ -65,9 +65,8 @@ public:
 		sceneDesc.filterShader = PxDefaultSimulationFilterShader;
 
 		m_scene = m_physics->createScene(sceneDesc);
-
-		const auto scenePvdClient = m_scene->getScenePvdClient();
-		if (scenePvdClient != nullptr) {
+		
+		if (const auto scenePvdClient = m_scene->getScenePvdClient()) {
 			scenePvdClient->setScenePvdFlags(PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS | PxPvdSceneFlag::eTRANSMIT_CONTACTS | PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES);
 		}
 	}
