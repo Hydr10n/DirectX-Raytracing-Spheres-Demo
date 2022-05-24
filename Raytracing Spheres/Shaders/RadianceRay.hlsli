@@ -3,6 +3,10 @@
 
 #include "Common.hlsli"
 
+#include "IndexHelpers.hlsli"
+
+#include "MathHelpers.hlsli"
+
 #include "Utils.hlsli"
 
 struct RadianceRayPayload {
@@ -37,14 +41,14 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 	float3 worldNormal;
 	float2 textureCoordinate;
 	{
-		const uint3 indices = Load3x16BitIndices(g_indices, GetTriangleBaseIndex(2));
+		const uint3 indices = Load3x16BitIndices(g_indices, CalculateIndexOffset(2));
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
 
-		const float3 normal = GetVertexAttribute(normals, attributes.barycentrics);
+		const float3 normal = Vertex::Interpolate(normals, attributes.barycentrics);
 		worldNormal = normalize(mul(normal, (float3x3) ObjectToWorld4x3()));
 
-		textureCoordinate = GetVertexAttribute(textureCoordinates, attributes.barycentrics);
+		textureCoordinate = Vertex::Interpolate(textureCoordinates, attributes.barycentrics);
 		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstants.TextureTransform).xy;
 
 		if (g_objectConstants.TextureFlags & TextureFlags::NormalMap) {

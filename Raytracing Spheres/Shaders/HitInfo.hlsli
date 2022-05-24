@@ -1,7 +1,7 @@
 #ifndef HITINFO_HLSLI
 #define HITINFO_HLSLI
 
-#include "VertexTypes.hlsli"
+#include "Vertex.hlsli"
 
 struct HitInfo {
 	VertexPositionNormal Vertex;
