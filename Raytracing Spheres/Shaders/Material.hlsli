@@ -15,7 +15,8 @@ inline float SchlickReflectance(float cosine, float refractiveIndex) {
 
 struct Material {
 	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type;
-	float RefractiveIndex, Roughness, Padding;
+	float RefractiveIndex, Roughness;
+	float _padding;
 	float4 Color;
 
 	bool IsEmissive() {

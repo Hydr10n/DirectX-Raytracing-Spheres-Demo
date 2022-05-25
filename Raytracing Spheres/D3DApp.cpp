@@ -44,7 +44,7 @@ using GraphicsSettingsData = MyAppData::Settings::Graphics;
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstants {
 	UINT RaytracingSamplesPerPixel, FrameCount;
 	BOOL IsEnvironmentCubeMapUsed;
-	float Padding;
+	float _padding;
 	XMMATRIX EnvironmentMapTransform;
 	Camera Camera;
 };
@@ -53,7 +53,7 @@ struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
 
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) ObjectConstants {
 	UINT TextureFlags;
-	XMFLOAT3 Padding;
+	XMFLOAT3 _padding;
 	XMMATRIX TextureTransform;
 	Material Material;
 };

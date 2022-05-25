@@ -4,7 +4,7 @@
 
 struct Camera {
 	DirectX::XMFLOAT3 Position;
-	float Padding;
+	float _padding;
 	DirectX::XMMATRIX ProjectionToWorld;
 };
 
@@ -15,41 +15,37 @@ public:
 		m_viewDirty = true;
 	}
 
-	auto GetPosition() const { return m_position; }
+	const auto& GetPosition() const { return m_position; }
 
-	void SetDirections(const DirectX::XMFLOAT3& forwardDirection, const DirectX::XMFLOAT3& upDirection) {
+	void SetDirections(const DirectX::XMFLOAT3& rightDirection, const DirectX::XMFLOAT3& forwardDirection) {
+		(m_rightDirection = rightDirection).Normalize();
 		(m_forwardDirection = forwardDirection).Normalize();
-		(m_upDirection = upDirection).Normalize();
-		m_upDirection.Cross(m_forwardDirection).Normalize(m_rightDirection);
+		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
 		m_viewDirty = true;
 	}
 
-	auto GetForwardDirection() const { return m_forwardDirection; }
+	const auto& GetForwardDirection() const { return m_forwardDirection; }
 
-	auto GetUpDirection() const { return m_upDirection; }
+	const auto& GetUpDirection() const { return m_upDirection; }
 
-	auto GetRightDirection() const { return m_rightDirection; }
+	const auto& GetRightDirection() const { return m_rightDirection; }
 
 	void SetLens(float fovAngleY, float aspectRatio, float nearZ, float farZ) {
-		m_fovAngleY = fovAngleY;
-		m_aspectRatio = aspectRatio;
-		m_nearZ = nearZ;
-		m_farZ = farZ;
 		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
 	}
 
 	void UpdateView() {
 		if (!m_viewDirty) return;
-		m_forwardDirection.Normalize();
 		m_rightDirection.Normalize();
+		m_forwardDirection.Normalize();
 		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
 		m_view = DirectX::XMMatrixLookToLH(m_position, m_forwardDirection, m_upDirection);
 		m_viewDirty = false;
 	}
 
-	auto GetView() const { return m_view; }
+	const auto& GetView() const { return m_view; }
 
-	auto GetProjection() const { return m_projection; }
+	const auto& GetProjection() const { return m_projection; }
 
 	void Translate(const DirectX::XMFLOAT3& displacement) {
 		m_position += displacement;
@@ -73,9 +69,7 @@ public:
 	}
 
 private:
-	DirectX::SimpleMath::Vector3 m_position, m_forwardDirection{ 0, 0, 1 }, m_upDirection{ 0, 1, 0 }, m_rightDirection{ 1, 0, 0 };
-
-	float m_fovAngleY{}, m_aspectRatio{}, m_nearZ{}, m_farZ{};
+	DirectX::SimpleMath::Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 };
 
 	bool m_viewDirty = true;
 	DirectX::XMMATRIX m_view{}, m_projection{};

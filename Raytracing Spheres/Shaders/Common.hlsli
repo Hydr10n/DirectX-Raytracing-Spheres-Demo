@@ -24,7 +24,7 @@ TextureCube<float4> g_environmentCubeMap : register(t5);
 struct SceneConstants {
 	uint RaytracingSamplesPerPixel, FrameCount;
 	bool IsEnvironmentCubeMapUsed;
-	float Padding;
+	float _padding;
 	float4x4 EnvironmentMapTransform;
 	Camera Camera;
 };
@@ -34,7 +34,7 @@ struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
 
 struct ObjectConstants {
 	uint TextureFlags;
-	float3 Padding;
+	float3 _padding;
 	float4x4 TextureTransform;
 	Material Material;
 };
