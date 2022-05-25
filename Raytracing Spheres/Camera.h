@@ -2,7 +2,13 @@
 
 #include <SimpleMath.h>
 
-class Camera {
+struct Camera {
+	DirectX::XMFLOAT3 Position;
+	float Padding;
+	DirectX::XMMATRIX ProjectionToWorld;
+};
+
+class FirstPersonCamera {
 public:
 	void SetPosition(const DirectX::XMFLOAT3& position) {
 		m_position = position;

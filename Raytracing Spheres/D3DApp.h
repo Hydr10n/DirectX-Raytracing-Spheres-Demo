@@ -122,7 +122,7 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_previousOutput, m_currentOutput, m_motionVectors, m_finalOutput;
 
-	Camera m_camera;
+	FirstPersonCamera m_firstPersonCamera;
 
 	bool m_isMenuOpen{};
 

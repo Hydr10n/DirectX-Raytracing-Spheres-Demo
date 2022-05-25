@@ -140,6 +140,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="Shaders\Camera.hlsli" />
     <None Include="Shaders\Common.hlsli" />
     <None Include="Shaders\HitInfo.hlsli" />
     <None Include="Shaders\IndexHelpers.hlsli" />
@@ -148,7 +149,6 @@
     <None Include="Shaders\RadianceRay.hlsli" />
     <None Include="Shaders\Random.hlsli" />
     <None Include="Shaders\Ray.hlsli" />
-    <None Include="Shaders\Utils.hlsli" />
     <None Include="Shaders\Vertex.hlsli" />
   </ItemGroup>
   <ItemGroup>

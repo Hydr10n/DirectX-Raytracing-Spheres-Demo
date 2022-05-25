@@ -3,6 +3,8 @@
 
 #include "Material.hlsli"
 
+#include "Camera.hlsli"
+
 #define MAX_TRACE_RECURSION_DEPTH 7
 
 SamplerState g_anisotropicWrap : register(s0);
@@ -20,10 +22,11 @@ Texture2D<float3> g_normalMap : register(t4);
 TextureCube<float4> g_environmentCubeMap : register(t5);
 
 struct SceneConstants {
-	float4x4 ProjectionToWorld, EnvironmentMapTransform;
-	float3 CameraPosition;
 	uint RaytracingSamplesPerPixel, FrameCount;
 	bool IsEnvironmentCubeMapUsed;
+	float Padding;
+	float4x4 EnvironmentMapTransform;
+	Camera Camera;
 };
 ConstantBuffer<SceneConstants> g_sceneConstants : register(b0);
 

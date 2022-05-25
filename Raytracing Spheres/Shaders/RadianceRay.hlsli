@@ -7,8 +7,6 @@
 
 #include "MathHelpers.hlsli"
 
-#include "Utils.hlsli"
-
 struct RadianceRayPayload {
 	float4 Color;
 	uint TraceRecursionDepth;
@@ -67,8 +65,8 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 
 	float3 direction = 0;
 	if (g_objectConstants.Material.Scatter(worldRay, hitInfo, direction, payload.Random)) {
-		const RayDesc ray = CreateRayDesc(hitInfo.Vertex.Position, direction);
-		payload.Color = color * TraceRadianceRay(ray, payload.TraceRecursionDepth, payload.Random);
+		const Ray ray = { hitInfo.Vertex.Position, direction };
+		payload.Color = color * TraceRadianceRay(ray.CreateDesc(), payload.TraceRecursionDepth, payload.Random);
 	}
 	else payload.Color = g_objectConstants.Material.IsEmissive() ? color : 0;
 }

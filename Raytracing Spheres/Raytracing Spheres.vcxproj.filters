@@ -143,9 +143,6 @@
     <None Include="Shaders\Random.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\Utils.hlsli">
-      <Filter>Shader Files</Filter>
-    </None>
     <None Include="packages.config" />
     <None Include="Shaders\Ray.hlsli">
       <Filter>Shader Files</Filter>
@@ -157,6 +154,9 @@
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\Vertex.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="Shaders\Camera.hlsli">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>

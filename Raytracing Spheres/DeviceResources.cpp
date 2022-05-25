@@ -55,7 +55,7 @@ DeviceResources::DeviceResources(
         m_backBufferCount(backBufferCount),
         m_d3dMinFeatureLevel(minFeatureLevel),
         m_window(nullptr),
-        m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_0),
+        m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_1),
         m_dxgiFactoryFlags(0),
         m_outputSize{0, 0, 1, 1},
         m_colorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709),
@@ -67,7 +67,7 @@ DeviceResources::DeviceResources(
         throw std::out_of_range("invalid backBufferCount");
     }
 
-    if (minFeatureLevel < D3D_FEATURE_LEVEL_12_0)
+    if (minFeatureLevel < D3D_FEATURE_LEVEL_12_1)
     {
         throw std::out_of_range("minFeatureLevel too low");
     }
@@ -175,13 +175,12 @@ void DeviceResources::CreateDeviceResources()
 #if defined(NTDDI_WIN10_FE) || defined(USING_D3D12_AGILITY_SDK)
         D3D_FEATURE_LEVEL_12_2,
 #endif
-        D3D_FEATURE_LEVEL_12_1,
-        D3D_FEATURE_LEVEL_12_0
+        D3D_FEATURE_LEVEL_12_1
     };
 
     D3D12_FEATURE_DATA_FEATURE_LEVELS featLevels =
     {
-        static_cast<UINT>(std::size(s_featureLevels)), s_featureLevels, D3D_FEATURE_LEVEL_12_0
+        static_cast<UINT>(std::size(s_featureLevels)), s_featureLevels, D3D_FEATURE_LEVEL_12_1
     };
     
     if (SUCCEEDED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &featLevels, sizeof(featLevels))))

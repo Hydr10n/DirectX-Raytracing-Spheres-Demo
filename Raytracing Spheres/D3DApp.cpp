@@ -42,10 +42,11 @@ using Key = Keyboard::Keys;
 using GraphicsSettingsData = MyAppData::Settings::Graphics;
 
 struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneConstants {
-	XMMATRIX ProjectionToWorld, EnvironmentMapTransform;
-	XMFLOAT3 CameraPosition;
 	UINT RaytracingSamplesPerPixel, FrameCount;
 	BOOL IsEnvironmentCubeMapUsed;
+	float Padding;
+	XMMATRIX EnvironmentMapTransform;
+	Camera Camera;
 };
 
 struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
@@ -136,8 +137,8 @@ D3DApp::D3DApp() {
 
 	m_mouse->SetWindow(g_windowModeHelper->hWnd);
 
-	m_camera.SetPosition({ 0, 0, -15 });
-	m_camera.UpdateView();
+	m_firstPersonCamera.SetPosition({ 0, 0, -15 });
+	m_firstPersonCamera.UpdateView();
 }
 
 D3DApp::~D3DApp() {
@@ -400,7 +401,7 @@ void D3DApp::CreateWindowSizeDependentResources() {
 		m_temporalAntiAliasingEffect->Textures.Size = outputSize;
 	}
 
-	m_camera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
+	m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
 
 	{
 		auto& IO = ImGui::GetIO();
@@ -912,23 +913,23 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 
 		constexpr auto To_PxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
-		auto x = To_PxVec3(m_camera.GetRightDirection() * displacement.x + m_camera.GetUpDirection() * displacement.y + m_camera.GetForwardDirection() * displacement.z);
+		auto x = To_PxVec3(m_firstPersonCamera.GetRightDirection() * displacement.x + m_firstPersonCamera.GetUpDirection() * displacement.y + m_firstPersonCamera.GetForwardDirection() * displacement.z);
 		const auto magnitude = x.magnitude();
 		const auto normalized = x / magnitude;
 
 		PxRaycastBuffer raycastBuffer;
-		if (m_myPhysX.GetScene().raycast(To_PxVec3(m_camera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+		if (m_myPhysX.GetScene().raycast(To_PxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 			x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 		}
 
-		m_camera.Translate({ x.x, x.y, -x.z });
+		m_firstPersonCamera.Translate({ x.x, x.y, -x.z });
 	};
 
 	const auto Pitch = [&](float angle) {
-		const auto pitch = asin(m_camera.GetForwardDirection().y);
+		const auto pitch = asin(m_firstPersonCamera.GetForwardDirection().y);
 		if (pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 		else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
-		m_camera.Pitch(angle);
+		m_firstPersonCamera.Pitch(angle);
 	};
 
 	const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
@@ -939,7 +940,7 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 		Translate(displacement);
 
 		const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
-		m_camera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
+		m_firstPersonCamera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
 		Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
 	}
 
@@ -953,21 +954,21 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 		Translate(displacement);
 
 		const auto rotationSpeed = elapsedSeconds * 20;
-		m_camera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
+		m_firstPersonCamera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
 		Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 	}
 
-	m_camera.UpdateView();
+	m_firstPersonCamera.UpdateView();
 }
 
 void D3DApp::UpdateSceneConstantBuffer() {
 	auto& sceneConstants = *reinterpret_cast<SceneConstants*>(m_sceneConstantBuffer.Memory());
 
-	sceneConstants.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_camera.GetView() * m_camera.GetProjection()));
-
-	sceneConstants.CameraPosition = m_camera.GetPosition();
-
 	sceneConstants.FrameCount = m_stepTimer.GetFrameCount();
+
+	auto& camera = sceneConstants.Camera;
+	camera.Position = m_firstPersonCamera.GetPosition();
+	camera.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
 }
 
 void D3DApp::UpdateRenderItem(RenderItem& renderItem) const {
