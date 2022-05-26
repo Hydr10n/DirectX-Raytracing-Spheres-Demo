@@ -5,25 +5,25 @@
 #include "SharedData.h"
 #include "MyAppData.h"
 
-#include "DirectXHelpers.h"
+#include "DirectXTK12/DirectXHelpers.h"
 
-#include "ResourceUploadBatch.h"
+#include "DirectXTK12/ResourceUploadBatch.h"
 
-#include "GeometricPrimitive.h"
+#include "DirectXTK12/GeometricPrimitive.h"
 
-#include "DDSTextureLoader.h"
-#include "WICTextureLoader.h"
+#include "DirectXTK12/DDSTextureLoader.h"
+#include "DirectXTK12/WICTextureLoader.h"
 
 #include "BottomLevelAccelerationStructureGenerator.h"
 #include "TopLevelAccelerationStructureGenerator.h"
 
-#include "Random.h"
+#include "Shaders/Raytracing.hlsl.h"
 
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
 #include "ImGuiEx.h"
 
-#include "Shaders/Raytracing.hlsl.h"
+#include "Random.h"
 
 #include <shellapi.h>
 

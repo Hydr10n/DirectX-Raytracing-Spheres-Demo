@@ -10,15 +10,15 @@
 
 #include "StepTimer.h"
 
-#include "GraphicsMemory.h"
+#include "DirectXTK12/GraphicsMemory.h"
 
-#include "GamePad.h"
-#include "Keyboard.h"
-#include "Mouse.h"
+#include "DirectXTK12/GamePad.h"
+#include "DirectXTK12/Keyboard.h"
+#include "DirectXTK12/Mouse.h"
 
-#include "DescriptorHeap.h"
+#include "DirectXTK12/DescriptorHeap.h"
 
-#include "VertexTypes.h"
+#include "DirectXTK12/VertexTypes.h"
 
 #include "ShaderBindingTableGenerator.h"
 

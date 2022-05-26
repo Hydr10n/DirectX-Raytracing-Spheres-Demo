@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SimpleMath.h>
+#include "DirectXTK12/SimpleMath.h"
 
 struct Camera {
 	DirectX::XMFLOAT3 Position;

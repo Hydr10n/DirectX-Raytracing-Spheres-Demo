@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Effects.h"
+#include "DirectXTK12/Effects.h"
 
 namespace DirectX {
 	struct TemporalAntiAliasingEffect : IEffect {
