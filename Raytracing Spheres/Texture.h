@@ -27,14 +27,14 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 
 	std::wstring DirectoryPath;
 
-	void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors) {
+	void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors, size_t threadCount) {
 		using namespace DirectX;
 		using namespace std;
 
 		exception_ptr exception;
 
 		vector<thread> threads;
-		threads.reserve(8);
+		threads.reserve(threadCount);
 
 		for (auto& pair : *this) {
 			for (auto& pair1 : get<0>(pair.second)) {

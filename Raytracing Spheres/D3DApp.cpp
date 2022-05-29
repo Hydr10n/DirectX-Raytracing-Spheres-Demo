@@ -340,7 +340,7 @@ void D3DApp::CreateDeviceDependentResources() {
 
 	CreateShaderBindingTables();
 
-	m_textures.Load(device, m_deviceResources->GetCommandQueue(), *m_resourceDescriptors);
+	m_textures.Load(device, m_deviceResources->GetCommandQueue(), *m_resourceDescriptors, 8);
 }
 
 void D3DApp::CreateWindowSizeDependentResources() {
