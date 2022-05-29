@@ -129,14 +129,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	try {
 		{
-			auto param = lParam;
-
+			LPARAM param;
 			if (uMsg == WM_MOUSEMOVE) {
 				const auto outputSize = g_app->GetOutputSize();
 				RECT rect;
-				GetClientRect(hWnd, &rect);
+				ThrowIfFailed(GetClientRect(hWnd, &rect));
 				param = MAKELPARAM(GET_X_LPARAM(lParam) * outputSize.cx / static_cast<float>(rect.right - rect.left), GET_Y_LPARAM(lParam) * outputSize.cy / static_cast<float>(rect.bottom - rect.top));
 			}
+			else param = lParam;
 
 			extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 			if (const auto ret = ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, param)) return ret;

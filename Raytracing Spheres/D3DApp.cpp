@@ -5,14 +5,7 @@
 #include "SharedData.h"
 #include "MyAppData.h"
 
-#include "DirectXTK12/DirectXHelpers.h"
-
-#include "DirectXTK12/ResourceUploadBatch.h"
-
 #include "DirectXTK12/GeometricPrimitive.h"
-
-#include "DirectXTK12/DDSTextureLoader.h"
-#include "DirectXTK12/WICTextureLoader.h"
 
 #include "BottomLevelAccelerationStructureGenerator.h"
 #include "TopLevelAccelerationStructureGenerator.h"
@@ -347,7 +340,7 @@ void D3DApp::CreateDeviceDependentResources() {
 
 	CreateShaderBindingTables();
 
-	LoadTextures();
+	m_textures.Load(device, m_deviceResources->GetCommandQueue(), *m_resourceDescriptors);
 }
 
 void D3DApp::CreateWindowSizeDependentResources() {
@@ -415,8 +408,6 @@ void D3DApp::CreateWindowSizeDependentResources() {
 }
 
 void D3DApp::BuildTextures() {
-	if (!m_textures.empty()) return;
-
 	m_textures = {
 		{
 			Objects::Environment,
@@ -478,62 +469,12 @@ void D3DApp::BuildTextures() {
 			}
 		}
 	};
-}
 
-void D3DApp::LoadTextures() {
-	exception_ptr exception;
-
-	vector<thread> threads;
-	threads.reserve(8);
-
-	const auto directoryPath = filesystem::path(*__wargv).replace_filename(LR"(Textures\)");
-	for (auto& pair : m_textures) {
-		for (auto& pair1 : get<0>(pair.second)) {
-			threads.push_back(thread([&] {
-				try {
-					auto& texture = pair1.second;
-
-					const auto device = m_deviceResources->GetD3DDevice();
-
-					ResourceUploadBatch resourceUploadBatch(device);
-					resourceUploadBatch.Begin();
-
-					bool isCubeMap = false;
-
-					const auto filePath = filesystem::path(directoryPath).append(texture.Path);
-					const auto filePathString = filePath.string();
-					if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
-						ThrowIfFailed(CreateDDSTextureFromFile(device, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
-
-						if ((isCubeMap && pair1.first != TextureType::CubeMap) || (!isCubeMap && pair1.first == TextureType::CubeMap)) {
-							throw runtime_error(filePathString + ": Invalid texture");
-						}
-					}
-					else {
-						ThrowIfFailed(CreateWICTextureFromFile(device, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf()), filePathString.c_str());
-					}
-
-					resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
-
-					CreateShaderResourceView(device, texture.Resource.Get(), m_resourceDescriptors->GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
-				}
-				catch (...) { if (!exception) exception = current_exception(); }
-				}));
-
-			if (threads.size() == threads.capacity()) {
-				for (auto& thread : threads) thread.join();
-				threads.clear();
-			}
-		}
-	}
-
-	if (!threads.empty()) for (auto& thread : threads) thread.join();
-
-	if (exception) rethrow_exception(exception);
+	m_textures.DirectoryPath = filesystem::path(*__wargv).replace_filename(LR"(Textures\)");
 }
 
 void D3DApp::BuildRenderItems() {
-	if (!m_renderItems.empty()) return;
+	m_renderItems.clear();
 
 	const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) {
 		renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;

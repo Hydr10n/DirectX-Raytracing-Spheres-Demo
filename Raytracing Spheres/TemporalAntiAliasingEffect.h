@@ -2,6 +2,8 @@
 
 #include "DirectXTK12/Effects.h"
 
+#include "wrl.h"
+
 namespace DirectX {
 	struct TemporalAntiAliasingEffect : IEffect {
 		struct { float Alpha = 0.2f, ColorBoxSigma = 1; } Constants;

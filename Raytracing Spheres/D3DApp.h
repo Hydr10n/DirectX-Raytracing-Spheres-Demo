@@ -16,8 +16,6 @@
 #include "DirectXTK12/Keyboard.h"
 #include "DirectXTK12/Mouse.h"
 
-#include "DirectXTK12/DescriptorHeap.h"
-
 #include "DirectXTK12/VertexTypes.h"
 
 #include "ShaderBindingTableGenerator.h"
@@ -160,8 +158,6 @@ private:
 	void Clear();
 
 	void BuildTextures();
-
-	void LoadTextures();
 
 	void BuildRenderItems();
 
