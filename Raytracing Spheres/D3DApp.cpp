@@ -340,7 +340,7 @@ void D3DApp::CreateDeviceDependentResources() {
 
 	CreateShaderBindingTables();
 
-	m_textures.Load(device, m_deviceResources->GetCommandQueue(), *m_resourceDescriptors, 8);
+	LoadTextures();
 }
 
 void D3DApp::CreateWindowSizeDependentResources() {
@@ -471,6 +471,14 @@ void D3DApp::BuildTextures() {
 	};
 
 	m_textures.DirectoryPath = filesystem::path(*__wargv).replace_filename(LR"(Textures\)");
+}
+
+void D3DApp::LoadTextures() {
+	const auto device = m_deviceResources->GetD3DDevice();
+	const auto commandQueue = m_deviceResources->GetCommandQueue();
+	constexpr auto threadCount = 8;
+
+	m_textures.Load(device, commandQueue, *m_resourceDescriptors, threadCount);
 }
 
 void D3DApp::BuildRenderItems() {

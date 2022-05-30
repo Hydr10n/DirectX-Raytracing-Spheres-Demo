@@ -159,6 +159,8 @@ private:
 
 	void BuildTextures();
 
+	void LoadTextures();
+
 	void BuildRenderItems();
 
 	void CreateDescriptorHeaps();
