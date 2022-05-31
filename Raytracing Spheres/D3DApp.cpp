@@ -360,17 +360,17 @@ void D3DApp::CreateWindowSizeDependentResources() {
 			};
 		};
 
-		const auto CreateResource = [&](const D3D12_RESOURCE_DESC& resourceDesc, ComPtr<ID3D12Resource>& resource, const D3D12_SHADER_RESOURCE_VIEW_DESC* pSrvDesc = nullptr, size_t srvDescriptorHeapIndex = SIZE_MAX, size_t uavDescriptorHeapIndex = SIZE_MAX) {
+		const auto CreateResource = [&](const D3D12_RESOURCE_DESC& resourceDesc, ComPtr<ID3D12Resource>& resource, const D3D12_SHADER_RESOURCE_VIEW_DESC* pSrvDesc = nullptr, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
 			const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 			const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
 
 			ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(resource.ReleaseAndGetAddressOf())));
 
-			if (pSrvDesc != nullptr && srvDescriptorHeapIndex != SIZE_MAX) {
+			if (pSrvDesc != nullptr && srvDescriptorHeapIndex != UINT_MAX) {
 				device->CreateShaderResourceView(resource.Get(), pSrvDesc, m_resourceDescriptors->GetCpuHandle(srvDescriptorHeapIndex));
 			}
 
-			if (uavDescriptorHeapIndex != SIZE_MAX) {
+			if (uavDescriptorHeapIndex != UINT_MAX) {
 				device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(uavDescriptorHeapIndex));
 			}
 		};
@@ -381,7 +381,7 @@ void D3DApp::CreateWindowSizeDependentResources() {
 
 			CreateResource(tex2DDesc, m_previousOutput, &srvDesc, DescriptorHeapIndex::PreviousOutputSRV);
 			CreateResource(tex2DDesc, m_currentOutput, &srvDesc, DescriptorHeapIndex::CurrentOutputSRV, DescriptorHeapIndex::CurrentOutputUAV);
-			CreateResource(tex2DDesc, m_finalOutput, nullptr, SIZE_MAX, DescriptorHeapIndex::FinalOutputUAV);
+			CreateResource(tex2DDesc, m_finalOutput, nullptr, UINT_MAX, DescriptorHeapIndex::FinalOutputUAV);
 		}
 
 		{
@@ -487,10 +487,12 @@ void D3DApp::BuildRenderItems() {
 	const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) {
 		renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
-		renderItem.VerticesDescriptorHeapIndex = DescriptorHeapIndex::SphereVertices;
-		renderItem.IndicesDescriptorHeapIndex = DescriptorHeapIndex::SphereIndices;
+		renderItem.DescriptorHeapIndices = {
+			.Vertices = DescriptorHeapIndex::SphereVertices,
+			.Indices = DescriptorHeapIndex::SphereIndices
+		};
 
-		renderItem.ObjectConstantBufferIndex = m_renderItems.size();
+		renderItem.ConstantBufferIndices = { .Object = static_cast<UINT>(m_renderItems.size()) };
 
 		const auto rigidDynamic = m_myPhysX.AddRigidDynamic(geometry, PxTransform(position));
 
@@ -766,7 +768,7 @@ void D3DApp::CreateConstantBuffers() {
 		m_objectConstantBuffer = m_graphicsMemory->Allocate(sizeof(ObjectConstants) * m_renderItems.size());
 
 		for (const auto& renderItem : m_renderItems) {
-			auto& objectConstants = reinterpret_cast<ObjectConstants*>(m_objectConstantBuffer.Memory())[renderItem.ObjectConstantBufferIndex];
+			auto& objectConstants = reinterpret_cast<ObjectConstants*>(m_objectConstantBuffer.Memory())[renderItem.ConstantBufferIndices.Object];
 
 			objectConstants.Material = renderItem.Material;
 
@@ -791,23 +793,23 @@ void D3DApp::CreateShaderBindingTables() {
 	for (const auto& renderItem : m_renderItems) {
 		D3D12_GPU_VIRTUAL_ADDRESS pImageTexture = NULL, pNormalTexture = NULL;
 		if (renderItem.pTextures != nullptr) {
-			auto& textures = get<0>(*renderItem.pTextures);
+			const auto& textures = get<0>(*renderItem.pTextures);
 			if (textures.contains(TextureType::ColorMap)) {
-				pImageTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::ColorMap].DescriptorHeapIndex).ptr;
+				pImageTexture = m_resourceDescriptors->GetGpuHandle(textures.at(TextureType::ColorMap).DescriptorHeapIndex).ptr;
 			}
 			if (textures.contains(TextureType::NormalMap)) {
-				pNormalTexture = m_resourceDescriptors->GetGpuHandle(textures[TextureType::NormalMap].DescriptorHeapIndex).ptr;
+				pNormalTexture = m_resourceDescriptors->GetGpuHandle(textures.at(TextureType::NormalMap).DescriptorHeapIndex).ptr;
 			}
 		}
 
 		m_shaderBindingTableGenerator.AddHitGroup(
 			renderItem.HitGroup.c_str(),
 			{
-				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.VerticesDescriptorHeapIndex).ptr),
-				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.IndicesDescriptorHeapIndex).ptr),
+				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.DescriptorHeapIndices.Vertices).ptr),
+				reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.DescriptorHeapIndices.Indices).ptr),
 				reinterpret_cast<void*>(pImageTexture),
 				reinterpret_cast<void*>(pNormalTexture),
-				reinterpret_cast<ObjectConstants*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ObjectConstantBufferIndex
+				reinterpret_cast<ObjectConstants*>(m_objectConstantBuffer.GpuAddress()) + renderItem.ConstantBufferIndices.Object
 			}
 		);
 	}

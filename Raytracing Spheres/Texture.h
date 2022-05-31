@@ -17,7 +17,7 @@
 enum class TextureType { ColorMap, NormalMap, CubeMap };
 
 struct Texture {
-	size_t DescriptorHeapIndex = SIZE_MAX;
+	UINT DescriptorHeapIndex = UINT_MAX;
 	std::wstring Path;
 	Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
 };
@@ -27,7 +27,7 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 
 	std::wstring DirectoryPath;
 
-	void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors, size_t threadCount) {
+	void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors, UINT threadCount) {
 		using namespace DirectX;
 		using namespace std;
 

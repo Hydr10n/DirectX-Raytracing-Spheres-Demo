@@ -13,9 +13,9 @@ struct RadianceRayPayload {
 	Random Random;
 };
 
-inline float4 TraceRadianceRay(RayDesc ray, uint traceRecursionDepth, inout Random random) {
+inline float4 TraceRadianceRay(RayDesc rayDesc, uint traceRecursionDepth, inout Random random) {
 	RadianceRayPayload payload = { (float4) 0, traceRecursionDepth - 1, random };
-	TraceRay(g_scene, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
+	TraceRay(g_scene, RAY_FLAG_NONE, ~0, 0, 1, 0, rayDesc, payload);
 	return payload.Color;
 }
 

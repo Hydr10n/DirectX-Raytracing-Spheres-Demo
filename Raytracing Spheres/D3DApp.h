@@ -69,7 +69,8 @@ private:
 	struct RenderItem {
 		std::string Name;
 		std::wstring HitGroup;
-		size_t VerticesDescriptorHeapIndex = SIZE_MAX, IndicesDescriptorHeapIndex = SIZE_MAX, ObjectConstantBufferIndex = SIZE_MAX;
+		struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } DescriptorHeapIndices;
+		struct { UINT Object = UINT_MAX; } ConstantBufferIndices;
 		Material Material;
 		TextureDictionary::mapped_type* pTextures{};
 		physx::PxShape* Shape{};

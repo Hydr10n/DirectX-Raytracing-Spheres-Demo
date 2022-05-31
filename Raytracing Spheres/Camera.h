@@ -18,17 +18,17 @@ public:
 	const auto& GetPosition() const { return m_position; }
 
 	void SetDirections(const DirectX::XMFLOAT3& rightDirection, const DirectX::XMFLOAT3& forwardDirection) {
-		(m_rightDirection = rightDirection).Normalize();
-		(m_forwardDirection = forwardDirection).Normalize();
-		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
+		(m_directions.Right = rightDirection).Normalize();
+		(m_directions.Forward = forwardDirection).Normalize();
+		m_directions.Forward.Cross(m_directions.Right).Normalize(m_directions.Up);
 		m_viewDirty = true;
 	}
 
-	const auto& GetForwardDirection() const { return m_forwardDirection; }
+	const auto& GetRightDirection() const { return m_directions.Right; }
 
-	const auto& GetUpDirection() const { return m_upDirection; }
+	const auto& GetUpDirection() const { return m_directions.Up; }
 
-	const auto& GetRightDirection() const { return m_rightDirection; }
+	const auto& GetForwardDirection() const { return m_directions.Forward; }
 
 	void SetLens(float fovAngleY, float aspectRatio, float nearZ, float farZ) {
 		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
@@ -36,10 +36,10 @@ public:
 
 	void UpdateView() {
 		if (!m_viewDirty) return;
-		m_rightDirection.Normalize();
-		m_forwardDirection.Normalize();
-		m_forwardDirection.Cross(m_rightDirection).Normalize(m_upDirection);
-		m_view = DirectX::XMMatrixLookToLH(m_position, m_forwardDirection, m_upDirection);
+		m_directions.Right.Normalize();
+		m_directions.Forward.Normalize();
+		m_directions.Forward.Cross(m_directions.Right).Normalize(m_directions.Up);
+		m_view = DirectX::XMMatrixLookToLH(m_position, m_directions.Forward, m_directions.Up);
 		m_viewDirty = false;
 	}
 
@@ -55,21 +55,23 @@ public:
 	void Yaw(float angle) {
 		using namespace DirectX::SimpleMath;
 		const auto rotation = Matrix::CreateRotationY(angle);
-		m_rightDirection = Vector3::Transform(m_rightDirection, rotation);
-		m_forwardDirection = Vector3::Transform(m_forwardDirection, rotation);
+		m_directions.Right = Vector3::Transform(m_directions.Right, rotation);
+		m_directions.Forward = Vector3::Transform(m_directions.Forward, rotation);
 		m_viewDirty = true;
 	}
 
 	void Pitch(float angle) {
 		using namespace DirectX::SimpleMath;
-		const auto rotation = Matrix::CreateFromAxisAngle(m_rightDirection, angle);
-		m_upDirection = Vector3::Transform(m_upDirection, rotation);
-		m_forwardDirection = Vector3::Transform(m_forwardDirection, rotation);
+		const auto rotation = Matrix::CreateFromAxisAngle(m_directions.Right, angle);
+		m_directions.Up = Vector3::Transform(m_directions.Up, rotation);
+		m_directions.Forward = Vector3::Transform(m_directions.Forward, rotation);
 		m_viewDirty = true;
 	}
 
 private:
-	DirectX::SimpleMath::Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 };
+	DirectX::SimpleMath::Vector3 m_position;
+	
+	struct { DirectX::SimpleMath::Vector3 Right{ 1, 0, 0 }, Up{ 0, 1, 0 }, Forward{ 0, 0, 1 }; } m_directions;
 
 	bool m_viewDirty = true;
 	DirectX::XMMATRIX m_view{}, m_projection{};

@@ -172,9 +172,7 @@ void DeviceResources::CreateDeviceResources()
     // Determine maximum supported feature level for this device
     static const D3D_FEATURE_LEVEL s_featureLevels[] =
     {
-#if defined(NTDDI_WIN10_FE) || defined(USING_D3D12_AGILITY_SDK)
         D3D_FEATURE_LEVEL_12_2,
-#endif
         D3D_FEATURE_LEVEL_12_1
     };
 
@@ -628,6 +626,7 @@ void DeviceResources::CreateDevice()
         }
 
         ThrowIfFailed(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(m_d3dDevice.ReleaseAndGetAddressOf())));
+
         D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
         if (FAILED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
             || options5.RaytracingTier == D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
