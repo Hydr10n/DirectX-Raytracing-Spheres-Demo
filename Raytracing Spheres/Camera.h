@@ -24,11 +24,7 @@ public:
 		m_viewDirty = true;
 	}
 
-	const auto& GetRightDirection() const { return m_directions.Right; }
-
-	const auto& GetUpDirection() const { return m_directions.Up; }
-
-	const auto& GetForwardDirection() const { return m_directions.Forward; }
+	const auto& GetDirections() const { return m_directions; }
 
 	void SetLens(float fovAngleY, float aspectRatio, float nearZ, float farZ) {
 		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);

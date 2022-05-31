@@ -66,7 +66,7 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 	float3 direction = 0;
 	if (g_objectConstants.Material.Scatter(worldRay, hitInfo, direction, payload.Random)) {
 		const Ray ray = { hitInfo.Vertex.Position, direction };
-		payload.Color = color * TraceRadianceRay(ray.CreateDesc(), payload.TraceRecursionDepth, payload.Random);
+		payload.Color = color * TraceRadianceRay(ray.ToRayDesc(), payload.TraceRecursionDepth, payload.Random);
 	}
 	else payload.Color = g_objectConstants.Material.IsEmissive() ? color : 0;
 }

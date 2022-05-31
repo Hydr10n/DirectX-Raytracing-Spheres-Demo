@@ -864,7 +864,8 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 
 		constexpr auto To_PxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
-		auto x = To_PxVec3(m_firstPersonCamera.GetRightDirection() * displacement.x + m_firstPersonCamera.GetUpDirection() * displacement.y + m_firstPersonCamera.GetForwardDirection() * displacement.z);
+		const auto& directions = m_firstPersonCamera.GetDirections();
+		auto x = To_PxVec3(directions.Right * displacement.x + directions.Up * displacement.y + directions.Forward * displacement.z);
 		const auto magnitude = x.magnitude();
 		const auto normalized = x / magnitude;
 
@@ -877,7 +878,7 @@ void D3DApp::UpdateCamera(const GamePad::State& gamepadState, const Keyboard::St
 	};
 
 	const auto Pitch = [&](float angle) {
-		const auto pitch = asin(m_firstPersonCamera.GetForwardDirection().y);
+		const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
 		if (pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 		else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
 		m_firstPersonCamera.Pitch(angle);
