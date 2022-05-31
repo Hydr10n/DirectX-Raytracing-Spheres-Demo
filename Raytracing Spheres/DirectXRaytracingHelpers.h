@@ -15,12 +15,7 @@ namespace DirectX {
 		return pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(ppBuffer));
 	}
 
-	inline HRESULT CreateUploadBuffer(
-		ID3D12Device* pDevice,
-		UINT64 size,
-		ID3D12Resource** ppBuffer,
-		const void* pData = nullptr
-	) {
+	inline HRESULT CreateUploadBuffer(ID3D12Device* pDevice, UINT64 size, ID3D12Resource** ppBuffer, const void* pData = nullptr) {
 		PVOID pMappedData;
 		auto ret = CreateBuffer(pDevice, size, D3D12_RESOURCE_STATE_GENERIC_READ, ppBuffer, D3D12_RESOURCE_FLAG_NONE, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD));
 		if (SUCCEEDED(ret) && pData != nullptr && SUCCEEDED(ret = (*ppBuffer)->Map(0, nullptr, &pMappedData))) {

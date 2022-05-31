@@ -27,9 +27,14 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 
 	std::wstring DirectoryPath;
 
-	void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors, UINT threadCount) {
+	void Load(
+		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors,
+		UINT threadCount = 1
+	) {
 		using namespace DirectX;
 		using namespace std;
+
+		if (!threadCount) throw invalid_argument("Thread count cannot be 0");
 
 		exception_ptr exception;
 
