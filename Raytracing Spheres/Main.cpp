@@ -1,7 +1,12 @@
+#include "pch.h"
+
 #include "D3DApp.h"
 
 #include "SharedData.h"
 #include "MyAppData.h"
+
+#include "DirectXTK12/Keyboard.h"
+#include "DirectXTK12/Mouse.h"
 
 #include "imgui_impl_win32.h"
 
@@ -19,6 +24,8 @@ using GraphicsSettingsData = MyAppData::Settings::Graphics;
 constexpr auto DefaultWindowTitle = L"Raytracing Spheres";
 
 exception_ptr g_exception;
+
+shared_ptr<WindowModeHelper> g_windowModeHelper;
 
 unique_ptr<D3DApp> g_app;
 
@@ -72,7 +79,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 		);
 		ThrowIfFailed(window != nullptr);
 
-		g_windowModeHelper = make_unique<decltype(g_windowModeHelper)::element_type>(window);
+		g_windowModeHelper = make_shared<decltype(g_windowModeHelper)::element_type>(window);
 
 		g_windowModeHelper->WindowedStyle = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 
@@ -85,7 +92,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 			g_windowModeHelper->Resolution = *--g_displayResolutions.cend();
 		}
 
-		g_app = make_unique<decltype(g_app)::element_type>();
+		g_app = make_unique<decltype(g_app)::element_type>(g_windowModeHelper);
 
 		ThrowIfFailed(g_windowModeHelper->Apply()); // Fix missing icon on title bar when initial WindowMode != Windowed
 
@@ -164,7 +171,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					minMaxInfo.ptMaxTrackSize = { rect.right - rect.left, rect.bottom - rect.top };
 				}
 			}
-		}	break;
+		} break;
 
 		case WM_MOVING:
 		case WM_SIZING: g_app->Tick(); break;
@@ -178,16 +185,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				//g_windowModeHelper->Resolution = { LOWORD(lParam), HIWORD(lParam) };
 
 				g_app->OnWindowSizeChanged();
-			}	break;
+			} break;
 			}
-		}	break;
+		} break;
 
-		case WM_DISPLAYCHANGE: g_app->OnDisplayChange(); break;
+		case WM_DISPLAYCHANGE: g_app->OnDisplayChanged(); break;
 
 		case WM_DPICHANGED: {
 			const auto& rect = *reinterpret_cast<PRECT>(lParam);
 			SetWindowPos(hWnd, nullptr, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER);
-		}	break;
+		} break;
 
 		case WM_ACTIVATEAPP: {
 			if (wParam) g_app->OnActivated();
@@ -196,7 +203,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		case WM_ACTIVATE: {
 			Keyboard::ProcessMessage(uMsg, wParam, lParam);
 			Mouse::ProcessMessage(uMsg, wParam, lParam);
-		}	break;
+		} break;
 
 		case WM_SYSKEYDOWN: {
 			if (wParam == VK_RETURN && (lParam & 0x60000000) == 0x20000000) {
@@ -217,7 +224,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			SetCapture(hWnd);
 
 			Mouse::ProcessMessage(uMsg, wParam, lParam);
-		}	break;
+		} break;
 
 		case WM_LBUTTONUP:
 		case WM_RBUTTONUP:

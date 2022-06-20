@@ -7,6 +7,10 @@
 
 #include "MathHelpers.hlsli"
 
+TriangleHitGroup RadianceRayHitGroup = { "", "RadianceRayClosestHit" };
+
+SubobjectToExportsAssociation RadianceRayLocalRootSignatureAssociation = { "LocalRootSignature", "RadianceRayHitGroup" };
+
 struct RadianceRayPayload {
 	float4 Color;
 	uint TraceRecursionDepth;
@@ -29,17 +33,14 @@ void RadianceRayMiss(inout RadianceRayPayload payload : SV_RayPayload) {
 
 [shader("closesthit")]
 void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, BuiltInTriangleIntersectionAttributes attributes : SV_IntersectionAttributes) {
-	if (!payload.TraceRecursionDepth) {
-		payload.Color = 0;
-		return;
-	}
+	if (!payload.TraceRecursionDepth) return;
 
-	const Ray worldRay = { WorldRayOrigin(), WorldRayDirection() };
+	const float3 worldRayDirection = WorldRayDirection();
 
 	float3 worldNormal;
 	float2 textureCoordinate;
 	{
-		const uint3 indices = Load3x16BitIndices(g_indices, CalculateIndexOffset(2));
+		const uint3 indices = Load3x16BitIndices(g_indices, PrimitiveIndex());
 		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
 
@@ -50,29 +51,25 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstants.TextureTransform).xy;
 
 		if (g_objectConstants.TextureFlags & TextureFlags::NormalMap) {
-			const float3x3 TBN = CalculateTBN(worldNormal, worldRay.Direction);
+			const float3x3 TBN = CalculateTBN(worldNormal, worldRayDirection);
 			worldNormal = normalize(mul(normalize(g_normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
 		}
 	}
 
 	HitInfo hitInfo;
-	hitInfo.Vertex.Position = worldRay.Origin + worldRay.Direction * RayTCurrent();
-	hitInfo.SetFaceNormal(worldNormal);
+	hitInfo.Vertex.Position = WorldRayOrigin() + worldRayDirection * RayTCurrent();
+	hitInfo.SetFaceNormal(worldNormal, worldRayDirection);
 
 	const float4 color = g_objectConstants.TextureFlags & TextureFlags::ColorMap ?
 		g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) :
 		g_objectConstants.Material.Color;
 
 	float3 direction = 0;
-	if (g_objectConstants.Material.Scatter(worldRay, hitInfo, direction, payload.Random)) {
+	if (g_objectConstants.Material.Scatter(worldRayDirection, hitInfo, direction, payload.Random)) {
 		const Ray ray = { hitInfo.Vertex.Position, direction };
 		payload.Color = color * TraceRadianceRay(ray.ToRayDesc(), payload.TraceRecursionDepth, payload.Random);
 	}
 	else payload.Color = g_objectConstants.Material.IsEmissive() ? color : 0;
 }
-
-TriangleHitGroup RadianceRayHitGroup = { "", "RadianceRayClosestHit" };
-
-SubobjectToExportsAssociation RadianceRayLocalRootSignatureAssociation = { "LocalRootSignature", "RadianceRayHitGroup" };
 
 #endif

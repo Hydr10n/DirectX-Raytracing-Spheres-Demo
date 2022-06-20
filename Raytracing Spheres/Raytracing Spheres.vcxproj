@@ -91,6 +91,7 @@
   <ItemGroup>
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectXRaytracingHelpers.h" />
+    <ClInclude Include="GraphicsMemoryEx.h" />
     <ClInclude Include="ImGuiEx.h" />
     <ClInclude Include="SharedData.h" />
     <ClInclude Include="TemporalAntiAliasingEffect.h" />

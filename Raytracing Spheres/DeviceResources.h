@@ -38,8 +38,8 @@ namespace DX
 
         void CreateDeviceResources();
         void CreateWindowSizeDependentResources();
-        void SetWindow(HWND window, int width, int height) noexcept;
-        bool WindowSizeChanged(int width, int height);
+        void SetWindow(HWND window, const SIZE& size) noexcept;
+        bool WindowSizeChanged(const SIZE& size);
         void HandleDeviceLost();
         void RegisterDeviceNotify(IDeviceNotify* deviceNotify) noexcept { m_deviceNotify = deviceNotify; }
         void Prepare(D3D12_RESOURCE_STATES beforeState = D3D12_RESOURCE_STATE_PRESENT,
@@ -49,7 +49,7 @@ namespace DX
         void UpdateColorSpace();
 
         // Device Accessors.
-        RECT GetOutputSize() const noexcept { return m_outputSize; }
+        SIZE GetOutputSize() const noexcept { return m_outputSize; }
 
         // Direct3D Accessors.
         auto                        GetD3DDevice() const noexcept          { return m_d3dDevice.Get(); }
@@ -124,7 +124,7 @@ namespace DX
         HWND                                                m_window;
         D3D_FEATURE_LEVEL                                   m_d3dFeatureLevel;
         DWORD                                               m_dxgiFactoryFlags;
-        RECT                                                m_outputSize;
+        SIZE                                                m_outputSize;
 
         // HDR Support
         DXGI_COLOR_SPACE_TYPE                               m_colorSpace;

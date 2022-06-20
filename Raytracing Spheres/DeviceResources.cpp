@@ -57,7 +57,7 @@ DeviceResources::DeviceResources(
         m_window(nullptr),
         m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_1),
         m_dxgiFactoryFlags(0),
-        m_outputSize{0, 0, 1, 1},
+        m_outputSize{1, 1},
         m_colorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709),
         m_options(flags),
         m_deviceNotify(nullptr)
@@ -269,8 +269,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
     }
 
     // Determine the render target size in pixels.
-    const UINT backBufferWidth = std::max<UINT>(static_cast<UINT>(m_outputSize.right - m_outputSize.left), 1u);
-    const UINT backBufferHeight = std::max<UINT>(static_cast<UINT>(m_outputSize.bottom - m_outputSize.top), 1u);
+    const UINT backBufferWidth = std::max(m_outputSize.cx, 1l);
+    const UINT backBufferHeight = std::max(m_outputSize.cy, 1l);
     const DXGI_FORMAT backBufferFormat = NoSRGB(m_backBufferFormat);
 
     // If the swap chain already exists, resize it, otherwise create one.
@@ -418,26 +418,18 @@ void DeviceResources::CreateWindowSizeDependentResources()
 }
 
 // This method is called when the Win32 window is created (or re-created).
-void DeviceResources::SetWindow(HWND window, int width, int height) noexcept
+void DeviceResources::SetWindow(HWND window, const SIZE& size) noexcept
 {
     m_window = window;
 
-    m_outputSize.left = m_outputSize.top = 0;
-    m_outputSize.right = width;
-    m_outputSize.bottom = height;
+    m_outputSize = size;
 }
 
 // This method is called when the Win32 window changes size.
-bool DeviceResources::WindowSizeChanged(int width, int height)
+bool DeviceResources::WindowSizeChanged(const SIZE& size)
 {
-    RECT newRc;
-    newRc.left = newRc.top = 0;
-    newRc.right = width;
-    newRc.bottom = height;
-    if (newRc.left == m_outputSize.left
-        && newRc.top == m_outputSize.top
-        && newRc.right == m_outputSize.right
-        && newRc.bottom == m_outputSize.bottom)
+    if (size.cx == m_outputSize.cx
+        && size.cy == m_outputSize.cy)
     {
         // Handle color space settings for HDR
         UpdateColorSpace();
@@ -445,7 +437,7 @@ bool DeviceResources::WindowSizeChanged(int width, int height)
         return false;
     }
 
-    m_outputSize = newRc;
+    m_outputSize = size;
     CreateWindowSizeDependentResources();
     return true;
 }

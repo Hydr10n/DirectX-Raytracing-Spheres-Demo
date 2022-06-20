@@ -43,7 +43,7 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 
 		for (auto& pair : *this) {
 			for (auto& pair1 : get<0>(pair.second)) {
-				threads.push_back(thread([&] {
+				threads.emplace_back([&] {
 					try {
 						auto& texture = pair1.second;
 
@@ -70,7 +70,7 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 						CreateShaderResourceView(pDevice, texture.Resource.Get(), resourceDescriptors.GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
 					}
 					catch (...) { if (!exception) exception = current_exception(); }
-					}));
+					});
 
 				if (threads.size() == threads.capacity()) {
 					for (auto& thread : threads) thread.join();

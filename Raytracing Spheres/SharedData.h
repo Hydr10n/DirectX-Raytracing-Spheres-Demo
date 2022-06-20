@@ -1,9 +1,5 @@
 #pragma once
 
-#include "WindowHelpers.h"
-
-#include <memory>
+#include "SharedData.h"
 
 inline DisplayHelpers::ResolutionSet g_displayResolutions;
-
-inline std::unique_ptr<WindowHelpers::WindowModeHelper> g_windowModeHelper;

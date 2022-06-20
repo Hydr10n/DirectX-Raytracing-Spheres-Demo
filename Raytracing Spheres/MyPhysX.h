@@ -58,14 +58,12 @@ public:
 
 		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(8);
 
-		m_material = m_physics->createMaterial(0.5f, 0.5f, 0.6f);
-
 		PxSceneDesc sceneDesc(tolerancesScale);
 		sceneDesc.cpuDispatcher = m_defaultCpuDispatcher;
 		sceneDesc.filterShader = PxDefaultSimulationFilterShader;
 
 		m_scene = m_physics->createScene(sceneDesc);
-		
+
 		if (const auto scenePvdClient = m_scene->getScenePvdClient()) {
 			scenePvdClient->setScenePvdFlags(PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS | PxPvdSceneFlag::eTRANSMIT_CONTACTS | PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES);
 		}
@@ -94,17 +92,10 @@ public:
 		m_scene->fetchResults(block);
 	}
 
-	physx::PxRigidDynamic* AddRigidDynamic(const physx::PxGeometry& geometry, const physx::PxTransform& transform) {
-		const auto rigidDynamic = m_physics->createRigidDynamic(transform);
-		physx::PxRigidActorExt::createExclusiveShape(*rigidDynamic, geometry, *m_material);
-		m_scene->addActor(*rigidDynamic);
-		return rigidDynamic;
-	}
-
 private:
 	struct PxAllocator : physx::PxDefaultAllocator {
 		void* allocate(size_t size, const char* typeName, const char* filename, int line) override {
-			void* ptr = physx::PxDefaultAllocator::allocate(size, typeName, filename, line);
+			void* ptr = PxDefaultAllocator::allocate(size, typeName, filename, line);
 			if (ptr == nullptr) throw std::bad_alloc();
 			return ptr;
 		}
@@ -117,8 +108,6 @@ private:
 	physx::PxPhysics* m_physics{};
 
 	physx::PxDefaultCpuDispatcher* m_defaultCpuDispatcher{};
-
-	physx::PxMaterial* m_material{};
 
 	physx::PxScene* m_scene{};
 };

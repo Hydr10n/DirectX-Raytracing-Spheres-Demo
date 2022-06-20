@@ -90,7 +90,7 @@ void TopLevelAccelerationStructureGenerator::AddInstance(
 // Compute the size of the scratch space required to build the acceleration
 // structure, as well as the size of the resulting structure. The allocation of
 // the buffers is then left to the application
-void TopLevelAccelerationStructureGenerator::ComputeASBufferSizes(
+void TopLevelAccelerationStructureGenerator::ComputeBufferSizes(
     ID3D12Device5* device, // Device on which the build will be performed
     UINT64& scratchSizeInBytes,              // Required scratch memory on the GPU to build
                                              // the acceleration structure

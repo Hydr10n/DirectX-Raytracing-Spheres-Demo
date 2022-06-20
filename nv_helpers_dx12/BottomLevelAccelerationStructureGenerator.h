@@ -50,7 +50,7 @@ BottomLevelAccelerationStructureGenerator bottomLevelAS;
 bottomLevelAS.AddGeometry(geometryDesc);
 ...
 UINT64 scratchSize, resultSize;
-bottomLevelAS.ComputeASBufferSizes(GetRTDevice(), scratchSize, resultSize);
+bottomLevelAS.ComputeBufferSizes(GetRTDevice(), scratchSize, resultSize);
 AccelerationStructureBuffers buffers;
 buffers.pScratch = nv_helpers_dx12::CreateBuffer(..., scratchSize, ...);
 buffers.pResult = nv_helpers_dx12::CreateBuffer(..., resultSize, ...);
@@ -85,7 +85,7 @@ public:
   /// Compute the size of the scratch space required to build the acceleration structure, as well as
   /// the size of the resulting structure. The allocation of the buffers is then left to the
   /// application
-  void ComputeASBufferSizes(
+  void ComputeBufferSizes(
       ID3D12Device5* device, /// Device on which the build will be performed
       UINT64& scratchSizeInBytes, /// Required scratch memory on the GPU to
                                   /// build the acceleration structure

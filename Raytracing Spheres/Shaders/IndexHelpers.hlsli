@@ -1,12 +1,8 @@
 #ifndef INDEXHELPERS_HLSLI
 #define INDEXHELPERS_HLSLI
 
-inline uint CalculateIndexOffset(uint indexStrideInBytes, uint primitiveIndex = PrimitiveIndex()) {
-	return indexStrideInBytes * primitiveIndex * 3;
-}
-
 // Load 3 16-bit indices from a ByteAddressBuffer.
-inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint offset) {
+inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint primitiveIndex) {
 	// ByteAddressBuffer::Load must be aligned at a 4-byte boundary.
 	// Since we need to read 3 16-bit indices: { 0, 1, 2 }
 	// aligned at a 4-byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
@@ -15,6 +11,7 @@ inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint offset
 	// Aligned:     { 0 1 | 2 - }
 	// Not aligned: { - 0 | 1 2 }
 
+	const uint offset = primitiveIndex * 3 * 2;
 	const uint dwordAlignedOffset = offset & ~3;
 	const uint2 four16BitIndices = byteAddressBuffer.Load2(dwordAlignedOffset);
 

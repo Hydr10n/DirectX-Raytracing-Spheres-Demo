@@ -31,7 +31,6 @@ struct SceneConstants {
 ConstantBuffer<SceneConstants> g_sceneConstants : register(b0);
 
 struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
-
 struct ObjectConstants {
 	uint TextureFlags;
 	float3 _padding;

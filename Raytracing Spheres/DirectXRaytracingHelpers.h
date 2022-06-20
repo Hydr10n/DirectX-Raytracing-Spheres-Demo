@@ -36,7 +36,7 @@ namespace DirectX {
 				UINT64 scratchSize, UINT64 resultSize,
 				UINT64 instanceDescsSize = 0
 			) noexcept(false) {
-				DX::ThrowIfFailed(CreateBuffer(pDevice, scratchSize, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &Scratch, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
+				DX::ThrowIfFailed(CreateBuffer(pDevice, scratchSize, D3D12_RESOURCE_STATE_COMMON, &Scratch, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
 				DX::ThrowIfFailed(CreateBuffer(pDevice, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, &Result, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));
 				if (instanceDescsSize) DX::ThrowIfFailed(CreateUploadBuffer(pDevice, instanceDescsSize, &InstanceDesc));
 			}
