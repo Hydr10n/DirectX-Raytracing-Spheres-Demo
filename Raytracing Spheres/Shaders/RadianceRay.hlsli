@@ -15,7 +15,8 @@ struct RadianceRayPayload {
 };
 
 inline float4 TraceRadianceRay(RayDesc rayDesc, uint traceRecursionDepth, inout Random random) {
-	RadianceRayPayload payload = { (float4) 0, traceRecursionDepth - 1, random };
+	if (++traceRecursionDepth > MaxTraceRecursionDepth) return MaxTraceRecursionDepth == 1;
+	RadianceRayPayload payload = { (float4) 0, traceRecursionDepth, random };
 	TraceRay(g_scene, RAY_FLAG_NONE, ~0, 0, 1, 0, rayDesc, payload);
 	return payload.Color;
 }
@@ -30,8 +31,6 @@ void RadianceRayMiss(inout RadianceRayPayload payload : SV_RayPayload) {
 
 [shader("closesthit")]
 void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, BuiltInTriangleIntersectionAttributes attributes : SV_IntersectionAttributes) {
-	if (!payload.TraceRecursionDepth) return;
-
 	const uint instanceID = InstanceID();
 
 	const LocalResourceDescriptorHeapIndices localResourceDescriptorHeapIndices = g_localResourceDescriptorHeapIndices[instanceID];

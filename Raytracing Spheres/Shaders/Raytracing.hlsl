@@ -10,7 +10,7 @@ void RayGeneration() {
 	float4 color = 0;
 	for (uint i = 0; i < g_globalData.RaytracingSamplesPerPixel; i++) {
 		const Ray ray = g_camera.GenerateRay(raysIndex, raysDimensions, random.Float2());
-		color += TraceRadianceRay(ray.ToRayDesc(), MaxTraceRecursionDepth, random);
+		color += TraceRadianceRay(ray.ToRayDesc(), 0, random);
 	}
 
 	g_output[raysIndex] = color / g_globalData.RaytracingSamplesPerPixel;
