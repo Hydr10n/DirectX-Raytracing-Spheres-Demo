@@ -15,17 +15,18 @@ namespace DirectX::RaytracingHelpers {
 			UINT64 scratchSize, UINT64 resultSize,
 			UINT64 instanceDescsSize = 0
 		) noexcept(false) {
-			const auto CreateBuffer = [&](UINT64 size, D3D12_RESOURCE_STATES initialState, ID3D12Resource** ppBuffer, D3D12_RESOURCE_FLAGS flags, const D3D12_HEAP_PROPERTIES& heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT)) {
+			const auto CreateBuffer = [&](UINT64 size, D3D12_RESOURCE_STATES initialState, ID3D12Resource** ppBuffer, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, const D3D12_HEAP_TYPE type = D3D12_HEAP_TYPE_DEFAULT) {
+				const D3D12_HEAP_PROPERTIES heapProperties(type);
 				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, flags);
 				DX::ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(ppBuffer)));
 			};
 
-			CreateBuffer(scratchSize, D3D12_RESOURCE_STATE_COMMON, &Scratch, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+			CreateBuffer(scratchSize, D3D12_RESOURCE_STATE_COMMON, &Scratch);
 
-			CreateBuffer(resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, &Result, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+			CreateBuffer(resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, &Result);
 
 			if (instanceDescsSize) {
-				CreateBuffer(instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, &InstanceDesc, D3D12_RESOURCE_FLAG_NONE, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD));
+				CreateBuffer(instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, &InstanceDesc, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
 			}
 		}
 	};

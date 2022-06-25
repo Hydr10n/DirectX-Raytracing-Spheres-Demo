@@ -971,7 +971,7 @@ private:
 
 		for (const auto& renderItem : m_renderItems) m_shaderBindingTableGenerator.AddHitGroup(renderItem.HitGroup.c_str(), { nullptr });
 
-		m_shaderBindingTable = m_graphicsMemory->Allocate(m_shaderBindingTableGenerator.ComputeSize());;
+		m_shaderBindingTable = m_graphicsMemory->Allocate(m_shaderBindingTableGenerator.ComputeSize());
 
 		ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 		ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
