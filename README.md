@@ -65,6 +65,8 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	```
 
 ### Dependencies
+- Windows 11 SDK
+
 - [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
 	```cmd
 	> .\vcpkg install directxtk12:x64-windows

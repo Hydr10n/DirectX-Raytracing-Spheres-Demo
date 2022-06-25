@@ -5,8 +5,8 @@
 #include "SharedData.h"
 #include "MyAppData.h"
 
-#include "DirectXTK12/Keyboard.h"
-#include "DirectXTK12/Mouse.h"
+#include "directxtk12/Keyboard.h"
+#include "directxtk12/Mouse.h"
 
 #include "imgui_impl_win32.h"
 

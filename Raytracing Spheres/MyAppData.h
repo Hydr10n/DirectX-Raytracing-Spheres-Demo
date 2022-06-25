@@ -21,7 +21,7 @@ struct MyAppData {
 
 			MAKESECTION(TemporalAntiAliasing, MAKEKEY(IsEnabled) MAKEKEY(Alpha) MAKEKEY(ColorBoxSigma));
 
-			template <class Key, class Data>
+			template <typename Key, typename Data>
 			static BOOL Save(const Data& data) {
 				if constexpr (std::is_same<Key, WindowMode>()) {
 					return m_appData.Save(Key::Section, Key::Key, reinterpret_cast<const UINT&>(data));
@@ -45,7 +45,7 @@ struct MyAppData {
 				throw;
 			}
 
-			template <class Key, class Data>
+			template <typename Key, typename Data>
 			static BOOL Load(Data& data) {
 				if constexpr (std::is_same<Key, WindowMode>()) {
 					return m_appData.Load(Key::Section, Key::Key, reinterpret_cast<UINT&>(data));

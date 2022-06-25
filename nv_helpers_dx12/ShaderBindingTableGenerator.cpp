@@ -85,7 +85,7 @@ void ShaderBindingTableGenerator::AddHitGroup(const std::wstring& entryPoint,
 //--------------------------------------------------------------------------------------------------
 //
 // Compute the size of the SBT based on the set of programs and hit groups it contains
-uint32_t ShaderBindingTableGenerator::ComputeSBTSize() const
+uint32_t ShaderBindingTableGenerator::ComputeSize() const
 {
   // The total SBT size is the sum of the entries for ray generation, miss and hit groups, aligned
   // on 256 bytes

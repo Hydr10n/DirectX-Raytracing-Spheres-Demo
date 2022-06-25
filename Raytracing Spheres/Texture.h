@@ -2,13 +2,13 @@
 
 #include "pch.h"
 
-#include "DirectXTK12/DirectXHelpers.h"
+#include "directxtk12/DirectXHelpers.h"
 
-#include "DirectXTK12/DescriptorHeap.h"
-#include "DirectXTK12/ResourceUploadBatch.h"
+#include "directxtk12/DescriptorHeap.h"
+#include "directxtk12/ResourceUploadBatch.h"
 
-#include "DirectXTK12/DDSTextureLoader.h"
-#include "DirectXTK12/WICTextureLoader.h"
+#include "directxtk12/DDSTextureLoader.h"
+#include "directxtk12/WICTextureLoader.h"
 
 #include <map>
 
@@ -28,7 +28,7 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 	std::wstring DirectoryPath;
 
 	void Load(
-		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& resourceDescriptors,
+		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& descriptorHeap,
 		UINT threadCount = 1
 	) {
 		using namespace DirectX;
@@ -67,7 +67,7 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 
 						resourceUploadBatch.End(pCommandQueue).wait();
 
-						CreateShaderResourceView(pDevice, texture.Resource.Get(), resourceDescriptors.GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
+						CreateShaderResourceView(pDevice, texture.Resource.Get(), descriptorHeap.GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
 					}
 					catch (...) { if (!exception) exception = current_exception(); }
 					});

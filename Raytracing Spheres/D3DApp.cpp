@@ -9,13 +9,13 @@
 
 #include "StepTimer.h"
 
-#include "GraphicsMemoryEx.h"
+#include "directxtk12/GraphicsMemory.h"
 
-#include "DirectXTK12/GamePad.h"
-#include "DirectXTK12/Keyboard.h"
-#include "DirectXTK12/Mouse.h"
+#include "directxtk12/GamePad.h"
+#include "directxtk12/Keyboard.h"
+#include "directxtk12/Mouse.h"
 
-#include "DirectXTK12/GeometricPrimitive.h"
+#include "directxtk12/GeometricPrimitive.h"
 
 #include "BottomLevelAccelerationStructureGenerator.h"
 #include "TopLevelAccelerationStructureGenerator.h"
@@ -65,12 +65,12 @@ struct D3DApp::Impl : IDeviceNotify {
 			{
 				GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled);
 
-				if (GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstants.Alpha)) {
-					m_temporalAntiAliasingConstants.Alpha = clamp(m_temporalAntiAliasingConstants.Alpha, 0.0f, 1.0f);
+				if (GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha)) {
+					m_temporalAntiAliasingConstant.Alpha = clamp(m_temporalAntiAliasingConstant.Alpha, 0.0f, 1.0f);
 				}
 
-				if (GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstants.ColorBoxSigma)) {
-					m_temporalAntiAliasingConstants.ColorBoxSigma = clamp(m_temporalAntiAliasingConstants.ColorBoxSigma, 0.0f, MaxTemporalAntiAliasingColorBoxSigma);
+				if (GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstant.ColorBoxSigma)) {
+					m_temporalAntiAliasingConstant.ColorBoxSigma = clamp(m_temporalAntiAliasingConstant.ColorBoxSigma, 0.0f, MaxTemporalAntiAliasingColorBoxSigma);
 				}
 			}
 		}
@@ -106,7 +106,14 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
 
-		m_firstPersonCamera.SetPosition({ 0, 0, -15 });
+		{
+			const XMFLOAT3 position{ 0, 0, -15 };
+			m_firstPersonCamera.SetPosition(position);
+			*reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory()) = {
+				.Position = position,
+				.ProjectionToWorld = m_firstPersonCamera.GetProjection()
+			};
+		}
 	}
 
 	~Impl() {
@@ -178,7 +185,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_geometries = {};
 
-		m_constantBuffers = {};
+		m_shaderResources = {};
 
 		m_temporalAntiAliasingEffect.reset();
 
@@ -186,7 +193,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_globalRootSignature.Reset();
 
-		m_resourceDescriptors.reset();
+		m_resourceDescriptorHeap.reset();
 
 		m_graphicsMemory.reset();
 	}
@@ -222,7 +229,7 @@ private:
 
 	StepTimer m_stepTimer;
 
-	unique_ptr<GraphicsMemoryEx> m_graphicsMemory;
+	unique_ptr<GraphicsMemory> m_graphicsMemory;
 
 	const struct {
 		unique_ptr<GamePad> Gamepad = make_unique<decltype(Gamepad)::element_type>();
@@ -236,8 +243,11 @@ private:
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
 
-	struct DescriptorHeapIndex {
+	struct ResourceDescriptorHeapIndex {
 		enum {
+			LocalResourceDescriptorHeapIndices,
+			Camera,
+			GlobalData, LocalData,
 			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionVectorsSRV, MotionVectorsUAV, FinalOutputUAV,
 			SphereVertices, SphereIndices,
 			EnvironmentCubeMap,
@@ -247,7 +257,7 @@ private:
 			Count
 		};
 	};
-	unique_ptr<DescriptorHeap> m_resourceDescriptors;
+	unique_ptr<DescriptorHeap> m_resourceDescriptorHeap;
 
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
@@ -255,30 +265,48 @@ private:
 
 	static constexpr float MaxTemporalAntiAliasingColorBoxSigma = 2;
 	bool m_isTemporalAntiAliasingEnabled = true;
-	decltype(TemporalAntiAliasingEffect::Constants) m_temporalAntiAliasingConstants;
+	decltype(TemporalAntiAliasingEffect::Constant) m_temporalAntiAliasingConstant;
 	unique_ptr<TemporalAntiAliasingEffect> m_temporalAntiAliasingEffect;
 
-	struct SceneConstants {
-		UINT RaytracingSamplesPerPixel, FrameCount;
-		BOOL IsEnvironmentCubeMapUsed;
-		float _padding;
-		XMMATRIX EnvironmentMapTransform;
-		Camera Camera;
+	struct GlobalResourceDescriptorHeapIndices {
+		UINT
+			LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
+			Camera = ResourceDescriptorHeapIndex::Camera,
+			GlobalData = ResourceDescriptorHeapIndex::GlobalData,
+			LocalData = ResourceDescriptorHeapIndex::LocalData,
+			Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
+			EnvironmentCubeMap = UINT_MAX;
+		XMUINT2 _padding{};
 	};
-	struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
-	struct ObjectConstants {
-		UINT TextureFlags;
-		XMFLOAT3 _padding;
+	struct LocalResourceDescriptorHeapIndices {
+		struct {
+			UINT Vertices, Indices;
+			XMUINT2 _padding;
+		} Mesh;
+		struct {
+			UINT ColorMap, NormalMap;
+			XMUINT2 _padding;
+		} Textures;
+	};
+	struct GlobalData {
+		UINT RaytracingSamplesPerPixel, FrameCount;
+		XMUINT2 _padding;
+		XMMATRIX EnvironmentMapTransform;
+	};
+	struct LocalData {
 		XMMATRIX TextureTransform;
 		Material Material;
 	};
 	struct {
-		GraphicsResourceEx<SceneConstants> Scene;
-		GraphicsResourceArray<ObjectConstants> Objects;
-	} m_constantBuffers;
+		GraphicsResource
+			GlobalResourceDescriptorHeapIndices,
+			LocalResourceDescriptorHeapIndices,
+			Camera,
+			GlobalData, LocalData;
+	} m_shaderResources;
 
 	struct {
-		struct Sphere : unique_ptr<Triangles<VertexPositionNormalTexture, UINT16>> {
+		struct Sphere : unique_ptr<Mesh<VertexPositionNormalTexture, UINT16>> {
 			using unique_ptr::unique_ptr;
 			using unique_ptr::operator=;
 			static constexpr float Radius = 0.5f;
@@ -291,7 +319,7 @@ private:
 	} m_accelerationStructureBuffers;
 
 	ShaderBindingTableGenerator m_shaderBindingTableGenerator;
-	ComPtr<ID3D12Resource> m_shaderBindingTable;
+	GraphicsResource m_shaderBindingTable;
 
 	struct { ComPtr<ID3D12Resource> PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextureResources;
 
@@ -302,8 +330,10 @@ private:
 	struct RenderItem {
 		string Name;
 		wstring HitGroup;
-		struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } DescriptorHeapIndices;
-		struct { UINT Object = UINT_MAX; } ConstantBufferIndices;
+		UINT InstanceID = UINT_MAX;
+		struct {
+			struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } Mesh;
+		} ResourceDescriptorHeapIndices;
 		Material Material;
 		TextureDictionary::mapped_type* pTextures{};
 		PxShape* Shape{};
@@ -335,7 +365,7 @@ private:
 
 		CreateEffects();
 
-		CreateConstantBuffers();
+		CreateShaderResources();
 
 		CreateGeometries();
 
@@ -352,50 +382,33 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateSRVDesc = [](DXGI_FORMAT format) {
-				return D3D12_SHADER_RESOURCE_VIEW_DESC{
-					.Format = format,
-					.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-					.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-					.Texture2D = {
-						.MipLevels = 1
-					}
-				};
-			};
-
-			const auto CreateResource = [&](const D3D12_RESOURCE_DESC& resourceDesc, ComPtr<ID3D12Resource>& resource, const D3D12_SHADER_RESOURCE_VIEW_DESC* pSrvDesc = nullptr, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
+			const auto CreateResource = [&](DXGI_FORMAT format, ComPtr<ID3D12Resource>& resource, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-				const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
+				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(resource.ReleaseAndGetAddressOf())));
 
-				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(resource.ReleaseAndGetAddressOf())));
-
-				if (pSrvDesc != nullptr && srvDescriptorHeapIndex != UINT_MAX) {
-					device->CreateShaderResourceView(resource.Get(), pSrvDesc, m_resourceDescriptors->GetCpuHandle(srvDescriptorHeapIndex));
+				if (srvDescriptorHeapIndex != UINT_MAX) {
+					CreateShaderResourceView(device, resource.Get(), m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
 				}
 
 				if (uavDescriptorHeapIndex != UINT_MAX) {
-					device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, m_resourceDescriptors->GetCpuHandle(uavDescriptorHeapIndex));
+					const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
+					device->CreateUnorderedAccessView(resource.Get(), nullptr, &unorderedAccessViewDesc, m_resourceDescriptorHeap->GetCpuHandle(uavDescriptorHeapIndex));
 				}
 			};
 
 			{
-				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_deviceResources->GetBackBufferFormat(), outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-				const auto srvDesc = CreateSRVDesc(tex2DDesc.Format);
+				const auto format = m_deviceResources->GetBackBufferFormat();
 
-				CreateResource(tex2DDesc, m_renderTextureResources.PreviousOutput, &srvDesc, DescriptorHeapIndex::PreviousOutputSRV);
-				CreateResource(tex2DDesc, m_renderTextureResources.CurrentOutput, &srvDesc, DescriptorHeapIndex::CurrentOutputSRV, DescriptorHeapIndex::CurrentOutputUAV);
-				CreateResource(tex2DDesc, m_renderTextureResources.FinalOutput, nullptr, UINT_MAX, DescriptorHeapIndex::FinalOutputUAV);
+				CreateResource(format, m_renderTextureResources.PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
+				CreateResource(format, m_renderTextureResources.CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
+				CreateResource(format, m_renderTextureResources.FinalOutput, UINT_MAX, ResourceDescriptorHeapIndex::FinalOutputUAV);
 			}
 
-			{
-				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT, outputSize.cx, outputSize.cy, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-				const auto srvDesc = CreateSRVDesc(tex2DDesc.Format);
-
-				CreateResource(tex2DDesc, m_renderTextureResources.MotionVectors, &srvDesc, DescriptorHeapIndex::MotionVectorsSRV, DescriptorHeapIndex::MotionVectorsUAV);
-			}
-
-			m_temporalAntiAliasingEffect->Textures.Size = outputSize;
+			CreateResource(DXGI_FORMAT_R32G32_FLOAT, m_renderTextureResources.MotionVectors, ResourceDescriptorHeapIndex::MotionVectorsSRV, ResourceDescriptorHeapIndex::MotionVectorsUAV);
 		}
+
+		m_temporalAntiAliasingEffect->TextureSize = outputSize;
 
 		m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
 
@@ -403,7 +416,7 @@ private:
 			auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-			ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptors->Heap(), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::Font), m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::Font));
+			ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::Font), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::Font));
 
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\segoeui.ttf)", static_cast<float>(outputSize.cy) * 0.025f);
@@ -413,9 +426,9 @@ private:
 	void Update() {
 		PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
-		ProcessInputs();
+		ProcessInput();
 
-		UpdateSceneConstantBuffer();
+		UpdateGlobalData();
 
 		if (m_isPhysicsSimulationRunning) m_myPhysX.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
 
@@ -451,7 +464,7 @@ private:
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
-		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptors->Heap() };
+		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptorHeap->Heap() };
 		commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
 
 		{
@@ -514,7 +527,7 @@ private:
 						{
 							TextureType::CubeMap,
 							Texture{
-								.DescriptorHeapIndex = DescriptorHeapIndex::EnvironmentCubeMap,
+								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
 								.Path = L"Space.dds"
 							}
 						}
@@ -529,14 +542,14 @@ private:
 						{
 							TextureType::ColorMap,
 							Texture{
-								.DescriptorHeapIndex = DescriptorHeapIndex::MoonColorMap,
+								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonColorMap,
 								.Path = L"Moon.jpg"
 							}
 						},
 						{
 							TextureType::NormalMap,
 							Texture{
-								.DescriptorHeapIndex = DescriptorHeapIndex::MoonNormalMap,
+								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
 								.Path = L"Moon_Normal.jpg"
 							}
 						}
@@ -551,14 +564,14 @@ private:
 						{
 							TextureType::ColorMap,
 							Texture{
-								.DescriptorHeapIndex = DescriptorHeapIndex::EarthColorMap,
+								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthColorMap,
 								.Path = L"Earth.jpg"
 							}
 						},
 						{
 							TextureType::NormalMap,
 							Texture{
-								.DescriptorHeapIndex = DescriptorHeapIndex::EarthNormalMap,
+								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
 								.Path = L"Earth_Normal.jpg"
 							}
 						}
@@ -576,7 +589,7 @@ private:
 		const auto commandQueue = m_deviceResources->GetCommandQueue();
 		constexpr auto threadCount = 8;
 
-		m_textures.Load(device, commandQueue, *m_resourceDescriptors, threadCount);
+		m_textures.Load(device, commandQueue, *m_resourceDescriptorHeap, threadCount);
 	}
 
 	void BuildRenderItems() {
@@ -587,12 +600,14 @@ private:
 		const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) -> auto& {
 			renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
-			renderItem.DescriptorHeapIndices = {
-				.Vertices = DescriptorHeapIndex::SphereVertices,
-				.Indices = DescriptorHeapIndex::SphereIndices
-			};
+			renderItem.InstanceID = static_cast<UINT>(m_renderItems.size());
 
-			renderItem.ConstantBufferIndices = { .Object = static_cast<UINT>(m_renderItems.size()) };
+			renderItem.ResourceDescriptorHeapIndices = {
+				.Mesh{
+					.Vertices = ResourceDescriptorHeapIndex::SphereVertices,
+					.Indices = ResourceDescriptorHeapIndex::SphereIndices
+				}
+			};
 
 			auto& rigidDynamic = *m_myPhysX.GetPhysics().createRigidDynamic(PxTransform(position));
 
@@ -676,20 +691,20 @@ private:
 				Material Material;
 			} moon{
 				.Name = Objects::Moon,
-				.Position = { -4, 4, 0 },
+				.Position{ -4, 4, 0 },
 				.Radius = 0.25f,
 				.OrbitalPeriod = 10,
 				.Material = Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
 			}, earth{
 				.Name = Objects::Earth,
-				.Position = { 0, moon.Position.y, 0 },
+				.Position{ 0, moon.Position.y, 0 },
 				.Radius = 1,
 				.RotationPeriod = 15,
 				.Mass = UniversalGravitation::CalculateMass((moon.Position - earth.Position).magnitude(), moon.OrbitalPeriod),
 				.Material = Material().AsLambertian({ 0.1f, 0.2f, 0.5f, 1 })
 			}, star{
 				.Name = Objects::Star,
-				.Position = { 0, -50.1f, 0 },
+				.Position{ 0, -50.1f, 0 },
 				.Radius = 50,
 				.Material = Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
 			};
@@ -725,7 +740,7 @@ private:
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		m_resourceDescriptors = make_unique<DescriptorHeap>(device, DescriptorHeapIndex::Count);
+		m_resourceDescriptorHeap = make_unique<DescriptorHeap>(device, ResourceDescriptorHeapIndex::Count);
 	}
 
 	void CreateRootSignatures() {
@@ -739,23 +754,21 @@ private:
 
 		CD3DX12_STATE_OBJECT_DESC stateObjectDesc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
 
-		const auto dxilLibrary = stateObjectDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
+		const auto dxilLibrarySubobject = stateObjectDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
 
-		const CD3DX12_SHADER_BYTECODE shader(g_pRaytracing, ARRAYSIZE(g_pRaytracing));
-		dxilLibrary->SetDXILLibrary(&shader);
+		const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pRaytracing, ARRAYSIZE(g_pRaytracing));
+		dxilLibrarySubobject->SetDXILLibrary(&shaderByteCode);
 
-		dxilLibrary->DefineExport(L"RaytracingShaderConfig");
-		dxilLibrary->DefineExport(L"RaytracingPipelineConfig");
+		dxilLibrarySubobject->DefineExport(L"RaytracingShaderConfig");
+		dxilLibrarySubobject->DefineExport(L"RaytracingPipelineConfig");
 
-		dxilLibrary->DefineExport(L"GlobalRootSignature");
-		dxilLibrary->DefineExport(L"LocalRootSignature");
+		dxilLibrarySubobject->DefineExport(L"GlobalRootSignature");
 
-		dxilLibrary->DefineExport(ShaderEntryPoints::RayGeneration);
+		dxilLibrarySubobject->DefineExport(ShaderEntryPoints::RayGeneration);
 
-		dxilLibrary->DefineExport(ShaderEntryPoints::RadianceRayMiss);
-		dxilLibrary->DefineExport(ShaderEntryPoints::RadianceRayClosestHit);
-		dxilLibrary->DefineExport(ShaderSubobjects::RadianceRayHitGroup);
-		dxilLibrary->DefineExport(L"RadianceRayLocalRootSignatureAssociation");
+		dxilLibrarySubobject->DefineExport(ShaderEntryPoints::RadianceRayMiss);
+		dxilLibrarySubobject->DefineExport(ShaderEntryPoints::RadianceRayClosestHit);
+		dxilLibrarySubobject->DefineExport(ShaderSubobjects::RadianceRayHitGroup);
 
 		ThrowIfFailed(device->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(m_pipelineStateObject.ReleaseAndGetAddressOf())));
 	}
@@ -764,45 +777,94 @@ private:
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		m_temporalAntiAliasingEffect = make_unique<decltype(m_temporalAntiAliasingEffect)::element_type>(device);
-		m_temporalAntiAliasingEffect->Constants = m_temporalAntiAliasingConstants;
-		m_temporalAntiAliasingEffect->Textures = {
-			.PreviousOutputSRV = m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::PreviousOutputSRV),
-			.CurrentOutputSRV = m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::CurrentOutputSRV),
-			.MotionVectorsSRV = m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::MotionVectorsSRV),
-			.FinalOutputUAV = m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::FinalOutputUAV)
+		m_temporalAntiAliasingEffect->Constant = m_temporalAntiAliasingConstant;
+		m_temporalAntiAliasingEffect->TextureDescriptors = {
+			.PreviousOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::PreviousOutputSRV),
+			.CurrentOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::CurrentOutputSRV),
+			.MotionVectorsSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionVectorsSRV),
+			.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::FinalOutputUAV)
 		};
 	}
 
-	void CreateConstantBuffers() {
+	void CreateShaderResources() {
+		const auto device = m_deviceResources->GetD3DDevice();
+
 		{
-			m_constantBuffers.Scene = m_graphicsMemory->AllocateConstant<SceneConstants>();
+			const auto CreateConstantBufferView = [&](const GraphicsResource& graphicsResource, UINT descriptorHeapIndex) {
+				const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
+					.BufferLocation = graphicsResource.GpuAddress(),
+					.SizeInBytes = static_cast<UINT>(graphicsResource.Size())
+				};
+				device->CreateConstantBufferView(&constantBufferViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+			};
 
-			auto& sceneConstants = *m_constantBuffers.Scene.Memory();
+			m_shaderResources.GlobalResourceDescriptorHeapIndices = m_graphicsMemory->AllocateConstant(GlobalResourceDescriptorHeapIndices{
+				.EnvironmentCubeMap = m_textures.contains(Objects::Environment) && get<0>(m_textures[Objects::Environment]).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : UINT_MAX
+				});
 
-			sceneConstants.RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel;
+			{
+				m_shaderResources.Camera = m_graphicsMemory->AllocateConstant<Camera>();
+				CreateConstantBufferView(m_shaderResources.Camera, ResourceDescriptorHeapIndex::Camera);
+			}
 
-			if (m_textures.contains(Objects::Environment)) {
-				const auto& textures = m_textures[Objects::Environment];
-				if (get<0>(textures).contains(TextureType::CubeMap)) sceneConstants.IsEnvironmentCubeMapUsed = TRUE;
-
-				sceneConstants.EnvironmentMapTransform = XMMatrixTranspose(get<1>(textures));
+			{
+				m_shaderResources.GlobalData = m_graphicsMemory->AllocateConstant(GlobalData{
+				   .RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel,
+				   .EnvironmentMapTransform = m_textures.contains(Objects::Environment) ? XMMatrixTranspose(get<1>(m_textures[Objects::Environment])) : XMMatrixIdentity()
+					});
+				CreateConstantBufferView(m_shaderResources.GlobalData, ResourceDescriptorHeapIndex::GlobalData);
 			}
 		}
 
 		{
-			m_constantBuffers.Objects = m_graphicsMemory->AllocateConstants<ObjectConstants>(m_renderItems.size());
+			const auto CreateShaderResourceView = [&](const GraphicsResource& graphicsResource, size_t count, UINT stride, UINT descriptorHeapIndex) {
+				const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
+					.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+					.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+					.Buffer{
+						.NumElements = static_cast<UINT>(count),
+						.StructureByteStride = stride
+					}
+				};
+				device->CreateShaderResourceView(graphicsResource.Resource(), &shaderResourceViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+			};
+
+			const auto renderItemsSize = m_renderItems.size();
+
+			m_shaderResources.LocalResourceDescriptorHeapIndices = m_graphicsMemory->Allocate(sizeof(LocalResourceDescriptorHeapIndices) * renderItemsSize);
+			CreateShaderResourceView(m_shaderResources.LocalResourceDescriptorHeapIndices, renderItemsSize, sizeof(LocalResourceDescriptorHeapIndices), ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices);
+
+			m_shaderResources.LocalData = m_graphicsMemory->Allocate(sizeof(LocalData) * renderItemsSize);
+			CreateShaderResourceView(m_shaderResources.LocalData, renderItemsSize, sizeof(LocalData), ResourceDescriptorHeapIndex::LocalData);
 
 			for (const auto& renderItem : m_renderItems) {
-				auto& objectConstants = *m_constantBuffers.Objects.Memory(renderItem.ConstantBufferIndices.Object);
+				auto& localResourceDescriptorHeapIndices = *(reinterpret_cast<LocalResourceDescriptorHeapIndices*>(m_shaderResources.LocalResourceDescriptorHeapIndices.Memory()) + renderItem.InstanceID);
 
-				objectConstants.Material = renderItem.Material;
+				localResourceDescriptorHeapIndices = {
+					.Mesh{
+						.Vertices = renderItem.ResourceDescriptorHeapIndices.Mesh.Vertices,
+						.Indices = renderItem.ResourceDescriptorHeapIndices.Mesh.Indices
+					},
+					.Textures{
+						.ColorMap = UINT_MAX,
+						.NormalMap = UINT_MAX
+					}
+				};
+
+				auto& localData = *(reinterpret_cast<LocalData*>(m_shaderResources.LocalData.Memory()) + renderItem.InstanceID);
+
+				localData.Material = renderItem.Material;
 
 				if (renderItem.pTextures != nullptr) {
 					const auto& textures = get<0>(*renderItem.pTextures);
-					if (textures.contains(TextureType::ColorMap)) objectConstants.TextureFlags |= TextureFlags::ColorMap;
-					if (textures.contains(TextureType::NormalMap)) objectConstants.TextureFlags |= TextureFlags::NormalMap;
+					if (textures.contains(TextureType::ColorMap)) {
+						localResourceDescriptorHeapIndices.Textures.ColorMap = textures.at(TextureType::ColorMap).DescriptorHeapIndex;
+					}
+					if (textures.contains(TextureType::NormalMap)) {
+						localResourceDescriptorHeapIndices.Textures.NormalMap = textures.at(TextureType::NormalMap).DescriptorHeapIndex;
+					}
 
-					objectConstants.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
+					localData.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
 				}
 			}
 		}
@@ -811,16 +873,20 @@ private:
 	void CreateGeometries() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		{
-			auto& sphere = m_geometries.Sphere;
+		auto& sphere = m_geometries.Sphere;
 
-			GeometricPrimitive::VertexCollection vertices;
-			GeometricPrimitive::IndexCollection indices;
-			GeometricPrimitive::CreateGeoSphere(vertices, indices, sphere.Radius * 2, 6);
+		ResourceUploadBatch resourceUploadBatch(device);
+		resourceUploadBatch.Begin();
 
-			sphere = make_unique<decay_t<decltype(sphere)>::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
-			sphere->CreateShaderResourceViews(m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::SphereVertices), m_resourceDescriptors->GetCpuHandle(DescriptorHeapIndex::SphereIndices));
-		}
+		GeometricPrimitive::VertexCollection vertices;
+		GeometricPrimitive::IndexCollection indices;
+		GeometricPrimitive::CreateGeoSphere(vertices, indices, sphere.Radius * 2, 6);
+
+		sphere = make_unique<decay_t<decltype(sphere)>::element_type>(device, resourceUploadBatch, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
+
+		resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
+
+		sphere->CreateShaderResourceViews(m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereVertices), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereIndices));
 	}
 
 	void CreateBottomLevelAccelerationStructure(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, AccelerationStructureBuffers& buffers) {
@@ -858,7 +924,7 @@ private:
 			PxMat44 world(PxVec4(1, 1, -1, 1));
 			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
 			world.scale(PxVec4(scaling, 1));
-			topLevelAccelerationStructureGenerator.AddInstance(m_accelerationStructureBuffers.BottomLevel.Sphere.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), i, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
+			topLevelAccelerationStructureGenerator.AddInstance(m_accelerationStructureBuffers.BottomLevel.Sphere.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), renderItem.InstanceID, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
 		}
 
 		const auto device = m_deviceResources->GetD3DDevice();
@@ -903,41 +969,17 @@ private:
 
 		m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints::RadianceRayMiss, { nullptr });
 
-		for (const auto& renderItem : m_renderItems) {
-			D3D12_GPU_VIRTUAL_ADDRESS pColorTexture = NULL, pNormalTexture = NULL;
-			if (renderItem.pTextures != nullptr) {
-				const auto& textures = get<0>(*renderItem.pTextures);
-				if (textures.contains(TextureType::ColorMap)) {
-					pColorTexture = m_resourceDescriptors->GetGpuHandle(textures.at(TextureType::ColorMap).DescriptorHeapIndex).ptr;
-				}
-				if (textures.contains(TextureType::NormalMap)) {
-					pNormalTexture = m_resourceDescriptors->GetGpuHandle(textures.at(TextureType::NormalMap).DescriptorHeapIndex).ptr;
-				}
-			}
+		for (const auto& renderItem : m_renderItems) m_shaderBindingTableGenerator.AddHitGroup(renderItem.HitGroup.c_str(), { nullptr });
 
-			m_shaderBindingTableGenerator.AddHitGroup(
-				renderItem.HitGroup.c_str(),
-				{
-					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.DescriptorHeapIndices.Vertices).ptr),
-					reinterpret_cast<void*>(m_resourceDescriptors->GetGpuHandle(renderItem.DescriptorHeapIndices.Indices).ptr),
-					reinterpret_cast<void*>(pColorTexture),
-					reinterpret_cast<void*>(pNormalTexture),
-					reinterpret_cast<void*>(m_constantBuffers.Objects.GpuAddress(renderItem.ConstantBufferIndices.Object))
-				}
-			);
-		}
-
-		const auto device = m_deviceResources->GetD3DDevice();
-
-		ThrowIfFailed(CreateUploadBuffer(device, m_shaderBindingTableGenerator.ComputeSBTSize(), m_shaderBindingTable.ReleaseAndGetAddressOf()));
+		m_shaderBindingTable = m_graphicsMemory->Allocate(m_shaderBindingTableGenerator.ComputeSize());;
 
 		ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 		ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
 
-		m_shaderBindingTableGenerator.Generate(m_shaderBindingTable.Get(), stateObjectProperties.Get());
+		m_shaderBindingTableGenerator.Generate(m_shaderBindingTable.Resource(), stateObjectProperties.Get());
 	}
 
-	void ProcessInputs() {
+	void ProcessInput() {
 		const auto gamepadState = m_inputDevices.Gamepad->GetState(0);
 		auto& gamepadStateTracker = m_inputDeviceStateTrackers.Gamepad;
 		gamepadStateTracker.Update(gamepadState);
@@ -1031,16 +1073,17 @@ private:
 			m_firstPersonCamera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
 			Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 		}
+
+		*reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory()) = {
+			.Position = m_firstPersonCamera.GetPosition(),
+			.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
+		};
 	}
 
-	void UpdateSceneConstantBuffer() {
-		auto& sceneConstants = *m_constantBuffers.Scene.Memory();
+	void UpdateGlobalData() {
+		auto& globalData = *reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory());
 
-		sceneConstants.FrameCount = m_stepTimer.GetFrameCount();
-
-		auto& camera = sceneConstants.Camera;
-		camera.Position = m_firstPersonCamera.GetPosition();
-		camera.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
+		globalData.FrameCount = m_stepTimer.GetFrameCount();
 	}
 
 	void UpdateRenderItem(RenderItem& renderItem) const {
@@ -1085,19 +1128,8 @@ private:
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		commandList->SetComputeRootSignature(m_globalRootSignature.Get());
-
-		const auto scopedBarrier = m_constantBuffers.Scene.Memory()->IsEnvironmentCubeMapUsed ?
-			make_unique<ScopedBarrier>(
-				commandList,
-				initializer_list<D3D12_RESOURCE_BARRIER>{
-			CD3DX12_RESOURCE_BARRIER::Transition(get<0>(m_textures[Objects::Environment])[TextureType::CubeMap].Resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
-		}
-		) : nullptr;
-
-		commandList->SetComputeRootDescriptorTable(0, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::CurrentOutputUAV));
-		commandList->SetComputeRootShaderResourceView(1, m_accelerationStructureBuffers.TopLevel.Result->GetGPUVirtualAddress());
-		commandList->SetComputeRootConstantBufferView(2, m_constantBuffers.Scene.GpuAddress());
-		commandList->SetComputeRootDescriptorTable(3, m_resourceDescriptors->GetGpuHandle(DescriptorHeapIndex::EnvironmentCubeMap));
+		commandList->SetComputeRootShaderResourceView(0, m_accelerationStructureBuffers.TopLevel.Result->GetGPUVirtualAddress());
+		commandList->SetComputeRootConstantBufferView(1, m_shaderResources.GlobalResourceDescriptorHeapIndices.GpuAddress());
 
 		commandList->SetPipelineState1(m_pipelineStateObject.Get());
 
@@ -1106,23 +1138,23 @@ private:
 			missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),
 			hitGroupSectionSize = m_shaderBindingTableGenerator.GetHitGroupSectionSize();
 		const auto
-			pRayGenerationShaderRecord = m_shaderBindingTable->GetGPUVirtualAddress(),
+			pRayGenerationShaderRecord = m_shaderBindingTable.GpuAddress(),
 			pMissShaderTable = pRayGenerationShaderRecord + rayGenerationSectionSize,
 			pHitGroupTable = pMissShaderTable + missSectionSize;
 
 		const auto outputSize = GetOutputSize();
 
 		const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
-			.RayGenerationShaderRecord = {
+			.RayGenerationShaderRecord{
 				.StartAddress = pRayGenerationShaderRecord,
 				.SizeInBytes = rayGenerationSectionSize
 			},
-			.MissShaderTable = {
+			.MissShaderTable{
 				.StartAddress = pMissShaderTable,
 				.SizeInBytes = missSectionSize,
 				.StrideInBytes = m_shaderBindingTableGenerator.GetMissEntrySize()
 			},
-			.HitGroupTable = {
+			.HitGroupTable{
 				.StartAddress = pHitGroupTable,
 				.SizeInBytes = hitGroupSectionSize,
 				.StrideInBytes = m_shaderBindingTableGenerator.GetHitGroupEntrySize()
@@ -1180,7 +1212,7 @@ private:
 				ImGui::Separator();
 
 				if (ImGui::SliderInt("Raytracing Samples Per Pixel", reinterpret_cast<int*>(&m_raytracingSamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
-					m_constantBuffers.Scene.Memory()->RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel;
+					reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel;
 
 					GraphicsSettingsData::Save<GraphicsSettingsData::Raytracing::SamplesPerPixel>(m_raytracingSamplesPerPixel);
 				}
@@ -1191,16 +1223,16 @@ private:
 					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled);
 				}
 
-				if (ImGui::SliderFloat("Alpha", &m_temporalAntiAliasingConstants.Alpha, 0, 1, "%.3f", ImGuiSliderFlags_NoInput)) {
-					m_temporalAntiAliasingEffect->Constants.Alpha = m_temporalAntiAliasingConstants.Alpha;
+				if (ImGui::SliderFloat("Alpha", &m_temporalAntiAliasingConstant.Alpha, 0, 1, "%.3f", ImGuiSliderFlags_NoInput)) {
+					m_temporalAntiAliasingEffect->Constant.Alpha = m_temporalAntiAliasingConstant.Alpha;
 
-					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstants.Alpha);
+					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha);
 				}
 
-				if (ImGui::SliderFloat("Color-Box Sigma", &m_temporalAntiAliasingConstants.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.3f", ImGuiSliderFlags_NoInput)) {
-					m_temporalAntiAliasingEffect->Constants.ColorBoxSigma = m_temporalAntiAliasingConstants.ColorBoxSigma;
+				if (ImGui::SliderFloat("Color-Box Sigma", &m_temporalAntiAliasingConstant.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.3f", ImGuiSliderFlags_NoInput)) {
+					m_temporalAntiAliasingEffect->Constant.ColorBoxSigma = m_temporalAntiAliasingConstant.ColorBoxSigma;
 
-					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstants.ColorBoxSigma);
+					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstant.ColorBoxSigma);
 				}
 			}
 

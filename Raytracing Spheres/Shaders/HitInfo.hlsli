@@ -1,5 +1,4 @@
-#ifndef HITINFO_HLSLI
-#define HITINFO_HLSLI
+#pragma once
 
 #include "Vertex.hlsli"
 
@@ -12,5 +11,3 @@ struct HitInfo {
 		Vertex.Normal = IsFrontFace ? outwardNormal : -outwardNormal;
 	}
 };
-
-#endif

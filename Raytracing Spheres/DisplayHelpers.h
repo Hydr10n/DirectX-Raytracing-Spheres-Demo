@@ -6,7 +6,7 @@
 
 namespace DisplayHelpers {
 	struct Resolution : SIZE {
-		friend bool operator<(const SIZE& lhs, const SIZE& rhs) {
+		[[nodiscard]] friend bool operator<(const SIZE& lhs, const SIZE& rhs) {
 			if (lhs.cx < rhs.cx) return true;
 			if (lhs.cx > rhs.cx) return false;
 			return lhs.cy < rhs.cy;

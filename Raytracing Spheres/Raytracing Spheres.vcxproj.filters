@@ -82,9 +82,6 @@
     <ClInclude Include="TemporalAntiAliasingEffect.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GraphicsMemoryEx.h">
-      <Filter>Common</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DeviceResources.cpp">
@@ -146,7 +143,7 @@
     <None Include="Shaders\Ray.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\IndexHelpers.hlsli">
+    <None Include="Shaders\GeometryIndexHelpers.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\MathHelpers.hlsli">

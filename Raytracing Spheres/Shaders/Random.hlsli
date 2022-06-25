@@ -1,5 +1,4 @@
-#ifndef RANDOM_HLSLI
-#define RANDOM_HLSLI
+#pragma once
 
 struct Random {
 	int Seed;
@@ -33,5 +32,3 @@ struct Random {
 
 	float3 UnitVector() { return normalize(InUnitSphere()); }
 };
-
-#endif

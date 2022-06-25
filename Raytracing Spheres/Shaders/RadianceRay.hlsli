@@ -1,15 +1,12 @@
-#ifndef RADIANCERAY_HLSLI
-#define RADIANCERAY_HLSLI
+#pragma once
 
 #include "Common.hlsli"
 
-#include "IndexHelpers.hlsli"
+#include "GeometryIndexHelpers.hlsli"
 
 #include "MathHelpers.hlsli"
 
 TriangleHitGroup RadianceRayHitGroup = { "", "RadianceRayClosestHit" };
-
-SubobjectToExportsAssociation RadianceRayLocalRootSignatureAssociation = { "LocalRootSignature", "RadianceRayHitGroup" };
 
 struct RadianceRayPayload {
 	float4 Color;
@@ -25,8 +22,8 @@ inline float4 TraceRadianceRay(RayDesc rayDesc, uint traceRecursionDepth, inout 
 
 [shader("miss")]
 void RadianceRayMiss(inout RadianceRayPayload payload : SV_RayPayload) {
-	if (g_sceneConstants.IsEnvironmentCubeMapUsed) {
-		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_sceneConstants.EnvironmentMapTransform), 0);
+	if (g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != UINT_MAX) {
+		payload.Color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(WorldRayDirection(), (float3x3) g_globalData.EnvironmentMapTransform), 0);
 	}
 	else payload.Color = lerp(float4(1, 1, 1, 1), float4(0.5f, 0.7f, 1, 1), 0.5f * normalize(WorldRayDirection()).y + 0.5f);
 }
@@ -35,24 +32,31 @@ void RadianceRayMiss(inout RadianceRayPayload payload : SV_RayPayload) {
 void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, BuiltInTriangleIntersectionAttributes attributes : SV_IntersectionAttributes) {
 	if (!payload.TraceRecursionDepth) return;
 
+	const uint instanceID = InstanceID();
+
+	const LocalResourceDescriptorHeapIndices localResourceDescriptorHeapIndices = g_localResourceDescriptorHeapIndices[instanceID];
+	const LocalData localData = g_localData[instanceID];
+
 	const float3 worldRayDirection = WorldRayDirection();
 
 	float3 worldNormal;
 	float2 textureCoordinate;
 	{
-		const uint3 indices = Load3x16BitIndices(g_indices, PrimitiveIndex());
-		const float3 normals[] = { g_vertices[indices[0]].Normal, g_vertices[indices[1]].Normal, g_vertices[indices[2]].Normal };
-		const float2 textureCoordinates[] = { g_vertices[indices[0]].TextureCoordinate, g_vertices[indices[1]].TextureCoordinate, g_vertices[indices[2]].TextureCoordinate };
+		const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Mesh.Vertices];
+		const uint3 indices = GeometryIndexHelpers::Load3x16BitIndices(ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Mesh.Indices], PrimitiveIndex());
+		const float3 normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
+		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
 
 		const float3 normal = Vertex::Interpolate(normals, attributes.barycentrics);
 		worldNormal = normalize(mul(normal, (float3x3) ObjectToWorld4x3()));
 
 		textureCoordinate = Vertex::Interpolate(textureCoordinates, attributes.barycentrics);
-		textureCoordinate = mul(float4(textureCoordinate, 0, 1), g_objectConstants.TextureTransform).xy;
+		textureCoordinate = mul(float4(textureCoordinate, 0, 1), localData.TextureTransform).xy;
 
-		if (g_objectConstants.TextureFlags & TextureFlags::NormalMap) {
-			const float3x3 TBN = CalculateTBN(worldNormal, worldRayDirection);
-			worldNormal = normalize(mul(normalize(g_normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
+		if (localResourceDescriptorHeapIndices.Textures.NormalMap != UINT_MAX) {
+			const Texture2D<float3> normalMap = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Textures.NormalMap];
+			const float3x3 TBN = MathHelpers::CalculateTBN(worldNormal, worldRayDirection);
+			worldNormal = normalize(mul(normalize(normalMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) * 2 - 1), TBN));
 		}
 	}
 
@@ -60,16 +64,17 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 	hitInfo.Vertex.Position = WorldRayOrigin() + worldRayDirection * RayTCurrent();
 	hitInfo.SetFaceNormal(worldNormal, worldRayDirection);
 
-	const float4 color = g_objectConstants.TextureFlags & TextureFlags::ColorMap ?
-		g_colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0) :
-		g_objectConstants.Material.Color;
+	float4 color;
+	if (localResourceDescriptorHeapIndices.Textures.ColorMap != UINT_MAX) {
+		const Texture2D<float4> colorMap = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Textures.ColorMap];
+		color = colorMap.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+	else color = localData.Material.Color;
 
 	float3 direction = 0;
-	if (g_objectConstants.Material.Scatter(worldRayDirection, hitInfo, direction, payload.Random)) {
+	if (localData.Material.Scatter(worldRayDirection, hitInfo, direction, payload.Random)) {
 		const Ray ray = { hitInfo.Vertex.Position, direction };
 		payload.Color = color * TraceRadianceRay(ray.ToRayDesc(), payload.TraceRecursionDepth, payload.Random);
 	}
-	else payload.Color = g_objectConstants.Material.IsEmissive() ? color : 0;
+	else payload.Color = localData.Material.IsEmissive() ? color : 0;
 }
-
-#endif

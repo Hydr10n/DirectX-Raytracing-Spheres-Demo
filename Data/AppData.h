@@ -19,7 +19,7 @@ namespace Hydr10n::Data {
 
 		BOOL Save(LPCWSTR lpSection, LPCWSTR lpKey, LPCWSTR data) const { return WritePrivateProfileStringW(lpSection, lpKey, data, Path.c_str()); }
 
-		template <class T>
+		template <typename T>
 		BOOL Save(LPCWSTR lpSection, LPCWSTR lpKey, const T& data) const { return Save(lpSection, lpKey, std::to_wstring(data).c_str()); }
 
 		BOOL Load(LPCWSTR lpSection, LPCWSTR lpKey, LPWSTR data, DWORD nSize) const {
@@ -27,7 +27,7 @@ namespace Hydr10n::Data {
 			return GetLastError() == ERROR_SUCCESS;
 		}
 
-		template <class T>
+		template <typename T>
 		BOOL Load(LPCWSTR lpSection, LPCWSTR lpKey, T& data) const {
 			WCHAR buffer[1025];
 			if (Load(lpSection, lpKey, buffer, ARRAYSIZE(buffer))) {

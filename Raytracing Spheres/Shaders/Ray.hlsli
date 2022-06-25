@@ -1,5 +1,4 @@
-#ifndef RAY_HLSLI
-#define RAY_HLSLI
+#pragma once
 
 struct Ray {
 	float3 Origin, Direction;
@@ -9,5 +8,3 @@ struct Ray {
 		return rayDesc;
 	}
 };
-
-#endif

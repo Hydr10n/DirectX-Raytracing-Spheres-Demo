@@ -1,5 +1,4 @@
-#ifndef MATERIAL_HLSLI
-#define MATERIAL_HLSLI
+#pragma once
 
 #include "HitInfo.hlsli"
 
@@ -45,7 +44,7 @@ struct Material {
 				cosTheta = dot(-rayDirection, hitInfo.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
 				refractionRatio = hitInfo.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 			const bool canRefract = refractionRatio * sinTheta <= 1;
-			direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) <= random.Float3() ?
+			direction = canRefract && SchlickReflectance(cosTheta, refractionRatio) <= random.Float() ?
 				refract(rayDirection, hitInfo.Vertex.Normal, refractionRatio) :
 				reflect(rayDirection, hitInfo.Vertex.Normal);
 		} break;
@@ -58,5 +57,3 @@ struct Material {
 		return true;
 	}
 };
-
-#endif

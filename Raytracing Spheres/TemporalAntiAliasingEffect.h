@@ -1,17 +1,16 @@
 #pragma once
 
-#include "DirectXTK12/Effects.h"
+#include "directxtk12/Effects.h"
 
 #include "wrl.h"
 
 namespace DirectX {
 	struct TemporalAntiAliasingEffect : IEffect {
-		struct { float Alpha = 0.2f, ColorBoxSigma = 1; } Constants;
+		struct { float Alpha = 0.2f, ColorBoxSigma = 1; } Constant;
 
-		struct {
-			SIZE Size;
-			D3D12_GPU_DESCRIPTOR_HANDLE PreviousOutputSRV, CurrentOutputSRV, MotionVectorsSRV, FinalOutputUAV;
-		} Textures{};
+		SIZE TextureSize;
+
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE PreviousOutputSRV, CurrentOutputSRV, MotionVectorsSRV, FinalOutputUAV; } TextureDescriptors;
 
 		TemporalAntiAliasingEffect(ID3D12Device* device);
 

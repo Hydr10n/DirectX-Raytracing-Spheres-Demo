@@ -1,62 +1,66 @@
-#ifndef COMMON_HLSLI
-#define COMMON_HLSLI
+#pragma once
 
 #include "Material.hlsli"
 
 #include "Camera.hlsli"
 
-#define MAX_TRACE_RECURSION_DEPTH 7
+#define UINT_MAX 0xffffffff
+
+static const uint MaxTraceRecursionDepth = 7;
 
 SamplerState g_anisotropicWrap : register(s0);
 
-RWTexture2D<float4> g_output : register(u0);
-
 RaytracingAccelerationStructure g_scene : register(t0);
 
-StructuredBuffer<VertexPositionNormalTexture> g_vertices : register(t1);
-ByteAddressBuffer g_indices : register(t2);
-
-Texture2D<float4> g_colorMap : register(t3);
-Texture2D<float3> g_normalMap : register(t4);
-
-TextureCube<float4> g_environmentCubeMap : register(t5);
-
-struct SceneConstants {
-	uint RaytracingSamplesPerPixel, FrameCount;
-	bool IsEnvironmentCubeMapUsed;
-	float _padding;
-	float4x4 EnvironmentMapTransform;
-	Camera Camera;
+struct GlobalResourceDescriptorHeapIndices {
+	uint
+		LocalResourceDescriptorHeapIndices,
+		Camera,
+		GlobalData, LocalData,
+		Output,
+		EnvironmentCubeMap;
+	uint2 _padding;
 };
-ConstantBuffer<SceneConstants> g_sceneConstants : register(b0);
+ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b0);
 
-struct TextureFlags { enum { ColorMap = 0x1, NormalMap = 0x2 }; };
-struct ObjectConstants {
-	uint TextureFlags;
-	float3 _padding;
+struct LocalResourceDescriptorHeapIndices {
+	struct {
+		uint Vertices, Indices;
+		uint2 _padding;
+	} Mesh;
+	struct {
+		uint ColorMap, NormalMap;
+		uint2 _padding;
+	} Textures;
+};
+static const StructuredBuffer<LocalResourceDescriptorHeapIndices> g_localResourceDescriptorHeapIndices = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.LocalResourceDescriptorHeapIndices];
+
+static const ConstantBuffer<Camera> g_camera = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Camera];
+
+struct GlobalData {
+	uint RaytracingSamplesPerPixel, FrameCount;
+	uint2 _padding;
+	float4x4 EnvironmentMapTransform;
+};
+static const ConstantBuffer<GlobalData> g_globalData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.GlobalData];
+
+struct LocalData {
 	float4x4 TextureTransform;
 	Material Material;
 };
-ConstantBuffer<ObjectConstants> g_objectConstants : register(b1);
+static const StructuredBuffer<LocalData> g_localData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.LocalData];
 
-RaytracingPipelineConfig RaytracingPipelineConfig = { MAX_TRACE_RECURSION_DEPTH };
+static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
+
+static const TextureCube<float4> g_environmentCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap];
+
+RaytracingPipelineConfig RaytracingPipelineConfig = { MaxTraceRecursionDepth };
 
 RaytracingShaderConfig RaytracingShaderConfig = { sizeof(float4) * 2, sizeof(BuiltInTriangleIntersectionAttributes) };
 
 GlobalRootSignature GlobalRootSignature = {
+	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
 	"StaticSampler(s0),"
-	"DescriptorTable(UAV(u0)),"
 	"SRV(t0),"
-	"CBV(b0),"
-	"DescriptorTable(SRV(t5))"
+	"CBV(b0)"
 };
-
-LocalRootSignature LocalRootSignature = {
-	"DescriptorTable(SRV(t1)),"
-	"DescriptorTable(SRV(t2)),"
-	"DescriptorTable(SRV(t3)),"
-	"DescriptorTable(SRV(t4)),"
-	"CBV(b1)"
-};
-
-#endif

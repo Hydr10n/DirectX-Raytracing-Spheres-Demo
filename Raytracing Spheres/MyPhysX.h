@@ -14,24 +14,24 @@ namespace PhysicsHelpers {
 	namespace UniversalGravitation {
 		constexpr auto G = 6.674e-11;
 
-		template <class T>
+		template <typename T>
 		constexpr T CalculateMass(T r, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * r * r * r / (G * t * t)); }
 
-		template <class T>
+		template <typename T>
 		constexpr T CalculateAccelerationMagnitude(T m, T r) { return static_cast<T>(G * m / (r * r)); }
 
-		template <class T>
+		template <typename T>
 		constexpr T CalculateFirstCosmicSpeed(T m, T r) { return static_cast<T>(sqrt(G * m / r)); }
 	}
 
 	namespace SimpleHarmonicMotion::Spring {
-		template <class T>
+		template <typename T>
 		constexpr T CalculateConstant(T m, T t) { return static_cast<T>(4 * std::numbers::pi * std::numbers::pi * m / (t * t)); }
 
-		template <class T>
+		template <typename T>
 		constexpr T CalculateDisplacement(T a, T ω, T t, T φ) { return a * cos(ω * t - φ); }
 
-		template <class T>
+		template <typename T>
 		constexpr T CalculateVelocity(T a, T ω, T t, T φ) { return -a * ω * sin(ω * t - φ); }
 	}
 }

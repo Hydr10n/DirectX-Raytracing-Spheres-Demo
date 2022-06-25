@@ -47,8 +47,7 @@ m_sbtHelper.AddHitGroup(L"ShadowHitGroup", {});
 
 
 // Create the SBT on the upload heap
-uint32_t sbtSize = 0;
-m_sbtHelper.ComputeSBTSize(GetRTDevice(), &sbtSize);
+uint32_t sbtSize = m_sbtHelper.ComputeSize();
 m_sbtStorage = nv_helpers_dx12::CreateBuffer(m_device.Get(), sbtSize,
 D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ,
 nv_helpers_dx12::kUploadHeapProps);
@@ -98,10 +97,9 @@ stride between the
 uint32_t hitGroupsSectionSize = m_sbtHelper.GetHitGroupSectionSize();
 desc.HitGroupTable.StartAddress =
 m_sbtStorage->GetGPUVirtualAddress() + rayGenerationSectionSizeInBytes +
-missSectionSizeInBytes; desc.HitGroupTable.SizeInBytes = hitGroupsSectionSize;
+missSectionSizeInBytes;
+desc.HitGroupTable.SizeInBytes = hitGroupsSectionSize;
 desc.HitGroupTable.StrideInBytes = m_sbtHelper.GetHitGroupEntrySize();
-
-
 
 */
 
@@ -131,7 +129,7 @@ public:
   void AddHitGroup(const std::wstring& entryPoint, const std::vector<void*>& inputData);
 
   /// Compute the size of the SBT based on the set of programs and hit groups it contains
-  uint32_t ComputeSBTSize() const;
+  uint32_t ComputeSize() const;
 
   /// Build the SBT and store it into sbtBuffer, which has to be pre-allocated on the upload heap.
   /// Access to the raytracing pipeline object is required to fetch program identifiers using their
