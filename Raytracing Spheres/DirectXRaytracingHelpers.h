@@ -31,11 +31,12 @@ namespace DirectX::RaytracingHelpers {
 		}
 	};
 
-	template <typename Vertex, typename Index>
+	template <typename Vertex, typename Index> requires std::same_as<Index, UINT16> || std::same_as<Index, UINT32>
 	class Mesh {
-		static_assert(std::is_same<Index, UINT16>() || std::is_same<Index, UINT32>(), "Unsupported index format");
-
 	public:
+		using VertexType = Vertex;
+		using IndexType = Index;
+
 		Mesh(
 			ID3D12Device* pDevice,
 			ResourceUploadBatch& resourceUploadBatch,

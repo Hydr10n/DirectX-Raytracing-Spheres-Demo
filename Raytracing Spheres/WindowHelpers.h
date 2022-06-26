@@ -13,7 +13,8 @@ namespace WindowHelpers {
 
 	enum class WindowMode { Windowed, Borderless, Fullscreen };
 
-	struct WindowModeHelper {
+	class WindowModeHelper {
+	public:
 		const HWND hWnd;
 
 		DWORD WindowedStyle = WS_OVERLAPPEDWINDOW, WindowedExStyle{};

@@ -31,10 +31,10 @@ unique_ptr<D3DApp> g_app;
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lpCmdLine, _In_ int nShowCmd) {
-	UNREFERENCED_PARAMETER(lpCmdLine);
-	UNREFERENCED_PARAMETER(nShowCmd);
-
+int WINAPI wWinMain(
+	[[maybe_unused]] _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
+	[[maybe_unused]] _In_ LPWSTR lpCmdLine, [[maybe_unused]] _In_ int nShowCmd
+) {
 	if (!XMVerifyCPUSupport()) {
 		MessageBoxW(nullptr, L"DirectXMath is not supported.", nullptr, MB_OK | MB_ICONERROR);
 		return ERROR_CAN_NOT_COMPLETE;
@@ -102,8 +102,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR lp
 			ThrowIfFailed(g_windowModeHelper->Apply());
 		}
 
-		MSG msg;
-		msg.message = WM_QUIT;
+		MSG msg{ .message = WM_QUIT };
 		do {
 			if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
 				TranslateMessage(&msg);

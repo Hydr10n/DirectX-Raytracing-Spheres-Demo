@@ -23,22 +23,20 @@ struct MyAppData {
 
 			template <typename Key, typename Data>
 			static BOOL Save(const Data& data) {
-				if constexpr (std::is_same<Key, WindowMode>()) {
+				if constexpr (std::is_same_v<Key, WindowMode>) {
 					return m_appData.Save(Key::Section, Key::Key, reinterpret_cast<const UINT&>(data));
 				}
 
-				if constexpr (std::is_same<Key, Resolution>()) {
+				if constexpr (std::is_same_v<Key, Resolution>) {
 					const auto& size = reinterpret_cast<const SIZE&>(data);
 					return m_appData.Save(Key::Width::Section, Key::Width::Key, size.cx)
 						&& m_appData.Save(Key::Height::Section, Key::Height::Key, size.cy);
 				}
 
-				if constexpr (
-					std::is_same<Key, Raytracing::SamplesPerPixel>()
-					|| std::is_same<Key, TemporalAntiAliasing::IsEnabled>()
-					|| std::is_same<Key, TemporalAntiAliasing::Alpha>()
-					|| std::is_same<Key, TemporalAntiAliasing::ColorBoxSigma>()
-					) {
+				if constexpr (std::is_same_v<Key, Raytracing::SamplesPerPixel>
+					|| std::is_same_v<Key, TemporalAntiAliasing::IsEnabled>
+					|| std::is_same_v<Key, TemporalAntiAliasing::Alpha>
+					|| std::is_same_v<Key, TemporalAntiAliasing::ColorBoxSigma>) {
 					return m_appData.Save(Key::Section, Key::Key, data);
 				}
 
@@ -47,22 +45,20 @@ struct MyAppData {
 
 			template <typename Key, typename Data>
 			static BOOL Load(Data& data) {
-				if constexpr (std::is_same<Key, WindowMode>()) {
+				if constexpr (std::is_same_v<Key, WindowMode>) {
 					return m_appData.Load(Key::Section, Key::Key, reinterpret_cast<UINT&>(data));
 				}
 
-				if constexpr (std::is_same<Key, Resolution>()) {
+				if constexpr (std::is_same_v<Key, Resolution>) {
 					auto& size = reinterpret_cast<SIZE&>(data);
 					return m_appData.Load(Key::Width::Section, Key::Width::Key, size.cx)
 						&& m_appData.Load(Key::Height::Section, Key::Height::Key, size.cy);
 				}
 
-				if constexpr (
-					std::is_same<Key, Raytracing::SamplesPerPixel>()
-					|| std::is_same<Key, TemporalAntiAliasing::IsEnabled>()
-					|| std::is_same<Key, TemporalAntiAliasing::Alpha>()
-					|| std::is_same<Key, TemporalAntiAliasing::ColorBoxSigma>()
-					) {
+				if constexpr (std::is_same_v<Key, Raytracing::SamplesPerPixel>
+					|| std::is_same_v<Key, TemporalAntiAliasing::IsEnabled>
+					|| std::is_same_v<Key, TemporalAntiAliasing::Alpha>
+					|| std::is_same_v<Key, TemporalAntiAliasing::ColorBoxSigma>) {
 					return m_appData.Load(Key::Section, Key::Key, data);
 				}
 
