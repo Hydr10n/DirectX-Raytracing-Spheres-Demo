@@ -10,13 +10,15 @@ struct Camera {
 
 class FirstPersonCamera {
 public:
+	const auto& GetPosition() const { return m_position; }
+
 	void SetPosition(const DirectX::XMFLOAT3& position) {
 		m_position = position;
 
 		m_isViewChanged = true;
 	}
 
-	const auto& GetPosition() const { return m_position; }
+	const auto& GetDirections() const { return m_directions; }
 
 	void SetDirections(const DirectX::XMFLOAT3& rightDirection, const DirectX::XMFLOAT3& forwardDirection) {
 		(m_directions.Right = rightDirection).Normalize();
@@ -24,12 +26,6 @@ public:
 		m_directions.Forward.Cross(m_directions.Right).Normalize(m_directions.Up);
 
 		m_isViewChanged = true;
-	}
-
-	const auto& GetDirections() const { return m_directions; }
-
-	void SetLens(float fovAngleY, float aspectRatio, float nearZ, float farZ) {
-		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
 	}
 
 	const auto& GetView() const {
@@ -44,8 +40,6 @@ public:
 		}
 		return m_view;
 	}
-
-	const auto& GetProjection() const { return m_projection; }
 
 	void Translate(const DirectX::XMFLOAT3& displacement) {
 		m_position += displacement;
@@ -71,6 +65,12 @@ public:
 		m_directions.Forward = Vector3::Transform(m_directions.Forward, rotation);
 
 		m_isViewChanged = true;
+	}
+
+	const auto& GetProjection() const { return m_projection; }
+
+	void SetLens(float fovAngleY, float aspectRatio, float nearZ, float farZ) {
+		m_projection = DirectX::XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
 	}
 
 private:

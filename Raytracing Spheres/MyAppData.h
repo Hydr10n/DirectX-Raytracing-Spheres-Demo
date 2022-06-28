@@ -1,18 +1,21 @@
 #pragma once
 
-#include "AppData.h"
-
 #include <filesystem>
 
-#define MAKESECTION(SectionName, Members) struct SectionName { static constexpr LPCWSTR Name = L#SectionName; Members };
+import WindowHelpers;
 
-#define MAKEKEY(KeyName) struct KeyName { static constexpr LPCWSTR Section = Name, Key = L#KeyName; };
+import Hydr10n.Data.AppData;
+
+#define MAKESECTION(Name, Members) class Name { static constexpr LPCWSTR SectionName = L#Name; public: Members };
+
+#define MAKEKEY(KeyName) struct KeyName { static constexpr LPCWSTR Section = SectionName, Key = L#KeyName; };
 
 struct MyAppData {
 	struct Settings {
-		struct Graphics {
-			static constexpr LPCWSTR Name = L"";
+		class Graphics {
+			static constexpr LPCWSTR SectionName = L"";
 
+		public:
 			MAKEKEY(WindowMode);
 
 			MAKESECTION(Resolution, MAKEKEY(Width) MAKEKEY(Height));
@@ -21,52 +24,46 @@ struct MyAppData {
 
 			MAKESECTION(TemporalAntiAliasing, MAKEKEY(IsEnabled) MAKEKEY(Alpha) MAKEKEY(ColorBoxSigma));
 
-			template <typename Key, typename Data>
-			static BOOL Save(const Data& data) {
-				if constexpr (std::is_same_v<Key, WindowMode>) {
-					return m_appData.Save(Key::Section, Key::Key, reinterpret_cast<const UINT&>(data));
-				}
-
-				if constexpr (std::is_same_v<Key, Resolution>) {
-					const auto& size = reinterpret_cast<const SIZE&>(data);
-					return m_appData.Save(Key::Width::Section, Key::Width::Key, size.cx)
-						&& m_appData.Save(Key::Height::Section, Key::Height::Key, size.cy);
-				}
-
-				if constexpr (std::is_same_v<Key, Raytracing::SamplesPerPixel>
-					|| std::is_same_v<Key, TemporalAntiAliasing::IsEnabled>
-					|| std::is_same_v<Key, TemporalAntiAliasing::Alpha>
-					|| std::is_same_v<Key, TemporalAntiAliasing::ColorBoxSigma>) {
-					return m_appData.Save(Key::Section, Key::Key, data);
-				}
-
-				throw;
+			template <std::same_as<WindowMode> Key>
+			[[nodiscard]] static BOOL Load(WindowHelpers::WindowMode& data) {
+				return m_appData.Load(WindowMode::Section, WindowMode::Key, reinterpret_cast<UINT&>(data));
 			}
 
-			template <typename Key, typename Data>
-			static BOOL Load(Data& data) {
-				if constexpr (std::is_same_v<Key, WindowMode>) {
-					return m_appData.Load(Key::Section, Key::Key, reinterpret_cast<UINT&>(data));
-				}
-
-				if constexpr (std::is_same_v<Key, Resolution>) {
-					auto& size = reinterpret_cast<SIZE&>(data);
-					return m_appData.Load(Key::Width::Section, Key::Width::Key, size.cx)
-						&& m_appData.Load(Key::Height::Section, Key::Height::Key, size.cy);
-				}
-
-				if constexpr (std::is_same_v<Key, Raytracing::SamplesPerPixel>
-					|| std::is_same_v<Key, TemporalAntiAliasing::IsEnabled>
-					|| std::is_same_v<Key, TemporalAntiAliasing::Alpha>
-					|| std::is_same_v<Key, TemporalAntiAliasing::ColorBoxSigma>) {
-					return m_appData.Load(Key::Section, Key::Key, data);
-				}
-
-				throw;
+			template <std::same_as<WindowMode> Key>
+			static BOOL Save(const WindowHelpers::WindowMode& data) {
+				return m_appData.Save(WindowMode::Section, WindowMode::Key, reinterpret_cast<const UINT&>(data));
 			}
+
+			template <std::same_as<Resolution> Key>
+			[[nodiscard]] static BOOL Load(SIZE& data) {
+				return m_appData.Load(Resolution::Width::Section, Resolution::Width::Key, data.cx)
+					&& m_appData.Load(Resolution::Height::Section, Resolution::Height::Key, data.cy);
+			}
+
+			template <std::same_as<Resolution> Key>
+			static BOOL Save(const SIZE& data) {
+				return m_appData.Save(Resolution::Width::Section, Resolution::Width::Key, data.cx)
+					&& m_appData.Save(Resolution::Height::Section, Resolution::Height::Key, data.cy);
+			}
+
+			template <typename Key, typename Data> requires
+				(std::same_as<Key, Raytracing::SamplesPerPixel>
+					|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
+					|| std::same_as<Key, TemporalAntiAliasing::Alpha>
+					|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
+				&& (std::integral<Data> || std::floating_point<Data>)
+				[[nodiscard]] static BOOL Load(Data& data) { return m_appData.Load(Key::Section, Key::Key, data); }
+
+			template <typename Key, typename Data> requires
+				(std::same_as<Key, Raytracing::SamplesPerPixel>
+					|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
+					|| std::same_as<Key, TemporalAntiAliasing::Alpha>
+					|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
+				&& (std::integral<Data> || std::floating_point<Data>)
+				static BOOL Save(const Data& data) { return m_appData.Save(Key::Section, Key::Key, data); }
 
 		private:
-			inline static const Hydr10n::Data::AppData m_appData = std::filesystem::path(*__wargv).replace_filename("GraphicsSettings.ini").c_str();
+			inline static const Hydr10n::Data::AppData m_appData = std::filesystem::path(*__wargv).replace_filename(L"GraphicsSettings.ini").c_str();
 		};
 	};
 };

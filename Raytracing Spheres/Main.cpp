@@ -1,16 +1,18 @@
 #include "pch.h"
 
-#include "D3DApp.h"
-
-#include "SharedData.h"
-#include "MyAppData.h"
-
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
 
 #include "imgui_impl_win32.h"
 
+#include "MyAppData.h"
+
 #include "resource.h"
+
+import D3DApp;
+import DisplayHelpers;
+import SharedData;
+import WindowHelpers;
 
 using namespace DirectX;
 using namespace DisplayHelpers;
@@ -36,7 +38,7 @@ int WINAPI wWinMain(
 	[[maybe_unused]] _In_ LPWSTR lpCmdLine, [[maybe_unused]] _In_ int nShowCmd
 ) {
 	if (!XMVerifyCPUSupport()) {
-		MessageBoxW(nullptr, L"DirectXMath is not supported.", nullptr, MB_OK | MB_ICONERROR);
+		MessageBoxW(nullptr, L"DirectXMath is not supported by CPU.", nullptr, MB_OK | MB_ICONERROR);
 		return ERROR_CAN_NOT_COMPLETE;
 	}
 
@@ -45,15 +47,7 @@ int WINAPI wWinMain(
 	RoInitializeWrapper roInitializeWrapper(RO_INIT_MULTITHREADED);
 
 	try {
-		ThrowIfFailed(roInitializeWrapper);
-
-		ThrowIfFailed(GetDisplayResolutions(g_displayResolutions));
-		for (
-			auto iterator = g_displayResolutions.begin(), end = g_displayResolutions.end();
-			iterator != end && *iterator < Resolution{ 800, 600 };
-			iterator = g_displayResolutions.erase(iterator)
-			) {
-		}
+		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
 
 		const WNDCLASSEXW wndClassEx{
 			.cbSize = sizeof(wndClassEx),
@@ -63,7 +57,7 @@ int WINAPI wWinMain(
 			.hCursor = LoadCursor(nullptr, IDC_ARROW),
 			.lpszClassName = L"Direct3D 12"
 		};
-		ThrowIfFailed(RegisterClassExW(&wndClassEx));
+		ThrowIfFailed(static_cast<BOOL>(RegisterClassExW(&wndClassEx)));
 
 		const auto window = CreateWindowExW(
 			0,
@@ -77,27 +71,24 @@ int WINAPI wWinMain(
 			wndClassEx.hInstance,
 			nullptr
 		);
-		ThrowIfFailed(window != nullptr);
+		ThrowIfFailed(static_cast<BOOL>(window != nullptr));
 
 		g_windowModeHelper = make_shared<decltype(g_windowModeHelper)::element_type>(window);
 
 		g_windowModeHelper->WindowedStyle = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 
-		if (!GraphicsSettingsData::Load<GraphicsSettingsData::Resolution>(g_windowModeHelper->Resolution)) {
+		if (!GraphicsSettingsData::Load<GraphicsSettingsData::Resolution>(g_windowModeHelper->Resolution)
+			|| !g_displayResolutions.contains(g_windowModeHelper->Resolution)) {
 			RECT rect;
 			ThrowIfFailed(GetClientRect(g_windowModeHelper->hWnd, &rect));
 			g_windowModeHelper->Resolution = { rect.right - rect.left, rect.bottom - rect.top };
-		}
-		else if (!g_displayResolutions.contains(g_windowModeHelper->Resolution)) {
-			g_windowModeHelper->Resolution = *--g_displayResolutions.cend();
 		}
 
 		g_app = make_unique<decltype(g_app)::element_type>(g_windowModeHelper);
 
 		ThrowIfFailed(g_windowModeHelper->Apply()); // Fix missing icon on title bar when initial WindowMode != Windowed
 
-		WindowMode windowMode;
-		if (GraphicsSettingsData::Load<GraphicsSettingsData::WindowMode>(windowMode)) {
+		if (WindowMode windowMode; GraphicsSettingsData::Load<GraphicsSettingsData::WindowMode>(windowMode)) {
 			g_windowModeHelper->SetMode(windowMode);
 			ThrowIfFailed(g_windowModeHelper->Apply());
 		}
@@ -137,16 +128,50 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		{
 			LPARAM param;
 			if (uMsg == WM_MOUSEMOVE) {
-				const auto outputSize = g_app->GetOutputSize();
+				const auto [cx, cy] = g_app->GetOutputSize();
 				RECT rect;
 				ThrowIfFailed(GetClientRect(hWnd, &rect));
-				param = MAKELPARAM(GET_X_LPARAM(lParam) * outputSize.cx / static_cast<float>(rect.right - rect.left), GET_Y_LPARAM(lParam) * outputSize.cy / static_cast<float>(rect.bottom - rect.top));
+				param = MAKELPARAM(GET_X_LPARAM(lParam) * cx / static_cast<float>(rect.right - rect.left), GET_Y_LPARAM(lParam) * cy / static_cast<float>(rect.bottom - rect.top));
 			}
 			else param = lParam;
 
 			extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 			if (const auto ret = ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, param)) return ret;
 		}
+
+		static HMONITOR s_hMonitor;
+
+		static Resolution s_displayResolution;
+
+		const auto GetDisplayResolutions = [&](bool forceUpdate = false) {
+			const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+			ThrowIfFailed(static_cast<BOOL>(monitor != nullptr));
+
+			const auto ret = monitor != s_hMonitor;
+			if (ret || forceUpdate) {
+				Resolution displayResolution;
+				ThrowIfFailed(GetDisplayResolution(displayResolution, monitor));
+
+				ResolutionSet displayResolutions;
+				ThrowIfFailed(::GetDisplayResolutions(displayResolutions, monitor));
+
+				auto iterator = displayResolutions.begin();
+				const auto resolution = iterator->cx > iterator->cy ? Resolution{ 800, 600 } : Resolution{ 600, 800 };
+				for (const auto end = displayResolutions.end();
+					iterator != end && *iterator < resolution;
+					iterator = displayResolutions.erase(iterator)) {
+				}
+
+				g_displayResolutions = displayResolutions;
+
+				s_displayResolution = displayResolution;
+
+				s_hMonitor = monitor;
+			}
+			return ret;
+		};
+
+		if (s_hMonitor == nullptr) GetDisplayResolutions();
 
 		switch (uMsg) {
 		case WM_GETMINMAXINFO: {
@@ -172,6 +197,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			}
 		} break;
 
+		case WM_MOVE: GetDisplayResolutions(); break;
+
 		case WM_MOVING:
 		case WM_SIZING: g_app->Tick(); break;
 
@@ -188,11 +215,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			}
 		} break;
 
-		case WM_DISPLAYCHANGE: g_app->OnDisplayChanged(); break;
+		case WM_DISPLAYCHANGE: {
+			g_app->OnDisplayChanged();
+
+			if (GetDisplayResolutions()) {
+				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *g_displayResolutions.cend());
+
+				ThrowIfFailed(g_windowModeHelper->Apply());
+			}
+			else {
+				Resolution displayResolution;
+				ThrowIfFailed(GetDisplayResolution(0, displayResolution, s_hMonitor));
+				if (displayResolution.IsPortrait() != g_windowModeHelper->Resolution.IsPortrait()) {
+					GetDisplayResolutions(true);
+
+					swap(g_windowModeHelper->Resolution.cx, g_windowModeHelper->Resolution.cy);
+
+					ThrowIfFailed(g_windowModeHelper->Apply());
+				}
+				else if ((displayResolution = { LOWORD(lParam), HIWORD(lParam) }) != s_displayResolution) {
+					ThrowIfFailed(g_windowModeHelper->Apply());
+
+					s_displayResolution = displayResolution;
+				}
+			}
+		} break;
 
 		case WM_DPICHANGED: {
-			const auto& rect = *reinterpret_cast<PRECT>(lParam);
-			SetWindowPos(hWnd, nullptr, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER);
+			const auto& [left, top, right, bottom] = *reinterpret_cast<PRECT>(lParam);
+			SetWindowPos(hWnd, nullptr, static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top), SWP_NOZORDER);
 		} break;
 
 		case WM_ACTIVATEAPP: {

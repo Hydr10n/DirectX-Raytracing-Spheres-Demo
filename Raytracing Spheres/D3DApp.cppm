@@ -1,11 +1,16 @@
-#pragma once
-
-#include "WindowHelpers.h"
+module;
+#include <Windows.h>
 
 #include <memory>
 
-struct D3DApp {
-	D3DApp(const std::shared_ptr<WindowHelpers::WindowModeHelper>& windowModeHelper) noexcept(false);
+export module D3DApp;
+
+import WindowHelpers;
+
+using namespace WindowHelpers;
+
+export struct D3DApp {
+	D3DApp(const std::shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false);
 	~D3DApp();
 
 	SIZE GetOutputSize() const noexcept;

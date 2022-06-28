@@ -32,9 +32,22 @@
 
 #include <algorithm>
 
+#include <system_error>
+
 // To use graphics and CPU markup events with the latest version of PIX, change this to include <pix3.h>
 // then add the NuGet package WinPixEventRuntime to the project.
 #include <pix.h>
 
-#include "ErrorHelpers.h"
-namespace DX { using namespace ErrorHelpers; }
+namespace DX {
+	[[noreturn]] inline void throw_std_system_error(int code, const char* message = "") {
+		throw std::system_error(code, std::system_category(), message);
+	}
+
+	inline void ThrowIfFailed(std::same_as<BOOL> auto value, LPCSTR lpMessage = "") {
+		if (!value) throw_std_system_error(static_cast<int>(GetLastError()), lpMessage);
+	}
+
+	inline void ThrowIfFailed(std::same_as<HRESULT> auto value, LPCSTR lpMessage = "") {
+		if (FAILED(value)) throw_std_system_error(static_cast<int>(value), lpMessage);
+	}
+}

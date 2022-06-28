@@ -83,9 +83,9 @@ public:
 		foundation.release();
 	}
 
-	physx::PxPhysics& GetPhysics() const { return *m_physics; }
+	auto& GetPhysics() const noexcept { return *m_physics; }
 
-	physx::PxScene& GetScene() const { return *m_scene; }
+	auto& GetScene() const noexcept { return *m_scene; }
 
 	void Tick(physx::PxReal elapsedTime, bool block = true) {
 		m_scene->simulate(elapsedTime);

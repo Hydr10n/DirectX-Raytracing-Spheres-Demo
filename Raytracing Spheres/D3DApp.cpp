@@ -1,9 +1,5 @@
+module;
 #include "pch.h"
-
-#include "D3DApp.h"
-
-#include "SharedData.h"
-#include "MyAppData.h"
 
 #include "DeviceResources.h"
 
@@ -21,11 +17,6 @@
 #include "TopLevelAccelerationStructureGenerator.h"
 #include "ShaderBindingTableGenerator.h"
 
-#include "DirectXRaytracingHelpers.h"
-
-#include "TemporalAntiAliasingEffect.h"
-
-#include "Material.h"
 #include "Texture.h"
 
 #include "Camera.h"
@@ -38,11 +29,22 @@
 #include "imgui_impl_dx12.h"
 #include "ImGuiEx.h"
 
+#include "MyAppData.h"
+
 #include "Random.h"
 
 #include <shellapi.h>
 
+module D3DApp;
+
+import DirectX.RaytracingHelpers;
+import DirectX.Effects.TemporalAntiAliasing;
+import DisplayHelpers;
+import Material;
+import SharedData;
+
 using namespace DirectX;
+using namespace DirectX::Effects;
 using namespace DirectX::RaytracingHelpers;
 using namespace DisplayHelpers;
 using namespace DX;
@@ -51,6 +53,7 @@ using namespace nv_helpers_dx12;
 using namespace PhysicsHelpers;
 using namespace physx;
 using namespace std;
+using namespace std::filesystem;
 using namespace WindowHelpers;
 
 using GraphicsSettingsData = MyAppData::Settings::Graphics;
@@ -63,7 +66,7 @@ struct D3DApp::Impl : IDeviceNotify {
 			}
 
 			{
-				GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled);
+				static_cast<void>(GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled));
 
 				if (GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha)) {
 					m_temporalAntiAliasingConstant.Alpha = clamp(m_temporalAntiAliasingConstant.Alpha, 0.0f, 1.0f);
@@ -107,7 +110,7 @@ struct D3DApp::Impl : IDeviceNotify {
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
 
 		{
-			const XMFLOAT3 position{ 0, 0, -15 };
+			constexpr XMFLOAT3 position{ 0, 0, -15 };
 			m_firstPersonCamera.SetPosition(position);
 			*reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory()) = {
 				.Position = position,
@@ -143,8 +146,9 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		const auto newWindowMode = windowModeHelper->GetMode();
 		const auto newResolution = windowModeHelper->Resolution;
-		const auto isWindowModeChanged = newWindowMode != windowMode, isResolutionChanged = newResolution != resolution;
-		if (isWindowModeChanged || isResolutionChanged || windowModeHelper->WindowedStyle != windowedStyle || windowModeHelper->WindowedExStyle != windowedExStyle) {
+		if (const auto isWindowModeChanged = newWindowMode != windowMode, isResolutionChanged = newResolution != resolution;
+			isWindowModeChanged || isResolutionChanged
+			|| windowModeHelper->WindowedStyle != windowedStyle || windowModeHelper->WindowedExStyle != windowedExStyle) {
 			ThrowIfFailed(windowModeHelper->Apply());
 
 			if (isWindowModeChanged) GraphicsSettingsData::Save<GraphicsSettingsData::WindowMode>(newWindowMode);
@@ -272,8 +276,7 @@ private:
 		UINT
 			LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
 			Camera = ResourceDescriptorHeapIndex::Camera,
-			GlobalData = ResourceDescriptorHeapIndex::GlobalData,
-			LocalData = ResourceDescriptorHeapIndex::LocalData,
+			GlobalData = ResourceDescriptorHeapIndex::GlobalData, LocalData = ResourceDescriptorHeapIndex::LocalData,
 			Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
 			EnvironmentCubeMap = UINT_MAX;
 		XMUINT2 _padding{};
@@ -581,7 +584,7 @@ private:
 			}
 		};
 
-		m_textures.DirectoryPath = filesystem::path(*__wargv).replace_filename(LR"(Textures\)");
+		m_textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Textures\)");
 	}
 
 	void LoadTextures() {
@@ -597,7 +600,7 @@ private:
 
 		const auto& material = *m_myPhysX.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
-		const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) -> auto& {
+		const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) -> decltype(auto) {
 			renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
 			renderItem.InstanceID = static_cast<UINT>(m_renderItems.size());
@@ -642,10 +645,10 @@ private:
 					Material().AsMetal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
 				}
 			};
-			for (const auto& sphere : spheres) {
+			for (const auto& [Position, Material] : spheres) {
 				RenderItem renderItem;
-				renderItem.Material = sphere.Material;
-				AddRenderItem(renderItem, PxSphereGeometry(0.5f), sphere.Position);
+				renderItem.Material = Material;
+				AddRenderItem(renderItem, PxSphereGeometry(0.5f), Position);
 			}
 
 			Random random;
@@ -660,8 +663,8 @@ private:
 					position.z = static_cast<float>(j) - 0.7f * random.Float();
 
 					bool isOverlapping = false;
-					for (const auto& sphere : spheres) {
-						if ((position - sphere.Position).magnitude() < 1) {
+					for (const auto& [Position, Material] : spheres) {
+						if ((position - Position).magnitude() < 1) {
 							isOverlapping = true;
 							break;
 						}
@@ -672,8 +675,8 @@ private:
 
 					renderItem.Name = Objects::HarmonicOscillator;
 
-					const auto randomValue = random.Float();
-					if (randomValue < 0.5f) renderItem.Material.AsLambertian(random.Float4());
+					if (const auto randomValue = random.Float();
+						randomValue < 0.5f) renderItem.Material.AsLambertian(random.Float4());
 					else if (randomValue < 0.75f) renderItem.Material.AsMetal(random.Float4(0.5f), random.Float(0, 0.5f));
 					else renderItem.Material.AsDielectric(random.Float4(), 1.5f);
 
@@ -708,18 +711,18 @@ private:
 				.Radius = 50,
 				.Material = Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
 			};
-			for (const auto& sphere : { moon, earth, star }) {
+			for (const auto& [Name, Position, Radius, RotationPeriod, OrbitalPeriod, Mass, Material] : { moon, earth, star }) {
 				RenderItem renderItem;
 
-				renderItem.Name = sphere.Name;
+				renderItem.Name = Name;
 
-				renderItem.Material = sphere.Material;
+				renderItem.Material = Material;
 
-				if (m_textures.contains(sphere.Name)) renderItem.pTextures = &m_textures[sphere.Name];
+				if (m_textures.contains(Name)) renderItem.pTextures = &m_textures[Name];
 
-				auto& rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(sphere.Radius), sphere.Position);
+				auto& rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(Radius), Position);
 				if (renderItem.Name == Objects::Moon) {
-					const auto x = earth.Position - sphere.Position;
+					const auto x = earth.Position - Position;
 					const auto magnitude = x.magnitude();
 					const auto normalized = x / magnitude;
 					const auto linearSpeed = UniversalGravitation::CalculateFirstCosmicSpeed(earth.Mass, magnitude);
@@ -727,12 +730,12 @@ private:
 					rigidDynamic.setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 				}
 				else if (renderItem.Name == Objects::Earth) {
-					rigidDynamic.setAngularVelocity({ 0, PxTwoPi / sphere.RotationPeriod, 0 });
-					PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &sphere.Mass, 1);
+					rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
+					PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &Mass, 1);
 				}
 				else if (renderItem.Name == Objects::Star) rigidDynamic.setMass(0);
 
-				m_physicsObjects.RigidBodies[sphere.Name] = { &rigidDynamic, false };
+				m_physicsObjects.RigidBodies[Name] = { &rigidDynamic, false };
 			}
 		}
 	}
@@ -875,17 +878,11 @@ private:
 
 		auto& sphere = m_geometries.Sphere;
 
-		ResourceUploadBatch resourceUploadBatch(device);
-		resourceUploadBatch.Begin();
-
 		GeometricPrimitive::VertexCollection vertices;
 		GeometricPrimitive::IndexCollection indices;
 		GeometricPrimitive::CreateGeoSphere(vertices, indices, sphere.Radius * 2, 6);
 
-		sphere = make_unique<decay_t<decltype(sphere)>::element_type>(device, resourceUploadBatch, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
-
-		resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).wait();
-
+		sphere = make_unique<decay_t<decltype(sphere)>::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
 		sphere->CreateShaderResourceViews(m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereVertices), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereIndices));
 	}
 
@@ -899,7 +896,7 @@ private:
 		UINT64 scratchSize, resultSize;
 		bottomLevelAccelerationStructureGenerator.ComputeBufferSizes(device, scratchSize, resultSize);
 
-		buffers = AccelerationStructureBuffers(device, scratchSize, resultSize);
+		buffers = AccelerationStructureBuffers(device, scratchSize, resultSize, 0);
 
 		bottomLevelAccelerationStructureGenerator.Generate(m_deviceResources->GetCommandList(), buffers.Scratch.Get(), buffers.Result.Get());
 	}
@@ -907,7 +904,7 @@ private:
 	void CreateTopLevelAccelerationStructure(bool updateOnly) {
 		TopLevelAccelerationStructureGenerator topLevelAccelerationStructureGenerator(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 
-		for (UINT size = static_cast<UINT>(m_renderItems.size()), i = 0; i < size; i++) {
+		for (UINT i = 0, size = static_cast<UINT>(m_renderItems.size()); i < size; i++) {
 			auto& renderItem = m_renderItems[i];
 
 			const auto& shape = *renderItem.Shape;
@@ -1026,12 +1023,12 @@ private:
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
 		const auto Translate = [&](const XMFLOAT3& displacement) {
-			if (!displacement.x && !displacement.y && !displacement.z) return;
+			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
 			constexpr auto To_PxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
-			const auto& directions = m_firstPersonCamera.GetDirections();
-			auto x = To_PxVec3(directions.Right * displacement.x + directions.Up * displacement.y + directions.Forward * displacement.z);
+			const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
+			auto x = To_PxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
 			const auto magnitude = x.magnitude();
 			const auto normalized = x / magnitude;
 
@@ -1044,8 +1041,8 @@ private:
 		};
 
 		const auto Pitch = [&](float angle) {
-			const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
-			if (pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
+			if (const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
+				pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 			else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
 			m_firstPersonCamera.Pitch(angle);
 		};
@@ -1097,10 +1094,10 @@ private:
 
 		const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
 
-		if (const auto& spring = m_physicsObjects.Spring;
+		if (const auto& [PositionY, Period] = m_physicsObjects.Spring;
 			renderItem.Name == Objects::HarmonicOscillator) {
-			const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, spring.Period);
-			const PxVec3 x(0, position.y - spring.PositionY, 0);
+			const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Period);
+			const PxVec3 x(0, position.y - PositionY, 0);
 			rigidBody->addForce(-k * x);
 		}
 
@@ -1142,7 +1139,7 @@ private:
 			pMissShaderTable = pRayGenerationShaderRecord + rayGenerationSectionSize,
 			pHitGroupTable = pMissShaderTable + missSectionSize;
 
-		const auto outputSize = GetOutputSize();
+		const auto [cx, cy] = GetOutputSize();
 
 		const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
 			.RayGenerationShaderRecord{
@@ -1159,8 +1156,8 @@ private:
 				.SizeInBytes = hitGroupSectionSize,
 				.StrideInBytes = m_shaderBindingTableGenerator.GetHitGroupEntrySize()
 			},
-			.Width = static_cast<UINT>(outputSize.cx),
-			.Height = static_cast<UINT>(outputSize.cy),
+			.Width = static_cast<UINT>(cx),
+			.Height = static_cast<UINT>(cy),
 			.Depth = 1
 		};
 
@@ -1173,12 +1170,10 @@ private:
 		ImGui::NewFrame();
 
 		{
-			const auto outputSize = GetOutputSize();
-
 			ImGui::SetNextWindowPos({});
-			ImGui::SetNextWindowSize({ static_cast<float>(outputSize.cx), 0 });
+			ImGui::SetNextWindowSize({ static_cast<float>(GetOutputSize().cx), 0 });
 
-			ImGui::Begin("##Menu", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBackground);
+			ImGui::Begin("##Menu", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_HorizontalScrollbar);
 
 			if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
 
@@ -1192,20 +1187,17 @@ private:
 						}
 					}
 
-					{
-						constexpr auto ToString = [](const SIZE& size) { return to_string(size.cx) + " × " + to_string(size.cy); };
-
-						if (ImGui::BeginCombo("Resolution", ToString(m_windowModeHelper->Resolution).c_str())) {
-							for (const auto& displayResolution : g_displayResolutions) {
-								const auto isSelected = m_windowModeHelper->Resolution == displayResolution;
-								if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
-									m_windowModeHelper->Resolution = displayResolution;
-								}
-								if (isSelected) ImGui::SetItemDefaultFocus();
+					if (constexpr auto ToString = [](const SIZE& size) { return to_string(size.cx) + " × " + to_string(size.cy); };
+						ImGui::BeginCombo("Resolution", ToString(m_windowModeHelper->Resolution).c_str())) {
+						for (const auto& displayResolution : g_displayResolutions) {
+							const auto isSelected = m_windowModeHelper->Resolution == displayResolution;
+							if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
+								m_windowModeHelper->Resolution = displayResolution;
 							}
-
-							ImGui::EndCombo();
+							if (isSelected) ImGui::SetItemDefaultFocus();
 						}
+
+						ImGui::EndCombo();
 					}
 				}
 
@@ -1240,14 +1232,14 @@ private:
 				const auto AddControls = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& controls) {
 					if (ImGui::TreeNode(treeLabel)) {
 						if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInner)) {
-							for (const auto& control : controls) {
+							for (const auto& [first, second] : controls) {
 								ImGui::TableNextRow();
 
 								ImGui::TableSetColumnIndex(0);
-								ImGui::Text(control.first);
+								ImGui::Text(first);
 
 								ImGui::TableSetColumnIndex(1);
-								ImGui::Text(control.second);
+								ImGui::Text(second);
 							}
 
 							ImGui::EndTable();
@@ -1299,8 +1291,10 @@ private:
 			if (ImGui::CollapsingHeader("About")) {
 				ImGui::Text("© Hydr10n. All rights reserved.");
 
-				constexpr auto URL = "https://github.com/Hydr10n/DirectX-Raytracing-Spheres-Demo";
-				if (ImGuiEx::Hyperlink("GitHub repository", URL)) ShellExecuteA(nullptr, "open", URL, nullptr, nullptr, SW_SHOW);
+				if (constexpr auto URL = "https://github.com/Hydr10n/DirectX-Raytracing-Spheres-Demo";
+					ImGuiEx::Hyperlink("GitHub repository", URL)) {
+					ShellExecuteA(nullptr, "open", URL, nullptr, nullptr, SW_SHOW);
+				}
 			}
 
 			{

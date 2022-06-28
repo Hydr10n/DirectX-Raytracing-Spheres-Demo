@@ -32,7 +32,9 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 		UINT threadCount = 1
 	) {
 		using namespace DirectX;
+		using namespace DX;
 		using namespace std;
+		using namespace std::filesystem;
 
 		if (!threadCount) throw invalid_argument("Thread count cannot be 0");
 
@@ -42,32 +44,32 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 		threads.reserve(threadCount);
 
 		for (auto& pair : *this) {
-			for (auto& pair1 : get<0>(pair.second)) {
+			for (auto& [first, second] : get<0>(pair.second)) {
 				threads.emplace_back([&] {
 					try {
-						auto& texture = pair1.second;
+						auto& [DescriptorHeapIndex, Path, Resource] = second;
 
 						ResourceUploadBatch resourceUploadBatch(pDevice);
 						resourceUploadBatch.Begin();
 
 						bool isCubeMap = false;
 
-						const auto filePath = filesystem::path(DirectoryPath).append(texture.Path);
+						const auto filePath = path(DirectoryPath).append(Path);
 						const auto filePathString = filePath.string();
 						if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
-							DX::ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
+							ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
 
-							if ((isCubeMap && pair1.first != TextureType::CubeMap) || (!isCubeMap && pair1.first == TextureType::CubeMap)) {
+							if ((isCubeMap && first != TextureType::CubeMap) || (!isCubeMap && first == TextureType::CubeMap)) {
 								throw runtime_error(filePathString + ": Invalid texture");
 							}
 						}
 						else {
-							DX::ThrowIfFailed(CreateWICTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), texture.Resource.ReleaseAndGetAddressOf()), filePathString.c_str());
+							ThrowIfFailed(CreateWICTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), Resource.ReleaseAndGetAddressOf()), filePathString.c_str());
 						}
 
 						resourceUploadBatch.End(pCommandQueue).wait();
 
-						CreateShaderResourceView(pDevice, texture.Resource.Get(), descriptorHeap.GetCpuHandle(texture.DescriptorHeapIndex), isCubeMap);
+						CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndex), isCubeMap);
 					}
 					catch (...) { if (!exception) exception = current_exception(); }
 					});

@@ -1,8 +1,13 @@
-#pragma once
+module;
+#include <Windows.h>
 
-#include "DisplayHelpers.h"
+export module WindowHelpers;
 
-namespace WindowHelpers {
+import DisplayHelpers;
+
+using namespace DisplayHelpers;
+
+export namespace WindowHelpers {
 	constexpr void CenterRect(_In_ const RECT& border, _Inout_ RECT& rect) {
 		const auto rectWidth = rect.right - rect.left, rectHeight = rect.bottom - rect.top;
 		rect.left = (border.right + border.left - rectWidth) / 2;
@@ -19,7 +24,7 @@ namespace WindowHelpers {
 
 		DWORD WindowedStyle = WS_OVERLAPPEDWINDOW, WindowedExStyle{};
 
-		DisplayHelpers::Resolution Resolution{};
+		Resolution Resolution{};
 
 		WindowModeHelper(HWND hWnd) : hWnd(hWnd) {}
 
@@ -33,7 +38,7 @@ namespace WindowHelpers {
 
 		WindowMode GetMode() const { return m_currentMode; }
 
-		BOOL Apply() const {
+		[[nodiscard]] BOOL Apply() const {
 			const auto
 				style = m_currentMode == WindowMode::Windowed ? WindowedStyle | WS_CAPTION : WindowedStyle & ~WS_OVERLAPPEDWINDOW,
 				exStyle = m_currentMode == WindowMode::Fullscreen ? WindowedExStyle | WS_EX_TOPMOST : WindowedExStyle;
@@ -46,7 +51,7 @@ namespace WindowHelpers {
 
 			const auto SetWindowSize = [&] {
 				RECT displayRect;
-				if (!DisplayHelpers::GetDisplayRect(displayRect, hWnd)) return false;
+				if (!GetDisplayRect(displayRect, hWnd)) return false;
 				RECT rect{ 0, 0, Resolution.cx, Resolution.cy };
 				CenterRect(displayRect, rect);
 				return AdjustWindowRectExForDpi(&rect, style, GetMenu(hWnd) != nullptr, exStyle, GetDpiForWindow(hWnd))

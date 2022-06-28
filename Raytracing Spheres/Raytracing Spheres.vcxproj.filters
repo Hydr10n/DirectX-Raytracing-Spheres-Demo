@@ -28,9 +28,6 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="D3DApp.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -40,46 +37,25 @@
     <ClInclude Include="StepTimer.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="WindowHelpers.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ErrorHelpers.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="Random.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="MyAppData.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="DisplayHelpers.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="Material.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="MyPhysX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Texture.h">
+    <ClInclude Include="ImGuiEx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MyAppData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Camera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DirectXRaytracingHelpers.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="ImGuiEx.h">
+    <ClInclude Include="Random.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SharedData.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TemporalAntiAliasingEffect.h">
+    <ClInclude Include="Texture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -93,7 +69,25 @@
     <ClCompile Include="D3DApp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TemporalAntiAliasingEffect.cpp">
+    <ClCompile Include="TemporalAntiAliasingEffect.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DirectXRaytracingHelpers.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="WindowHelpers.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="DisplayHelpers.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="SharedData.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D3DApp.cppm">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Material.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

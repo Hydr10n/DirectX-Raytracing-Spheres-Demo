@@ -1,8 +1,9 @@
-#pragma once
-
+module;
 #include <DirectXMath.h>
 
-struct Material {
+export module Material;
+
+export struct Material {
 	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type{};
 	float RefractiveIndex{}, Roughness{};
 	float _padding{};
