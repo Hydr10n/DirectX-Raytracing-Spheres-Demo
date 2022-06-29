@@ -37,8 +37,8 @@ module;
 
 module D3DApp;
 
-import DirectX.RaytracingHelpers;
 import DirectX.Effects.TemporalAntiAliasing;
+import DirectX.RaytracingHelpers;
 import DisplayHelpers;
 import Material;
 import SharedData;
