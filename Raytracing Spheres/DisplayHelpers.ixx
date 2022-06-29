@@ -73,10 +73,12 @@ export namespace DisplayHelpers {
 	}
 
 	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(set<Resolution>& resolutions, LPCWSTR lpDeviceName = nullptr) {
-		DWORD i;
+		set<Resolution> temp;
 		Resolution resolution;
-		for (i = 0; GetDisplayResolution(i, resolution, lpDeviceName); i++) resolutions.insert(resolution);
-		return i != 0;
+		for (DWORD i = 0; GetDisplayResolution(i, resolution, lpDeviceName); i++) temp.insert(resolution);
+		const auto ret = !temp.empty();
+		if (ret) resolutions = move(temp);
+		return ret;
 	}
 
 	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(set<Resolution>& resolutions, HMONITOR hMonitor) {

@@ -151,20 +151,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 			const auto ret = monitor != s_hMonitor;
 			if (ret || forceUpdate) {
-				Resolution displayResolution;
-				ThrowIfFailed(GetDisplayResolution(displayResolution, monitor));
+				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
 
-				set<Resolution> displayResolutions;
-				ThrowIfFailed(::GetDisplayResolutions(displayResolutions, monitor));
-
-				if (const auto resolution = displayResolutions.begin()->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
-					*--displayResolutions.cend() > resolution) {
-					erase_if(displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
+				if (const auto resolution = g_displayResolutions.cbegin()->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
+					*--g_displayResolutions.cend() > resolution) {
+					erase_if(g_displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
 				}
 
-				g_displayResolutions = displayResolutions;
-
-				s_displayResolution = displayResolution;
+				ThrowIfFailed(GetDisplayResolution(s_displayResolution, monitor));
 
 				s_hMonitor = monitor;
 			}
