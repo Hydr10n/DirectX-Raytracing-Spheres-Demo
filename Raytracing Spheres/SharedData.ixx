@@ -1,9 +1,13 @@
+module;
+#include <set>
+
 export module SharedData;
 
 import DisplayHelpers;
 
 using namespace DisplayHelpers;
+using namespace std;
 
 export {
-	inline ResolutionSet g_displayResolutions;
+	inline set<Resolution> g_displayResolutions;
 }

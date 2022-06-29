@@ -28,8 +28,6 @@ export namespace DisplayHelpers {
 		[[nodiscard]] friend bool operator!=(const SIZE& lhs, const SIZE& rhs) { return !(Resolution(lhs) == rhs); }
 	};
 
-	using ResolutionSet = set<Resolution>;
-
 	[[nodiscard]] inline BOOL WINAPI GetDisplayRect(RECT& rect, HMONITOR hMonitor) {
 		MONITORINFO monitorInfo;
 		monitorInfo.cbSize = sizeof(monitorInfo);
@@ -74,20 +72,20 @@ export namespace DisplayHelpers {
 		return monitor != nullptr && GetDisplayResolution(index, resolution, monitor);
 	}
 
-	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(ResolutionSet& resolutions, LPCWSTR lpDeviceName = nullptr) {
+	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(set<Resolution>& resolutions, LPCWSTR lpDeviceName = nullptr) {
 		DWORD i;
 		Resolution resolution;
 		for (i = 0; GetDisplayResolution(i, resolution, lpDeviceName); i++) resolutions.insert(resolution);
 		return i != 0;
 	}
 
-	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(ResolutionSet& resolutions, HMONITOR hMonitor) {
+	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(set<Resolution>& resolutions, HMONITOR hMonitor) {
 		MONITORINFOEXW monitorInfoEx;
 		monitorInfoEx.cbSize = sizeof(monitorInfoEx);
 		return GetMonitorInfoW(hMonitor, &monitorInfoEx) && GetDisplayResolutions(resolutions, monitorInfoEx.szDevice);
 	}
 
-	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(ResolutionSet& resolutions, HWND hWnd) {
+	[[nodiscard]] inline BOOL WINAPI GetDisplayResolutions(set<Resolution>& resolutions, HWND hWnd) {
 		const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 		return monitor != nullptr && GetDisplayResolutions(resolutions, monitor);
 	}

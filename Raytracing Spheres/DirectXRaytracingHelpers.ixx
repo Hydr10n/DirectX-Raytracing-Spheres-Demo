@@ -14,7 +14,7 @@ export namespace DirectX::RaytracingHelpers {
 		AccelerationStructureBuffers() = default;
 
 		AccelerationStructureBuffers(ID3D12Device* pDevice, UINT64 scratchSize, UINT64 resultSize, UINT64 instanceDescsSize) noexcept(false) {
-			const auto CreateBuffer = [&](UINT64 size, D3D12_RESOURCE_STATES initialState, ComPtr<ID3D12Resource>& buffer, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, const D3D12_HEAP_TYPE type = D3D12_HEAP_TYPE_DEFAULT) {
+			const auto CreateBuffer = [&](auto size, auto initialState, auto& buffer, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE type = D3D12_HEAP_TYPE_DEFAULT) {
 				const D3D12_HEAP_PROPERTIES heapProperties(type);
 				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, flags);
 				ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&buffer)));
@@ -43,7 +43,7 @@ export namespace DirectX::RaytracingHelpers {
 			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 		) noexcept(false) : m_device(pDevice) {
-			const auto CreateBuffer = [&](const auto& data, D3D12_RESOURCE_STATES afterState, ComPtr<ID3D12Resource>& buffer) {
+			const auto CreateBuffer = [&](const auto& data, auto afterState, auto& buffer) {
 				const auto size = data.size() * sizeof(data[0]);
 
 				const D3D12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);

@@ -9,6 +9,8 @@
 
 #include "resource.h"
 
+#include <set>
+
 import D3DApp;
 import DisplayHelpers;
 import SharedData;
@@ -152,14 +154,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				Resolution displayResolution;
 				ThrowIfFailed(GetDisplayResolution(displayResolution, monitor));
 
-				ResolutionSet displayResolutions;
+				set<Resolution> displayResolutions;
 				ThrowIfFailed(::GetDisplayResolutions(displayResolutions, monitor));
 
-				auto iterator = displayResolutions.begin();
-				const auto resolution = iterator->cx > iterator->cy ? Resolution{ 800, 600 } : Resolution{ 600, 800 };
-				for (const auto end = displayResolutions.end();
-					iterator != end && *iterator < resolution;
-					iterator = displayResolutions.erase(iterator)) {
+				if (const auto resolution = displayResolutions.begin()->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
+					*--displayResolutions.cend() > resolution) {
+					erase_if(displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
 				}
 
 				g_displayResolutions = displayResolutions;
@@ -176,24 +176,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		switch (uMsg) {
 		case WM_GETMINMAXINFO: {
 			if (lParam) {
-				auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
-
 				const auto style = GetWindowStyle(hWnd), exStyle = GetWindowExStyle(hWnd);
 				const auto hasMenu = GetMenu(hWnd) != nullptr;
 				const auto DPI = GetDpiForWindow(hWnd);
 
-				RECT rect;
+				const auto AdjustSize = [&](const auto& size, auto& newSize) {
+					RECT rect{ 0, 0, size.cx, size.cy };
+					if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
+						newSize = { rect.right - rect.left, rect.bottom - rect.top };
+					}
+				};
 
-				rect = { 0, 0, 320, 200 };
-				if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
-					minMaxInfo.ptMinTrackSize = { rect.right - rect.left, rect.bottom - rect.top };
-				}
-
-				const auto& displayResolution = *--g_displayResolutions.cend();
-				rect = { 0, 0, displayResolution.cx, displayResolution.cy };
-				if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
-					minMaxInfo.ptMaxTrackSize = { rect.right - rect.left, rect.bottom - rect.top };
-				}
+				auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
+				AdjustSize(*g_displayResolutions.cbegin(), minMaxInfo.ptMinTrackSize);
+				AdjustSize(*--g_displayResolutions.cend(), minMaxInfo.ptMaxTrackSize);
 			}
 		} break;
 
@@ -219,7 +215,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			g_app->OnDisplayChanged();
 
 			if (GetDisplayResolutions()) {
-				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *g_displayResolutions.cend());
+				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *--g_displayResolutions.cend());
 
 				ThrowIfFailed(g_windowModeHelper->Apply());
 			}

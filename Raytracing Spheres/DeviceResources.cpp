@@ -606,7 +606,7 @@ void DeviceResources::CreateDevice()
 {
     ComPtr<IDXGIAdapter1> adapter;
 
-    const auto CreateRaytracingDevice = [&](auto adapterIndex)
+    const auto CreateRaytracingDevice = [&](UINT adapterIndex)
     {
         DXGI_ADAPTER_DESC1 desc;
         ThrowIfFailed(adapter->GetDesc1(&desc));

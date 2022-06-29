@@ -385,7 +385,7 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateResource = [&](DXGI_FORMAT format, ComPtr<ID3D12Resource>& resource, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
+			const auto CreateResource = [&](auto format, auto& resource, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(resource.ReleaseAndGetAddressOf())));
@@ -583,7 +583,6 @@ private:
 				}
 			}
 		};
-
 		m_textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Textures\)");
 	}
 
@@ -600,7 +599,7 @@ private:
 
 		const auto& material = *m_myPhysX.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
-		const auto AddRenderItem = [&](RenderItem& renderItem, const PxSphereGeometry& geometry, const PxVec3& position) -> decltype(auto) {
+		const auto AddRenderItem = [&](RenderItem& renderItem, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
 			renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
 			renderItem.InstanceID = static_cast<UINT>(m_renderItems.size());
@@ -612,7 +611,7 @@ private:
 				}
 			};
 
-			auto& rigidDynamic = *m_myPhysX.GetPhysics().createRigidDynamic(PxTransform(position));
+			auto& rigidDynamic = *m_myPhysX.GetPhysics().createRigidDynamic(PxTransform(transform));
 
 			m_myPhysX.GetScene().addActor(rigidDynamic);
 
@@ -648,7 +647,7 @@ private:
 			for (const auto& [Position, Material] : spheres) {
 				RenderItem renderItem;
 				renderItem.Material = Material;
-				AddRenderItem(renderItem, PxSphereGeometry(0.5f), Position);
+				AddRenderItem(renderItem, Position, PxSphereGeometry(0.5f));
 			}
 
 			Random random;
@@ -680,7 +679,7 @@ private:
 					else if (randomValue < 0.75f) renderItem.Material.AsMetal(random.Float4(0.5f), random.Float(0, 0.5f));
 					else renderItem.Material.AsDielectric(random.Float4(), 1.5f);
 
-					auto& rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(0.075f), position);
+					auto& rigidDynamic = AddRenderItem(renderItem, position, PxSphereGeometry(0.075f));
 					rigidDynamic.setLinearVelocity({ 0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0 });
 				}
 			}
@@ -720,7 +719,7 @@ private:
 
 				if (m_textures.contains(Name)) renderItem.pTextures = &m_textures[Name];
 
-				auto& rigidDynamic = AddRenderItem(renderItem, PxSphereGeometry(Radius), Position);
+				auto& rigidDynamic = AddRenderItem(renderItem, Position, PxSphereGeometry(Radius));
 				if (renderItem.Name == Objects::Moon) {
 					const auto x = earth.Position - Position;
 					const auto magnitude = x.magnitude();
@@ -793,7 +792,7 @@ private:
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		{
-			const auto CreateConstantBufferView = [&](const GraphicsResource& graphicsResource, UINT descriptorHeapIndex) {
+			const auto CreateConstantBufferView = [&](const auto& graphicsResource, UINT descriptorHeapIndex) {
 				const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
 					.BufferLocation = graphicsResource.GpuAddress(),
 					.SizeInBytes = static_cast<UINT>(graphicsResource.Size())
@@ -820,19 +819,19 @@ private:
 		}
 
 		{
-			const auto CreateShaderResourceView = [&](const GraphicsResource& graphicsResource, size_t count, UINT stride, UINT descriptorHeapIndex) {
+			const auto CreateShaderResourceView = [&](const auto& graphicsResource, UINT count, UINT stride, UINT descriptorHeapIndex) {
 				const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
 					.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
 					.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
 					.Buffer{
-						.NumElements = static_cast<UINT>(count),
+						.NumElements = count,
 						.StructureByteStride = stride
 					}
 				};
 				device->CreateShaderResourceView(graphicsResource.Resource(), &shaderResourceViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
-			const auto renderItemsSize = m_renderItems.size();
+			const auto renderItemsSize = static_cast<UINT>(m_renderItems.size());
 
 			m_shaderResources.LocalResourceDescriptorHeapIndices = m_graphicsMemory->Allocate(sizeof(LocalResourceDescriptorHeapIndices) * renderItemsSize);
 			CreateShaderResourceView(m_shaderResources.LocalResourceDescriptorHeapIndices, renderItemsSize, sizeof(LocalResourceDescriptorHeapIndices), ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices);
@@ -1022,18 +1021,18 @@ private:
 	void UpdateCamera(const GamePad::State& gamepadState, const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-		const auto Translate = [&](const XMFLOAT3& displacement) {
+		const auto Translate = [&](const auto& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
-			constexpr auto To_PxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
+			constexpr auto To_PxVec3 = [](const auto& value) { return PxVec3(value.x, value.y, -value.z); };
 
 			const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
 			auto x = To_PxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
 			const auto magnitude = x.magnitude();
 			const auto normalized = x / magnitude;
 
-			PxRaycastBuffer raycastBuffer;
-			if (m_myPhysX.GetScene().raycast(To_PxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+			if (PxRaycastBuffer raycastBuffer;
+				m_myPhysX.GetScene().raycast(To_PxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 				x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 			}
 
@@ -1187,7 +1186,7 @@ private:
 						}
 					}
 
-					if (constexpr auto ToString = [](const SIZE& size) { return to_string(size.cx) + " × " + to_string(size.cy); };
+					if (constexpr auto ToString = [](const auto& size) { return to_string(size.cx) + " × " + to_string(size.cy); };
 						ImGui::BeginCombo("Resolution", ToString(m_windowModeHelper->Resolution).c_str())) {
 						for (const auto& displayResolution : g_displayResolutions) {
 							const auto isSelected = m_windowModeHelper->Resolution == displayResolution;
@@ -1229,7 +1228,7 @@ private:
 			}
 
 			if (ImGui::CollapsingHeader("Controls")) {
-				const auto AddControls = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& controls) {
+				const auto AddControls = [](auto treeLabel, auto tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& controls) {
 					if (ImGui::TreeNode(treeLabel)) {
 						if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInner)) {
 							for (const auto& [first, second] : controls) {
