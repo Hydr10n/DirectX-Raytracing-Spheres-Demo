@@ -11,21 +11,21 @@ export namespace DisplayHelpers {
 	struct Resolution : SIZE {
 		[[nodiscard]] bool IsPortrait() const { return cx < cy; }
 
-		[[nodiscard]] friend bool operator<(const SIZE& lhs, const SIZE& rhs) {
-			if (lhs.cx < rhs.cx) return true;
-			if (lhs.cx > rhs.cx) return false;
-			return lhs.cy < rhs.cy;
+		[[nodiscard]] bool operator<(const SIZE& rhs) const {
+			if (cx < rhs.cx) return true;
+			if (cx > rhs.cx) return false;
+			return cy < rhs.cy;
 		}
 
-		[[nodiscard]] friend bool operator>=(const SIZE& lhs, const SIZE& rhs) { return !(lhs < Resolution(rhs)); }
+		[[nodiscard]] bool operator>=(const SIZE& rhs) const { return !(*this < static_cast<Resolution>(rhs)); }
 
-		[[nodiscard]] friend bool operator>(const SIZE& lhs, const SIZE& rhs) { return Resolution(rhs) < lhs; }
+		[[nodiscard]] bool operator>(const SIZE& rhs) const { return static_cast<Resolution>(rhs) < *this; }
 
-		[[nodiscard]] friend bool operator<=(const SIZE& lhs, const SIZE& rhs) { return !(lhs > Resolution(rhs)); }
+		[[nodiscard]] bool operator<=(const SIZE& rhs) const { return !(*this > static_cast<Resolution>(rhs)); }
 
-		[[nodiscard]] friend bool operator==(const SIZE& lhs, const SIZE& rhs) { return lhs.cx == rhs.cx && lhs.cy == rhs.cy; }
+		[[nodiscard]] bool operator==(const SIZE& rhs) const { return cx == rhs.cx && cy == rhs.cy; }
 
-		[[nodiscard]] friend bool operator!=(const SIZE& lhs, const SIZE& rhs) { return !(Resolution(lhs) == rhs); }
+		[[nodiscard]] bool operator!=(const SIZE& rhs) const { return !(*this == rhs); }
 	};
 
 	[[nodiscard]] inline BOOL WINAPI GetDisplayRect(RECT& rect, HMONITOR hMonitor) {

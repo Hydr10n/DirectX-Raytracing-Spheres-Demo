@@ -153,8 +153,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			if (ret || forceUpdate) {
 				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
 
-				if (const auto resolution = g_displayResolutions.cbegin()->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
-					*--g_displayResolutions.cend() > resolution) {
+				if (const auto resolution = cbegin(g_displayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
+					*--cend(g_displayResolutions) > resolution) {
 					erase_if(g_displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
 				}
 
@@ -182,8 +182,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				};
 
 				auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
-				AdjustSize(*g_displayResolutions.cbegin(), minMaxInfo.ptMinTrackSize);
-				AdjustSize(*--g_displayResolutions.cend(), minMaxInfo.ptMaxTrackSize);
+				AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);
+				AdjustSize(*--cend(g_displayResolutions), minMaxInfo.ptMaxTrackSize);
 			}
 		} break;
 
@@ -209,7 +209,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			g_app->OnDisplayChanged();
 
 			if (GetDisplayResolutions()) {
-				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *--g_displayResolutions.cend());
+				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *--cend(g_displayResolutions));
 
 				ThrowIfFailed(g_windowModeHelper->Apply());
 			}

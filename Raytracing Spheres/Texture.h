@@ -22,15 +22,12 @@ struct Texture {
 	Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
 };
 
-struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType, Texture>, DirectX::XMMATRIX /*Transform*/>> {
-	using std::map<key_type, mapped_type>::map;
+struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType, Texture>, DirectX::XMMATRIX /*Transform*/>, std::less<>> {
+	using std::map<key_type, mapped_type, key_compare>::map;
 
 	std::wstring DirectoryPath;
 
-	void Load(
-		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& descriptorHeap,
-		UINT threadCount = 1
-	) {
+	void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DirectX::DescriptorHeap& descriptorHeap, UINT threadCount = 1) {
 		using namespace DirectX;
 		using namespace DX;
 		using namespace std;
@@ -43,11 +40,11 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 		vector<thread> threads;
 		threads.reserve(threadCount);
 
-		for (auto& pair : *this) {
-			for (auto& [first, second] : get<0>(pair.second)) {
+		for (auto& [_, textures] : *this) {
+			for (auto& [type, texture] : get<0>(textures)) {
 				threads.emplace_back([&] {
 					try {
-						auto& [DescriptorHeapIndex, Path, Resource] = second;
+						auto& [DescriptorHeapIndex, Path, Resource] = texture;
 
 						ResourceUploadBatch resourceUploadBatch(pDevice);
 						resourceUploadBatch.Begin();
@@ -59,9 +56,7 @@ struct TextureDictionary : std::map<std::string, std::tuple<std::map<TextureType
 						if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
 							ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
 
-							if ((isCubeMap && first != TextureType::CubeMap) || (!isCubeMap && first == TextureType::CubeMap)) {
-								throw runtime_error(filePathString + ": Invalid texture");
-							}
+							if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(filePathString + ": Invalid texture");
 						}
 						else {
 							ThrowIfFailed(CreateWICTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), Resource.ReleaseAndGetAddressOf()), filePathString.c_str());

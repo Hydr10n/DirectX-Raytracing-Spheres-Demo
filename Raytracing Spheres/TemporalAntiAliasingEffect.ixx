@@ -8,6 +8,7 @@ module;
 export module DirectX.Effects.TemporalAntiAliasing;
 
 using namespace DX;
+using namespace std;
 
 namespace DirectX::Effects {
 	export struct TemporalAntiAliasingEffect : IEffect {
@@ -18,7 +19,7 @@ namespace DirectX::Effects {
 		struct { D3D12_GPU_DESCRIPTOR_HANDLE PreviousOutputSRV, CurrentOutputSRV, MotionVectorsSRV, FinalOutputUAV; } TextureDescriptors{};
 
 		TemporalAntiAliasingEffect(ID3D12Device* device) {
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pTemporalAntiAliasing, ARRAYSIZE(g_pTemporalAntiAliasing));
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pTemporalAntiAliasing, size(g_pTemporalAntiAliasing));
 			ThrowIfFailed(device->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));

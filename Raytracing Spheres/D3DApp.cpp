@@ -66,7 +66,7 @@ struct D3DApp::Impl : IDeviceNotify {
 			}
 
 			{
-				static_cast<void>(GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled));
+				ignore = GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled);
 
 				if (GraphicsSettingsData::Load<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha)) {
 					m_temporalAntiAliasingConstant.Alpha = clamp(m_temporalAntiAliasingConstant.Alpha, 0.0f, 1.0f);
@@ -181,7 +181,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_renderTextureResources = {};
 
-		for (auto& pair : m_textures) for (auto& pair1 : get<0>(pair.second)) pair1.second.Resource.Reset();
+		for (auto& [_, textures] : m_textures) for (auto& [_, texture] : get<0>(textures)) texture.Resource.Reset();
 
 		m_shaderBindingTable.Reset();
 
@@ -345,7 +345,7 @@ private:
 
 	bool m_isPhysicsSimulationRunning = true;
 	struct {
-		map<string, tuple<PxRigidBody*, bool /*IsGravityEnabled*/>> RigidBodies;
+		map<string, tuple<PxRigidBody*, bool /*IsGravityEnabled*/>, less<>> RigidBodies;
 		const struct { PxReal PositionY = 0.5f, Period = 3; } Spring;
 	} m_physicsObjects;
 	MyPhysX m_myPhysX;
@@ -468,7 +468,7 @@ private:
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
 		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptorHeap->Heap() };
-		commandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
+		commandList->SetDescriptorHeaps(static_cast<UINT>(size(descriptorHeaps)), descriptorHeaps);
 
 		{
 			DispatchRays();
@@ -514,9 +514,9 @@ private:
 
 		m_deviceResources->Present();
 
-		m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
-
 		m_deviceResources->WaitForGpu();
+
+		m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 
 		PIXEndEvent();
 	}
@@ -748,7 +748,7 @@ private:
 	void CreateRootSignatures() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, ARRAYSIZE(g_pRaytracing), IID_PPV_ARGS(m_globalRootSignature.ReleaseAndGetAddressOf())));
+		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(m_globalRootSignature.ReleaseAndGetAddressOf())));
 	}
 
 	void CreatePipelineStateObjects() {
@@ -758,7 +758,7 @@ private:
 
 		const auto dxilLibrarySubobject = stateObjectDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
 
-		const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pRaytracing, ARRAYSIZE(g_pRaytracing));
+		const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pRaytracing, size(g_pRaytracing));
 		dxilLibrarySubobject->SetDXILLibrary(&shaderByteCode);
 
 		dxilLibrarySubobject->DefineExport(L"RaytracingShaderConfig");
@@ -1024,15 +1024,15 @@ private:
 		const auto Translate = [&](const auto& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
-			constexpr auto To_PxVec3 = [](const auto& value) { return PxVec3(value.x, value.y, -value.z); };
+			constexpr auto ToPxVec3 = [](const auto& value) { return PxVec3(value.x, value.y, -value.z); };
 
 			const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
-			auto x = To_PxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
+			auto x = ToPxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
 			const auto magnitude = x.magnitude();
 			const auto normalized = x / magnitude;
 
 			if (PxRaycastBuffer raycastBuffer;
-				m_myPhysX.GetScene().raycast(To_PxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+				m_myPhysX.GetScene().raycast(ToPxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 				x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 			}
 
@@ -1181,7 +1181,7 @@ private:
 					{
 						constexpr LPCSTR WindowModes[]{ "Windowed", "Borderless", "Fullscreen" };
 						auto windowMode = m_windowModeHelper->GetMode();
-						if (ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), WindowModes, ARRAYSIZE(WindowModes))) {
+						if (ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), WindowModes, static_cast<int>(size(WindowModes)))) {
 							m_windowModeHelper->SetMode(windowMode);
 						}
 					}
@@ -1228,10 +1228,10 @@ private:
 			}
 
 			if (ImGui::CollapsingHeader("Controls")) {
-				const auto AddControls = [](auto treeLabel, auto tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& controls) {
+				const auto AddContents = [](auto treeLabel, auto tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& list) {
 					if (ImGui::TreeNode(treeLabel)) {
 						if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInner)) {
-							for (const auto& [first, second] : controls) {
+							for (const auto& [first, second] : list) {
 								ImGui::TableNextRow();
 
 								ImGui::TableSetColumnIndex(0);
@@ -1248,7 +1248,7 @@ private:
 					}
 				};
 
-				AddControls(
+				AddContents(
 					"Xbox Controller",
 					"##XboxController",
 					{
@@ -1263,7 +1263,7 @@ private:
 					}
 				);
 
-				AddControls(
+				AddContents(
 					"Keyboard",
 					"##Keyboard",
 					{
@@ -1278,7 +1278,7 @@ private:
 					}
 				);
 
-				AddControls(
+				AddContents(
 					"Mouse",
 					"Mouse",
 					{

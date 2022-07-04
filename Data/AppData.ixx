@@ -1,6 +1,6 @@
 /*
  * Header File: AppData.ixx
- * Last Update: 2022/06/28
+ * Last Update: 2022/07/03
  *
  * Copyright (C) Hydr10n@GitHub. All Rights Reserved.
  */
@@ -12,9 +12,11 @@ module;
 
 export module Hydr10n.Data.AppData;
 
+using namespace std;
+
 namespace Hydr10n::Data {
 	export struct AppData {
-		const std::wstring Path;
+		const wstring Path;
 
 		AppData(LPCWSTR lpPath) : Path(lpPath) {}
 
@@ -23,13 +25,11 @@ namespace Hydr10n::Data {
 			return GetLastError() == ERROR_SUCCESS;
 		}
 
-		template <typename T> requires std::integral<T> || std::floating_point<T>
+		template <typename T> requires integral<T> || floating_point<T>
 		[[nodiscard]] BOOL Load(LPCWSTR lpSection, LPCWSTR lpKey, T & data) const {
-			WCHAR buffer[1025];
-			if (Load(lpSection, lpKey, buffer, ARRAYSIZE(buffer))) {
-				WCHAR ch;
-				std::wistringstream istringstream(buffer);
-				if (istringstream >> data && !(istringstream >> ch)) return TRUE;
+			if (WCHAR buffer[1025]; Load(lpSection, lpKey, buffer, static_cast<DWORD>(size(buffer)))) {
+				wistringstream istringstream(buffer);
+				if (WCHAR ch; istringstream >> data && !(istringstream >> ch)) return TRUE;
 				SetLastError(ERROR_INVALID_DATA);
 			}
 			return FALSE;
@@ -39,9 +39,9 @@ namespace Hydr10n::Data {
 			return WritePrivateProfileStringW(lpSection, lpKey, data, Path.c_str());
 		}
 
-		template <typename T>  requires std::integral<T> || std::floating_point<T>
+		template <typename T>  requires integral<T> || floating_point<T>
 		[[nodiscard]] BOOL Save(LPCWSTR lpSection, LPCWSTR lpKey, const T & data) const {
-			return Save(lpSection, lpKey, std::to_wstring(data).c_str());
+			return Save(lpSection, lpKey, to_wstring(data).c_str());
 		}
 	};
 }
