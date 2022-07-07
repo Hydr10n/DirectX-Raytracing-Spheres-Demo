@@ -145,13 +145,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 		static Resolution s_displayResolution;
 
-		const auto GetDisplayResolutions = [&](bool forceUpdate = false) {
+		const auto GetDisplayResolutions = [&](bool forceUpdate = false, Resolution* pMinDisplayResolution = nullptr) {
 			const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 			ThrowIfFailed(static_cast<BOOL>(monitor != nullptr));
 
 			const auto ret = monitor != s_hMonitor;
 			if (ret || forceUpdate) {
 				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
+
+				if (pMinDisplayResolution != nullptr) *pMinDisplayResolution = *cbegin(g_displayResolutions);
 
 				if (const auto resolution = cbegin(g_displayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
 					*--cend(g_displayResolutions) > resolution) {
@@ -183,7 +185,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 				auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
 				AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);
-				AdjustSize(*--cend(g_displayResolutions), minMaxInfo.ptMaxTrackSize);
+				AdjustSize(s_displayResolution, minMaxInfo.ptMaxTrackSize);
 			}
 		} break;
 
@@ -198,7 +200,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 			case SIZE_RESTORED: g_app->OnResuming(); [[fallthrough]];
 			default: {
-				//g_windowModeHelper->Resolution = { LOWORD(lParam), HIWORD(lParam) };
+				if (g_windowModeHelper->WindowedStyle & WS_SIZEBOX) g_windowModeHelper->Resolution = { LOWORD(lParam), HIWORD(lParam) };
 
 				g_app->OnWindowSizeChanged();
 			} break;
@@ -206,39 +208,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		} break;
 
 		case WM_DISPLAYCHANGE: {
-			g_app->OnDisplayChanged();
-
-			if (GetDisplayResolutions()) {
+			Resolution minDisplayResolution;
+			if (GetDisplayResolutions(true, &minDisplayResolution)) {
 				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *--cend(g_displayResolutions));
 
 				ThrowIfFailed(g_windowModeHelper->Apply());
 			}
 			else {
-				Resolution displayResolution;
-				ThrowIfFailed(GetDisplayResolution(0, displayResolution, s_hMonitor));
-				if (displayResolution.IsPortrait() != g_windowModeHelper->Resolution.IsPortrait()) {
-					GetDisplayResolutions(true);
-
+				if (minDisplayResolution.IsPortrait() != g_windowModeHelper->Resolution.IsPortrait()) {
 					swap(g_windowModeHelper->Resolution.cx, g_windowModeHelper->Resolution.cy);
 
 					ThrowIfFailed(g_windowModeHelper->Apply());
 				}
-				else if ((displayResolution = { LOWORD(lParam), HIWORD(lParam) }) != s_displayResolution) {
-					ThrowIfFailed(g_windowModeHelper->Apply());
-
-					s_displayResolution = displayResolution;
-				}
 			}
+
+			g_app->OnDisplayChanged();
 		} break;
 
 		case WM_DPICHANGED: {
-			const auto& [left, top, right, bottom] = *reinterpret_cast<PRECT>(lParam);
-			SetWindowPos(hWnd, nullptr, static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top), SWP_NOZORDER);
+			if (g_windowModeHelper->WindowedExStyle & WS_SIZEBOX) {
+				const auto& [left, top, right, bottom] = *reinterpret_cast<PRECT>(lParam);
+				SetWindowPos(hWnd, nullptr, static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top), SWP_NOZORDER);
+			}
 		} break;
 
 		case WM_ACTIVATEAPP: {
-			if (wParam) g_app->OnActivated();
-			else g_app->OnDeactivated();
+			if (g_app != nullptr) {
+				if (wParam) g_app->OnActivated();
+				else g_app->OnDeactivated();
+			}
 		} [[fallthrough]];
 		case WM_ACTIVATE: {
 			Keyboard::ProcessMessage(uMsg, wParam, lParam);

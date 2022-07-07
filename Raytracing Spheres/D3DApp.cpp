@@ -25,8 +25,8 @@ module;
 
 #include "Shaders/Raytracing.hlsl.h"
 
-#include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
+#include "imgui_impl_win32.h"
 #include "ImGuiEx.h"
 
 #include "MyAppData.h"
@@ -168,11 +168,16 @@ struct D3DApp::Impl : IDeviceNotify {
 		m_stepTimer.ResetElapsedTime();
 
 		m_inputDevices.Gamepad->Resume();
+
+		m_inputDeviceStateTrackers = {};
 	}
 
 	void OnSuspending() { m_inputDevices.Gamepad->Suspend(); }
 
-	void OnActivated() {}
+	void OnActivated() {
+		m_inputDeviceStateTrackers.Keyboard.Reset();
+		m_inputDeviceStateTrackers.Mouse.Reset();
+	}
 
 	void OnDeactivated() {}
 
@@ -978,7 +983,8 @@ private:
 	void ProcessInput() {
 		const auto gamepadState = m_inputDevices.Gamepad->GetState(0);
 		auto& gamepadStateTracker = m_inputDeviceStateTrackers.Gamepad;
-		gamepadStateTracker.Update(gamepadState);
+		if (gamepadState.IsConnected()) gamepadStateTracker.Update(gamepadState);
+		else gamepadStateTracker.Reset();
 
 		const auto keyboardState = m_inputDevices.Keyboard->GetState();
 		auto& keyboardStateTracker = m_inputDeviceStateTrackers.Keyboard;
@@ -1166,6 +1172,12 @@ private:
 	void RenderMenu() {
 		ImGui_ImplDX12_NewFrame();
 		ImGui_ImplWin32_NewFrame();
+
+		{
+			const auto displayResolution = *--cend(g_displayResolutions);
+			ImGui::GetIO().DisplaySize = { static_cast<float>(displayResolution.cx), static_cast<float>(displayResolution.cy) };
+		}
+
 		ImGui::NewFrame();
 
 		{

@@ -50,23 +50,23 @@ export namespace WindowHelpers {
 			};
 
 			const auto SetWindowSize = [&] {
+				if (m_currentMode == WindowMode::Fullscreen) {
+					ShowWindow(hWnd, SW_SHOWMAXIMIZED);
+					return true;
+				}
+
 				RECT displayRect;
 				if (!GetDisplayRect(displayRect, hWnd)) return false;
 				RECT rect{ 0, 0, Resolution.cx, Resolution.cy };
 				CenterRect(displayRect, rect);
 				return AdjustWindowRectExForDpi(&rect, style, GetMenu(hWnd) != nullptr, exStyle, GetDpiForWindow(hWnd))
-					&& SetWindowPos(hWnd, HWND_TOP, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW) != 0;
+					&& SetWindowPos(hWnd, HWND_TOP, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 			};
 
-			auto ret = SetWindowStyles();
-			if (ret) {
-				if (m_currentMode == WindowMode::Fullscreen) ShowWindow(hWnd, SW_SHOWMAXIMIZED);
-				else ret = SetWindowSize();
-			}
-			return ret;
+			return SetWindowStyles() && SetWindowSize();
 		}
 
 	private:
-		WindowMode m_previousMode = WindowMode::Fullscreen, m_currentMode = WindowMode::Windowed;
+		WindowMode m_previousMode{}, m_currentMode{};
 	};
 }

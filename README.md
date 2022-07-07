@@ -79,7 +79,7 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 
 - [Dear ImGui](https://github.com/ocornut/imgui)
 	```cmd
-	> .\vcpkg install imgui[core,win32-binding,dx12-binding]:x64-windows
+	> .\vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows
 	```
 
 ## Minimum System Requirements

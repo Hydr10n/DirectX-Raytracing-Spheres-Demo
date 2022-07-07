@@ -46,15 +46,15 @@ public:
 	MyPhysX() noexcept(false) {
 		using namespace physx;
 
-		const auto foundation = PxCreateFoundation(PX_PHYSICS_VERSION, m_allocatorCallback, m_errorCallback);
+		auto& foundation = *PxCreateFoundation(PX_PHYSICS_VERSION, m_allocatorCallback, m_errorCallback);
 
-		m_pvd = PxCreatePvd(*foundation);
+		m_pvd = PxCreatePvd(foundation);
 		m_pvd->connect(*PxDefaultPvdSocketTransportCreate("localhost", 5425, 10), PxPvdInstrumentationFlag::eALL);
 
 		PxTolerancesScale tolerancesScale;
 		tolerancesScale.speed = 3;
 
-		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, *foundation, tolerancesScale, true, m_pvd);
+		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, foundation, tolerancesScale, true, m_pvd);
 
 		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(8);
 

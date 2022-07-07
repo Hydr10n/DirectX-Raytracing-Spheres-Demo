@@ -43,11 +43,11 @@ namespace DX {
 		throw std::system_error(code, std::system_category(), message);
 	}
 
-	inline void ThrowIfFailed(std::same_as<BOOL> auto value, LPCSTR lpMessage = "") {
+	void ThrowIfFailed(std::same_as<BOOL> auto value, LPCSTR lpMessage = "") {
 		if (!value) throw_std_system_error(static_cast<int>(GetLastError()), lpMessage);
 	}
 
-	inline void ThrowIfFailed(std::same_as<HRESULT> auto value, LPCSTR lpMessage = "") {
+	void ThrowIfFailed(std::same_as<HRESULT> auto value, LPCSTR lpMessage = "") {
 		if (FAILED(value)) throw_std_system_error(static_cast<int>(value), lpMessage);
 	}
 }
