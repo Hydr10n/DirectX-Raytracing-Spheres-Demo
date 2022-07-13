@@ -41,8 +41,8 @@ void RadianceRayClosestHit(inout RadianceRayPayload payload : SV_RayPayload, Bui
 	float3 worldNormal;
 	float2 textureCoordinate;
 	{
-		const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Mesh.Vertices];
-		const uint3 indices = GeometryIndexHelpers::Load3x16BitIndices(ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Mesh.Indices], PrimitiveIndex());
+        const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.TriangleMesh.Vertices];
+        const uint3 indices = GeometryIndexHelpers::Load3x16BitIndices(ResourceDescriptorHeap[localResourceDescriptorHeapIndices.TriangleMesh.Indices], PrimitiveIndex());
 		const float3 normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
 

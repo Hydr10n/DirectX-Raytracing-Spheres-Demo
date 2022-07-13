@@ -27,7 +27,7 @@ struct LocalResourceDescriptorHeapIndices {
 	struct {
 		uint Vertices, Indices;
 		uint2 _padding;
-	} Mesh;
+	} TriangleMesh;
 	struct {
 		uint ColorMap, NormalMap;
 		uint2 _padding;

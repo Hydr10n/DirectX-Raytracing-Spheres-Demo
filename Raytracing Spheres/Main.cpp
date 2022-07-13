@@ -33,8 +33,6 @@ shared_ptr<WindowModeHelper> g_windowModeHelper;
 
 unique_ptr<D3DApp> g_app;
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-
 int WINAPI wWinMain(
 	[[maybe_unused]] _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
 	[[maybe_unused]] _In_ LPWSTR lpCmdLine, [[maybe_unused]] _In_ int nShowCmd
@@ -51,6 +49,7 @@ int WINAPI wWinMain(
 	try {
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
 
+		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
 			.cbSize = sizeof(wndClassEx),
 			.lpfnWndProc = WndProc,
@@ -77,19 +76,25 @@ int WINAPI wWinMain(
 
 		g_windowModeHelper = make_shared<decltype(g_windowModeHelper)::element_type>(window);
 
-		g_windowModeHelper->WindowedStyle = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-
-		if (!GraphicsSettingsData::Load<GraphicsSettingsData::Resolution>(g_windowModeHelper->Resolution)
-			|| !g_displayResolutions.contains(g_windowModeHelper->Resolution)) {
-			RECT rect;
-			ThrowIfFailed(GetClientRect(g_windowModeHelper->hWnd, &rect));
-			g_windowModeHelper->Resolution = { rect.right - rect.left, rect.bottom - rect.top };
+		RECT clientRect;
+		if (Resolution resolution; GraphicsSettingsData::Load<GraphicsSettingsData::Resolution>(resolution)
+			&& resolution >= *cbegin(g_displayResolutions) && resolution <= *--cend(g_displayResolutions)) {
+			clientRect = { 0, 0, resolution.cx, resolution.cy };
 		}
+		else ThrowIfFailed(GetClientRect(window, &clientRect));
+
+		g_windowModeHelper->SetResolution({ clientRect.right - clientRect.left, clientRect.bottom - clientRect.top });
+
+		RECT displayRect;
+		ThrowIfFailed(GetDisplayRect(displayRect, window));
+		CenterRect(displayRect, clientRect);
+		AdjustWindowRectExForDpi(&clientRect, GetWindowStyle(window), GetMenu(window) != nullptr, GetWindowExStyle(window), GetDpiForWindow(window));
+		SetWindowPos(window, nullptr, static_cast<int>(clientRect.left), static_cast<int>(clientRect.top), static_cast<int>(clientRect.right - clientRect.left), static_cast<int>(clientRect.bottom - clientRect.top), SWP_NOZORDER);
 
 		g_app = make_unique<decltype(g_app)::element_type>(g_windowModeHelper);
 
-		ThrowIfFailed(g_windowModeHelper->Apply()); // Fix missing icon on title bar when initial WindowMode != Windowed
-
+		// HACK: Fix missing icon on title bar when initial WindowMode != Windowed
+		ThrowIfFailed(g_windowModeHelper->Apply());
 		if (WindowMode windowMode; GraphicsSettingsData::Load<GraphicsSettingsData::WindowMode>(windowMode)) {
 			g_windowModeHelper->SetMode(windowMode);
 			ThrowIfFailed(g_windowModeHelper->Apply());
@@ -145,15 +150,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 		static Resolution s_displayResolution;
 
-		const auto GetDisplayResolutions = [&](bool forceUpdate = false, Resolution* pMinDisplayResolution = nullptr) {
+		const auto GetDisplayResolutions = [&](bool forceUpdate = false) {
 			const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 			ThrowIfFailed(static_cast<BOOL>(monitor != nullptr));
 
-			const auto ret = monitor != s_hMonitor;
-			if (ret || forceUpdate) {
+			if (monitor != s_hMonitor || forceUpdate) {
 				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
-
-				if (pMinDisplayResolution != nullptr) *pMinDisplayResolution = *cbegin(g_displayResolutions);
 
 				if (const auto resolution = cbegin(g_displayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
 					*--cend(g_displayResolutions) > resolution) {
@@ -164,7 +166,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 				s_hMonitor = monitor;
 			}
-			return ret;
 		};
 
 		if (s_hMonitor == nullptr) GetDisplayResolutions();
@@ -195,12 +196,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		case WM_SIZING: g_app->Tick(); break;
 
 		case WM_SIZE: {
+			if (!g_app) return 0;
+
 			switch (wParam) {
 			case SIZE_MINIMIZED: g_app->OnSuspending(); break;
 
 			case SIZE_RESTORED: g_app->OnResuming(); [[fallthrough]];
 			default: {
-				if (g_windowModeHelper->WindowedStyle & WS_SIZEBOX) g_windowModeHelper->Resolution = { LOWORD(lParam), HIWORD(lParam) };
+				if (g_windowModeHelper->GetMode() != WindowMode::Fullscreen || g_windowModeHelper->IsFullscreenResolutionHandledByWindow()) {
+					g_windowModeHelper->SetResolution({ LOWORD(lParam), HIWORD(lParam) });
+				}
 
 				g_app->OnWindowSizeChanged();
 			} break;
@@ -208,32 +213,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		} break;
 
 		case WM_DISPLAYCHANGE: {
-			Resolution minDisplayResolution;
-			if (GetDisplayResolutions(true, &minDisplayResolution)) {
-				g_windowModeHelper->Resolution = min(g_windowModeHelper->Resolution, *--cend(g_displayResolutions));
+			GetDisplayResolutions(true);
 
-				ThrowIfFailed(g_windowModeHelper->Apply());
-			}
-			else {
-				if (minDisplayResolution.IsPortrait() != g_windowModeHelper->Resolution.IsPortrait()) {
-					swap(g_windowModeHelper->Resolution.cx, g_windowModeHelper->Resolution.cy);
-
-					ThrowIfFailed(g_windowModeHelper->Apply());
-				}
-			}
+			ThrowIfFailed(g_windowModeHelper->Apply());
 
 			g_app->OnDisplayChanged();
 		} break;
 
 		case WM_DPICHANGED: {
-			if (g_windowModeHelper->WindowedExStyle & WS_SIZEBOX) {
-				const auto& [left, top, right, bottom] = *reinterpret_cast<PRECT>(lParam);
-				SetWindowPos(hWnd, nullptr, static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top), SWP_NOZORDER);
-			}
+			const auto& [left, top, right, bottom] = *reinterpret_cast<PRECT>(lParam);
+			SetWindowPos(hWnd, nullptr, static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top), SWP_NOZORDER);
 		} break;
 
 		case WM_ACTIVATEAPP: {
-			if (g_app != nullptr) {
+			if (g_app) {
 				if (wParam) g_app->OnActivated();
 				else g_app->OnDeactivated();
 			}

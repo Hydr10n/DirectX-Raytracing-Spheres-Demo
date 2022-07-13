@@ -39,14 +39,12 @@ module D3DApp;
 
 import DirectX.Effects.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
-import DisplayHelpers;
 import Material;
 import SharedData;
 
 using namespace DirectX;
 using namespace DirectX::Effects;
 using namespace DirectX::RaytracingHelpers;
-using namespace DisplayHelpers;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace nv_helpers_dx12;
@@ -60,6 +58,8 @@ using GraphicsSettingsData = MyAppData::Settings::Graphics;
 
 struct D3DApp::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
+		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
+
 		{
 			if (GraphicsSettingsData::Load<GraphicsSettingsData::Raytracing::SamplesPerPixel>(m_raytracingSamplesPerPixel)) {
 				m_raytracingSamplesPerPixel = clamp(m_raytracingSamplesPerPixel, 1u, MaxRaytracingSamplesPerPixel);
@@ -99,7 +99,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_deviceResources->RegisterDeviceNotify(this);
 
-		m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->Resolution);
+		m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->GetResolution());
 
 		m_deviceResources->CreateDeviceResources();
 		CreateDeviceDependentResources();
@@ -136,20 +136,21 @@ struct D3DApp::Impl : IDeviceNotify {
 	void Tick() {
 		m_stepTimer.Tick([&] { Update(); });
 
-		const auto& windowModeHelper = m_windowModeHelper;
-
-		const auto windowMode = windowModeHelper->GetMode();
-		const auto resolution = windowModeHelper->Resolution;
-		const auto windowedStyle = windowModeHelper->WindowedStyle, windowedExStyle = windowModeHelper->WindowedExStyle;
+		const auto windowMode = m_windowModeHelper->GetMode();
+		const auto resolution = m_windowModeHelper->GetResolution();
+		DWORD windowedStyle, windowedExStyle;
+		m_windowModeHelper->GetWindowedStyles(windowedStyle, windowedExStyle);
 
 		Render();
 
-		const auto newWindowMode = windowModeHelper->GetMode();
-		const auto newResolution = windowModeHelper->Resolution;
+		const auto newWindowMode = m_windowModeHelper->GetMode();
+		const auto newResolution = m_windowModeHelper->GetResolution();
+		DWORD newWindowedStyle, newWindowedExStyle;
+		m_windowModeHelper->GetWindowedStyles(newWindowedStyle, newWindowedExStyle);
+
 		if (const auto isWindowModeChanged = newWindowMode != windowMode, isResolutionChanged = newResolution != resolution;
-			isWindowModeChanged || isResolutionChanged
-			|| windowModeHelper->WindowedStyle != windowedStyle || windowModeHelper->WindowedExStyle != windowedExStyle) {
-			ThrowIfFailed(windowModeHelper->Apply());
+			isWindowModeChanged || isResolutionChanged || windowedStyle != newWindowedStyle || windowedExStyle != newWindowedExStyle) {
+			ThrowIfFailed(m_windowModeHelper->Apply());
 
 			if (isWindowModeChanged) GraphicsSettingsData::Save<GraphicsSettingsData::WindowMode>(newWindowMode);
 			if (isResolutionChanged) GraphicsSettingsData::Save<GraphicsSettingsData::Resolution>(newResolution);
@@ -157,7 +158,7 @@ struct D3DApp::Impl : IDeviceNotify {
 	}
 
 	void OnWindowSizeChanged() {
-		if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->Resolution)) {
+		if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->GetResolution())) {
 			CreateWindowSizeDependentResources();
 		}
 	}
@@ -290,7 +291,7 @@ private:
 		struct {
 			UINT Vertices, Indices;
 			XMUINT2 _padding;
-		} Mesh;
+		} TriangleMesh;
 		struct {
 			UINT ColorMap, NormalMap;
 			XMUINT2 _padding;
@@ -314,7 +315,7 @@ private:
 	} m_shaderResources;
 
 	struct {
-		struct Sphere : unique_ptr<Mesh<VertexPositionNormalTexture, UINT16>> {
+		struct Sphere : unique_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>> {
 			using unique_ptr::unique_ptr;
 			using unique_ptr::operator=;
 			static constexpr float Radius = 0.5f;
@@ -340,7 +341,7 @@ private:
 		wstring HitGroup;
 		UINT InstanceID = UINT_MAX;
 		struct {
-			struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } Mesh;
+			struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } TriangleMesh;
 		} ResourceDescriptorHeapIndices;
 		Material Material;
 		TextureDictionary::mapped_type* pTextures{};
@@ -610,7 +611,7 @@ private:
 			renderItem.InstanceID = static_cast<UINT>(m_renderItems.size());
 
 			renderItem.ResourceDescriptorHeapIndices = {
-				.Mesh{
+				.TriangleMesh{
 					.Vertices = ResourceDescriptorHeapIndex::SphereVertices,
 					.Indices = ResourceDescriptorHeapIndex::SphereIndices
 				}
@@ -848,9 +849,9 @@ private:
 				auto& localResourceDescriptorHeapIndices = *(reinterpret_cast<LocalResourceDescriptorHeapIndices*>(m_shaderResources.LocalResourceDescriptorHeapIndices.Memory()) + renderItem.InstanceID);
 
 				localResourceDescriptorHeapIndices = {
-					.Mesh{
-						.Vertices = renderItem.ResourceDescriptorHeapIndices.Mesh.Vertices,
-						.Indices = renderItem.ResourceDescriptorHeapIndices.Mesh.Indices
+					.TriangleMesh{
+						.Vertices = renderItem.ResourceDescriptorHeapIndices.TriangleMesh.Vertices,
+						.Indices = renderItem.ResourceDescriptorHeapIndices.TriangleMesh.Indices
 					},
 					.Textures{
 						.ColorMap = UINT_MAX,
@@ -1192,23 +1193,26 @@ private:
 				{
 					{
 						constexpr LPCSTR WindowModes[]{ "Windowed", "Borderless", "Fullscreen" };
-						auto windowMode = m_windowModeHelper->GetMode();
-						if (ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), WindowModes, static_cast<int>(size(WindowModes)))) {
+						if (auto windowMode = m_windowModeHelper->GetMode();
+							ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), WindowModes, static_cast<int>(size(WindowModes)))) {
 							m_windowModeHelper->SetMode(windowMode);
 						}
 					}
 
-					if (constexpr auto ToString = [](const auto& size) { return to_string(size.cx) + " × " + to_string(size.cy); };
-						ImGui::BeginCombo("Resolution", ToString(m_windowModeHelper->Resolution).c_str())) {
-						for (const auto& displayResolution : g_displayResolutions) {
-							const auto isSelected = m_windowModeHelper->Resolution == displayResolution;
-							if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
-								m_windowModeHelper->Resolution = displayResolution;
+					{
+						constexpr auto ToString = [](const SIZE& value) { return to_string(value.cx) + " × " + to_string(value.cy); };
+						if (const auto resolution = m_windowModeHelper->GetResolution();
+							ImGui::BeginCombo("Resolution", ToString(resolution).c_str())) {
+							for (const auto& displayResolution : g_displayResolutions) {
+								const auto isSelected = resolution == displayResolution;
+								if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
+									m_windowModeHelper->SetResolution(displayResolution);
+								}
+								if (isSelected) ImGui::SetItemDefaultFocus();
 							}
-							if (isSelected) ImGui::SetItemDefaultFocus();
-						}
 
-						ImGui::EndCombo();
+							ImGui::EndCombo();
+						}
 					}
 				}
 

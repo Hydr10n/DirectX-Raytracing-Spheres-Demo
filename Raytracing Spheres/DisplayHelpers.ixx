@@ -9,23 +9,17 @@ using namespace std;
 
 export namespace DisplayHelpers {
 	struct Resolution : SIZE {
-		[[nodiscard]] bool IsPortrait() const { return cx < cy; }
+		bool IsPortrait() const { return cx < cy; }
 
-		[[nodiscard]] bool operator<(const SIZE& rhs) const {
-			if (cx < rhs.cx) return true;
-			if (cx > rhs.cx) return false;
-			return cy < rhs.cy;
+		[[nodiscard]] auto operator<=>(const Resolution& rhs) const {
+			if (cx < rhs.cx) return -1;
+			if (cx > rhs.cx) return 1;
+			if (cy < rhs.cy) return -1;
+			if (cy > rhs.cy) return 1;
+			return 0;
 		}
 
-		[[nodiscard]] bool operator>=(const SIZE& rhs) const { return !(*this < static_cast<Resolution>(rhs)); }
-
-		[[nodiscard]] bool operator>(const SIZE& rhs) const { return static_cast<Resolution>(rhs) < *this; }
-
-		[[nodiscard]] bool operator<=(const SIZE& rhs) const { return !(*this > static_cast<Resolution>(rhs)); }
-
-		[[nodiscard]] bool operator==(const SIZE& rhs) const { return cx == rhs.cx && cy == rhs.cy; }
-
-		[[nodiscard]] bool operator!=(const SIZE& rhs) const { return !(*this == rhs); }
+		[[nodiscard]] bool operator==(const Resolution& rhs) const { return cx == rhs.cx && cy == rhs.cy; }
 	};
 
 	[[nodiscard]] inline BOOL WINAPI GetDisplayRect(RECT& rect, HMONITOR hMonitor) {

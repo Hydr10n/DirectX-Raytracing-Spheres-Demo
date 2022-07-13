@@ -31,12 +31,12 @@ export namespace DirectX::RaytracingHelpers {
 	};
 
 	template <typename Vertex, typename Index> requires same_as<Index, UINT16> || same_as<Index, UINT32>
-	class Mesh {
+	class TriangleMesh {
 	public:
 		using VertexType = Vertex;
 		using IndexType = Index;
 
-		Mesh(
+		TriangleMesh(
 			ID3D12Device* pDevice,
 			const vector<Vertex>& vertices, const vector<Index>& indices,
 			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
