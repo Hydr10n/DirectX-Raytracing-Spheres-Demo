@@ -107,7 +107,6 @@
     <ClInclude Include="Random.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="StepTimer.h" />
-    <ClInclude Include="Texture.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="D3DApp.cppm" />
@@ -119,6 +118,7 @@
     <ClCompile Include="Material.ixx" />
     <ClCompile Include="SharedData.ixx" />
     <ClCompile Include="TemporalAntiAliasingEffect.ixx" />
+    <ClCompile Include="Texture.ixx" />
     <ClCompile Include="WindowHelpers.ixx" />
   </ItemGroup>
   <ItemGroup>

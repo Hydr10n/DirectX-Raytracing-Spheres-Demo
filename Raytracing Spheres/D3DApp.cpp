@@ -11,13 +11,15 @@ module;
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
 
+#include "directxtk12/DirectXHelpers.h"
+
+#include "directxtk12/DescriptorHeap.h"
+
 #include "directxtk12/GeometricPrimitive.h"
 
 #include "BottomLevelAccelerationStructureGenerator.h"
 #include "TopLevelAccelerationStructureGenerator.h"
 #include "ShaderBindingTableGenerator.h"
-
-#include "Texture.h"
 
 #include "Camera.h"
 
@@ -41,6 +43,7 @@ import DirectX.Effects.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import Material;
 import SharedData;
+import Texture;
 
 using namespace DirectX;
 using namespace DirectX::Effects;
@@ -528,68 +531,64 @@ private:
 	}
 
 	void BuildTextures() {
-		m_textures = {
+		decltype(m_textures) textures;
+
+		textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Textures\)");
+
+		textures[Objects::Environment] = {
 			{
-				Objects::Environment,
 				{
-					{
-						{
-							TextureType::CubeMap,
-							Texture{
-								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
-								.Path = L"Space.dds"
-							}
-						}
-					},
-					XMMatrixRotationRollPitchYaw(XM_PI, XM_PI * 0.2f, 0)
+					TextureType::CubeMap,
+					Texture{
+						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
+						.Path = L"Space.dds"
+					}
 				}
 			},
-			{
-				Objects::Moon,
-				{
-					{
-						{
-							TextureType::ColorMap,
-							Texture{
-								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonColorMap,
-								.Path = L"Moon.jpg"
-							}
-						},
-						{
-							TextureType::NormalMap,
-							Texture{
-								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
-								.Path = L"Moon_Normal.jpg"
-							}
-						}
-					},
-					XMMatrixTranslation(0.5f, 0, 0)
-				}
-			},
-			{
-				Objects::Earth,
-				{
-					{
-						{
-							TextureType::ColorMap,
-							Texture{
-								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthColorMap,
-								.Path = L"Earth.jpg"
-							}
-						},
-						{
-							TextureType::NormalMap,
-							Texture{
-								.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
-								.Path = L"Earth_Normal.jpg"
-							}
-						}
-					},
-					XMMatrixIdentity()
-				}
-			}
+			XMMatrixRotationRollPitchYaw(XM_PI, XM_PI * 0.2f, 0)
 		};
-		m_textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Textures\)");
+
+		textures[Objects::Moon] = {
+			{
+				{
+					TextureType::ColorMap,
+					Texture{
+						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonColorMap,
+							.Path = L"Moon.jpg"
+					}
+				},
+				{
+					TextureType::NormalMap,
+					Texture{
+						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
+						.Path = L"Moon_Normal.jpg"
+					}
+				}
+			},
+			XMMatrixTranslation(0.5f, 0, 0)
+		};
+
+		textures[Objects::Earth] = {
+			{
+				{
+					TextureType::ColorMap,
+					Texture{
+						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthColorMap,
+						.Path = L"Earth.jpg"
+					}
+				},
+				{
+					TextureType::NormalMap,
+					Texture{
+						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
+						.Path = L"Earth_Normal.jpg"
+					}
+				}
+			},
+			XMMatrixIdentity()
+		};
+
+		m_textures = move(textures);
 	}
 
 	void LoadTextures() {
@@ -601,14 +600,14 @@ private:
 	}
 
 	void BuildRenderItems() {
-		m_renderItems.clear();
+		decltype(m_renderItems) renderItems;
 
 		const auto& material = *m_myPhysX.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
 		const auto AddRenderItem = [&](RenderItem& renderItem, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
 			renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
 
-			renderItem.InstanceID = static_cast<UINT>(m_renderItems.size());
+			renderItem.InstanceID = static_cast<UINT>(renderItems.size());
 
 			renderItem.ResourceDescriptorHeapIndices = {
 				.TriangleMesh{
@@ -627,7 +626,7 @@ private:
 
 			rigidDynamic.setAngularDamping(0);
 
-			m_renderItems.emplace_back(renderItem);
+			renderItems.emplace_back(renderItem);
 
 			return rigidDynamic;
 		};
@@ -743,6 +742,8 @@ private:
 				m_physicsObjects.RigidBodies[Name] = { &rigidDynamic, false };
 			}
 		}
+
+		m_renderItems = move(renderItems);
 	}
 
 	void CreateDescriptorHeaps() {
