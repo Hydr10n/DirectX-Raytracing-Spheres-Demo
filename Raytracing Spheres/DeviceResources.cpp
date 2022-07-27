@@ -5,6 +5,8 @@
 #include "pch.h"
 #include "DeviceResources.h"
 
+#include <format>
+
 using namespace DirectX;
 using namespace DX;
 
@@ -40,6 +42,7 @@ namespace
 
 // Constructor for DeviceResources.
 DeviceResources::DeviceResources(
+    D3D12_RAYTRACING_TIER minRaytracingTier,
     DXGI_FORMAT backBufferFormat,
     DXGI_FORMAT depthBufferFormat,
     UINT backBufferCount,
@@ -50,12 +53,14 @@ DeviceResources::DeviceResources(
         m_rtvDescriptorSize(0),
         m_screenViewport{},
         m_scissorRect{},
+        m_d3dMinRaytracingTier(minRaytracingTier),
         m_backBufferFormat(backBufferFormat),
         m_depthBufferFormat(depthBufferFormat),
         m_backBufferCount(backBufferCount),
         m_d3dMinFeatureLevel(minFeatureLevel),
         m_window(nullptr),
-        m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_1),
+        m_d3dRaytracingTier(D3D12_RAYTRACING_TIER_NOT_SUPPORTED),
+        m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_0),
         m_dxgiFactoryFlags(0),
         m_outputSize{1, 1},
         m_colorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709),
@@ -67,7 +72,7 @@ DeviceResources::DeviceResources(
         throw std::out_of_range("invalid backBufferCount");
     }
 
-    if (minFeatureLevel < D3D_FEATURE_LEVEL_12_1)
+    if (minFeatureLevel < D3D_FEATURE_LEVEL_12_0)
     {
         throw std::out_of_range("minFeatureLevel too low");
     }
@@ -172,15 +177,18 @@ void DeviceResources::CreateDeviceResources()
     // Determine maximum supported feature level for this device
     static const D3D_FEATURE_LEVEL s_featureLevels[] =
     {
+#if defined(NTDDI_WIN10_FE) || defined(USING_D3D12_AGILITY_SDK)
         D3D_FEATURE_LEVEL_12_2,
-        D3D_FEATURE_LEVEL_12_1
+#endif
+        D3D_FEATURE_LEVEL_12_1,
+        D3D_FEATURE_LEVEL_12_0
     };
 
     D3D12_FEATURE_DATA_FEATURE_LEVELS featLevels =
     {
-        static_cast<UINT>(std::size(s_featureLevels)), s_featureLevels, D3D_FEATURE_LEVEL_12_1
+        static_cast<UINT>(std::size(s_featureLevels)), s_featureLevels, D3D_FEATURE_LEVEL_12_0
     };
-    
+
     if (SUCCEEDED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &featLevels, sizeof(featLevels))))
     {
         m_d3dFeatureLevel = featLevels.MaxSupportedFeatureLevel;
@@ -599,12 +607,15 @@ void DeviceResources::MoveToNextFrame()
     m_fenceValues[m_backBufferIndex] = currentFenceValue + 1;
 }
 
-// This method acquires the first available hardware adapter that supports Direct3D 12 Raytracing,
-// then create the DX12 API device object.
-// If no such adapter can be found, try WARP. Otherwise throw an exception.
+// This method acquires the first available hardware adapter that supports Direct3D 12.
+// If no such adapter can be found, throw an exception, else create the DX12 API device object.
 void DeviceResources::CreateDevice()
 {
+    HRESULT hr;
+
     ComPtr<IDXGIAdapter1> adapter;
+    ComPtr<ID3D12Device5> device;
+    D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5{};
 
     const auto CreateRaytracingDevice = [&](UINT adapterIndex)
     {
@@ -617,13 +628,10 @@ void DeviceResources::CreateDevice()
             return false;
         }
 
-        ThrowIfFailed(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(m_d3dDevice.ReleaseAndGetAddressOf())));
-
-        D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
-        if (FAILED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
-            || options5.RaytracingTier == D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
+        if (FAILED(hr = D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(device.ReleaseAndGetAddressOf())))
+            || (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
+                && options5.RaytracingTier < m_d3dMinRaytracingTier))
         {
-            m_d3dDevice.Reset();
             return false;
         }
 
@@ -637,8 +645,7 @@ void DeviceResources::CreateDevice()
     };
 
     ComPtr<IDXGIFactory6> factory6;
-    HRESULT hr = m_dxgiFactory.As(&factory6);
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(m_dxgiFactory.As(&factory6)))
     {
         for (UINT adapterIndex = 0;
             SUCCEEDED(factory6->EnumAdapterByGpuPreference(
@@ -663,10 +670,20 @@ void DeviceResources::CreateDevice()
         }
     }
 
-    if (!m_d3dDevice)
+    if (options5.RaytracingTier < m_d3dMinRaytracingTier)
     {
-        throw std::runtime_error("DXR is not supported on this device. Make sure your GPU supports it and drivers are up to date.");
+        throw std::runtime_error(std::format("DirectX Raytracing Tier {} is not supported on this device. Make sure your GPU supports it and drivers are up to date.", static_cast<float>(m_d3dMinRaytracingTier) / 10));
     }
+
+    if (!adapter)
+    {
+        throw std::runtime_error("No Direct3D 12 device found");
+    }
+
+    ThrowIfFailed(hr);
+
+    m_d3dDevice = device;
+    m_d3dRaytracingTier = options5.RaytracingTier;
 }
 
 // Sets the color space for the swap chain in order to handle HDR output.

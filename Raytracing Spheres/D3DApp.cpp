@@ -238,7 +238,7 @@ private:
 
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<decltype(m_deviceResources)::element_type>();
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<decltype(m_deviceResources)::element_type>(D3D12_RAYTRACING_TIER_1_0);
 
 	StepTimer m_stepTimer;
 
@@ -554,7 +554,7 @@ private:
 					TextureType::ColorMap,
 					Texture{
 						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonColorMap,
-							.Path = L"Moon.jpg"
+						.Path = L"Moon.jpg"
 					}
 				},
 				{
@@ -1201,7 +1201,7 @@ private:
 					}
 
 					{
-						constexpr auto ToString = [](const SIZE& value) { return to_string(value.cx) + " × " + to_string(value.cy); };
+						constexpr auto ToString = [](const SIZE& value) { return format("{} × {}", value.cx, value.cy); };
 						if (const auto resolution = m_windowModeHelper->GetResolution();
 							ImGui::BeginCombo("Resolution", ToString(resolution).c_str())) {
 							for (const auto& displayResolution : g_displayResolutions) {

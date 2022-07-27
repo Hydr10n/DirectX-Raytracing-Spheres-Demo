@@ -8,8 +8,7 @@ struct Camera {
 	DirectX::XMMATRIX ProjectionToWorld;
 };
 
-class FirstPersonCamera {
-public:
+struct FirstPersonCamera {
 	const auto& GetPosition() const { return m_position; }
 
 	void SetPosition(const DirectX::XMFLOAT3& position) {
