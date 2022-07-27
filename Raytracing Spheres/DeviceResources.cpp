@@ -611,8 +611,6 @@ void DeviceResources::MoveToNextFrame()
 // If no such adapter can be found, throw an exception, else create the DX12 API device object.
 void DeviceResources::CreateDevice()
 {
-    HRESULT hr;
-
     ComPtr<IDXGIAdapter1> adapter;
     ComPtr<ID3D12Device5> device;
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5{};
@@ -628,9 +626,10 @@ void DeviceResources::CreateDevice()
             return false;
         }
 
-        if (FAILED(hr = D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(device.ReleaseAndGetAddressOf())))
-            || (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
-                && options5.RaytracingTier < m_d3dMinRaytracingTier))
+        ThrowIfFailed(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(device.ReleaseAndGetAddressOf())));
+
+        if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
+            && options5.RaytracingTier < m_d3dMinRaytracingTier)
         {
             return false;
         }
@@ -672,15 +671,13 @@ void DeviceResources::CreateDevice()
 
     if (options5.RaytracingTier < m_d3dMinRaytracingTier)
     {
-        throw std::runtime_error(std::format("DirectX Raytracing Tier {} is not supported on this device. Make sure your GPU supports it and drivers are up to date.", static_cast<float>(m_d3dMinRaytracingTier) / 10));
+        throw std::runtime_error(std::format("DirectX Raytracing Tier {} is not supported on this device.", static_cast<float>(m_d3dMinRaytracingTier) / 10));
     }
 
     if (!adapter)
     {
         throw std::runtime_error("No Direct3D 12 device found");
     }
-
-    ThrowIfFailed(hr);
 
     m_d3dDevice = device;
     m_d3dRaytracingTier = options5.RaytracingTier;

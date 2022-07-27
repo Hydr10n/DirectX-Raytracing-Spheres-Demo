@@ -1201,7 +1201,7 @@ private:
 					}
 
 					{
-						constexpr auto ToString = [](const SIZE& value) { return format("{} × {}", value.cx, value.cy); };
+						const auto ToString = [](const SIZE& value) { return format("{} × {}", value.cx, value.cy); };
 						if (const auto resolution = m_windowModeHelper->GetResolution();
 							ImGui::BeginCombo("Resolution", ToString(resolution).c_str())) {
 							for (const auto& displayResolution : g_displayResolutions) {
