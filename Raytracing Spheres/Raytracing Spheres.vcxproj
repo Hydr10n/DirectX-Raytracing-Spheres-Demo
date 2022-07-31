@@ -148,7 +148,7 @@
     <None Include="Shaders\Camera.hlsli" />
     <None Include="Shaders\Common.hlsli" />
     <None Include="Shaders\HitInfo.hlsli" />
-    <None Include="Shaders\GeometryIndexHelpers.hlsli" />
+    <None Include="Shaders\TriangleMeshIndexHelpers.hlsli" />
     <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\MathHelpers.hlsli" />
     <None Include="Shaders\RadianceRay.hlsli" />

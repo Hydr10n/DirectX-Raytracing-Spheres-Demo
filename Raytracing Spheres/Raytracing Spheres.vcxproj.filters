@@ -137,7 +137,7 @@
     <None Include="Shaders\Ray.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\GeometryIndexHelpers.hlsli">
+    <None Include="Shaders\TriangleMeshIndexHelpers.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\MathHelpers.hlsli">

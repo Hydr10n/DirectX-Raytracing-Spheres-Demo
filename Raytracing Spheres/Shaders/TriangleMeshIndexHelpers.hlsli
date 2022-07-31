@@ -1,8 +1,7 @@
 #pragma once
 
-namespace GeometryIndexHelpers {
-	// Load 3 16-bit indices from a ByteAddressBuffer.
-	inline uint3 Load3x16BitIndices(ByteAddressBuffer byteAddressBuffer, uint primitiveIndex) {
+namespace TriangleMeshIndexHelpers {
+	inline uint3 Load3x16BitIndices(ByteAddressBuffer buffer, uint primitiveIndex) {
 		// ByteAddressBuffer::Load must be aligned at a 4-byte boundary.
 		// Since we need to read 3 16-bit indices: { 0, 1, 2 }
 		// aligned at a 4-byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
@@ -13,7 +12,7 @@ namespace GeometryIndexHelpers {
 
 		const uint offset = primitiveIndex * 3 * 2;
 		const uint dwordAlignedOffset = offset & ~3;
-		const uint2 four16BitIndices = byteAddressBuffer.Load2(dwordAlignedOffset);
+		const uint2 four16BitIndices = buffer.Load2(dwordAlignedOffset);
 
 		uint3 indices;
 		if (dwordAlignedOffset == offset) { // Aligned => retrieve the first 3 16-bit indices
@@ -28,5 +27,10 @@ namespace GeometryIndexHelpers {
 		}
 
 		return indices;
+	}
+	
+	inline uint3 Load3Indices(StructuredBuffer<uint> buffer, uint primitiveIndex) {
+		const uint index = primitiveIndex * 3;
+		return uint3(buffer[index], buffer[index + 1], buffer[index + 2]);
 	}
 }
