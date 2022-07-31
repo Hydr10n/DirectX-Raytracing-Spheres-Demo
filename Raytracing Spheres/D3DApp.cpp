@@ -19,7 +19,6 @@ module;
 
 #include "BottomLevelAccelerationStructureGenerator.h"
 #include "TopLevelAccelerationStructureGenerator.h"
-#include "ShaderBindingTableGenerator.h"
 
 #include "Camera.h"
 
@@ -64,6 +63,10 @@ struct D3DApp::Impl : IDeviceNotify {
 		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
 
 		{
+			if (GraphicsSettingsData::Load<GraphicsSettingsData::Raytracing::MaxTraceRecursionDepth>(m_raytracingMaxTraceRecursionDepth)) {
+				m_raytracingMaxTraceRecursionDepth = clamp(m_raytracingMaxTraceRecursionDepth, 1u, static_cast<UINT>(D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH));
+			}
+
 			if (GraphicsSettingsData::Load<GraphicsSettingsData::Raytracing::SamplesPerPixel>(m_raytracingSamplesPerPixel)) {
 				m_raytracingSamplesPerPixel = clamp(m_raytracingSamplesPerPixel, 1u, MaxRaytracingSamplesPerPixel);
 			}
@@ -192,8 +195,6 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		for (auto& [_, textures] : m_textures) for (auto& [_, texture] : get<0>(textures)) texture.Resource.Reset();
 
-		m_shaderBindingTable.Reset();
-
 		m_accelerationStructureBuffers = {};
 
 		m_geometries = {};
@@ -204,7 +205,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_pipelineStateObject.Reset();
 
-		m_globalRootSignature.Reset();
+		m_rootSignature.Reset();
 
 		m_resourceDescriptorHeap.reset();
 
@@ -221,14 +222,6 @@ private:
 	using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 	using Key = Keyboard::Keys;
 
-	struct ShaderEntryPoints {
-		static constexpr LPCWSTR
-			RayGeneration = L"RayGeneration",
-			RadianceRayMiss = L"RadianceRayMiss", RadianceRayClosestHit = L"RadianceRayClosestHit";
-	};
-
-	struct ShaderSubobjects { static constexpr LPCWSTR RadianceRayHitGroup = L"RadianceRayHitGroup"; };
-
 	struct Objects {
 		static constexpr LPCSTR
 			Environment = "Environment",
@@ -238,7 +231,7 @@ private:
 
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<decltype(m_deviceResources)::element_type>(D3D12_RAYTRACING_TIER_1_0);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<decltype(m_deviceResources)::element_type>(D3D12_RAYTRACING_TIER_1_1);
 
 	StepTimer m_stepTimer;
 
@@ -272,9 +265,9 @@ private:
 	};
 	unique_ptr<DescriptorHeap> m_resourceDescriptorHeap;
 
-	ComPtr<ID3D12RootSignature> m_globalRootSignature;
+	ComPtr<ID3D12RootSignature> m_rootSignature;
 
-	ComPtr<ID3D12StateObject> m_pipelineStateObject;
+	ComPtr<ID3D12PipelineState> m_pipelineStateObject;
 
 	static constexpr float MaxTemporalAntiAliasingColorBoxSigma = 2;
 	bool m_isTemporalAntiAliasingEnabled = true;
@@ -301,8 +294,8 @@ private:
 		} Textures;
 	};
 	struct GlobalData {
-		UINT RaytracingSamplesPerPixel, FrameCount;
-		XMUINT2 _padding;
+		UINT RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount;
+		UINT _padding;
 		XMMATRIX EnvironmentMapTransform;
 	};
 	struct LocalData {
@@ -330,9 +323,6 @@ private:
 		AccelerationStructureBuffers TopLevel;
 	} m_accelerationStructureBuffers;
 
-	ShaderBindingTableGenerator m_shaderBindingTableGenerator;
-	GraphicsResource m_shaderBindingTable;
-
 	struct { ComPtr<ID3D12Resource> PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextureResources;
 
 	TextureDictionary m_textures;
@@ -341,7 +331,6 @@ private:
 
 	struct RenderItem {
 		string Name;
-		wstring HitGroup;
 		UINT InstanceID = UINT_MAX;
 		struct {
 			struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } TriangleMesh;
@@ -360,7 +349,7 @@ private:
 	MyPhysX m_myPhysX;
 
 	static constexpr UINT MaxRaytracingSamplesPerPixel = 16;
-	UINT m_raytracingSamplesPerPixel = 2;
+	UINT m_raytracingMaxTraceRecursionDepth = 7, m_raytracingSamplesPerPixel = 2;
 
 	bool m_isMenuOpen{};
 
@@ -382,8 +371,6 @@ private:
 		CreateGeometries();
 
 		CreateAccelerationStructures();
-
-		CreateShaderBindingTables();
 
 		LoadTextures();
 	}
@@ -605,8 +592,6 @@ private:
 		const auto& material = *m_myPhysX.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
 		const auto AddRenderItem = [&](RenderItem& renderItem, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
-			renderItem.HitGroup = ShaderSubobjects::RadianceRayHitGroup;
-
 			renderItem.InstanceID = static_cast<UINT>(renderItems.size());
 
 			renderItem.ResourceDescriptorHeapIndices = {
@@ -755,31 +740,15 @@ private:
 	void CreateRootSignatures() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(m_globalRootSignature.ReleaseAndGetAddressOf())));
+		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
 	}
 
 	void CreatePipelineStateObjects() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		CD3DX12_STATE_OBJECT_DESC stateObjectDesc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
-
-		const auto dxilLibrarySubobject = stateObjectDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
-
 		const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pRaytracing, size(g_pRaytracing));
-		dxilLibrarySubobject->SetDXILLibrary(&shaderByteCode);
-
-		dxilLibrarySubobject->DefineExport(L"RaytracingShaderConfig");
-		dxilLibrarySubobject->DefineExport(L"RaytracingPipelineConfig");
-
-		dxilLibrarySubobject->DefineExport(L"GlobalRootSignature");
-
-		dxilLibrarySubobject->DefineExport(ShaderEntryPoints::RayGeneration);
-
-		dxilLibrarySubobject->DefineExport(ShaderEntryPoints::RadianceRayMiss);
-		dxilLibrarySubobject->DefineExport(ShaderEntryPoints::RadianceRayClosestHit);
-		dxilLibrarySubobject->DefineExport(ShaderSubobjects::RadianceRayHitGroup);
-
-		ThrowIfFailed(device->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(m_pipelineStateObject.ReleaseAndGetAddressOf())));
+		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
+		ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
 	}
 
 	void CreateEffects() {
@@ -818,8 +787,9 @@ private:
 
 			{
 				m_shaderResources.GlobalData = m_graphicsMemory->AllocateConstant(GlobalData{
-				   .RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel,
-				   .EnvironmentMapTransform = m_textures.contains(Objects::Environment) ? XMMatrixTranspose(get<1>(m_textures[Objects::Environment])) : XMMatrixIdentity()
+					.RaytracingMaxTraceRecursionDepth = m_raytracingMaxTraceRecursionDepth,
+					.RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel,
+					.EnvironmentMapTransform = m_textures.contains(Objects::Environment) ? XMMatrixTranspose(get<1>(m_textures[Objects::Environment])) : XMMatrixIdentity()
 					});
 				CreateConstantBufferView(m_shaderResources.GlobalData, ResourceDescriptorHeapIndex::GlobalData);
 			}
@@ -963,23 +933,6 @@ private:
 		m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
 
 		m_deviceResources->WaitForGpu();
-	}
-
-	void CreateShaderBindingTables() {
-		m_shaderBindingTableGenerator = {};
-
-		m_shaderBindingTableGenerator.AddRayGenerationProgram(ShaderEntryPoints::RayGeneration, { nullptr });
-
-		m_shaderBindingTableGenerator.AddMissProgram(ShaderEntryPoints::RadianceRayMiss, { nullptr });
-
-		for (const auto& renderItem : m_renderItems) m_shaderBindingTableGenerator.AddHitGroup(renderItem.HitGroup.c_str(), { nullptr });
-
-		m_shaderBindingTable = m_graphicsMemory->Allocate(m_shaderBindingTableGenerator.ComputeSize());
-
-		ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-		ThrowIfFailed(m_pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
-
-		m_shaderBindingTableGenerator.Generate(m_shaderBindingTable.Resource(), stateObjectProperties.Get());
 	}
 
 	void ProcessInput() {
@@ -1131,44 +1084,14 @@ private:
 
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		commandList->SetComputeRootSignature(m_globalRootSignature.Get());
+		commandList->SetComputeRootSignature(m_rootSignature.Get());
 		commandList->SetComputeRootShaderResourceView(0, m_accelerationStructureBuffers.TopLevel.Result->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(1, m_shaderResources.GlobalResourceDescriptorHeapIndices.GpuAddress());
 
-		commandList->SetPipelineState1(m_pipelineStateObject.Get());
+		commandList->SetPipelineState(m_pipelineStateObject.Get());
 
-		const auto
-			rayGenerationSectionSize = m_shaderBindingTableGenerator.GetRayGenerationSectionSize(),
-			missSectionSize = m_shaderBindingTableGenerator.GetMissSectionSize(),
-			hitGroupSectionSize = m_shaderBindingTableGenerator.GetHitGroupSectionSize();
-		const auto
-			pRayGenerationShaderRecord = m_shaderBindingTable.GpuAddress(),
-			pMissShaderTable = pRayGenerationShaderRecord + rayGenerationSectionSize,
-			pHitGroupTable = pMissShaderTable + missSectionSize;
-
-		const auto [cx, cy] = GetOutputSize();
-
-		const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
-			.RayGenerationShaderRecord{
-				.StartAddress = pRayGenerationShaderRecord,
-				.SizeInBytes = rayGenerationSectionSize
-			},
-			.MissShaderTable{
-				.StartAddress = pMissShaderTable,
-				.SizeInBytes = missSectionSize,
-				.StrideInBytes = m_shaderBindingTableGenerator.GetMissEntrySize()
-			},
-			.HitGroupTable{
-				.StartAddress = pHitGroupTable,
-				.SizeInBytes = hitGroupSectionSize,
-				.StrideInBytes = m_shaderBindingTableGenerator.GetHitGroupEntrySize()
-			},
-			.Width = static_cast<UINT>(cx),
-			.Height = static_cast<UINT>(cy),
-			.Depth = 1
-		};
-
-		commandList->DispatchRays(&dispatchRaysDesc);
+		const auto outputSize = m_deviceResources->GetOutputSize();
+		commandList->Dispatch(static_cast<UINT>((outputSize.cx + 15) / 16), static_cast<UINT>((outputSize.cy + 15) / 16), 1);
 	}
 
 	void RenderMenu() {
@@ -1219,28 +1142,40 @@ private:
 
 				ImGui::Separator();
 
-				if (ImGui::SliderInt("Raytracing Samples Per Pixel", reinterpret_cast<int*>(&m_raytracingSamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
-					reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel;
+				if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
+					if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&m_raytracingMaxTraceRecursionDepth), 1, D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH, "%d", ImGuiSliderFlags_NoInput)) {
+						reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingMaxTraceRecursionDepth = m_raytracingMaxTraceRecursionDepth;
 
-					GraphicsSettingsData::Save<GraphicsSettingsData::Raytracing::SamplesPerPixel>(m_raytracingSamplesPerPixel);
+						GraphicsSettingsData::Save<GraphicsSettingsData::Raytracing::MaxTraceRecursionDepth>(m_raytracingMaxTraceRecursionDepth);
+					}
+
+					if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&m_raytracingSamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
+						reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel;
+
+						GraphicsSettingsData::Save<GraphicsSettingsData::Raytracing::SamplesPerPixel>(m_raytracingSamplesPerPixel);
+					}
+
+					ImGui::TreePop();
 				}
 
-				ImGui::Separator();
+				if (ImGui::TreeNodeEx("Temporal Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
+					if (ImGui::Checkbox("Enable", &m_isTemporalAntiAliasingEnabled)) {
+						GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled);
+					}
 
-				if (ImGui::Checkbox("Temporal Anti-Aliasing", &m_isTemporalAntiAliasingEnabled)) {
-					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::IsEnabled>(m_isTemporalAntiAliasingEnabled);
-				}
+					if (ImGui::SliderFloat("Alpha", &m_temporalAntiAliasingConstant.Alpha, 0, 1, "%.3f", ImGuiSliderFlags_NoInput)) {
+						m_temporalAntiAliasingEffect->Constant.Alpha = m_temporalAntiAliasingConstant.Alpha;
 
-				if (ImGui::SliderFloat("Alpha", &m_temporalAntiAliasingConstant.Alpha, 0, 1, "%.3f", ImGuiSliderFlags_NoInput)) {
-					m_temporalAntiAliasingEffect->Constant.Alpha = m_temporalAntiAliasingConstant.Alpha;
+						GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha);
+					}
 
-					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha);
-				}
+					if (ImGui::SliderFloat("Color-Box Sigma", &m_temporalAntiAliasingConstant.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.3f", ImGuiSliderFlags_NoInput)) {
+						m_temporalAntiAliasingEffect->Constant.ColorBoxSigma = m_temporalAntiAliasingConstant.ColorBoxSigma;
 
-				if (ImGui::SliderFloat("Color-Box Sigma", &m_temporalAntiAliasingConstant.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.3f", ImGuiSliderFlags_NoInput)) {
-					m_temporalAntiAliasingEffect->Constant.ColorBoxSigma = m_temporalAntiAliasingConstant.ColorBoxSigma;
+						GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstant.ColorBoxSigma);
+					}
 
-					GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstant.ColorBoxSigma);
+					ImGui::TreePop();
 				}
 			}
 

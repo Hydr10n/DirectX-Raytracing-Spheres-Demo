@@ -28,7 +28,7 @@ struct MyAppData {
 
 			MAKESECTION(Resolution, MAKEKEY(Width) MAKEKEY(Height));
 
-			MAKESECTION(Raytracing, MAKEKEY(SamplesPerPixel));
+			MAKESECTION(Raytracing, MAKEKEY(MaxTraceRecursionDepth) MAKEKEY(SamplesPerPixel));
 
 			MAKESECTION(TemporalAntiAliasing, MAKEKEY(IsEnabled) MAKEKEY(Alpha) MAKEKEY(ColorBoxSigma));
 
@@ -54,19 +54,21 @@ struct MyAppData {
 					&& ms_appData.Save(Resolution::Height::Section, Resolution::Height::Key, data.cy);
 			}
 
-			template <typename Key, typename Data> requires
-				(std::same_as<Key, Raytracing::SamplesPerPixel>
-					|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
-					|| std::same_as<Key, TemporalAntiAliasing::Alpha>
-					|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
+			template <typename Key, typename Data> requires(
+				std::same_as<Key, Raytracing::MaxTraceRecursionDepth>
+				|| std::same_as<Key, Raytracing::SamplesPerPixel>
+				|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
+				|| std::same_as<Key, TemporalAntiAliasing::Alpha>
+				|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
 				&& (std::integral<Data> || std::floating_point<Data>)
 				[[nodiscard]] static BOOL Load(Data& data) { return ms_appData.Load(Key::Section, Key::Key, data); }
 
-			template <typename Key, typename Data> requires
-				(std::same_as<Key, Raytracing::SamplesPerPixel>
-					|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
-					|| std::same_as<Key, TemporalAntiAliasing::Alpha>
-					|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
+			template <typename Key, typename Data> requires(
+				std::same_as<Key, Raytracing::MaxTraceRecursionDepth>
+				|| std::same_as<Key, Raytracing::SamplesPerPixel>
+				|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
+				|| std::same_as<Key, TemporalAntiAliasing::Alpha>
+				|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
 				&& (std::integral<Data> || std::floating_point<Data>)
 				static BOOL Save(const Data& data) { return ms_appData.Save(Key::Section, Key::Key, data); }
 		};

@@ -15,12 +15,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)BottomLevelAccelerationStructureGenerator.cpp" />
-    <ClCompile Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)TopLevelAccelerationStructureGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)BottomLevelAccelerationStructureGenerator.h" />
-    <ClInclude Include="$(MSBuildThisFileDirectory)ShaderBindingTableGenerator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)TopLevelAccelerationStructureGenerator.h" />
   </ItemGroup>
 </Project>

@@ -14,7 +14,8 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 ### Graphics Settings
 - Window Mode
 - Resolution
-- Raytracing 
+- Raytracing
+	- Max Trace Recursion Depth
 	- Samples Per Pixel
 - Temporal Anti-Aliasing
 	- Alpha
@@ -83,8 +84,7 @@ https://user-images.githubusercontent.com/39995363/153931319-bfc44214-216b-4560-
 	```
 
 ## Minimum System Requirements
-- OS: Microsoft Windows 10 64-bit, version 1809
+- OS: Microsoft Windows 10 64-bit, version 2004
 - Graphics
-	- NVIDIA GeForce GTX 1060 with 6 GB VRAM
-	- NVIDIA GeForce GTX 1660
+	- NVIDIA GeForce RTX Series
 	- AMD Radeon RX 6000 Series

@@ -25,7 +25,7 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
- #define ROOT_SIGNATURE \
+#define ROOT_SIGNATURE \
     "StaticSampler(s0, filter=FILTER_MIN_MAG_MIP_LINEAR)," \
     "DescriptorTable(SRV(t0))," \
     "DescriptorTable(SRV(t1))," \
@@ -107,7 +107,7 @@ float3 bicubicSampleCatmullRom(Texture2D tex, SamplerState samp, float2 samplePo
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
-void main(uint3 DTid : SV_DispatchThreadID) 
+void main(int2 ipos : SV_DispatchThreadID)
 {
     const int2 offset[8] = { int2(-1, -1), int2(-1,  1),
                               int2( 1, -1), int2( 1,  1),
@@ -117,8 +117,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
     uint2 texDim;
     uint levels;
     gTexColor.GetDimensions(0, texDim.x, texDim.y, levels);
-    
-    int2 ipos = DTid.xy;
 
     // Fetch the current pixel color and compute the color bounding box
     // Details here: http://www.gdcvault.com/play/1023521/From-the-Lab-Bench-Real

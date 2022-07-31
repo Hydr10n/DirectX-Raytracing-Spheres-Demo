@@ -6,8 +6,6 @@
 
 #define UINT_MAX 0xffffffff
 
-static const uint MaxTraceRecursionDepth = 7;
-
 SamplerState g_anisotropicWrap : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
@@ -38,8 +36,8 @@ static const StructuredBuffer<LocalResourceDescriptorHeapIndices> g_localResourc
 static const ConstantBuffer<Camera> g_camera = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Camera];
 
 struct GlobalData {
-	uint RaytracingSamplesPerPixel, FrameCount;
-	uint2 _padding;
+	uint RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount;
+	uint _padding;
 	float4x4 EnvironmentMapTransform;
 };
 static const ConstantBuffer<GlobalData> g_globalData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.GlobalData];
@@ -53,14 +51,3 @@ static const StructuredBuffer<LocalData> g_localData = ResourceDescriptorHeap[g_
 static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
 
 static const TextureCube<float4> g_environmentCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap];
-
-RaytracingPipelineConfig RaytracingPipelineConfig = { MaxTraceRecursionDepth };
-
-RaytracingShaderConfig RaytracingShaderConfig = { sizeof(float4) * 2, sizeof(BuiltInTriangleIntersectionAttributes) };
-
-GlobalRootSignature GlobalRootSignature = {
-	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
-	"StaticSampler(s0),"
-	"SRV(t0),"
-	"CBV(b0)"
-};
