@@ -349,7 +349,7 @@ private:
 	MyPhysX m_myPhysX;
 
 	static constexpr UINT MaxRaytracingSamplesPerPixel = 16;
-	UINT m_raytracingMaxTraceRecursionDepth = 7, m_raytracingSamplesPerPixel = 2;
+	UINT m_raytracingMaxTraceRecursionDepth = 8, m_raytracingSamplesPerPixel = 2;
 
 	bool m_isMenuOpen{};
 

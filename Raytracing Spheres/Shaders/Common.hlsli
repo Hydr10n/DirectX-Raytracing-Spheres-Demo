@@ -1,8 +1,12 @@
 #pragma once
 
+#include "Camera.hlsli"
+
 #include "Material.hlsli"
 
-#include "Camera.hlsli"
+#include "MathHelpers.hlsli"
+
+#include "TriangleMeshIndexHelpers.hlsli"
 
 #define UINT_MAX 0xffffffff
 
@@ -51,3 +55,24 @@ static const StructuredBuffer<LocalData> g_localData = ResourceDescriptorHeap[g_
 static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
 
 static const TextureCube<float4> g_environmentCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap];
+
+HitInfo GetHitInfo(uint instanceID, float3 worldRayOrigin, float3 worldRayDirection, float rayT, float4x3 objectToWorld, uint primitiveIndex, float2 barycentrics) {
+	const LocalResourceDescriptorHeapIndices localResourceDescriptorHeapIndices = g_localResourceDescriptorHeapIndices[instanceID];
+
+	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.TriangleMesh.Vertices];
+	const uint3 indices = TriangleMeshIndexHelpers::Load3Indices(ResourceDescriptorHeap[localResourceDescriptorHeapIndices.TriangleMesh.Indices], primitiveIndex);
+	const float3 normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
+	const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
+
+	HitInfo hitInfo;
+	hitInfo.Vertex.Position = worldRayOrigin + worldRayDirection * rayT;
+	hitInfo.Vertex.Normal = normalize(mul(Vertex::Interpolate(normals, barycentrics), (float3x3) objectToWorld));
+	hitInfo.Vertex.TextureCoordinate = mul(float4(Vertex::Interpolate(textureCoordinates, barycentrics), 0, 1), g_localData[instanceID].TextureTransform).xy;
+	if (localResourceDescriptorHeapIndices.Textures.NormalMap != UINT_MAX) {
+		const Texture2D<float3> normalMap = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Textures.NormalMap];
+		const float3x3 TBN = MathHelpers::CalculateTBN(hitInfo.Vertex.Normal, worldRayDirection);
+		hitInfo.Vertex.Normal = normalize(mul(normalize(normalMap.SampleLevel(g_anisotropicWrap, hitInfo.Vertex.TextureCoordinate, 0) * 2 - 1), TBN));
+	}
+	hitInfo.SetFaceNormal(worldRayDirection);
+	return hitInfo;
+}
