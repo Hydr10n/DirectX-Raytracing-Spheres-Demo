@@ -57,7 +57,7 @@ namespace DX
         auto                        GetSwapChain() const noexcept            { return m_swapChain.Get(); }
         auto                        GetDXGIFactory() const noexcept          { return m_dxgiFactory.Get(); }
         HWND                        GetWindow() const noexcept               { return m_window; }
-        D3D12_RAYTRACING_TIER       GetDeviceRaytracingTier() const noexcept { return m_d3dRaytracingTier; }
+        D3D12_RAYTRACING_TIER       GetDeviceRaytracingTier() const noexcept { return m_raytracingTier; }
         D3D_FEATURE_LEVEL           GetDeviceFeatureLevel() const noexcept   { return m_d3dFeatureLevel; }
         ID3D12Resource*             GetRenderTarget() const noexcept         { return m_renderTargets[m_backBufferIndex].Get(); }
         ID3D12Resource*             GetDepthStencil() const noexcept         { return m_depthStencil.Get(); }
@@ -117,7 +117,7 @@ namespace DX
         D3D12_RECT                                          m_scissorRect;
 
         // Direct3D properties.
-        D3D12_RAYTRACING_TIER                               m_d3dMinRaytracingTier;
+        D3D12_RAYTRACING_TIER                               m_minRaytracingTier;
         DXGI_FORMAT                                         m_backBufferFormat;
         DXGI_FORMAT                                         m_depthBufferFormat;
         UINT                                                m_backBufferCount;
@@ -125,7 +125,7 @@ namespace DX
 
         // Cached device properties.
         HWND                                                m_window;
-        D3D12_RAYTRACING_TIER                               m_d3dRaytracingTier;
+        D3D12_RAYTRACING_TIER                               m_raytracingTier;
         D3D_FEATURE_LEVEL                                   m_d3dFeatureLevel;
         DWORD                                               m_dxgiFactoryFlags;
         SIZE                                                m_outputSize;

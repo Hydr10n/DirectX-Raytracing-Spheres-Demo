@@ -53,13 +53,13 @@ DeviceResources::DeviceResources(
         m_rtvDescriptorSize(0),
         m_screenViewport{},
         m_scissorRect{},
-        m_d3dMinRaytracingTier(minRaytracingTier),
+        m_minRaytracingTier(minRaytracingTier),
         m_backBufferFormat(backBufferFormat),
         m_depthBufferFormat(depthBufferFormat),
         m_backBufferCount(backBufferCount),
         m_d3dMinFeatureLevel(minFeatureLevel),
         m_window(nullptr),
-        m_d3dRaytracingTier(D3D12_RAYTRACING_TIER_NOT_SUPPORTED),
+        m_raytracingTier(D3D12_RAYTRACING_TIER_NOT_SUPPORTED),
         m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_0),
         m_dxgiFactoryFlags(0),
         m_outputSize{1, 1},
@@ -629,7 +629,7 @@ void DeviceResources::CreateDevice()
         ThrowIfFailed(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, IID_PPV_ARGS(device.ReleaseAndGetAddressOf())));
 
         if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
-            && options5.RaytracingTier < m_d3dMinRaytracingTier)
+            && options5.RaytracingTier < m_minRaytracingTier)
         {
             return false;
         }
@@ -669,9 +669,9 @@ void DeviceResources::CreateDevice()
         }
     }
 
-    if (options5.RaytracingTier < m_d3dMinRaytracingTier)
+    if (options5.RaytracingTier < m_minRaytracingTier)
     {
-        throw std::runtime_error(std::format("DirectX Raytracing Tier {} is not supported on this device.", static_cast<float>(m_d3dMinRaytracingTier) / 10));
+        throw std::runtime_error(std::format("DirectX Raytracing Tier {}.{} is not supported on this device.", m_minRaytracingTier / 10, m_minRaytracingTier % 10));
     }
 
     if (!adapter)
@@ -680,7 +680,7 @@ void DeviceResources::CreateDevice()
     }
 
     m_d3dDevice = device;
-    m_d3dRaytracingTier = options5.RaytracingTier;
+    m_raytracingTier = options5.RaytracingTier;
 }
 
 // Sets the color space for the swap chain in order to handle HDR output.
