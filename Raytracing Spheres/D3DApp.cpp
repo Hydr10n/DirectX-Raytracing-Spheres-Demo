@@ -1099,7 +1099,7 @@ private:
 		ImGui_ImplWin32_NewFrame();
 
 		{
-			const auto displayResolution = *--cend(g_displayResolutions);
+			const auto& displayResolution = *--cend(g_displayResolutions);
 			ImGui::GetIO().DisplaySize = { static_cast<float>(displayResolution.cx), static_cast<float>(displayResolution.cy) };
 		}
 

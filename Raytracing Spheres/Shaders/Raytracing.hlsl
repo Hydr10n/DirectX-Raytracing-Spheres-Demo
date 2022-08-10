@@ -19,7 +19,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	float4 color = 0;
 	for (uint i = 0; i < g_globalData.RaytracingSamplesPerPixel; i++) {
 		const Ray ray = g_camera.GenerateRay(raysIndex, raysDimensions, random.Float2());
-		color += TraceRadianceRay(ray.ToDesc(), random);
+		color += RadianceRay::Trace(ray.ToDesc(), random);
 	}
 
 	g_output[raysIndex] = color / g_globalData.RaytracingSamplesPerPixel;

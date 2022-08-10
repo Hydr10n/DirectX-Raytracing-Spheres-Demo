@@ -1,7 +1,7 @@
 #pragma once
 
 #pragma warning(push)
-#pragma warning(disable: 26451 26495 26812 33010)
+#pragma warning(disable: 4996 26451 26495 26812 33010)
 
 #include "PxPhysicsAPI.h"
 
