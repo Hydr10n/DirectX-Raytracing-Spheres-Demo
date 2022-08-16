@@ -48,6 +48,10 @@ public:
 
 		auto& foundation = *PxCreateFoundation(PX_PHYSICS_VERSION, m_allocatorCallback, m_errorCallback);
 
+		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(8);
+
+		m_cudaContextManager = PxCreateCudaContextManager(foundation, PxCudaContextManagerDesc());
+
 		m_pvd = PxCreatePvd(foundation);
 		m_pvd->connect(*PxDefaultPvdSocketTransportCreate("localhost", 5425, 10), PxPvdInstrumentationFlag::eALL);
 
@@ -56,11 +60,12 @@ public:
 
 		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, foundation, tolerancesScale, true, m_pvd);
 
-		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(8);
-
 		PxSceneDesc sceneDesc(tolerancesScale);
 		sceneDesc.cpuDispatcher = m_defaultCpuDispatcher;
+		sceneDesc.cudaContextManager = m_cudaContextManager;
 		sceneDesc.filterShader = PxDefaultSimulationFilterShader;
+		sceneDesc.flags |= PxSceneFlag::eENABLE_GPU_DYNAMICS | PxSceneFlag::eENABLE_PCM | PxSceneFlag::eENABLE_STABILIZATION;
+		sceneDesc.broadPhaseType = PxBroadPhaseType::eGPU;
 
 		m_scene = m_physics->createScene(sceneDesc);
 
@@ -70,8 +75,6 @@ public:
 	}
 
 	~MyPhysX() {
-		m_defaultCpuDispatcher->release();
-
 		auto& foundation = m_physics->getFoundation();
 
 		m_physics->release();
@@ -79,6 +82,10 @@ public:
 		m_pvd->disconnect();
 		m_pvd->getTransport()->release();
 		m_pvd->release();
+
+		m_cudaContextManager->release();
+
+		m_defaultCpuDispatcher->release();
 
 		foundation.release();
 	}
@@ -103,11 +110,13 @@ private:
 
 	physx::PxDefaultErrorCallback m_errorCallback;
 
+	physx::PxDefaultCpuDispatcher* m_defaultCpuDispatcher{};
+
+	physx::PxCudaContextManager* m_cudaContextManager{};
+
 	physx::PxPvd* m_pvd{};
 
 	physx::PxPhysics* m_physics{};
-
-	physx::PxDefaultCpuDispatcher* m_defaultCpuDispatcher{};
 
 	physx::PxScene* m_scene{};
 };

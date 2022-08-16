@@ -603,13 +603,13 @@ private:
 
 			auto& rigidDynamic = *m_myPhysX.GetPhysics().createRigidDynamic(PxTransform(transform));
 
-			m_myPhysX.GetScene().addActor(rigidDynamic);
-
 			renderItem.Shape = PxRigidActorExt::createExclusiveShape(rigidDynamic, geometry, material);
 
 			PxRigidBodyExt::updateMassAndInertia(rigidDynamic, 1);
 
 			rigidDynamic.setAngularDamping(0);
+
+			m_myPhysX.GetScene().addActor(rigidDynamic);
 
 			renderItems.emplace_back(renderItem);
 
@@ -885,10 +885,10 @@ private:
 
 			const auto& shape = *renderItem.Shape;
 
-			PxVec3 scaling;
+			PxVec3 scale;
 			const auto geometry = shape.getGeometry();
 			switch (shape.getGeometryType()) {
-			case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius / m_geometries.Sphere.Radius); break;
+			case PxGeometryType::eSPHERE: scale = PxVec3(geometry.sphere().radius / m_geometries.Sphere.Radius); break;
 			default: throw;
 			}
 
@@ -896,7 +896,7 @@ private:
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));
 			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
-			world.scale(PxVec4(scaling, 1));
+			world.scale(PxVec4(scale, 1));
 			topLevelAccelerationStructureGenerator.AddInstance(m_accelerationStructureBuffers.BottomLevel.Sphere.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), renderItem.InstanceID, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
 		}
 
