@@ -384,7 +384,7 @@ private:
 			const auto CreateResource = [&](auto format, auto& resource, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(resource.ReleaseAndGetAddressOf())));
+				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&resource)));
 
 				if (srvDescriptorHeapIndex != UINT_MAX) {
 					CreateShaderResourceView(device, resource.Get(), m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
@@ -740,7 +740,7 @@ private:
 	void CreateRootSignatures() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
+		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(&m_rootSignature)));
 	}
 
 	void CreatePipelineStateObjects() {

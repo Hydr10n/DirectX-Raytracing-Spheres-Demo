@@ -61,12 +61,12 @@ export {
 							const auto filePath = path(DirectoryPath).append(Path);
 							const auto filePathString = filePath.string();
 							if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
-								ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), Resource.ReleaseAndGetAddressOf(), false, 0, nullptr, &isCubeMap), filePathString.c_str());
+								ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap), filePathString.c_str());
 
 								if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(filePathString + ": Invalid texture");
 							}
 							else {
-								ThrowIfFailed(CreateWICTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), Resource.ReleaseAndGetAddressOf()), filePathString.c_str());
+								ThrowIfFailed(CreateWICTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource), filePathString.c_str());
 							}
 
 							resourceUploadBatch.End(pCommandQueue).wait();
