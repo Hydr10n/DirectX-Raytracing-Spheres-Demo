@@ -25,8 +25,6 @@ using namespace WindowHelpers;
 
 using GraphicsSettingsData = MyAppData::Settings::Graphics;
 
-constexpr auto DefaultWindowTitle = L"Raytracing Spheres";
-
 exception_ptr g_exception;
 
 shared_ptr<WindowModeHelper> g_windowModeHelper;
@@ -63,7 +61,7 @@ int WINAPI wWinMain(
 		const auto window = CreateWindowExW(
 			0,
 			wndClassEx.lpszClassName,
-			DefaultWindowTitle,
+			L"Raytracing Spheres",
 			WS_OVERLAPPEDWINDOW,
 			CW_USEDEFAULT, CW_USEDEFAULT,
 			CW_USEDEFAULT, CW_USEDEFAULT,

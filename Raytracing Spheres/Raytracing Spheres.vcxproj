@@ -104,7 +104,6 @@
     <ClInclude Include="MyAppData.h" />
     <ClInclude Include="MyPhysX.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="Random.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="StepTimer.h" />
   </ItemGroup>
@@ -116,6 +115,7 @@
     <ClCompile Include="D3DApp.cpp" />
     <ClCompile Include="DeviceResources.cpp" />
     <ClCompile Include="Material.ixx" />
+    <ClCompile Include="Random.ixx" />
     <ClCompile Include="SharedData.ixx" />
     <ClCompile Include="TemporalAntiAliasingEffect.ixx" />
     <ClCompile Include="Texture.ixx" />

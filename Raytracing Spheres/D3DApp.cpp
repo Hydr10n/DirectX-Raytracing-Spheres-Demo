@@ -32,8 +32,6 @@ module;
 
 #include "MyAppData.h"
 
-#include "Random.h"
-
 #include <shellapi.h>
 
 module D3DApp;
@@ -41,6 +39,7 @@ module D3DApp;
 import DirectX.Effects.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import Material;
+import Random;
 import SharedData;
 import Texture;
 
@@ -55,8 +54,6 @@ using namespace physx;
 using namespace std;
 using namespace std::filesystem;
 using namespace WindowHelpers;
-
-using GraphicsSettingsData = MyAppData::Settings::Graphics;
 
 struct D3DApp::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -220,6 +217,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 private:
 	using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
+	using GraphicsSettingsData = MyAppData::Settings::Graphics;
 	using Key = Keyboard::Keys;
 
 	struct Objects {
