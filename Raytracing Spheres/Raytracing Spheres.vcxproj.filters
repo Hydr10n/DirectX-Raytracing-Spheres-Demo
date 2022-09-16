@@ -63,7 +63,7 @@
     <ClCompile Include="D3DApp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TemporalAntiAliasingEffect.ixx">
+    <ClCompile Include="TemporalAntiAliasing.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DirectXRaytracingHelpers.ixx">

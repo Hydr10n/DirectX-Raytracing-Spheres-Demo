@@ -3,41 +3,48 @@ module;
 
 export module Material;
 
+using namespace DirectX;
+
 export struct Material {
 	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type{};
 	float RefractiveIndex{}, Roughness{};
 	float _padding{};
-	DirectX::XMFLOAT4 Color{};
+	XMFLOAT4 Color{};
 
-	auto& AsLambertian(const DirectX::XMFLOAT4& color) {
-		Type = Type::Lambertian;
-		Color = color;
-		return *this;
+	static auto Lambertian(const XMFLOAT4& color) {
+		return Material{
+			.Type = Type::Lambertian,
+			.Color = color
+		};
 	}
 
-	auto& AsMetal(const DirectX::XMFLOAT4& color, float roughness) {
-		Type = Type::Metal;
-		Roughness = roughness;
-		Color = color;
-		return *this;
+	static auto Metal(const XMFLOAT4& color, float roughness) {
+		return Material{
+			.Type = Type::Metal,
+			.Roughness = roughness,
+			.Color = color
+		};
 	}
 
-	auto& AsDielectric(const DirectX::XMFLOAT4& color, float refractiveIndex) {
-		Type = Type::Dielectric;
-		RefractiveIndex = refractiveIndex;
-		Color = color;
-		return *this;
+	static auto Dielectric(const XMFLOAT4& color, float refractiveIndex) {
+		return Material{
+			.Type = Type::Dielectric,
+			.RefractiveIndex = refractiveIndex,
+			.Color = color
+		};
 	}
 
-	auto& AsIsotropic(const DirectX::XMFLOAT4& color) {
-		Type = Type::Isotropic;
-		Color = color;
-		return *this;
+	static auto Isotropic(const XMFLOAT4& color) {
+		return Material{
+			.Type = Type::Isotropic,
+			.Color = color
+		};
 	}
 
-	auto& AsDiffuseLight(const DirectX::XMFLOAT4& color) {
-		Type = Type::DiffuseLight;
-		Color = color;
-		return *this;
+	static auto DiffuseLight(const XMFLOAT4& color) {
+		return Material{
+			.Type = Type::DiffuseLight,
+			.Color = color
+		};
 	}
 };

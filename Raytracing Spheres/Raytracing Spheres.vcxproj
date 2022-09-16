@@ -117,7 +117,7 @@
     <ClCompile Include="Material.ixx" />
     <ClCompile Include="Random.ixx" />
     <ClCompile Include="SharedData.ixx" />
-    <ClCompile Include="TemporalAntiAliasingEffect.ixx" />
+    <ClCompile Include="TemporalAntiAliasing.ixx" />
     <ClCompile Include="Texture.ixx" />
     <ClCompile Include="WindowHelpers.ixx" />
   </ItemGroup>

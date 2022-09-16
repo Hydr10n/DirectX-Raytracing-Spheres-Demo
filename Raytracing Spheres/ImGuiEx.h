@@ -17,7 +17,7 @@ namespace ImGuiEx {
 		if (ImGui::IsItemHovered()) {
 			AddUnderline(style.Colors[ImGuiCol_ButtonHovered]);
 			ImGui::SetTooltip(link);
-			if (ImGui::IsMouseClicked(0)) return true;
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return true;
 		}
 		else AddUnderline(style.Colors[ImGuiCol_Button]);
 		return false;

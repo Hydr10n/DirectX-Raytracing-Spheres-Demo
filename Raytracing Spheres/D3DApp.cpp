@@ -32,11 +32,13 @@ module;
 
 #include "MyAppData.h"
 
+#include <map>
+
 #include <shellapi.h>
 
 module D3DApp;
 
-import DirectX.Effects.TemporalAntiAliasing;
+import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import Material;
 import Random;
@@ -44,7 +46,7 @@ import SharedData;
 import Texture;
 
 using namespace DirectX;
-using namespace DirectX::Effects;
+using namespace DirectX::PostProcess;
 using namespace DirectX::RaytracingHelpers;
 using namespace DX;
 using namespace Microsoft::WRL;
@@ -54,6 +56,10 @@ using namespace physx;
 using namespace std;
 using namespace std::filesystem;
 using namespace WindowHelpers;
+
+using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
+using GraphicsSettingsData = MyAppData::Settings::Graphics;
+using Key = Keyboard::Keys;
 
 struct D3DApp::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -192,13 +198,14 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		for (auto& [_, textures] : m_textures) for (auto& [_, texture] : get<0>(textures)) texture.Resource.Reset();
 
-		m_accelerationStructureBuffers = {};
+		m_topLevelAccelerationStructureBuffers = {};
+		m_bottomLevelAccelerationStructureBuffers = {};
 
-		m_geometries = {};
+		m_triangleMeshes = {};
 
 		m_shaderResources = {};
 
-		m_temporalAntiAliasingEffect.reset();
+		m_temporalAntiAliasing.reset();
 
 		m_pipelineStateObject.Reset();
 
@@ -216,13 +223,10 @@ struct D3DApp::Impl : IDeviceNotify {
 	}
 
 private:
-	using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
-	using GraphicsSettingsData = MyAppData::Settings::Graphics;
-	using Key = Keyboard::Keys;
-
-	struct Objects {
+	struct ObjectNames {
 		static constexpr LPCSTR
 			Environment = "Environment",
+			Sphere = "Sphere",
 			Earth = "Earth", Moon = "Moon", Star = "Star",
 			HarmonicOscillator = "HarmonicOscillator";
 	};
@@ -261,7 +265,7 @@ private:
 			Count
 		};
 	};
-	unique_ptr<DescriptorHeap> m_resourceDescriptorHeap;
+	unique_ptr<DescriptorPile> m_resourceDescriptorHeap;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 
@@ -269,8 +273,8 @@ private:
 
 	static constexpr float MaxTemporalAntiAliasingColorBoxSigma = 2;
 	bool m_isTemporalAntiAliasingEnabled = true;
-	decltype(TemporalAntiAliasingEffect::Constant) m_temporalAntiAliasingConstant;
-	unique_ptr<TemporalAntiAliasingEffect> m_temporalAntiAliasingEffect;
+	decltype(TemporalAntiAliasing::Constant) m_temporalAntiAliasingConstant;
+	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
 
 	struct GlobalResourceDescriptorHeapIndices {
 		UINT
@@ -308,18 +312,10 @@ private:
 			GlobalData, LocalData;
 	} m_shaderResources;
 
-	struct {
-		struct Sphere : unique_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>> {
-			using unique_ptr::unique_ptr;
-			using unique_ptr::operator=;
-			static constexpr float Radius = 0.5f;
-		} Sphere;
-	} m_geometries;
+	map<string, shared_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>>, less<>> m_triangleMeshes;
 
-	struct {
-		struct { AccelerationStructureBuffers Sphere; } BottomLevel;
-		AccelerationStructureBuffers TopLevel;
-	} m_accelerationStructureBuffers;
+	map<string, AccelerationStructureBuffers, less<>> m_bottomLevelAccelerationStructureBuffers;
+	AccelerationStructureBuffers m_topLevelAccelerationStructureBuffers;
 
 	struct { ComPtr<ID3D12Resource> PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextureResources;
 
@@ -362,7 +358,7 @@ private:
 
 		CreatePipelineStateObjects();
 
-		CreateEffects();
+		CreatePostProcess();
 
 		CreateShaderResources();
 
@@ -405,7 +401,7 @@ private:
 			CreateResource(DXGI_FORMAT_R32G32_FLOAT, m_renderTextureResources.MotionVectors, ResourceDescriptorHeapIndex::MotionVectorsSRV, ResourceDescriptorHeapIndex::MotionVectorsUAV);
 		}
 
-		m_temporalAntiAliasingEffect->TextureSize = outputSize;
+		m_temporalAntiAliasing->TextureSize = outputSize;
 
 		m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
 
@@ -477,7 +473,7 @@ private:
 					}
 				);
 
-				m_temporalAntiAliasingEffect->Apply(commandList);
+				m_temporalAntiAliasing->Process(commandList);
 			}
 
 			{
@@ -520,7 +516,7 @@ private:
 
 		textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Textures\)");
 
-		textures[Objects::Environment] = {
+		textures[ObjectNames::Environment] = {
 			{
 				{
 					TextureType::CubeMap,
@@ -533,7 +529,7 @@ private:
 			XMMatrixRotationRollPitchYaw(XM_PI, XM_PI * 0.2f, 0)
 		};
 
-		textures[Objects::Moon] = {
+		textures[ObjectNames::Moon] = {
 			{
 				{
 					TextureType::ColorMap,
@@ -553,7 +549,7 @@ private:
 			XMMatrixTranslation(0.5f, 0, 0)
 		};
 
-		textures[Objects::Earth] = {
+		textures[ObjectNames::Earth] = {
 			{
 				{
 					TextureType::ColorMap,
@@ -618,21 +614,21 @@ private:
 			const struct {
 				PxVec3 Position;
 				Material Material;
-			} spheres[]{
+			} objects[]{
 				{
 					{ -2, 0.5f, 0 },
-					Material().AsLambertian({ 0.1f, 0.2f, 0.5f, 1 })
+					Material::Lambertian({ 0.1f, 0.2f, 0.5f, 1 })
 				},
 				{
 					{ 0, 0.5f, 0 },
-					Material().AsDielectric({ 1, 1, 1, 1 }, 1.5f)
+					Material::Dielectric({ 1, 1, 1, 1 }, 1.5f)
 				},
 				{
 					{ 2, 0.5f, 0 },
-					Material().AsMetal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
+					Material::Metal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
 				}
 			};
-			for (const auto& [Position, Material] : spheres) {
+			for (const auto& [Position, Material] : objects) {
 				RenderItem renderItem;
 				renderItem.Material = Material;
 				AddRenderItem(renderItem, Position, PxSphereGeometry(0.5f));
@@ -650,7 +646,7 @@ private:
 					position.z = static_cast<float>(j) - 0.7f * random.Float();
 
 					bool isOverlapping = false;
-					for (const auto& [Position, Material] : spheres) {
+					for (const auto& [Position, Material] : objects) {
 						if ((position - Position).magnitude() < 1) {
 							isOverlapping = true;
 							break;
@@ -660,12 +656,12 @@ private:
 
 					RenderItem renderItem;
 
-					renderItem.Name = Objects::HarmonicOscillator;
+					renderItem.Name = ObjectNames::HarmonicOscillator;
 
 					if (const auto randomValue = random.Float();
-						randomValue < 0.5f) renderItem.Material.AsLambertian(random.Float4());
-					else if (randomValue < 0.75f) renderItem.Material.AsMetal(random.Float4(0.5f), random.Float(0, 0.5f));
-					else renderItem.Material.AsDielectric(random.Float4(), 1.5f);
+						randomValue < 0.5f) renderItem.Material = Material::Lambertian(random.Float4());
+					else if (randomValue < 0.75f) renderItem.Material = Material::Metal(random.Float4(0.5f), random.Float(0, 0.5f));
+					else renderItem.Material = Material::Dielectric(random.Float4(), 1.5f);
 
 					auto& rigidDynamic = AddRenderItem(renderItem, position, PxSphereGeometry(0.075f));
 					rigidDynamic.setLinearVelocity({ 0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0 });
@@ -680,23 +676,23 @@ private:
 				PxReal Radius, RotationPeriod, OrbitalPeriod, Mass;
 				Material Material;
 			} moon{
-				.Name = Objects::Moon,
+				.Name = ObjectNames::Moon,
 				.Position{ -4, 4, 0 },
 				.Radius = 0.25f,
 				.OrbitalPeriod = 10,
-				.Material = Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
+				.Material = Material::Metal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
 			}, earth{
-				.Name = Objects::Earth,
+				.Name = ObjectNames::Earth,
 				.Position{ 0, moon.Position.y, 0 },
 				.Radius = 1,
 				.RotationPeriod = 15,
 				.Mass = UniversalGravitation::CalculateMass((moon.Position - earth.Position).magnitude(), moon.OrbitalPeriod),
-				.Material = Material().AsLambertian({ 0.1f, 0.2f, 0.5f, 1 })
+				.Material = Material::Lambertian({ 0.1f, 0.2f, 0.5f, 1 })
 			}, star{
-				.Name = Objects::Star,
+				.Name = ObjectNames::Star,
 				.Position{ 0, -50.1f, 0 },
 				.Radius = 50,
-				.Material = Material().AsMetal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
+				.Material = Material::Metal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
 			};
 			for (const auto& [Name, Position, Radius, RotationPeriod, OrbitalPeriod, Mass, Material] : { moon, earth, star }) {
 				RenderItem renderItem;
@@ -708,7 +704,7 @@ private:
 				if (m_textures.contains(Name)) renderItem.pTextures = &m_textures[Name];
 
 				auto& rigidDynamic = AddRenderItem(renderItem, Position, PxSphereGeometry(Radius));
-				if (renderItem.Name == Objects::Moon) {
+				if (renderItem.Name == ObjectNames::Moon) {
 					const auto x = earth.Position - Position;
 					const auto magnitude = x.magnitude();
 					const auto normalized = x / magnitude;
@@ -716,11 +712,11 @@ private:
 					rigidDynamic.setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 					rigidDynamic.setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 				}
-				else if (renderItem.Name == Objects::Earth) {
+				else if (renderItem.Name == ObjectNames::Earth) {
 					rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
 					PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &Mass, 1);
 				}
-				else if (renderItem.Name == Objects::Star) rigidDynamic.setMass(0);
+				else if (renderItem.Name == ObjectNames::Star) rigidDynamic.setMass(0);
 
 				m_physicsObjects.RigidBodies[Name] = { &rigidDynamic, false };
 			}
@@ -732,7 +728,7 @@ private:
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		m_resourceDescriptorHeap = make_unique<DescriptorHeap>(device, ResourceDescriptorHeapIndex::Count);
+		m_resourceDescriptorHeap = make_unique<decltype(m_resourceDescriptorHeap)::element_type>(device, ResourceDescriptorHeapIndex::Count);
 	}
 
 	void CreateRootSignatures() {
@@ -749,12 +745,12 @@ private:
 		ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
 	}
 
-	void CreateEffects() {
+	void CreatePostProcess() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		m_temporalAntiAliasingEffect = make_unique<decltype(m_temporalAntiAliasingEffect)::element_type>(device);
-		m_temporalAntiAliasingEffect->Constant = m_temporalAntiAliasingConstant;
-		m_temporalAntiAliasingEffect->TextureDescriptors = {
+		m_temporalAntiAliasing = make_unique<decltype(m_temporalAntiAliasing)::element_type>(device);
+		m_temporalAntiAliasing->Constant = m_temporalAntiAliasingConstant;
+		m_temporalAntiAliasing->TextureDescriptors = {
 			.PreviousOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::PreviousOutputSRV),
 			.CurrentOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::CurrentOutputSRV),
 			.MotionVectorsSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionVectorsSRV),
@@ -775,7 +771,7 @@ private:
 			};
 
 			m_shaderResources.GlobalResourceDescriptorHeapIndices = m_graphicsMemory->AllocateConstant(GlobalResourceDescriptorHeapIndices{
-				.EnvironmentCubeMap = m_textures.contains(Objects::Environment) && get<0>(m_textures[Objects::Environment]).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : UINT_MAX
+				.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures[ObjectNames::Environment]).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : UINT_MAX
 				});
 
 			{
@@ -787,7 +783,7 @@ private:
 				m_shaderResources.GlobalData = m_graphicsMemory->AllocateConstant(GlobalData{
 					.RaytracingMaxTraceRecursionDepth = m_raytracingMaxTraceRecursionDepth,
 					.RaytracingSamplesPerPixel = m_raytracingSamplesPerPixel,
-					.EnvironmentMapTransform = m_textures.contains(Objects::Environment) ? XMMatrixTranspose(get<1>(m_textures[Objects::Environment])) : XMMatrixIdentity()
+					.EnvironmentMapTransform = m_textures.contains(ObjectNames::Environment) ? XMMatrixTranspose(get<1>(m_textures[ObjectNames::Environment])) : XMMatrixIdentity()
 					});
 				CreateConstantBufferView(m_shaderResources.GlobalData, ResourceDescriptorHeapIndex::GlobalData);
 			}
@@ -850,13 +846,13 @@ private:
 	void CreateGeometries() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		auto& sphere = m_geometries.Sphere;
+		auto& sphere = m_triangleMeshes[ObjectNames::Sphere];
 
 		GeometricPrimitive::VertexCollection vertices;
 		GeometricPrimitive::IndexCollection indices;
-		GeometricPrimitive::CreateGeoSphere(vertices, indices, sphere.Radius * 2, 6);
+		GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
 
-		sphere = make_unique<decay_t<decltype(sphere)>::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
+		sphere = make_shared<decay_t<decltype(sphere)>::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
 		sphere->CreateShaderResourceViews(m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereVertices), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereIndices));
 	}
 
@@ -883,10 +879,18 @@ private:
 
 			const auto& shape = *renderItem.Shape;
 
-			PxVec3 scale;
-			const auto geometry = shape.getGeometry();
-			switch (shape.getGeometryType()) {
-			case PxGeometryType::eSPHERE: scale = PxVec3(geometry.sphere().radius / m_geometries.Sphere.Radius); break;
+			struct {
+				LPCSTR Name;
+				PxVec3 Scale;
+			} object;
+			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
+			case PxGeometryType::eSPHERE: {
+				object = {
+					.Name = ObjectNames::Sphere,
+					.Scale = PxVec3(geometry.sphere().radius * 2)
+				};
+			} break;
+
 			default: throw;
 			}
 
@@ -894,15 +898,15 @@ private:
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));
 			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
-			world.scale(PxVec4(scale, 1));
-			topLevelAccelerationStructureGenerator.AddInstance(m_accelerationStructureBuffers.BottomLevel.Sphere.Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), renderItem.InstanceID, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
+			world.scale(PxVec4(object.Scale, 1));
+			topLevelAccelerationStructureGenerator.AddInstance(m_bottomLevelAccelerationStructureBuffers[object.Name].Result->GetGPUVirtualAddress(), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())), renderItem.InstanceID, i, ~0, D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE);
 		}
 
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		auto& buffers = m_accelerationStructureBuffers.TopLevel;
+		auto& buffers = m_topLevelAccelerationStructureBuffers;
 
 		if (updateOnly) {
 			const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(buffers.Result.Get());
@@ -922,7 +926,7 @@ private:
 
 		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
 
-		CreateBottomLevelAccelerationStructure({ m_geometries.Sphere->GetGeometryDesc() }, m_accelerationStructureBuffers.BottomLevel.Sphere);
+		CreateBottomLevelAccelerationStructure({ m_triangleMeshes[ObjectNames::Sphere]->GetGeometryDesc() }, m_bottomLevelAccelerationStructureBuffers[ObjectNames::Sphere]);
 
 		CreateTopLevelAccelerationStructure(false);
 
@@ -960,13 +964,13 @@ private:
 			}
 
 			{
-				auto& isGravityEnabled = get<1>(m_physicsObjects.RigidBodies.at(Objects::Earth));
+				auto& isGravityEnabled = get<1>(m_physicsObjects.RigidBodies.at(ObjectNames::Earth));
 				if (gamepadStateTracker.x == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
 				if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
 			}
 
 			{
-				auto& isGravityEnabled = get<1>(m_physicsObjects.RigidBodies.at(Objects::Star));
+				auto& isGravityEnabled = get<1>(m_physicsObjects.RigidBodies.at(ObjectNames::Star));
 				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
 				if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
 			}
@@ -1053,15 +1057,15 @@ private:
 		const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
 
 		if (const auto& [PositionY, Period] = m_physicsObjects.Spring;
-			renderItem.Name == Objects::HarmonicOscillator) {
+			renderItem.Name == ObjectNames::HarmonicOscillator) {
 			const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Period);
 			const PxVec3 x(0, position.y - PositionY, 0);
 			rigidBody->addForce(-k * x);
 		}
 
-		if (const auto& earth = m_physicsObjects.RigidBodies.at(Objects::Earth);
-			(get<1>(earth) && renderItem.Name != Objects::Earth)
-			|| renderItem.Name == Objects::Moon) {
+		if (const auto& earth = m_physicsObjects.RigidBodies.at(ObjectNames::Earth);
+			(get<1>(earth) && renderItem.Name != ObjectNames::Earth)
+			|| renderItem.Name == ObjectNames::Moon) {
 			const auto& earthRigidBody = *get<0>(earth);
 			const auto x = earthRigidBody.getGlobalPose().p - position;
 			const auto magnitude = x.magnitude();
@@ -1069,8 +1073,8 @@ private:
 			rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(earthRigidBody.getMass(), magnitude) * normalized, PxForceMode::eACCELERATION);
 		}
 
-		if (const auto& star = m_physicsObjects.RigidBodies.at(Objects::Star);
-			get<1>(star) && renderItem.Name != Objects::Star) {
+		if (const auto& star = m_physicsObjects.RigidBodies.at(ObjectNames::Star);
+			get<1>(star) && renderItem.Name != ObjectNames::Star) {
 			const auto x = get<0>(star)->getGlobalPose().p - position;
 			const auto normalized = x.getNormalized();
 			rigidBody->addForce(10 * normalized, PxForceMode::eACCELERATION);
@@ -1083,7 +1087,7 @@ private:
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
-		commandList->SetComputeRootShaderResourceView(0, m_accelerationStructureBuffers.TopLevel.Result->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructureBuffers.Result->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(1, m_shaderResources.GlobalResourceDescriptorHeapIndices.GpuAddress());
 
 		commandList->SetPipelineState(m_pipelineStateObject.Get());
@@ -1162,13 +1166,13 @@ private:
 					}
 
 					if (ImGui::SliderFloat("Alpha", &m_temporalAntiAliasingConstant.Alpha, 0, 1, "%.3f", ImGuiSliderFlags_NoInput)) {
-						m_temporalAntiAliasingEffect->Constant.Alpha = m_temporalAntiAliasingConstant.Alpha;
+						m_temporalAntiAliasing->Constant.Alpha = m_temporalAntiAliasingConstant.Alpha;
 
 						GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::Alpha>(m_temporalAntiAliasingConstant.Alpha);
 					}
 
 					if (ImGui::SliderFloat("Color-Box Sigma", &m_temporalAntiAliasingConstant.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.3f", ImGuiSliderFlags_NoInput)) {
-						m_temporalAntiAliasingEffect->Constant.ColorBoxSigma = m_temporalAntiAliasingConstant.ColorBoxSigma;
+						m_temporalAntiAliasing->Constant.ColorBoxSigma = m_temporalAntiAliasingConstant.ColorBoxSigma;
 
 						GraphicsSettingsData::Save<GraphicsSettingsData::TemporalAntiAliasing::ColorBoxSigma>(m_temporalAntiAliasingConstant.ColorBoxSigma);
 					}

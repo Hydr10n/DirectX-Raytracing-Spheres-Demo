@@ -9,6 +9,8 @@ using namespace DirectX;
 using namespace std;
 
 export struct Random {
+	Random(unsigned int seed = random_device()()) : m_generator(seed) {}
+
 	float Float(float min = 0, float max = 1) { return min + (max - min) * m_distribution(m_generator); }
 
 	XMFLOAT2 Float2(float min = 0, float max = 1) { return { Float(min, max), Float(min, max) }; }
@@ -25,5 +27,5 @@ export struct Random {
 
 private:
 	uniform_real_distribution<float> m_distribution = decltype(m_distribution)(0, 1);
-	mt19937 m_generator = decltype(m_generator)(random_device()());
+	mt19937 m_generator;
 };
