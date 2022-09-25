@@ -1,76 +1,84 @@
 #pragma once
 
-#include <ShlObj.h>
+#include "nlohmann/json.hpp"
 
-#include <filesystem>
+#include <fstream>
 
-#define MAKESECTION(Name, Members) class Name { static constexpr LPCWSTR SectionName = L#Name; public: Members };
+#include <Windows.h>
 
-#define MAKEKEY(KeyName) struct KeyName { static constexpr LPCWSTR Section = SectionName, Key = L#KeyName; };
-
-import Hydr10n.Data.AppData;
+import DirectX.PostProcess.TemporalAntiAliasing;
+import DisplayHelpers;
 import WindowHelpers;
 
+using ordered_json_f = nlohmann::basic_json<nlohmann::ordered_map, std::vector, std::string, bool, int64_t, uint64_t, float>;
+
+#define NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Type, ...) \
+	friend void to_json(ordered_json_f& nlohmann_json_j, const Type& nlohmann_json_t) { NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, __VA_ARGS__)) } \
+	friend void from_json(const ordered_json_f& nlohmann_json_j, Type& nlohmann_json_t) { Type nlohmann_json_default_obj; NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM_WITH_DEFAULT, __VA_ARGS__)) }
+
+inline void to_json(ordered_json_f& json, const SIZE& data) { json = { { "Width", data.cx }, { "Height", data.cy } }; }
+inline void from_json(const ordered_json_f& json, SIZE& data) { data = { json.value("Width", 0), json.value("Height", 0) }; }
+
+namespace WindowHelpers {
+	NLOHMANN_JSON_SERIALIZE_ENUM(
+		WindowMode,
+		{
+			{ WindowMode::Windowed, "Windowed" },
+			{ WindowMode::Borderless, "Borderless" },
+			{ WindowMode::Fullscreen, "Fullscreen" }
+		}
+	);
+}
+
 struct MyAppData {
-	class Settings {
-		inline static const std::filesystem::path ms_directoryPath = std::filesystem::path(*__wargv).replace_filename(L"Settings");
+	struct Settings {
+		inline static const std::filesystem::path DirectoryPath = std::filesystem::path(*__wargv).replace_filename(L"Settings");
 
-		inline static const struct StaticSettings { StaticSettings() { SHCreateDirectory(nullptr, ms_directoryPath.c_str()); } } ms_settings;
+		inline static struct Graphics {
+			inline static const std::filesystem::path FilePath = DirectoryPath / L"Graphics.json";
 
-	public:
-		class Graphics {
-			inline static const Hydr10n::Data::AppData ms_appData = (ms_directoryPath / L"Graphics.ini").c_str();
+			WindowHelpers::WindowMode WindowMode{};
 
-			static constexpr LPCWSTR SectionName = L"";
+			DisplayHelpers::Resolution Resolution{};
 
-		public:
-			MAKEKEY(WindowMode);
+			struct Raytracing {
+				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 2;
 
-			MAKESECTION(Resolution, MAKEKEY(Width) MAKEKEY(Height));
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Raytracing, MaxTraceRecursionDepth, SamplesPerPixel);
+			} Raytracing;
 
-			MAKESECTION(Raytracing, MAKEKEY(MaxTraceRecursionDepth) MAKEKEY(SamplesPerPixel));
+			struct TemporalAntiAliasing : DirectX::PostProcess::TemporalAntiAliasing::Constant {
+				bool IsEnabled = true;
 
-			MAKESECTION(TemporalAntiAliasing, MAKEKEY(IsEnabled) MAKEKEY(Alpha) MAKEKEY(ColorBoxSigma));
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(TemporalAntiAliasing, IsEnabled, Alpha, ColorBoxSigma);
+			} TemporalAntiAliasing;
 
-			template <std::same_as<WindowMode> Key>
-			[[nodiscard]] static BOOL Load(WindowHelpers::WindowMode& data) {
-				return ms_appData.Load(WindowMode::Section, WindowMode::Key, reinterpret_cast<UINT&>(data));
-			}
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, Raytracing, TemporalAntiAliasing);
+		} Graphics;
 
-			template <std::same_as<WindowMode> Key>
-			static BOOL Save(const WindowHelpers::WindowMode& data) {
-				return ms_appData.Save(WindowMode::Section, WindowMode::Key, reinterpret_cast<const UINT&>(data));
-			}
-
-			template <std::same_as<Resolution> Key>
-			[[nodiscard]] static BOOL Load(SIZE& data) {
-				return ms_appData.Load(Resolution::Width::Section, Resolution::Width::Key, data.cx)
-					&& ms_appData.Load(Resolution::Height::Section, Resolution::Height::Key, data.cy);
-			}
-
-			template <std::same_as<Resolution> Key>
-			static BOOL Save(const SIZE& data) {
-				return ms_appData.Save(Resolution::Width::Section, Resolution::Width::Key, data.cx)
-					&& ms_appData.Save(Resolution::Height::Section, Resolution::Height::Key, data.cy);
-			}
-
-			template <typename Key, typename Data> requires(
-				std::same_as<Key, Raytracing::MaxTraceRecursionDepth>
-				|| std::same_as<Key, Raytracing::SamplesPerPixel>
-				|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
-				|| std::same_as<Key, TemporalAntiAliasing::Alpha>
-				|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
-				&& (std::integral<Data> || std::floating_point<Data>)
-				[[nodiscard]] static BOOL Load(Data& data) { return ms_appData.Load(Key::Section, Key::Key, data); }
-
-			template <typename Key, typename Data> requires(
-				std::same_as<Key, Raytracing::MaxTraceRecursionDepth>
-				|| std::same_as<Key, Raytracing::SamplesPerPixel>
-				|| std::same_as<Key, TemporalAntiAliasing::IsEnabled>
-				|| std::same_as<Key, TemporalAntiAliasing::Alpha>
-				|| std::same_as<Key, TemporalAntiAliasing::ColorBoxSigma>)
-				&& (std::integral<Data> || std::floating_point<Data>)
-				static BOOL Save(const Data& data) { return ms_appData.Save(Key::Section, Key::Key, data); }
-		};
+	private:
+		inline static const struct _ { _() { create_directories(DirectoryPath); } } ms_settings;
 	};
+
+	template <typename T>
+	static bool Load(T& data) {
+		try {
+			std::ifstream file(T::FilePath);
+			ordered_json_f json;
+			file >> json;
+			data = json;
+			return true;
+		}
+		catch (...) { return false; }
+	}
+
+	template <typename T>
+	static bool Save(const T& data) {
+		try {
+			std::ofstream file(T::FilePath, std::ios_base::trunc);
+			file << std::setw(4) << ordered_json_f(data);
+			return true;
+		}
+		catch (...) { return false; }
+	}
 };

@@ -23,7 +23,7 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace std;
 using namespace WindowHelpers;
 
-using GraphicsSettingsData = MyAppData::Settings::Graphics;
+constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
 
 exception_ptr g_exception;
 
@@ -46,6 +46,8 @@ int WINAPI wWinMain(
 
 	try {
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
+
+		MyAppData::Load(GraphicsSettings);
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
@@ -75,9 +77,8 @@ int WINAPI wWinMain(
 		g_windowModeHelper = make_shared<decltype(g_windowModeHelper)::element_type>(window);
 
 		RECT clientRect;
-		if (Resolution resolution; GraphicsSettingsData::Load<GraphicsSettingsData::Resolution>(resolution)
-			&& resolution >= *cbegin(g_displayResolutions) && resolution <= *--cend(g_displayResolutions)) {
-			clientRect = { 0, 0, resolution.cx, resolution.cy };
+		if (GraphicsSettings.Resolution >= *cbegin(g_displayResolutions) && GraphicsSettings.Resolution <= *--cend(g_displayResolutions)) {
+			clientRect = { 0, 0, GraphicsSettings.Resolution.cx, GraphicsSettings.Resolution.cy };
 		}
 		else ThrowIfFailed(GetClientRect(window, &clientRect));
 
@@ -93,8 +94,8 @@ int WINAPI wWinMain(
 
 		// HACK: Fix missing icon on title bar when initial WindowMode != Windowed
 		ThrowIfFailed(g_windowModeHelper->Apply());
-		if (WindowMode windowMode; GraphicsSettingsData::Load<GraphicsSettingsData::WindowMode>(windowMode)) {
-			g_windowModeHelper->SetMode(windowMode);
+		if (GraphicsSettings.WindowMode != WindowMode::Windowed) {
+			g_windowModeHelper->SetMode(GraphicsSettings.WindowMode);
 			ThrowIfFailed(g_windowModeHelper->Apply());
 		}
 
@@ -202,7 +203,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			case SIZE_RESTORED: g_app->OnResuming(); [[fallthrough]];
 			default: {
 				if (g_windowModeHelper->GetMode() != WindowMode::Fullscreen || g_windowModeHelper->IsFullscreenResolutionHandledByWindow()) {
-					g_windowModeHelper->SetResolution({ LOWORD(lParam), HIWORD(lParam) });
+					const Resolution resolution{ LOWORD(lParam), HIWORD(lParam) };
+
+					g_windowModeHelper->SetResolution(resolution);
+
+					if (GraphicsSettings.Resolution != resolution) {
+						GraphicsSettings.Resolution = resolution;
+						MyAppData::Save(GraphicsSettings);
+					}
 				}
 
 				g_app->OnWindowSizeChanged();
@@ -239,7 +247,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				g_windowModeHelper->ToggleMode();
 				ThrowIfFailed(g_windowModeHelper->Apply());
 
-				GraphicsSettingsData::Save<GraphicsSettingsData::WindowMode>(g_windowModeHelper->GetMode());
+				GraphicsSettings.WindowMode = g_windowModeHelper->GetMode();
+				MyAppData::Save(GraphicsSettings);
 			}
 		} [[fallthrough]];
 		case WM_SYSKEYUP:

@@ -1,4 +1,5 @@
 module;
+
 #include "pch.h"
 
 #include "directxtk12/PostProcess.h"
@@ -12,7 +13,7 @@ using namespace std;
 
 namespace DirectX::PostProcess {
 	export struct TemporalAntiAliasing : IPostProcess {
-		struct { float Alpha = 0.2f, ColorBoxSigma = 1; } Constant;
+		struct Constant { float Alpha = 0.2f, ColorBoxSigma = 1; } Constant;
 
 		SIZE TextureSize{};
 

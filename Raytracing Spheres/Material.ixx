@@ -1,4 +1,5 @@
 module;
+
 #include <DirectXMath.h>
 
 export module Material;

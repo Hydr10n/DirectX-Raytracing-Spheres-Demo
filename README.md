@@ -83,6 +83,11 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 	> .\vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows
 	```
 
+- [JSON for Modern C++](https://github.com/nlohmann/json)
+	```cmd
+	> .\vcpkg install nlohmann-json:x64-windows
+	```
+
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 2004
 - Graphics

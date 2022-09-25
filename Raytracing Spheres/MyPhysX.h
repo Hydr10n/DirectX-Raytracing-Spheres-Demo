@@ -83,7 +83,7 @@ public:
 		m_pvd->getTransport()->release();
 		m_pvd->release();
 
-		m_cudaContextManager->release();
+		if (m_cudaContextManager != nullptr) m_cudaContextManager->release();
 
 		m_defaultCpuDispatcher->release();
 

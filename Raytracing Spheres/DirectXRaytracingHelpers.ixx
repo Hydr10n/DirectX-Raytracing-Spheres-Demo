@@ -1,15 +1,21 @@
 module;
+
 #include "pch.h"
+
+#include "directxtk12/DirectXHelpers.h"
+
+#include <span>
 
 export module DirectX.RaytracingHelpers;
 
+using namespace DirectX;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX::RaytracingHelpers {
 	struct AccelerationStructureBuffers {
-		ComPtr<ID3D12Resource> Scratch, Result, InstanceDesc;
+		ComPtr<ID3D12Resource> Scratch, Result, InstanceDescs;
 
 		AccelerationStructureBuffers() = default;
 
@@ -25,9 +31,106 @@ export namespace DirectX::RaytracingHelpers {
 			CreateBuffer(resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, Result);
 
 			if (instanceDescsSize) {
-				CreateBuffer(instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, InstanceDesc, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
+				CreateBuffer(instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, InstanceDescs, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
 			}
 		}
+	};
+
+	class BottomLevelAccelerationStructure {
+	public:
+		BottomLevelAccelerationStructure(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
+
+		ID3D12Resource* GetBuffer() const { return m_buffers.Result.Get(); }
+
+		void Build(
+			ID3D12Device5* pDevice, ID3D12GraphicsCommandList4* pCommandList,
+			span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs,
+			bool updateOnly
+		) {
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
+			desc.Inputs = {
+				.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
+				.Flags = m_flags,
+				.NumDescs = static_cast<UINT>(size(geometryDescs)),
+				.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+				.pGeometryDescs = data(geometryDescs)
+			};
+
+			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result != nullptr) {
+				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+				desc.SourceAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
+			}
+			else {
+				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
+				pDevice->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
+
+				m_buffers = AccelerationStructureBuffers(pDevice, AlignUp(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), 0);
+
+				desc.SourceAccelerationStructureData = NULL;
+			}
+
+			desc.DestAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
+			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetGPUVirtualAddress();
+			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
+
+			const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_buffers.Result.Get());
+			pCommandList->ResourceBarrier(1, &uavBarrier);
+		}
+
+	private:
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
+		AccelerationStructureBuffers m_buffers;
+	};
+
+	class TopLevelAccelerationStructure {
+	public:
+		TopLevelAccelerationStructure(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
+
+		ID3D12Resource* GetBuffer() const { return m_buffers.Result.Get(); }
+
+		void Build(
+			ID3D12Device5* pDevice, ID3D12GraphicsCommandList4* pCommandList,
+			span<const D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs,
+			bool updateOnly
+		) {
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
+			desc.Inputs = {
+				.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
+				.Flags = m_flags,
+				.NumDescs = static_cast<UINT>(size(instanceDescs)),
+				.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY
+			};
+
+			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result != nullptr) {
+				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+				desc.SourceAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
+			}
+			else {
+				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
+				pDevice->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
+
+				m_buffers = AccelerationStructureBuffers(pDevice, AlignUp(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * desc.Inputs.NumDescs, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT));
+
+				desc.SourceAccelerationStructureData = NULL;
+			}
+
+			D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
+			ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
+			copy(cbegin(instanceDescs), cend(instanceDescs), pInstanceDescs);
+			m_buffers.InstanceDescs->Unmap(0, nullptr);
+
+			desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();
+			desc.DestAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
+			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetGPUVirtualAddress();
+			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
+
+			const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_buffers.Result.Get());
+			pCommandList->ResourceBarrier(1, &uavBarrier);
+		}
+
+	private:
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
+		AccelerationStructureBuffers m_buffers;
 	};
 
 	template <typename Vertex, typename Index> requires same_as<Index, UINT16> || same_as<Index, UINT32>
@@ -38,13 +141,13 @@ export namespace DirectX::RaytracingHelpers {
 
 		TriangleMesh(
 			ID3D12Device* pDevice,
-			const vector<Vertex>& vertices, const vector<Index>& indices,
+			span<const Vertex> vertices, span<const Index> indices,
 			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 		) noexcept(false) : m_device(pDevice) {
 			const auto CreateBuffer = [&](const auto& data, auto afterState, auto& buffer) {
-				const auto size = data.size() * sizeof(data[0]);
+				const auto size = std::size(data) * sizeof(data[0]);
 
 				const D3D12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
 				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_NONE);
@@ -52,7 +155,7 @@ export namespace DirectX::RaytracingHelpers {
 
 				PVOID pMappedData;
 				ThrowIfFailed(buffer->Map(0, nullptr, &pMappedData));
-				memcpy(pMappedData, data.data(), size);
+				memcpy(pMappedData, std::data(data), size);
 				buffer->Unmap(0, nullptr);
 			};
 
@@ -67,8 +170,8 @@ export namespace DirectX::RaytracingHelpers {
 					.Transform3x4 = transform3x4,
 					.IndexFormat = is_same<Index, UINT16>() ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
 					.VertexFormat = vertexFormat,
-					.IndexCount = static_cast<UINT>(indices.size()),
-					.VertexCount = static_cast<UINT>(vertices.size()),
+					.IndexCount = static_cast<UINT>(size(indices)),
+					.VertexCount = static_cast<UINT>(size(vertices)),
 					.IndexBuffer = m_indexBuffer->GetGPUVirtualAddress(),
 					.VertexBuffer{
 						.StartAddress = m_vertexBuffer->GetGPUVirtualAddress(),

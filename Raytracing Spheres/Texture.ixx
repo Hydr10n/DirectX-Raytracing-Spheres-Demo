@@ -1,4 +1,5 @@
 module;
+
 #include "pch.h"
 
 #include "directxtk12/DirectXHelpers.h"
@@ -76,7 +77,7 @@ export {
 						catch (...) { if (!exception) exception = current_exception(); }
 						});
 
-					if (threads.size() == threads.capacity()) {
+					if (std::size(threads) == threads.capacity()) {
 						for (auto& thread : threads) thread.join();
 						threads.clear();
 					}
