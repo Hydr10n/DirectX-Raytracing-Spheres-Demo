@@ -47,7 +47,7 @@ int WINAPI wWinMain(
 	try {
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
 
-		MyAppData::Load(GraphicsSettings);
+		GraphicsSettings.Load();
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
@@ -209,7 +209,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 					if (GraphicsSettings.Resolution != resolution) {
 						GraphicsSettings.Resolution = resolution;
-						MyAppData::Save(GraphicsSettings);
+						GraphicsSettings.Save();
 					}
 				}
 
@@ -248,7 +248,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				ThrowIfFailed(g_windowModeHelper->Apply());
 
 				GraphicsSettings.WindowMode = g_windowModeHelper->GetMode();
-				MyAppData::Save(GraphicsSettings);
+				GraphicsSettings.Save();
 			}
 		} [[fallthrough]];
 		case WM_SYSKEYUP:

@@ -30,11 +30,35 @@ namespace WindowHelpers {
 	);
 }
 
-struct MyAppData {
+class MyAppData {
+	template <typename T>
+	struct Data {
+		bool Load() {
+			try {
+				std::ifstream file(T::FilePath);
+				ordered_json_f json;
+				file >> json;
+				*reinterpret_cast<T*>(this) = json;
+				return true;
+			}
+			catch (...) { return false; }
+		}
+
+		bool Save() const {
+			try {
+				std::ofstream file(T::FilePath, std::ios_base::trunc);
+				file << std::setw(4) << ordered_json_f(*reinterpret_cast<const T*>(this));
+				return true;
+			}
+			catch (...) { return false; }
+		}
+	};
+
+public:
 	struct Settings {
 		inline static const std::filesystem::path DirectoryPath = std::filesystem::path(*__wargv).replace_filename(L"Settings");
 
-		inline static struct Graphics {
+		inline static struct Graphics : Data<Graphics> {
 			inline static const std::filesystem::path FilePath = DirectoryPath / L"Graphics.json";
 
 			WindowHelpers::WindowMode WindowMode{};
@@ -59,26 +83,4 @@ struct MyAppData {
 	private:
 		inline static const struct _ { _() { create_directories(DirectoryPath); } } ms_settings;
 	};
-
-	template <typename T>
-	static bool Load(T& data) {
-		try {
-			std::ifstream file(T::FilePath);
-			ordered_json_f json;
-			file >> json;
-			data = json;
-			return true;
-		}
-		catch (...) { return false; }
-	}
-
-	template <typename T>
-	static bool Save(const T& data) {
-		try {
-			std::ofstream file(T::FilePath, std::ios_base::trunc);
-			file << std::setw(4) << ordered_json_f(data);
-			return true;
-		}
-		catch (...) { return false; }
-	}
 };

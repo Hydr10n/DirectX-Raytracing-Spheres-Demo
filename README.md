@@ -66,7 +66,7 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 	```
 
 ### Dependencies
-- Windows 11 SDK
+- Windows 11 SDK (10.0.22621.0)
 
 - [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
 	```cmd

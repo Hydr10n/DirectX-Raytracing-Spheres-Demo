@@ -131,16 +131,11 @@ struct D3DApp::Impl : IDeviceNotify {
 	void Tick() {
 		m_stepTimer.Tick([&] { Update(); });
 
-		const auto windowMode = m_windowModeHelper->GetMode();
-		const auto resolution = m_windowModeHelper->GetResolution();
-
 		Render();
 
-		const auto newWindowMode = m_windowModeHelper->GetMode();
-		const auto newResolution = m_windowModeHelper->GetResolution();
-
-		if (const auto isWindowModeChanged = newWindowMode != windowMode, isResolutionChanged = newResolution != resolution; isWindowModeChanged || isResolutionChanged) {
+		if (m_isWindowSettingChanged) {
 			ThrowIfFailed(m_windowModeHelper->Apply());
+			m_isWindowSettingChanged = false;
 		}
 	}
 
@@ -201,14 +196,6 @@ struct D3DApp::Impl : IDeviceNotify {
 	}
 
 private:
-	struct ObjectNames {
-		static constexpr LPCSTR
-			Environment = "Environment",
-			Sphere = "Sphere",
-			Earth = "Earth", Moon = "Moon", Star = "Star",
-			HarmonicOscillator = "HarmonicOscillator";
-	};
-
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
 	unique_ptr<DeviceResources> m_deviceResources = make_unique<decltype(m_deviceResources)::element_type>(D3D12_RAYTRACING_TIER_1_1);
@@ -228,6 +215,14 @@ private:
 		Keyboard::KeyboardStateTracker Keyboard;
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
+
+	struct ObjectNames {
+		static constexpr LPCSTR
+			Environment = "Environment",
+			Sphere = "Sphere",
+			Earth = "Earth", Moon = "Moon", Star = "Star",
+			HarmonicOscillator = "HarmonicOscillator";
+	};
 
 	struct ResourceDescriptorHeapIndex {
 		enum {
@@ -321,6 +316,8 @@ private:
 	static constexpr UINT MaxRaytracingSamplesPerPixel = 16;
 
 	bool m_isMenuOpen{};
+
+	bool m_isWindowSettingChanged{};
 
 	void CreateDeviceDependentResources() {
 		const auto device = m_deviceResources->GetD3DDevice();
@@ -613,11 +610,11 @@ private:
 			for (int i = -10; i < 10; i++) {
 				for (int j = -10; j < 10; j++) {
 					constexpr auto A = 0.5f;
-					const auto ω = PxTwoPi / m_physicsObjects.Spring.Period;
+					const auto omega = PxTwoPi / m_physicsObjects.Spring.Period;
 
 					PxVec3 position;
 					position.x = static_cast<float>(i) + 0.7f * random.Float();
-					position.y = m_physicsObjects.Spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, ω, 0.0f, position.x);
+					position.y = m_physicsObjects.Spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, omega, 0.0f, position.x);
 					position.z = static_cast<float>(j) - 0.7f * random.Float();
 
 					bool isOverlapping = false;
@@ -639,7 +636,7 @@ private:
 					else renderItem.Material = Material::Dielectric(random.Float4(), 1.5f);
 
 					auto& rigidDynamic = AddRenderItem(renderItem, position, PxSphereGeometry(0.075f));
-					rigidDynamic.setLinearVelocity({ 0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, ω, 0.0f, position.x), 0 });
+					rigidDynamic.setLinearVelocity({ 0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, omega, 0.0f, position.x), 0 });
 				}
 			}
 		}
@@ -1086,7 +1083,7 @@ private:
 							m_windowModeHelper->SetMode(windowMode);
 
 							GraphicsSettings.WindowMode = windowMode;
-							isChanged = true;
+							m_isWindowSettingChanged = isChanged = true;
 						}
 					}
 
@@ -1100,7 +1097,7 @@ private:
 									m_windowModeHelper->SetResolution(displayResolution);
 
 									GraphicsSettings.Resolution = displayResolution;
-									isChanged = true;
+									m_isWindowSettingChanged = isChanged = true;
 								}
 								if (isSelected) ImGui::SetItemDefaultFocus();
 							}
@@ -1146,7 +1143,7 @@ private:
 					ImGui::TreePop();
 				}
 
-				if (isChanged) MyAppData::Save(GraphicsSettings);
+				if (isChanged) GraphicsSettings.Save();
 			}
 
 			if (ImGui::CollapsingHeader("Controls")) {
