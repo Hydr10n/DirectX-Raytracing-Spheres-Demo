@@ -20,27 +20,23 @@ using namespace DirectX;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace std;
+using namespace std::filesystem;
 
 export {
-	enum class TextureType { ColorMap, NormalMap, CubeMap };
-
 	struct Texture {
-		UINT DescriptorHeapIndex = UINT_MAX;
-		wstring Path;
 		ComPtr<ID3D12Resource> Resource;
+		UINT DescriptorHeapIndex = UINT_MAX;
+		path FilePath;
 	};
+
+	enum class TextureType { Unknown, ColorMap, NormalMap, CubeMap };
 
 	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, XMMATRIX /*Transform*/>, less<>> {
 		using map<key_type, mapped_type, key_compare>::map;
 
-		wstring DirectoryPath;
+		path DirectoryPath;
 
 		void Load(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, const DescriptorHeap& descriptorHeap, UINT threadCount = 1) {
-			using namespace DirectX;
-			using namespace DX;
-			using namespace std;
-			using namespace filesystem;
-
 			if (!threadCount) throw invalid_argument("Thread count cannot be 0");
 
 			exception_ptr exception;
@@ -52,14 +48,14 @@ export {
 				for (auto& [type, texture] : get<0>(textures)) {
 					threads.emplace_back([&] {
 						try {
-							auto& [DescriptorHeapIndex, Path, Resource] = texture;
+							auto& [Resource, DescriptorHeapIndex, FilePath] = texture;
 
 							ResourceUploadBatch resourceUploadBatch(pDevice);
 							resourceUploadBatch.Begin();
 
 							bool isCubeMap = false;
 
-							const auto filePath = path(DirectoryPath).append(Path);
+							const auto filePath = DirectoryPath / FilePath;
 							const auto filePathString = filePath.string();
 							if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
 								ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap), filePathString.c_str());

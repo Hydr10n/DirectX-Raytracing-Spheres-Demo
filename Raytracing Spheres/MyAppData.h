@@ -80,6 +80,20 @@ public:
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, Raytracing, TemporalAntiAliasing);
 		} Graphics;
 
+		inline static struct UI : Data<UI> {
+			inline static const std::filesystem::path FilePath = DirectoryPath / L"UI.json";
+
+			struct Menu {
+				bool IsOpenOnStartup = true;
+
+				float BackgroundOpacity = 1;
+
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Menu, IsOpenOnStartup, BackgroundOpacity);
+			} Menu;
+
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(UI, Menu);
+		} UI;
+
 	private:
 		inline static const struct _ { _() { create_directories(DirectoryPath); } } ms_settings;
 	};

@@ -59,7 +59,10 @@ using namespace WindowHelpers;
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 using Key = Keyboard::Keys;
 
-constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
+namespace {
+	constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
+	constexpr auto& UISettings = MyAppData::Settings::UI;
+}
 
 struct D3DApp::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -109,7 +112,7 @@ struct D3DApp::Impl : IDeviceNotify {
 			m_firstPersonCamera.SetPosition(position);
 			*reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory()) = {
 				.Position = position,
-				.ProjectionToWorld = m_firstPersonCamera.GetProjection()
+				.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
 			};
 		}
 	}
@@ -315,7 +318,7 @@ private:
 
 	static constexpr UINT MaxRaytracingSamplesPerPixel = 16;
 
-	bool m_isMenuOpen{};
+	bool m_isMenuOpen = UISettings.Menu.IsOpenOnStartup;
 
 	bool m_isWindowSettingChanged{};
 
@@ -486,7 +489,7 @@ private:
 	void BuildTextures() {
 		decltype(m_textures) textures;
 
-		textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Textures\)");
+		textures.DirectoryPath = path(*__wargv).replace_filename(L"Textures");
 
 		textures[ObjectNames::Environment] = {
 			{
@@ -494,7 +497,7 @@ private:
 					TextureType::CubeMap,
 					Texture{
 						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
-						.Path = L"Space.dds"
+						.FilePath = L"Space.dds"
 					}
 				}
 			},
@@ -507,14 +510,14 @@ private:
 					TextureType::ColorMap,
 					Texture{
 						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonColorMap,
-						.Path = L"Moon.jpg"
+						.FilePath = L"Moon.jpg"
 					}
 				},
 				{
 					TextureType::NormalMap,
 					Texture{
 						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
-						.Path = L"Moon_Normal.jpg"
+						.FilePath = L"Moon_Normal.jpg"
 					}
 				}
 			},
@@ -527,14 +530,14 @@ private:
 					TextureType::ColorMap,
 					Texture{
 						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthColorMap,
-						.Path = L"Earth.jpg"
+						.FilePath = L"Earth.jpg"
 					}
 				},
 				{
 					TextureType::NormalMap,
 					Texture{
 						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
-						.Path = L"Earth_Normal.jpg"
+						.FilePath = L"Earth_Normal.jpg"
 					}
 				}
 			},
@@ -1067,15 +1070,16 @@ private:
 		{
 			ImGui::SetNextWindowPos({});
 			ImGui::SetNextWindowSize({ static_cast<float>(GetOutputSize().cx), 0 });
+			ImGui::SetNextWindowBgAlpha(UISettings.Menu.BackgroundOpacity);
 
-			ImGui::Begin("##Menu", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_HorizontalScrollbar);
+			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_HorizontalScrollbar);
 
 			if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
 
-			if (ImGui::CollapsingHeader("Graphics Settings")) {
-				bool isChanged = false;
+			if (ImGui::CollapsingHeader("Settings")) {
+				if (ImGui::TreeNode("Graphics")) {
+					bool isChanged = false;
 
-				{
 					{
 						constexpr LPCSTR WindowModes[]{ "Windowed", "Borderless", "Fullscreen" };
 						if (auto windowMode = m_windowModeHelper->GetMode();
@@ -1105,45 +1109,67 @@ private:
 							ImGui::EndCombo();
 						}
 					}
-				}
 
-				ImGui::Separator();
+					if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& raytracingSettings = GraphicsSettings.Raytracing;
 
-				if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
-					if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&GraphicsSettings.Raytracing.MaxTraceRecursionDepth), 1, D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH, "%d", ImGuiSliderFlags_NoInput)) {
-						reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingMaxTraceRecursionDepth = GraphicsSettings.Raytracing.MaxTraceRecursionDepth;
+						if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH, "%d", ImGuiSliderFlags_NoInput)) {
+							reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingMaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth;
 
-						isChanged = true;
+							isChanged = true;
+						}
+
+						if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
+							reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingSamplesPerPixel = raytracingSettings.SamplesPerPixel;
+
+							isChanged = true;
+						}
+
+						ImGui::TreePop();
 					}
 
-					if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&GraphicsSettings.Raytracing.SamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
-						reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingSamplesPerPixel = GraphicsSettings.Raytracing.SamplesPerPixel;
+					if (ImGui::TreeNodeEx("Temporal Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& temporalAntiAliasingSettings = GraphicsSettings.TemporalAntiAliasing;
 
-						isChanged = true;
+						if (ImGui::Checkbox("Enable", &temporalAntiAliasingSettings.IsEnabled)) isChanged = true;
+
+						if (ImGui::SliderFloat("Alpha", &temporalAntiAliasingSettings.Alpha, 0, 1, "%.2f", ImGuiSliderFlags_NoInput)) {
+							m_temporalAntiAliasing->Constant.Alpha = temporalAntiAliasingSettings.Alpha;
+
+							isChanged = true;
+						}
+
+						if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.2f", ImGuiSliderFlags_NoInput)) {
+							m_temporalAntiAliasing->Constant.ColorBoxSigma = temporalAntiAliasingSettings.ColorBoxSigma;
+
+							isChanged = true;
+						}
+
+						ImGui::TreePop();
 					}
 
 					ImGui::TreePop();
+
+					if (isChanged) GraphicsSettings.Save();
 				}
 
-				if (ImGui::TreeNodeEx("Temporal Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
-					if (ImGui::Checkbox("Enable", &GraphicsSettings.TemporalAntiAliasing.IsEnabled)) isChanged = true;
+				if (ImGui::TreeNode("UI")) {
+					bool isChanged = false;
 
-					if (ImGui::SliderFloat("Alpha", &GraphicsSettings.TemporalAntiAliasing.Alpha, 0, 1, "%.3f", ImGuiSliderFlags_NoInput)) {
-						m_temporalAntiAliasing->Constant.Alpha = GraphicsSettings.TemporalAntiAliasing.Alpha;
+					if (ImGui::TreeNodeEx("Menu", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& menuSettings = UISettings.Menu;
 
-						isChanged = true;
-					}
+						if (ImGui::Checkbox("Open on Startup", &menuSettings.IsOpenOnStartup)) isChanged = true;
 
-					if (ImGui::SliderFloat("Color-Box Sigma", &GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.3f", ImGuiSliderFlags_NoInput)) {
-						m_temporalAntiAliasing->Constant.ColorBoxSigma = GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma;
+						if (ImGui::SliderFloat("Background Opacity", &menuSettings.BackgroundOpacity, 0, 1, "%.2f", ImGuiSliderFlags_NoInput)) isChanged = true;
 
-						isChanged = true;
+						ImGui::TreePop();
 					}
 
 					ImGui::TreePop();
-				}
 
-				if (isChanged) GraphicsSettings.Save();
+					if (isChanged) UISettings.Save();
+				}
 			}
 
 			if (ImGui::CollapsingHeader("Controls")) {

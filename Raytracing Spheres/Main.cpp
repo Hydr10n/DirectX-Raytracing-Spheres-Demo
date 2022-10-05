@@ -23,13 +23,18 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace std;
 using namespace WindowHelpers;
 
-constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
+namespace {
+	constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
+	constexpr auto& UISettings = MyAppData::Settings::UI;
+}
 
-exception_ptr g_exception;
+namespace {
+	shared_ptr<WindowModeHelper> g_windowModeHelper;
 
-shared_ptr<WindowModeHelper> g_windowModeHelper;
+	unique_ptr<D3DApp> g_app;
 
-unique_ptr<D3DApp> g_app;
+	exception_ptr g_exception;
+}
 
 int WINAPI wWinMain(
 	[[maybe_unused]] _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
@@ -47,7 +52,10 @@ int WINAPI wWinMain(
 	try {
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
 
-		GraphicsSettings.Load();
+		{
+			GraphicsSettings.Load();
+			UISettings.Load();
+		}
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{

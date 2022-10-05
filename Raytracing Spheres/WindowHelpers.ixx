@@ -15,7 +15,9 @@ import DisplayHelpers;
 using namespace DisplayHelpers;
 using namespace std;
 
-constexpr Resolution ToResolution(const RECT& value) { return { value.right - value.left, value.bottom - value.top }; }
+namespace {
+	constexpr Resolution ToResolution(const RECT& value) { return { value.right - value.left, value.bottom - value.top }; }
+}
 
 export namespace WindowHelpers {
 	constexpr void CenterRect(_In_ const RECT& bounds, _Inout_ RECT& rect) {
