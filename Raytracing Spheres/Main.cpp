@@ -184,7 +184,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				const auto hasMenu = GetMenu(hWnd) != nullptr;
 				const auto DPI = GetDpiForWindow(hWnd);
 
-				const auto AdjustSize = [&](const auto& size, auto& newSize) {
+				const auto AdjustSize = [&](const SIZE& size, POINT& newSize) {
 					RECT rect{ 0, 0, size.cx, size.cy };
 					if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
 						newSize = { rect.right - rect.left, rect.bottom - rect.top };

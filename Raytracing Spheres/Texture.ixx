@@ -25,7 +25,7 @@ using namespace std::filesystem;
 export {
 	struct Texture {
 		ComPtr<ID3D12Resource> Resource;
-		UINT SrvDescriptorHeapIndex = ~0u, UavDescriptorHeapIndex = ~0u, RtvDescriptorHeapIndex = ~0u;
+		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
 		path FilePath;
 	};
 
@@ -48,7 +48,7 @@ export {
 				for (auto& [type, texture] : get<0>(textures)) {
 					threads.emplace_back([&] {
 						try {
-							auto& [Resource, SrvDescriptorHeapIndex, _, _1, FilePath] = texture;
+							auto& [Resource, DescriptorHeapIndices, FilePath] = texture;
 
 							ResourceUploadBatch resourceUploadBatch(pDevice);
 							resourceUploadBatch.Begin();
@@ -68,7 +68,7 @@ export {
 
 							resourceUploadBatch.End(pCommandQueue).wait();
 
-							CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(SrvDescriptorHeapIndex), isCubeMap);
+							CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
 						}
 						catch (...) { if (!exception) exception = current_exception(); }
 						});

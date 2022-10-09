@@ -38,6 +38,7 @@ module;
 
 module D3DApp;
 
+import DirectX.BufferHelpers;
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import Material;
@@ -46,6 +47,7 @@ import SharedData;
 import Texture;
 
 using namespace DirectX;
+using namespace DirectX::BufferHelpers;
 using namespace DirectX::PostProcess;
 using namespace DirectX::RaytracingHelpers;
 using namespace DX;
@@ -172,7 +174,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_triangleMeshes = {};
 
-		m_shaderResources = {};
+		m_shaderBuffers = {};
 
 		m_temporalAntiAliasing.reset();
 
@@ -272,12 +274,12 @@ private:
 		Material Material;
 	};
 	struct {
-		GraphicsResource
-			GlobalResourceDescriptorHeapIndices,
-			LocalResourceDescriptorHeapIndices,
-			Camera,
-			GlobalData, LocalData;
-	} m_shaderResources;
+		unique_ptr<UploadBuffer<GlobalResourceDescriptorHeapIndices>> GlobalResourceDescriptorHeapIndices;
+		unique_ptr<UploadBuffer<LocalResourceDescriptorHeapIndices>> LocalResourceDescriptorHeapIndices;
+		unique_ptr<UploadBuffer<Camera>> Camera;
+		unique_ptr<UploadBuffer<GlobalData>> GlobalData;
+		unique_ptr<UploadBuffer<LocalData>> LocalData;
+	} m_shaderBuffers;
 
 	map<string, shared_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>>, less<>> m_triangleMeshes;
 
@@ -328,7 +330,7 @@ private:
 
 		CreatePostProcess();
 
-		CreateShaderResources();
+		CreateShaderBuffers();
 
 		CreateGeometries();
 
@@ -343,19 +345,18 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateResource = [&](auto format, auto& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
+			const auto CreateResource = [&](DXGI_FORMAT format, Texture& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&texture.Resource)));
-
 				
 				if (srvDescriptorHeapIndex != ~0u) {
 					device->CreateShaderResourceView(texture.Resource.Get(), nullptr, m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
-					texture.SrvDescriptorHeapIndex = srvDescriptorHeapIndex;
+					texture.DescriptorHeapIndices.SRV = srvDescriptorHeapIndex;
 				}
 				if (uavDescriptorHeapIndex != ~0u) {
 					device->CreateUnorderedAccessView(texture.Resource.Get(), nullptr, nullptr, m_resourceDescriptorHeap->GetCpuHandle(uavDescriptorHeapIndex));
-					texture.UavDescriptorHeapIndex = uavDescriptorHeapIndex;
+					texture.DescriptorHeapIndices.UAV = uavDescriptorHeapIndex;
 				}
 			};
 
@@ -373,7 +374,7 @@ private:
 
 		{
 			m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
-			reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory())->ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
+			m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
 		}
 
 		{
@@ -492,7 +493,9 @@ private:
 				{
 					TextureType::CubeMap,
 					Texture{
-						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::EnvironmentCubeMap
+						},
 						.FilePath = L"Space.dds"
 					}
 				}
@@ -505,14 +508,18 @@ private:
 				{
 					TextureType::BaseColorMap,
 					Texture{
-						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonBaseColorMap,
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::MoonBaseColorMap
+						},
 						.FilePath = L"Moon_BaseColor.jpg"
 					}
 				},
 				{
 					TextureType::NormalMap,
 					Texture{
-						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::MoonNormalMap
+						},
 						.FilePath = L"Moon_Normal.jpg"
 					}
 				}
@@ -525,14 +532,18 @@ private:
 				{
 					TextureType::BaseColorMap,
 					Texture{
-						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthBaseColorMap,
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::EarthBaseColorMap
+						},
 						.FilePath = L"Earth_BaseColor.jpg"
 					}
 				},
 				{
 					TextureType::NormalMap,
 					Texture{
-						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::EarthNormalMap
+						},
 						.FilePath = L"Earth_Normal.jpg"
 					}
 				}
@@ -729,67 +740,77 @@ private:
 		};
 	}
 
-	void CreateShaderResources() {
+	void CreateShaderBuffers() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		{
-			const auto CreateConstantBufferView = [&](const auto& graphicsResource, UINT descriptorHeapIndex) {
-				const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
-					.BufferLocation = graphicsResource.GpuAddress(),
-					.SizeInBytes = static_cast<UINT>(graphicsResource.Size())
-				};
-				device->CreateConstantBufferView(&constantBufferViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+			const auto CreateBuffer = [&](auto& uploadBuffer, const auto& data, UINT descriptorHeapIndex = ~0u) {
+				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device, true);
+				uploadBuffer->GetData() = data;
+
+				if (descriptorHeapIndex != ~0u) {
+					const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
+						.BufferLocation = uploadBuffer->GetResource()->GetGPUVirtualAddress(),
+						.SizeInBytes = static_cast<UINT>(uploadBuffer->ItemSize)
+					};
+					device->CreateConstantBufferView(&constantBufferViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+				}
 			};
 
-			m_shaderResources.GlobalResourceDescriptorHeapIndices = m_graphicsMemory->AllocateConstant(GlobalResourceDescriptorHeapIndices{
-				.LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
-				.Camera = ResourceDescriptorHeapIndex::Camera,
-				.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
-				.LocalData = ResourceDescriptorHeapIndex::LocalData,
-				.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
-				.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures.at(ObjectNames::Environment)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : ~0u
-				});
+			CreateBuffer(
+				m_shaderBuffers.GlobalResourceDescriptorHeapIndices,
+				GlobalResourceDescriptorHeapIndices{
+					.LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
+					.Camera = ResourceDescriptorHeapIndex::Camera,
+					.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
+					.LocalData = ResourceDescriptorHeapIndex::LocalData,
+					.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
+					.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures.at(ObjectNames::Environment)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : ~0u
+				}
+			);
 
-			{
-				m_shaderResources.Camera = m_graphicsMemory->AllocateConstant(Camera{
+			CreateBuffer(
+				m_shaderBuffers.Camera,
+				Camera{
 					.Position = m_firstPersonCamera.GetPosition()
-					});
-				CreateConstantBufferView(m_shaderResources.Camera, ResourceDescriptorHeapIndex::Camera);
-			}
+				},
+				ResourceDescriptorHeapIndex::Camera
+			);
 
-			{
-				m_shaderResources.GlobalData = m_graphicsMemory->AllocateConstant(GlobalData{
+			CreateBuffer(
+				m_shaderBuffers.GlobalData,
+				GlobalData{
 					.RaytracingMaxTraceRecursionDepth = GraphicsSettings.Raytracing.MaxTraceRecursionDepth,
 					.RaytracingSamplesPerPixel = GraphicsSettings.Raytracing.SamplesPerPixel,
 					.EnvironmentMapTransform = m_textures.contains(ObjectNames::Environment) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::Environment))) : XMMatrixIdentity()
-					});
-				CreateConstantBufferView(m_shaderResources.GlobalData, ResourceDescriptorHeapIndex::GlobalData);
-			}
+				},
+				ResourceDescriptorHeapIndex::GlobalData
+			);
 		}
 
 		{
-			const auto CreateShaderResourceView = [&](const auto& graphicsResource, UINT count, UINT stride, UINT descriptorHeapIndex) {
+			const auto CreateBuffer = [&](auto& uploadBuffer, size_t count, UINT descriptorHeapIndex) {
+				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device, false, count);
+
 				const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
 					.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
 					.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
 					.Buffer{
-						.NumElements = count,
-						.StructureByteStride = stride
+						.NumElements = static_cast<UINT>(count),
+						.StructureByteStride = static_cast<UINT>(uploadBuffer->ItemSize)
 					}
 				};
-				device->CreateShaderResourceView(graphicsResource.Resource(), &shaderResourceViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+				device->CreateShaderResourceView(uploadBuffer->GetResource(), &shaderResourceViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
 			const auto renderItemsSize = static_cast<UINT>(size(m_renderItems));
 
-			m_shaderResources.LocalResourceDescriptorHeapIndices = m_graphicsMemory->Allocate(sizeof(LocalResourceDescriptorHeapIndices) * renderItemsSize);
-			CreateShaderResourceView(m_shaderResources.LocalResourceDescriptorHeapIndices, renderItemsSize, sizeof(LocalResourceDescriptorHeapIndices), ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices);
+			CreateBuffer(m_shaderBuffers.LocalResourceDescriptorHeapIndices, renderItemsSize, ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices);
 
-			m_shaderResources.LocalData = m_graphicsMemory->Allocate(sizeof(LocalData) * renderItemsSize);
-			CreateShaderResourceView(m_shaderResources.LocalData, renderItemsSize, sizeof(LocalData), ResourceDescriptorHeapIndex::LocalData);
+			CreateBuffer(m_shaderBuffers.LocalData, renderItemsSize, ResourceDescriptorHeapIndex::LocalData);
 
 			for (const auto& renderItem : m_renderItems) {
-				auto& localResourceDescriptorHeapIndices = *(reinterpret_cast<LocalResourceDescriptorHeapIndices*>(m_shaderResources.LocalResourceDescriptorHeapIndices.Memory()) + renderItem.InstanceID);
+				auto& localResourceDescriptorHeapIndices = (*m_shaderBuffers.LocalResourceDescriptorHeapIndices)[renderItem.InstanceID];
 
 				localResourceDescriptorHeapIndices = {
 					.TriangleMesh{
@@ -798,7 +819,7 @@ private:
 					}
 				};
 
-				auto& localData = *(reinterpret_cast<LocalData*>(m_shaderResources.LocalData.Memory()) + renderItem.InstanceID);
+				auto& localData = (*m_shaderBuffers.LocalData)[renderItem.InstanceID];
 
 				localData.Material = renderItem.Material;
 
@@ -811,7 +832,7 @@ private:
 						case TextureType::NormalMap: p = &textures.NormalMap; break;
 						default: p = nullptr; break;
 						}
-						if (p != nullptr) *p = Texture.SrvDescriptorHeapIndex;
+						if (p != nullptr) *p = Texture.DescriptorHeapIndices.SRV;
 					}
 
 					localData.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
@@ -946,10 +967,10 @@ private:
 	void UpdateCamera(const GamePad::State& gamepadState, const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-		const auto Translate = [&](const auto& displacement) {
+		const auto Translate = [&](const XMFLOAT3& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
-			constexpr auto ToPxVec3 = [](const auto& value) { return PxVec3(value.x, value.y, -value.z); };
+			constexpr auto ToPxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
 			const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
 			auto x = ToPxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
@@ -1001,14 +1022,14 @@ private:
 			Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 		}
 
-		*reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory()) = {
+		m_shaderBuffers.Camera->GetData() = {
 			.Position = m_firstPersonCamera.GetPosition(),
 			.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
 		};
 	}
 
 	void UpdateGlobalData() {
-		auto& globalData = *reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory());
+		auto& globalData = m_shaderBuffers.GlobalData->GetData();
 
 		globalData.FrameCount = m_stepTimer.GetFrameCount();
 	}
@@ -1056,7 +1077,7 @@ private:
 
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
 		commandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructure.GetBuffer()->GetGPUVirtualAddress());
-		commandList->SetComputeRootConstantBufferView(1, m_shaderResources.GlobalResourceDescriptorHeapIndices.GpuAddress());
+		commandList->SetComputeRootConstantBufferView(1, m_shaderBuffers.GlobalResourceDescriptorHeapIndices->GetResource()->GetGPUVirtualAddress());
 
 		commandList->SetPipelineState(m_pipelineStateObject.Get());
 
@@ -1119,14 +1140,16 @@ private:
 					if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& raytracingSettings = GraphicsSettings.Raytracing;
 
+						auto& globalData = m_shaderBuffers.GlobalData->GetData();
+
 						if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH, "%d", ImGuiSliderFlags_NoInput)) {
-							reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingMaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth;
+							globalData.RaytracingMaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth;
 
 							isChanged = true;
 						}
 
 						if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
-							reinterpret_cast<GlobalData*>(m_shaderResources.GlobalData.Memory())->RaytracingSamplesPerPixel = raytracingSettings.SamplesPerPixel;
+							globalData.RaytracingSamplesPerPixel = raytracingSettings.SamplesPerPixel;
 
 							isChanged = true;
 						}
@@ -1179,7 +1202,7 @@ private:
 			}
 
 			if (ImGui::CollapsingHeader("Controls")) {
-				const auto AddContents = [](auto treeLabel, auto tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& list) {
+				const auto AddContents = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& list) {
 					if (ImGui::TreeNode(treeLabel)) {
 						if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInner)) {
 							for (const auto& [first, second] : list) {

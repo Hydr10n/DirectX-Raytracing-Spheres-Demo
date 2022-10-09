@@ -106,7 +106,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="D3DApp.cppm" />
-    <ClCompile Include="DirectXRaytracingHelpers.ixx" />
+    <ClCompile Include="RaytracingHelpers.ixx" />
     <ClCompile Include="DisplayHelpers.ixx" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="D3DApp.cpp" />
@@ -116,6 +116,7 @@
     <ClCompile Include="SharedData.ixx" />
     <ClCompile Include="TemporalAntiAliasing.ixx" />
     <ClCompile Include="Texture.ixx" />
+    <ClCompile Include="BufferHelpers.ixx" />
     <ClCompile Include="WindowHelpers.ixx" />
   </ItemGroup>
   <ItemGroup>
