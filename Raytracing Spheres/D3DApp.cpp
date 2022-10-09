@@ -91,6 +91,8 @@ struct D3DApp::Impl : IDeviceNotify {
 			ImGui_ImplWin32_Init(m_windowModeHelper->hWnd);
 		}
 
+		m_firstPersonCamera.SetPosition({ 0, 0, -15 });
+
 		BuildTextures();
 
 		BuildRenderItems();
@@ -106,15 +108,6 @@ struct D3DApp::Impl : IDeviceNotify {
 		CreateWindowSizeDependentResources();
 
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
-
-		{
-			constexpr XMFLOAT3 position{ 0, 0, -15 };
-			m_firstPersonCamera.SetPosition(position);
-			*reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory()) = {
-				.Position = position,
-				.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
-			};
-		}
 	}
 
 	~Impl() {
@@ -170,7 +163,7 @@ struct D3DApp::Impl : IDeviceNotify {
 	void OnDeviceLost() override {
 		ImGui_ImplDX12_Shutdown();
 
-		m_renderTextureResources = {};
+		m_renderTextures = {};
 
 		for (auto& [_, textures] : m_textures) for (auto& [_, texture] : get<0>(textures)) texture.Resource.Reset();
 
@@ -235,8 +228,8 @@ private:
 			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionVectorsSRV, MotionVectorsUAV, FinalOutputUAV,
 			SphereVertices, SphereIndices,
 			EnvironmentCubeMap,
-			MoonColorMap, MoonNormalMap,
-			EarthColorMap, EarthNormalMap,
+			MoonBaseColorMap, MoonNormalMap,
+			EarthBaseColorMap, EarthNormalMap,
 			Font,
 			Count
 		};
@@ -252,20 +245,20 @@ private:
 
 	struct GlobalResourceDescriptorHeapIndices {
 		UINT
-			LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
-			Camera = ResourceDescriptorHeapIndex::Camera,
-			GlobalData = ResourceDescriptorHeapIndex::GlobalData, LocalData = ResourceDescriptorHeapIndex::LocalData,
-			Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
-			EnvironmentCubeMap = UINT_MAX;
-		XMUINT2 _padding{};
+			LocalResourceDescriptorHeapIndices = ~0u,
+			Camera = ~0u,
+			GlobalData = ~0u, LocalData = ~0u,
+			Output = ~0u,
+			EnvironmentCubeMap = ~0u;
+		XMUINT2 _padding;
 	};
 	struct LocalResourceDescriptorHeapIndices {
 		struct {
-			UINT Vertices, Indices;
+			UINT Vertices = ~0u, Indices = ~0u;
 			XMUINT2 _padding;
 		} TriangleMesh;
 		struct {
-			UINT ColorMap, NormalMap;
+			UINT BaseColorMap = ~0u, NormalMap = ~0u;
 			XMUINT2 _padding;
 		} Textures;
 	};
@@ -291,7 +284,7 @@ private:
 	map<string, BottomLevelAccelerationStructure, less<>> m_bottomLevelAccelerationStructures;
 	TopLevelAccelerationStructure m_topLevelAccelerationStructure;
 
-	struct { ComPtr<ID3D12Resource> PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextureResources;
+	struct { Texture PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextures;
 
 	TextureDictionary m_textures;
 
@@ -299,11 +292,11 @@ private:
 
 	struct RenderItem {
 		string Name;
-		UINT InstanceID = UINT_MAX;
+		UINT InstanceID = ~0u;
 		struct {
-			struct { UINT Vertices = UINT_MAX, Indices = UINT_MAX; } TriangleMesh;
+			struct { UINT Vertices = ~0u, Indices = ~0u; } TriangleMesh;
 		} ResourceDescriptorHeapIndices;
-		Material Material;
+		Material Material{};
 		TextureDictionary::mapped_type* pTextures{};
 		PxShape* Shape{};
 	};
@@ -350,35 +343,38 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateResource = [&](auto format, auto& resource, UINT srvDescriptorHeapIndex = UINT_MAX, UINT uavDescriptorHeapIndex = UINT_MAX) {
+			const auto CreateResource = [&](auto format, auto& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&resource)));
+				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&texture.Resource)));
 
-				if (srvDescriptorHeapIndex != UINT_MAX) {
-					CreateShaderResourceView(device, resource.Get(), m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
+				
+				if (srvDescriptorHeapIndex != ~0u) {
+					device->CreateShaderResourceView(texture.Resource.Get(), nullptr, m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
+					texture.SrvDescriptorHeapIndex = srvDescriptorHeapIndex;
 				}
-
-				if (uavDescriptorHeapIndex != UINT_MAX) {
-					const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{ .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D };
-					device->CreateUnorderedAccessView(resource.Get(), nullptr, &unorderedAccessViewDesc, m_resourceDescriptorHeap->GetCpuHandle(uavDescriptorHeapIndex));
+				if (uavDescriptorHeapIndex != ~0u) {
+					device->CreateUnorderedAccessView(texture.Resource.Get(), nullptr, nullptr, m_resourceDescriptorHeap->GetCpuHandle(uavDescriptorHeapIndex));
+					texture.UavDescriptorHeapIndex = uavDescriptorHeapIndex;
 				}
 			};
 
 			{
 				const auto format = m_deviceResources->GetBackBufferFormat();
-
-				CreateResource(format, m_renderTextureResources.PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
-				CreateResource(format, m_renderTextureResources.CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
-				CreateResource(format, m_renderTextureResources.FinalOutput, UINT_MAX, ResourceDescriptorHeapIndex::FinalOutputUAV);
+				CreateResource(format, m_renderTextures.PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
+				CreateResource(format, m_renderTextures.CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
+				CreateResource(format, m_renderTextures.FinalOutput, ~0u, ResourceDescriptorHeapIndex::FinalOutputUAV);
 			}
 
-			CreateResource(DXGI_FORMAT_R32G32_FLOAT, m_renderTextureResources.MotionVectors, ResourceDescriptorHeapIndex::MotionVectorsSRV, ResourceDescriptorHeapIndex::MotionVectorsUAV);
+			CreateResource(DXGI_FORMAT_R32G32_FLOAT, m_renderTextures.MotionVectors, ResourceDescriptorHeapIndex::MotionVectorsSRV, ResourceDescriptorHeapIndex::MotionVectorsUAV);
 		}
 
 		m_temporalAntiAliasing->TextureSize = outputSize;
 
-		m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
+		{
+			m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
+			reinterpret_cast<Camera*>(m_shaderResources.Camera.Memory())->ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
+		}
 
 		{
 			auto& IO = ImGui::GetIO();
@@ -426,9 +422,9 @@ private:
 
 		m_deviceResources->Prepare();
 
-		Clear();
-
 		const auto commandList = m_deviceResources->GetCommandList();
+
+		Clear();
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
@@ -442,9 +438,9 @@ private:
 				const ScopedBarrier scopedBarrier(
 					commandList,
 					{
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextureResources.PreviousOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextureResources.CurrentOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextureResources.MotionVectors.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.PreviousOutput.Resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.CurrentOutput.Resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.MotionVectors.Resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 					}
 				);
 
@@ -454,8 +450,8 @@ private:
 			{
 				const auto
 					renderTarget = m_deviceResources->GetRenderTarget(),
-					previousOutput = m_renderTextureResources.PreviousOutput.Get(),
-					output = (GraphicsSettings.TemporalAntiAliasing.IsEnabled ? m_renderTextureResources.FinalOutput : m_renderTextureResources.CurrentOutput).Get();
+					previousOutput = m_renderTextures.PreviousOutput.Resource.Get(),
+					output = (GraphicsSettings.TemporalAntiAliasing.IsEnabled ? m_renderTextures.FinalOutput : m_renderTextures.CurrentOutput).Resource.Get();
 
 				const ScopedBarrier scopedBarrier(
 					commandList,
@@ -496,7 +492,7 @@ private:
 				{
 					TextureType::CubeMap,
 					Texture{
-						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
+						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::EnvironmentCubeMap,
 						.FilePath = L"Space.dds"
 					}
 				}
@@ -507,16 +503,16 @@ private:
 		textures[ObjectNames::Moon] = {
 			{
 				{
-					TextureType::ColorMap,
+					TextureType::BaseColorMap,
 					Texture{
-						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonColorMap,
-						.FilePath = L"Moon.jpg"
+						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonBaseColorMap,
+						.FilePath = L"Moon_BaseColor.jpg"
 					}
 				},
 				{
 					TextureType::NormalMap,
 					Texture{
-						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
+						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::MoonNormalMap,
 						.FilePath = L"Moon_Normal.jpg"
 					}
 				}
@@ -527,16 +523,16 @@ private:
 		textures[ObjectNames::Earth] = {
 			{
 				{
-					TextureType::ColorMap,
+					TextureType::BaseColorMap,
 					Texture{
-						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthColorMap,
-						.FilePath = L"Earth.jpg"
+						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthBaseColorMap,
+						.FilePath = L"Earth_BaseColor.jpg"
 					}
 				},
 				{
 					TextureType::NormalMap,
 					Texture{
-						.DescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
+						.SrvDescriptorHeapIndex = ResourceDescriptorHeapIndex::EarthNormalMap,
 						.FilePath = L"Earth_Normal.jpg"
 					}
 				}
@@ -746,11 +742,18 @@ private:
 			};
 
 			m_shaderResources.GlobalResourceDescriptorHeapIndices = m_graphicsMemory->AllocateConstant(GlobalResourceDescriptorHeapIndices{
-				.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures.at(ObjectNames::Environment)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : UINT_MAX
+				.LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
+				.Camera = ResourceDescriptorHeapIndex::Camera,
+				.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
+				.LocalData = ResourceDescriptorHeapIndex::LocalData,
+				.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
+				.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures.at(ObjectNames::Environment)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : ~0u
 				});
 
 			{
-				m_shaderResources.Camera = m_graphicsMemory->AllocateConstant<Camera>();
+				m_shaderResources.Camera = m_graphicsMemory->AllocateConstant(Camera{
+					.Position = m_firstPersonCamera.GetPosition()
+					});
 				CreateConstantBufferView(m_shaderResources.Camera, ResourceDescriptorHeapIndex::Camera);
 			}
 
@@ -792,10 +795,6 @@ private:
 					.TriangleMesh{
 						.Vertices = renderItem.ResourceDescriptorHeapIndices.TriangleMesh.Vertices,
 						.Indices = renderItem.ResourceDescriptorHeapIndices.TriangleMesh.Indices
-					},
-					.Textures{
-						.ColorMap = UINT_MAX,
-						.NormalMap = UINT_MAX
 					}
 				};
 
@@ -804,12 +803,15 @@ private:
 				localData.Material = renderItem.Material;
 
 				if (renderItem.pTextures != nullptr) {
-					const auto& textures = get<0>(*renderItem.pTextures);
-					if (textures.contains(TextureType::ColorMap)) {
-						localResourceDescriptorHeapIndices.Textures.ColorMap = textures.at(TextureType::ColorMap).DescriptorHeapIndex;
-					}
-					if (textures.contains(TextureType::NormalMap)) {
-						localResourceDescriptorHeapIndices.Textures.NormalMap = textures.at(TextureType::NormalMap).DescriptorHeapIndex;
+					for (const auto& [TextureType, Texture] : get<0>(*renderItem.pTextures)) {
+						auto& textures = localResourceDescriptorHeapIndices.Textures;
+						UINT* p;
+						switch (TextureType) {
+						case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
+						case TextureType::NormalMap: p = &textures.NormalMap; break;
+						default: p = nullptr; break;
+						}
+						if (p != nullptr) *p = Texture.SrvDescriptorHeapIndex;
 					}
 
 					localData.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
@@ -870,7 +872,7 @@ private:
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
 			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
 			instanceDesc.InstanceID = renderItem.InstanceID;
-			instanceDesc.InstanceMask = ~0;
+			instanceDesc.InstanceMask = ~0u;
 			instanceDesc.InstanceContributionToHitGroupIndex = i;
 			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
 			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(object.Name).GetBuffer()->GetGPUVirtualAddress();
@@ -962,7 +964,13 @@ private:
 			m_firstPersonCamera.Translate({ x.x, x.y, -x.z });
 		};
 
+		const auto Yaw = [&](float angle) {
+			if (angle == 0) return;
+			m_firstPersonCamera.Yaw(angle);
+		};
+
 		const auto Pitch = [&](float angle) {
+			if (angle == 0) return;
 			if (const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
 				pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 			else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
@@ -975,7 +983,7 @@ private:
 			Translate(displacement);
 
 			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
-			m_firstPersonCamera.Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
+			Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
 			Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
 		}
 
@@ -989,7 +997,7 @@ private:
 			Translate(displacement);
 
 			const auto rotationSpeed = elapsedSeconds * 20;
-			m_firstPersonCamera.Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
+			Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
 			Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 		}
 
@@ -1072,9 +1080,7 @@ private:
 			ImGui::SetNextWindowSize({ static_cast<float>(GetOutputSize().cx), 0 });
 			ImGui::SetNextWindowBgAlpha(UISettings.Menu.BackgroundOpacity);
 
-			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_HorizontalScrollbar);
-
-			if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
+			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_HorizontalScrollbar);
 
 			if (ImGui::CollapsingHeader("Settings")) {
 				if (ImGui::TreeNode("Graphics")) {

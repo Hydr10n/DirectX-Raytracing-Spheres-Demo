@@ -4,11 +4,11 @@
 
 #include "Material.hlsli"
 
-#include "MathHelpers.hlsli"
+#include "HitInfo.hlsli"
+
+#include "Math.hlsli"
 
 #include "TriangleMeshIndexHelpers.hlsli"
-
-#define UINT_MAX 0xffffffff
 
 SamplerState g_anisotropicWrap : register(s0);
 
@@ -31,7 +31,7 @@ struct LocalResourceDescriptorHeapIndices {
 		uint2 _padding;
 	} TriangleMesh;
 	struct {
-		uint ColorMap, NormalMap;
+		uint BaseColorMap, NormalMap;
 		uint2 _padding;
 	} Textures;
 };
@@ -56,7 +56,20 @@ static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResou
 
 static const TextureCube<float4> g_environmentCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap];
 
-HitInfo GetHitInfo(uint instanceID, float3 worldRayOrigin, float3 worldRayDirection, float rayT, float4x3 objectToWorld, uint primitiveIndex, float2 barycentrics) {
+inline Material GetMaterial(uint instanceID, float2 textureCoordinate) {
+	Material material = g_localData[instanceID].Material;
+
+	uint index;
+
+	if ((index = g_localResourceDescriptorHeapIndices[instanceID].Textures.BaseColorMap) != ~0u) {
+		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
+		material.BaseColor = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+
+	return material;
+}
+
+inline HitInfo GetHitInfo(uint instanceID, float3 worldRayOrigin, float3 worldRayDirection, float rayT, float4x3 objectToWorld, uint primitiveIndex, float2 barycentrics) {
 	const LocalResourceDescriptorHeapIndices localResourceDescriptorHeapIndices = g_localResourceDescriptorHeapIndices[instanceID];
 
 	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.TriangleMesh.Vertices];
@@ -68,9 +81,9 @@ HitInfo GetHitInfo(uint instanceID, float3 worldRayOrigin, float3 worldRayDirect
 	hitInfo.Vertex.Position = worldRayOrigin + worldRayDirection * rayT;
 	hitInfo.Vertex.Normal = normalize(mul(Vertex::Interpolate(normals, barycentrics), (float3x3) objectToWorld));
 	hitInfo.Vertex.TextureCoordinate = mul(float4(Vertex::Interpolate(textureCoordinates, barycentrics), 0, 1), g_localData[instanceID].TextureTransform).xy;
-	if (localResourceDescriptorHeapIndices.Textures.NormalMap != UINT_MAX) {
+	if (localResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
 		const Texture2D<float3> normalMap = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Textures.NormalMap];
-		const float3x3 TBN = MathHelpers::CalculateTBN(hitInfo.Vertex.Normal, worldRayDirection);
+		const float3x3 TBN = Math::CalculateTBN(hitInfo.Vertex.Normal, worldRayDirection);
 		hitInfo.Vertex.Normal = normalize(mul(normalize(normalMap.SampleLevel(g_anisotropicWrap, hitInfo.Vertex.TextureCoordinate, 0) * 2 - 1), TBN));
 	}
 	hitInfo.SetFaceNormal(worldRayDirection);

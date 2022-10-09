@@ -25,11 +25,11 @@ using namespace std::filesystem;
 export {
 	struct Texture {
 		ComPtr<ID3D12Resource> Resource;
-		UINT DescriptorHeapIndex = UINT_MAX;
+		UINT SrvDescriptorHeapIndex = ~0u, UavDescriptorHeapIndex = ~0u, RtvDescriptorHeapIndex = ~0u;
 		path FilePath;
 	};
 
-	enum class TextureType { Unknown, ColorMap, NormalMap, CubeMap };
+	enum class TextureType { Unknown, BaseColorMap, EmissiveMap, NormalMap, RoughnessMap, SpecularMap, MetallicMap, CubeMap };
 
 	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, XMMATRIX /*Transform*/>, less<>> {
 		using map<key_type, mapped_type, key_compare>::map;
@@ -48,7 +48,7 @@ export {
 				for (auto& [type, texture] : get<0>(textures)) {
 					threads.emplace_back([&] {
 						try {
-							auto& [Resource, DescriptorHeapIndex, FilePath] = texture;
+							auto& [Resource, SrvDescriptorHeapIndex, _, _1, FilePath] = texture;
 
 							ResourceUploadBatch resourceUploadBatch(pDevice);
 							resourceUploadBatch.Begin();
@@ -68,7 +68,7 @@ export {
 
 							resourceUploadBatch.End(pCommandQueue).wait();
 
-							CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndex), isCubeMap);
+							CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(SrvDescriptorHeapIndex), isCubeMap);
 						}
 						catch (...) { if (!exception) exception = current_exception(); }
 						});

@@ -102,13 +102,13 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Textures\Earth.jpg">
+    <Content Include="Textures\Earth_BaseColor.jpg">
       <Filter>Texture Files</Filter>
     </Content>
     <Content Include="Textures\Earth_Normal.jpg">
       <Filter>Texture Files</Filter>
     </Content>
-    <Content Include="Textures\Moon.jpg">
+    <Content Include="Textures\Moon_BaseColor.jpg">
       <Filter>Texture Files</Filter>
     </Content>
     <Content Include="Textures\Moon_Normal.jpg">
@@ -140,7 +140,7 @@
     <None Include="Shaders\TriangleMeshIndexHelpers.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\MathHelpers.hlsli">
+    <None Include="Shaders\Math.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\Vertex.hlsli">
