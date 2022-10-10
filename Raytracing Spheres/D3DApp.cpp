@@ -274,11 +274,11 @@ private:
 		Material Material;
 	};
 	struct {
-		unique_ptr<UploadBuffer<GlobalResourceDescriptorHeapIndices>> GlobalResourceDescriptorHeapIndices;
-		unique_ptr<UploadBuffer<LocalResourceDescriptorHeapIndices>> LocalResourceDescriptorHeapIndices;
-		unique_ptr<UploadBuffer<Camera>> Camera;
-		unique_ptr<UploadBuffer<GlobalData>> GlobalData;
-		unique_ptr<UploadBuffer<LocalData>> LocalData;
+		unique_ptr<ConstantBuffer<GlobalResourceDescriptorHeapIndices>> GlobalResourceDescriptorHeapIndices;
+		unique_ptr<ConstantBuffer<Camera>> Camera;
+		unique_ptr<ConstantBuffer<GlobalData>> GlobalData;
+		unique_ptr<StructuredBuffer<LocalResourceDescriptorHeapIndices>> LocalResourceDescriptorHeapIndices;
+		unique_ptr<StructuredBuffer<LocalData>> LocalData;
 	} m_shaderBuffers;
 
 	map<string, shared_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>>, less<>> m_triangleMeshes;
@@ -349,7 +349,7 @@ private:
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&texture.Resource)));
-				
+
 				if (srvDescriptorHeapIndex != ~0u) {
 					device->CreateShaderResourceView(texture.Resource.Get(), nullptr, m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
 					texture.DescriptorHeapIndices.SRV = srvDescriptorHeapIndex;
@@ -745,16 +745,9 @@ private:
 
 		{
 			const auto CreateBuffer = [&](auto& uploadBuffer, const auto& data, UINT descriptorHeapIndex = ~0u) {
-				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device, true);
+				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device);
 				uploadBuffer->GetData() = data;
-
-				if (descriptorHeapIndex != ~0u) {
-					const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
-						.BufferLocation = uploadBuffer->GetResource()->GetGPUVirtualAddress(),
-						.SizeInBytes = static_cast<UINT>(uploadBuffer->ItemSize)
-					};
-					device->CreateConstantBufferView(&constantBufferViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
-				}
+				if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
 			CreateBuffer(
@@ -790,17 +783,8 @@ private:
 
 		{
 			const auto CreateBuffer = [&](auto& uploadBuffer, size_t count, UINT descriptorHeapIndex) {
-				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device, false, count);
-
-				const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
-					.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-					.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-					.Buffer{
-						.NumElements = static_cast<UINT>(count),
-						.StructureByteStride = static_cast<UINT>(uploadBuffer->ItemSize)
-					}
-				};
-				device->CreateShaderResourceView(uploadBuffer->GetResource(), &shaderResourceViewDesc, m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device, count);
+				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
 			const auto renderItemsSize = static_cast<UINT>(size(m_renderItems));

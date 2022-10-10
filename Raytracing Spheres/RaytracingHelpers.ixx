@@ -8,7 +8,6 @@ module;
 
 export module DirectX.RaytracingHelpers;
 
-using namespace DirectX;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace std;
