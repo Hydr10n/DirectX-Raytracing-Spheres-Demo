@@ -51,7 +51,7 @@ export namespace DirectX::BufferHelpers {
 		void CreateConstantBufferView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
 				.BufferLocation = this->m_buffer->GetGPUVirtualAddress(),
-				.SizeInBytes = static_cast<UINT>(this->ItemSize)
+				.SizeInBytes = static_cast<UINT>(this->ItemSize * this->Count)
 			};
 			this->m_device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
 		}
