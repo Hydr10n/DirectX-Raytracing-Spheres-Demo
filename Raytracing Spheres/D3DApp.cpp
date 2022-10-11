@@ -131,6 +131,8 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		Render();
 
+		m_isCameraMoved = false;
+
 		if (m_isWindowSettingChanged) {
 			ThrowIfFailed(m_windowModeHelper->Apply());
 			m_isWindowSettingChanged = false;
@@ -260,13 +262,12 @@ private:
 			XMUINT2 _padding;
 		} TriangleMesh;
 		struct {
-			UINT BaseColorMap = ~0u, NormalMap = ~0u;
-			XMUINT2 _padding;
+			UINT BaseColorMap = ~0u, EmissiveMap = ~0u, NormalMap = ~0u, RoughnessMap = ~0u, SpecularMap = ~0u, MetallicMap = ~0u, RefractiveIndexMap = ~0u;
+			UINT _padding;
 		} Textures;
 	};
 	struct GlobalData {
-		UINT RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount;
-		UINT _padding;
+		UINT RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount, AccumulatedFrameIndex;
 		XMMATRIX EnvironmentMapTransform;
 	};
 	struct LocalData {
@@ -290,6 +291,7 @@ private:
 
 	TextureDictionary m_textures;
 
+	bool m_isCameraMoved = true;
 	FirstPersonCamera m_firstPersonCamera;
 
 	struct RenderItem {
@@ -324,6 +326,8 @@ private:
 
 		CreateDescriptorHeaps();
 
+		LoadTextures();
+
 		CreateRootSignatures();
 
 		CreatePipelineStateObjects();
@@ -335,8 +339,6 @@ private:
 		CreateGeometries();
 
 		CreateAccelerationStructures();
-
-		LoadTextures();
 	}
 
 	void CreateWindowSizeDependentResources() {
@@ -432,10 +434,12 @@ private:
 		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptorHeap->Heap() };
 		commandList->SetDescriptorHeaps(static_cast<UINT>(size(descriptorHeaps)), descriptorHeaps);
 
-		{
-			DispatchRays();
+		DispatchRays();
 
-			if (GraphicsSettings.TemporalAntiAliasing.IsEnabled) {
+		{
+			const bool isTemporalAntiAliasingEnabled = GraphicsSettings.TemporalAntiAliasing.IsEnabled && (m_isPhysicsSimulationRunning || m_isCameraMoved);
+
+			if (isTemporalAntiAliasingEnabled) {
 				const ScopedBarrier scopedBarrier(
 					commandList,
 					{
@@ -452,7 +456,7 @@ private:
 				const auto
 					renderTarget = m_deviceResources->GetRenderTarget(),
 					previousOutput = m_renderTextures.PreviousOutput.Resource.Get(),
-					output = (GraphicsSettings.TemporalAntiAliasing.IsEnabled ? m_renderTextures.FinalOutput : m_renderTextures.CurrentOutput).Resource.Get();
+					output = (isTemporalAntiAliasingEnabled ? m_renderTextures.FinalOutput : m_renderTextures.CurrentOutput).Resource.Get();
 
 				const ScopedBarrier scopedBarrier(
 					commandList,
@@ -598,16 +602,27 @@ private:
 				Material Material;
 			} objects[]{
 				{
-					{ -2, 0.5f, 0 },
-					Material::Lambertian({ 0.1f, 0.2f, 0.5f, 1 })
+					.Position{ -2, 0.5f, 0 },
+					.Material{
+						.BaseColor{ 0.1f, 0.2f, 0.5f, 1 },
+						.Roughness = 0.9f
+					}
 				},
 				{
-					{ 0, 0.5f, 0 },
-					Material::Dielectric({ 1, 1, 1, 1 }, 1.5f)
+					.Position{ 0, 0.5f, 0 },
+					.Material{
+						.BaseColor{ 1, 1, 1, 1 },
+						.Roughness = 0,
+						.RefractiveIndex = 1.5f,
+					}
 				},
 				{
-					{ 2, 0.5f, 0 },
-					Material::Metal({ 0.7f, 0.6f, 0.5f, 1 }, 0.2f)
+					.Position{ 2, 0.5f, 0 },
+					.Material{
+						.BaseColor{ 0.7f, 0.6f, 0.5f, 1 },
+						.Roughness = 0.1f,
+						.Metallic = 1
+					}
 				}
 			};
 			for (const auto& [Position, Material] : objects) {
@@ -641,9 +656,33 @@ private:
 					renderItem.Name = ObjectNames::HarmonicOscillator;
 
 					if (const auto randomValue = random.Float();
-						randomValue < 0.5f) renderItem.Material = Material::Lambertian(random.Float4());
-					else if (randomValue < 0.75f) renderItem.Material = Material::Metal(random.Float4(0.5f), random.Float(0, 0.5f));
-					else renderItem.Material = Material::Dielectric(random.Float4(), 1.5f);
+						randomValue < 0.3f) {
+						renderItem.Material = {
+							.BaseColor = random.Float4()
+						};
+					}
+					else if (randomValue < 0.6f) {
+						renderItem.Material = {
+							.BaseColor = random.Float4(),
+							.Roughness = random.Float(0, 0.5f),
+							.Metallic = 1
+						};
+					}
+					else if (randomValue < 0.9f) {
+						renderItem.Material = {
+							.BaseColor = random.Float4(),
+							.Roughness = random.Float(0, 0.5f),
+							.RefractiveIndex = 1.5f
+						};
+					}
+					else {
+						renderItem.Material = {
+							.BaseColor = random.Float4(),
+							.EmissiveColor = random.Float4(0.2f),
+							.Roughness = random.Float(0.3f),
+							.Metallic = random.Float(0.4f)
+						};
+					}
 
 					auto& rigidDynamic = AddRenderItem(renderItem, position, PxSphereGeometry(0.075f));
 					rigidDynamic.setLinearVelocity({ 0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, omega, 0.0f, position.x), 0 });
@@ -662,19 +701,29 @@ private:
 				.Position{ -4, 4, 0 },
 				.Radius = 0.25f,
 				.OrbitalPeriod = 10,
-				.Material = Material::Metal({ 0.5f, 0.5f, 0.5f, 1 }, 0.8f)
+				.Material{
+					.BaseColor{ 0.5f, 0.5f, 0.5f, 1 },
+					.Roughness = 0.8f
+				}
 			}, earth{
 				.Name = ObjectNames::Earth,
 				.Position{ 0, moon.Position.y, 0 },
 				.Radius = 1,
 				.RotationPeriod = 15,
 				.Mass = UniversalGravitation::CalculateMass((moon.Position - earth.Position).magnitude(), moon.OrbitalPeriod),
-				.Material = Material::Lambertian({ 0.1f, 0.2f, 0.5f, 1 })
+				.Material{
+					.BaseColor{ 0.3f, 0.4f, 0.5f, 1 },
+					.Roughness = 0.8f
+				}
 			}, star{
 				.Name = ObjectNames::Star,
 				.Position{ 0, -50.1f, 0 },
 				.Radius = 50,
-				.Material = Material::Metal({ 0.5f, 0.5f, 0.5f, 1 }, 0)
+				.Material{
+					.BaseColor{ 0.5f, 0.5f, 0.5f, 1 },
+					.Roughness = 0,
+					.Metallic = 1
+				}
 			};
 			for (const auto& [Name, Position, Radius, RotationPeriod, OrbitalPeriod, Mass, Material] : { moon, earth, star }) {
 				RenderItem renderItem;
@@ -813,7 +862,12 @@ private:
 						UINT* p;
 						switch (TextureType) {
 						case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
+						case TextureType::EmissiveMap: p = &textures.EmissiveMap; break;
 						case TextureType::NormalMap: p = &textures.NormalMap; break;
+						case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
+						case TextureType::SpecularMap: p = &textures.SpecularMap; break;
+						case TextureType::MetallicMap: p = &textures.MetallicMap; break;
+						case TextureType::RefractiveIndexMap: p = &textures.RefractiveIndexMap; break;
 						default: p = nullptr; break;
 						}
 						if (p != nullptr) *p = Texture.DescriptorHeapIndices.SRV;
@@ -954,6 +1008,8 @@ private:
 		const auto Translate = [&](const XMFLOAT3& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
+			m_isCameraMoved = true;
+
 			constexpr auto ToPxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
 			const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
@@ -971,11 +1027,17 @@ private:
 
 		const auto Yaw = [&](float angle) {
 			if (angle == 0) return;
+
+			m_isCameraMoved = true;
+
 			m_firstPersonCamera.Yaw(angle);
 		};
 
 		const auto Pitch = [&](float angle) {
 			if (angle == 0) return;
+
+			m_isCameraMoved = true;
+
 			if (const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
 				pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 			else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
@@ -1016,6 +1078,7 @@ private:
 		auto& globalData = m_shaderBuffers.GlobalData->GetData();
 
 		globalData.FrameCount = m_stepTimer.GetFrameCount();
+		globalData.AccumulatedFrameIndex = m_isPhysicsSimulationRunning || m_isCameraMoved ? 0 : globalData.AccumulatedFrameIndex + 1;
 	}
 
 	void UpdateRenderItem(RenderItem& renderItem) const {

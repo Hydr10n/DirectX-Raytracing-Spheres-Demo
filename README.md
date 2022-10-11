@@ -1,8 +1,12 @@
 # DirectX Raytracing Spheres Demo
 
-Real-time rendering using DirectX Raytracing with compatible GPUs and physics simulation using NVIDIA PhysX.
+Real-time physically based rendering using GPUs capable of DirectX Raytracing, plus physics simulation using NVIDIA PhysX.
 
-![Raytracing Spheres](Screenshots/Raytracing-Spheres.png)
+![Raytracing Spheres](Screenshots/Raytracing-Spheres-01.png)
+![Raytracing Spheres](Screenshots/Raytracing-Spheres-02.png)
+![Raytracing Spheres](Screenshots/Raytracing-Spheres-03.png)
+![Raytracing Spheres](Screenshots/Raytracing-Spheres-04.png)
+![Raytracing Spheres](Screenshots/Raytracing-Spheres-05.png)
 
 https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-98f5-4541a75a80b9.mp4
 
@@ -11,6 +15,16 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 ---
 
 ## Features
+### Supported Physically Based Material Attributes and Texture Map Types
+- Base Color
+- Emissive Color
+- Normal
+- Roughness
+- Specular
+- Metallic
+- Refractive Index
+- Cube
+
 ### Graphics Settings
 - Window Mode
 - Resolution
@@ -90,6 +104,6 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 2004
-- Graphics
+- Graphics: Any GPU supporting DirectX Raytracing Tier 1.1
 	- NVIDIA GeForce RTX Series
 	- AMD Radeon RX 6000 Series

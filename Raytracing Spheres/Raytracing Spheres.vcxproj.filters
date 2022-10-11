@@ -152,6 +152,18 @@
     <None Include="Shaders\Camera.hlsli">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="Shaders\Numbers.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="Shaders\BxDFs.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="Shaders\Stack.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="Shaders\ColorHelpers.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Raytracing.hlsl">

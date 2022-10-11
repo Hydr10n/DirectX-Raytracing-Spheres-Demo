@@ -22,6 +22,6 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 		color += RadianceRay::Trace(ray.ToDesc(), random);
 	}
 	color /= g_globalData.RaytracingSamplesPerPixel;
-
+	color = (g_globalData.AccumulatedFrameIndex * g_output[raysIndex] + color) / (g_globalData.AccumulatedFrameIndex + 1);
 	g_output[raysIndex] = color;
 }

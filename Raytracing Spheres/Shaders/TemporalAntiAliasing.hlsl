@@ -25,6 +25,11 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
+
+// https://github.com/NVIDIAGameWorks/Falcor/blob/master/Source/RenderPasses/Antialiasing/TAA/TAA.ps.slang
+
+#include "ColorHelpers.hlsli"
+
 #define ROOT_SIGNATURE \
     "StaticSampler(s0, filter=FILTER_MIN_MAG_MIP_LINEAR)," \
     "DescriptorTable(SRV(t0))," \
@@ -43,30 +48,6 @@ cbuffer PerFrameCB : register(b0)
 {
     float gAlpha;
     float gColorBoxSigma;
-}
-
-
-/** Converts color from RGB to YCgCo space
-    \param RGBColor linear HDR RGB color
-*/
-inline float3 RGBToYCgCo(float3 rgb)
-{
-    float Y = dot(rgb, float3(0.25f, 0.50f, 0.25f));
-    float Cg = dot(rgb, float3(-0.25f, 0.50f, -0.25f));
-    float Co = dot(rgb, float3(0.50f, 0.00f, -0.50f));
-    return float3(Y, Cg, Co);
-}
-
-/** Converts color from YCgCo to RGB space
-    \param YCgCoColor linear HDR YCgCo color
-*/
-inline float3 YCgCoToRGB(float3 YCgCo)
-{
-    float tmp = YCgCo.x - YCgCo.y;
-    float r = tmp + YCgCo.z;
-    float g = YCgCo.x + YCgCo.y;
-    float b = tmp - YCgCo.z;
-    return float3(r, g, b);
 }
 
 
@@ -122,14 +103,14 @@ void main(int2 ipos : SV_DispatchThreadID)
     // Details here: http://www.gdcvault.com/play/1023521/From-the-Lab-Bench-Real
     // and here: http://cwyman.org/papers/siga16_gazeTrackedFoveatedRendering.pdf
     float3 color = gTexColor.Load(int3(ipos, 0)).rgb;
-    color = RGBToYCgCo(color);
+    color = ColorHelpers::RGBToYCgCo(color);
     float3 colorAvg = color;
     float3 colorVar = color * color;
     [unroll]
     for (int k = 0; k < 8; k++)
     {
         float3 c = gTexColor.Load(int3(ipos + offset[k], 0)).rgb;
-        c = RGBToYCgCo(c);
+        c = ColorHelpers::RGBToYCgCo(c);
         colorAvg += c;
         colorVar += c * c;
     }
@@ -154,7 +135,7 @@ void main(int2 ipos : SV_DispatchThreadID)
     // Use motion vector to fetch previous frame color (history)
     float3 history = bicubicSampleCatmullRom(gTexPrevColor, gSampler, ipos + motion * texDim, texDim);
 
-    history = RGBToYCgCo(history);
+    history = ColorHelpers::RGBToYCgCo(history);
 
     // Anti-flickering, based on Brian Karis talk @Siggraph 2014
     // https://de45xmedrsdbp.cloudfront.net/Resources/files/TemporalAA_small-59732822.pdf
@@ -163,6 +144,6 @@ void main(int2 ipos : SV_DispatchThreadID)
     float alpha = clamp((gAlpha * distToClamp) / (distToClamp + colorMax.x - colorMin.x), 0.f, 1.f);
 
     history = clamp(history, colorMin, colorMax);
-    float3 result = YCgCoToRGB(lerp(history, color, alpha));
+    float3 result = ColorHelpers::YCgCoToRGB(lerp(history, color, alpha));
     gOutput[ipos] = float4(result, 1.f);
 }

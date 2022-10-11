@@ -22,13 +22,4 @@ struct Random {
 	float2 Float2(float min = 0, float max = 1) { return float2(Float(min, max), Float(min, max)); }
 
 	float3 Float3(float min = 0, float max = 1) { return float3(Float2(min, max), Float(min, max)); }
-
-	float3 InUnitSphere() {
-		for (;;) {
-			const float3 v = Float3(-1, 1);
-			if (length(v) < 1) return v;
-		}
-	}
-
-	float3 UnitVector() { return normalize(InUnitSphere()); }
 };

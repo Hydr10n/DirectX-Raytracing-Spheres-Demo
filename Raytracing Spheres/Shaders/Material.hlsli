@@ -2,56 +2,71 @@
 
 #include "HitInfo.hlsli"
 
-#include "Math.hlsli"
-
-#include "Random.hlsli"
+#include "BxDFs.hlsli"
 
 struct Material {
-	enum class Type { Lambertian, Metal, Dielectric, Isotropic, DiffuseLight } Type;
-	float RefractiveIndex, Roughness;
-	float _padding;
-	float4 BaseColor;
+	float4 BaseColor, EmissiveColor;
+	float Roughness;
+	float3 Specular; // Amount of dielectric specular reflection. Specifies facing (along normal) reflectivity in the most common 0 - 8% range.
+	float Metallic, RefractiveIndex;
+	float2 _padding;
 
-	bool IsEmissive() {
-		switch (Type) {
-		case Type::DiffuseLight: return true;
-		default: return false;
-		}
-	}
+	void Scatter(float3 rayDirection, HitInfo hitInfo, out float3 L, out float4 attenuation, inout Random random) {
+		const float3 N = hitInfo.Vertex.Normal;
 
-	bool Scatter(float3 rayDirection, HitInfo hitInfo, out float3 direction, out float4 attenuation, inout Random random) {
-		switch (Type) {
-		case Type::Lambertian: {
-			direction = hitInfo.Vertex.Normal + random.UnitVector();
+		const float3 H = BxDFs::GGX::ImportanceSample(N, Roughness, random);
 
-			// Catch degenerate scatter direction
-			const float O = 1e-8;
-			if (abs(direction[0]) < O && abs(direction[1]) < O && abs(direction[2]) < O) direction = hitInfo.Vertex.Normal;
-		} break;
+		float3 f0;
 
-		case Type::Metal: {
-			direction = reflect(rayDirection, hitInfo.Vertex.Normal) + Roughness * random.InUnitSphere();
-
-			return dot(direction, hitInfo.Vertex.Normal) > 0;
-		}
-
-		case Type::Dielectric: {
+		if (Metallic > 0) f0 = 0.04f;
+		else if (RefractiveIndex == 0) f0 = Specular * 0.08f;
+		else {
 			const float
-				cosTheta = dot(-rayDirection, hitInfo.Vertex.Normal), sinTheta = sqrt(1 - cosTheta * cosTheta),
-				refractiveIndex = hitInfo.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
-			const bool canRefract = refractiveIndex * sinTheta <= 1;
-			direction = canRefract && Math::SchlickFresnel(cosTheta, refractiveIndex) <= random.Float() ?
-				refract(rayDirection, hitInfo.Vertex.Normal, refractiveIndex) :
-				reflect(rayDirection, hitInfo.Vertex.Normal);
-		} break;
+				cosTheta = saturate(dot(-rayDirection, H)),
+				sinTheta = sqrt(1 - cosTheta * cosTheta);
+			const float refractiveIndex = hitInfo.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 
-		case Type::Isotropic: direction = random.InUnitSphere(); break;
+			f0 = BxDFs::SchlickFresnelF0(refractiveIndex);
 
-		default: return false;
+			if (refractiveIndex * sinTheta <= 1 && random.Float() >= BxDFs::SchlickFresnel(cosTheta, f0).x) {
+				L = refract(rayDirection, H, refractiveIndex);
+
+				attenuation = BaseColor;
+
+				return;
+			}
 		}
 
-		attenuation = BaseColor;
+		f0 = lerp(f0, BaseColor.rgb, Metallic);
 
-		return true;
+		const float diffuseProbability = (1 - Metallic) / 2;
+		if (random.Float() < diffuseProbability) {
+			/*
+			 * IncidentLight = ReflectedLight * NoL
+			 * BRDF = SurfaceColor / Pi
+			 * PDF = NoL / Pi
+			 * ReflectedLight *= SurfaceColor
+			 */
+
+			L = Math::CosineSampleHemisphere(N, random);
+
+			attenuation = BaseColor / diffuseProbability;
+		}
+		else {
+			/*
+			 * IncidentLight = ReflectedLight * NoL
+			 * BRDF = D * G * F / (4 * NoL * NoV)
+			 * PDF = D * NoH / (4 * HoL)
+			 * ReflectedLight *= G * F * HoL / (NoV * NoH)
+			 */
+
+			L = reflect(rayDirection, H);
+
+			const float
+				NoL = saturate(dot(N, L)), NoV = saturate(dot(N, -rayDirection)), NoH = saturate(dot(N, H)), HoL = saturate(dot(H, L)),
+				G = BxDFs::GGX::SmithGeometry(NoL, NoV, Roughness);
+			const float3 F = BxDFs::SchlickFresnel(HoL, f0);
+			attenuation = float4(G * F * HoL / (NoV * NoH * (1 - diffuseProbability)), 1);
+		}
 	}
 };

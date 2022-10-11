@@ -10,6 +10,8 @@
 
 #include "TriangleMeshIndexHelpers.hlsli"
 
+static const uint RaytracingMaxDeclarableTraceRecursionDepth = 31; //D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH
+
 SamplerState g_anisotropicWrap : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
@@ -31,8 +33,8 @@ struct LocalResourceDescriptorHeapIndices {
 		uint2 _padding;
 	} TriangleMesh;
 	struct {
-		uint BaseColorMap, NormalMap;
-		uint2 _padding;
+		uint BaseColorMap, EmissiveMap, NormalMap, RoughnessMap, SpecularMap, MetallicMap, RefractiveIndexMap;
+		uint _padding;
 	} Textures;
 };
 static const StructuredBuffer<LocalResourceDescriptorHeapIndices> g_localResourceDescriptorHeapIndices = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.LocalResourceDescriptorHeapIndices];
@@ -40,8 +42,7 @@ static const StructuredBuffer<LocalResourceDescriptorHeapIndices> g_localResourc
 static const ConstantBuffer<Camera> g_camera = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Camera];
 
 struct GlobalData {
-	uint RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount;
-	uint _padding;
+	uint RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount, AccumulatedFrameIndex;
 	float4x4 EnvironmentMapTransform;
 };
 static const ConstantBuffer<GlobalData> g_globalData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.GlobalData];
@@ -57,7 +58,7 @@ static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResou
 static const TextureCube<float4> g_environmentCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap];
 
 inline Material GetMaterial(uint instanceID, float2 textureCoordinate) {
-	Material material = g_localData[instanceID].Material;
+	Material material;
 
 	uint index;
 
@@ -65,7 +66,40 @@ inline Material GetMaterial(uint instanceID, float2 textureCoordinate) {
 		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
 		material.BaseColor = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
 	}
+	else material.BaseColor = g_localData[instanceID].Material.BaseColor;
 
+	if ((index = g_localResourceDescriptorHeapIndices[instanceID].Textures.EmissiveMap) != ~0u) {
+		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
+		material.EmissiveColor = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+	else material.EmissiveColor = g_localData[instanceID].Material.EmissiveColor;
+
+	if ((index = g_localResourceDescriptorHeapIndices[instanceID].Textures.RoughnessMap) != ~0u) {
+		const Texture2D<float> texture = ResourceDescriptorHeap[index];
+		material.Roughness = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+	else material.Roughness = g_localData[instanceID].Material.Roughness;
+	material.Roughness = clamp(material.Roughness, 1e-4f, 1);
+
+	if ((index = g_localResourceDescriptorHeapIndices[instanceID].Textures.SpecularMap) != ~0u) {
+		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
+		material.Specular = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+	else material.Specular = g_localData[instanceID].Material.Specular;
+
+	if ((index = g_localResourceDescriptorHeapIndices[instanceID].Textures.MetallicMap) != ~0u) {
+		const Texture2D<float> texture = ResourceDescriptorHeap[index];
+		material.Metallic = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+	else material.Metallic = g_localData[instanceID].Material.Metallic;
+	material.Metallic = saturate(material.Metallic);
+
+	if ((index = g_localResourceDescriptorHeapIndices[instanceID].Textures.RefractiveIndexMap) != ~0u) {
+		const Texture2D<float> texture = ResourceDescriptorHeap[index];
+		material.RefractiveIndex = texture.SampleLevel(g_anisotropicWrap, textureCoordinate, 0);
+	}
+	else material.RefractiveIndex = g_localData[instanceID].Material.RefractiveIndex;
+	
 	return material;
 }
 

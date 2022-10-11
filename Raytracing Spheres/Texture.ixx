@@ -29,7 +29,7 @@ export {
 		path FilePath;
 	};
 
-	enum class TextureType { Unknown, BaseColorMap, EmissiveMap, NormalMap, RoughnessMap, SpecularMap, MetallicMap, CubeMap };
+	enum class TextureType { Unknown, BaseColorMap, EmissiveMap, NormalMap, RoughnessMap, SpecularMap, MetallicMap, RefractiveIndexMap, CubeMap };
 
 	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, XMMATRIX /*Transform*/>, less<>> {
 		using map<key_type, mapped_type, key_compare>::map;

@@ -2,15 +2,25 @@
 
 #include "Common.hlsli"
 
+#include "Stack.hlsli"
+
 struct RadianceRay {
 	static float4 Trace(RayDesc rayDesc, inout Random random) {
-		if (!g_globalData.RaytracingMaxTraceRecursionDepth) return 0;
+		float4 reflectedColor;
 
-		float4 reflectedColor = 1;
+		struct ScatterInfo { float4 EmissiveColor, Attenuation; };
+		Stack<ScatterInfo, RaytracingMaxDeclarableTraceRecursionDepth> scatterInfos;
+		scatterInfos.Initialize();
 
 		RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
-		for (uint depth = 0; depth < g_globalData.RaytracingMaxTraceRecursionDepth; depth++) {
-			q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0, rayDesc);
+		for (uint depth = 0, maxDepth = min(RaytracingMaxDeclarableTraceRecursionDepth, g_globalData.RaytracingMaxTraceRecursionDepth); ; depth++) {
+			if (depth == maxDepth) {
+				reflectedColor = depth == 1;
+
+				break;
+			}
+
+			q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0u, rayDesc);
 			q.Proceed();
 
 			const float3 worldRayDirection = q.WorldRayDirection();
@@ -22,23 +32,30 @@ struct RadianceRay {
 
 				const Material material = GetMaterial(instanceID, hitInfo.Vertex.TextureCoordinate);
 
-				float4 attenuation;
-				if (material.Scatter(worldRayDirection, hitInfo, rayDesc.Direction, attenuation, random)) {
-					reflectedColor *= attenuation;
+				ScatterInfo scatterInfo;
 
-					rayDesc.Origin = hitInfo.Vertex.Position;
-				}
-				else return reflectedColor * (material.IsEmissive() ? attenuation : 0);
+				scatterInfo.EmissiveColor = material.EmissiveColor;
+
+				material.Scatter(worldRayDirection, hitInfo, rayDesc.Direction, scatterInfo.Attenuation, random);
+
+				scatterInfos.Push(scatterInfo);
+
+				rayDesc.Origin = hitInfo.Vertex.Position;
 			}
 			else {
-				float4 color;
 				if (g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != ~0u) {
-					color = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(worldRayDirection, (float3x3)g_globalData.EnvironmentMapTransform), 0);
+					reflectedColor = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, mul(worldRayDirection, (float3x3)g_globalData.EnvironmentMapTransform), 0);
 				}
-				else color = lerp(float4(1, 1, 1, 1), float4(0.5f, 0.7f, 1, 1), 0.5f * worldRayDirection.y + 0.5f);
+				else reflectedColor = lerp(float4(1, 1, 1, 1), float4(0.5f, 0.7f, 1, 1), 0.5f * worldRayDirection.y + 0.5f);
 
-				return reflectedColor * color;
+				break;
 			}
+		}
+
+		while (!scatterInfos.IsEmpty()) {
+			const ScatterInfo scatterInfo = scatterInfos.GetTop();
+			reflectedColor = scatterInfo.EmissiveColor + scatterInfo.Attenuation * reflectedColor;
+			scatterInfos.Pop();
 		}
 
 		return reflectedColor;

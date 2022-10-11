@@ -65,7 +65,7 @@
     <FxCompile>
       <ObjectFileOutput>$(OutDir)%(RelativeDir)%(Filename).cso</ObjectFileOutput>
       <AdditionalOptions>/Fd "$(OutDir)%(RelativeDir)%(Filename).pdb" %(AdditionalOptions)</AdditionalOptions>
-      <ShaderModel>5.0</ShaderModel>
+      <ShaderModel>6.0</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -88,7 +88,7 @@
     </Link>
     <FxCompile>
       <ObjectFileOutput>$(OutDir)%(RelativeDir)%(Filename).cso</ObjectFileOutput>
-      <ShaderModel>5.0</ShaderModel>
+      <ShaderModel>6.0</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -144,8 +144,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Camera.hlsli" />
+    <None Include="Shaders\ColorHelpers.hlsli" />
     <None Include="Shaders\Common.hlsli" />
     <None Include="Shaders\HitInfo.hlsli" />
+    <None Include="Shaders\BxDFs.hlsli" />
+    <None Include="Shaders\Numbers.hlsli" />
+    <None Include="Shaders\Stack.hlsli" />
     <None Include="Shaders\TriangleMeshIndexHelpers.hlsli" />
     <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\Math.hlsli" />
@@ -174,6 +178,8 @@
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Identity).h</HeaderFileOutput>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Identity).h</HeaderFileOutput>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.0</ShaderModel>
     </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
