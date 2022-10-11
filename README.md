@@ -18,12 +18,14 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 ### Supported Physically Based Material Attributes and Texture Map Types
 - Base Color
 - Emissive Color
-- Normal
 - Roughness
 - Specular
 - Metallic
 - Refractive Index
-- Cube
+
+#### Other Texture Map Types
+- Normal
+- (Environment) Cube
 
 ### Graphics Settings
 - Window Mode
