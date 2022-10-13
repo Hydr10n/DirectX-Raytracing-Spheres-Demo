@@ -11,5 +11,5 @@ export struct Material {
 	float Roughness = 1;
 	XMFLOAT3 Specular{ 0.5f, 0.5f, 0.5f };
 	float Metallic{}, RefractiveIndex{};
-	XMFLOAT2 _padding;
+	XMFLOAT2 _;
 };

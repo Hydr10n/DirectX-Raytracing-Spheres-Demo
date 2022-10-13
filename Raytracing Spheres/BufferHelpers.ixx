@@ -19,6 +19,9 @@ export namespace DirectX::BufferHelpers {
 
 		const size_t Count;
 
+		UploadBuffer(UploadBuffer&) = delete;
+		UploadBuffer& operator=(UploadBuffer&) = delete;
+
 		UploadBuffer(ID3D12Device* pDevice, size_t count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ) noexcept(false) : Count(count), m_device(pDevice) {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * count);

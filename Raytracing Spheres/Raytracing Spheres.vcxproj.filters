@@ -20,9 +20,6 @@
       <UniqueIdentifier>{b4b7f07b-f5b0-4417-8afe-050236aaf118}</UniqueIdentifier>
       <Extensions>hlsl;hlsli</Extensions>
     </Filter>
-    <Filter Include="Texture Files">
-      <UniqueIdentifier>{82401490-919e-4670-9993-7262c9b48c8b}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -103,23 +100,6 @@
     <Image Include="DirectX.ico">
       <Filter>Resource Files</Filter>
     </Image>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Textures\Earth_BaseColor.jpg">
-      <Filter>Texture Files</Filter>
-    </Content>
-    <Content Include="Textures\Earth_Normal.jpg">
-      <Filter>Texture Files</Filter>
-    </Content>
-    <Content Include="Textures\Moon_BaseColor.jpg">
-      <Filter>Texture Files</Filter>
-    </Content>
-    <Content Include="Textures\Moon_Normal.jpg">
-      <Filter>Texture Files</Filter>
-    </Content>
-    <Content Include="Textures\Space.dds">
-      <Filter>Texture Files</Filter>
-    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Common.hlsli">

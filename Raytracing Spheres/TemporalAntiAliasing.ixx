@@ -38,7 +38,6 @@ namespace DirectX::PostProcess {
 		}
 
 	private:
-		ID3D12Device* m_device;
 		Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
 		Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineStateObject;
 	};

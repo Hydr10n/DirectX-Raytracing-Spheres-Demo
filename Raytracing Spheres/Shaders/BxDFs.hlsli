@@ -32,8 +32,13 @@ namespace BxDFs {
 
 		static float SchlickGeometry(float cosine, float k) { return cosine / (cosine * (1 - k) + k); }
 
-		static float SmithGeometry(float NoL, float NoV, float roughness) {
+		static float SmithGeometryDirect(float NoL, float NoV, float roughness) {
 			const float r = roughness + 1, k = r * r / 8;
+			return SchlickGeometry(NoL, k) * SchlickGeometry(NoV, k);
+		}
+
+		static float SmithGeometryIndirect(float NoL, float NoV, float roughness) {
+			const float k = roughness * roughness / 2;
 			return SchlickGeometry(NoL, k) * SchlickGeometry(NoV, k);
 		}
 

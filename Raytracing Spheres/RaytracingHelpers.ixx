@@ -35,70 +35,28 @@ export namespace DirectX::RaytracingHelpers {
 		}
 	};
 
-	class BottomLevelAccelerationStructure {
+	template <typename T> requires same_as<T, D3D12_RAYTRACING_GEOMETRY_DESC> || same_as<T, D3D12_RAYTRACING_INSTANCE_DESC>
+	class AccelerationStructure {
 	public:
-		BottomLevelAccelerationStructure(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
+		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) :
+			m_device(pDevice), m_flags(flags) {}
 
 		ID3D12Resource* GetBuffer() const { return m_buffers.Result.Get(); }
 
-		void Build(
-			ID3D12Device5* pDevice, ID3D12GraphicsCommandList4* pCommandList,
-			span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs,
-			bool updateOnly
-		) {
+		void Build(ID3D12GraphicsCommandList4* pCommandList, span<const T> descs, bool updateOnly) {
+			constexpr bool IsBottom = is_same_v<T, D3D12_RAYTRACING_GEOMETRY_DESC>;
+
 			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
 			desc.Inputs = {
-				.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
 				.Flags = m_flags,
-				.NumDescs = static_cast<UINT>(size(geometryDescs)),
-				.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
-				.pGeometryDescs = data(geometryDescs)
-			};
-
-			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result != nullptr) {
-				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-				desc.SourceAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
-			}
-			else {
-				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-				pDevice->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
-
-				m_buffers = AccelerationStructureBuffers(pDevice, AlignUp(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), 0);
-
-				desc.SourceAccelerationStructureData = NULL;
-			}
-
-			desc.DestAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
-			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetGPUVirtualAddress();
-			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
-
-			const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_buffers.Result.Get());
-			pCommandList->ResourceBarrier(1, &uavBarrier);
-		}
-
-	private:
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
-		AccelerationStructureBuffers m_buffers;
-	};
-
-	class TopLevelAccelerationStructure {
-	public:
-		TopLevelAccelerationStructure(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_flags(flags) {}
-
-		ID3D12Resource* GetBuffer() const { return m_buffers.Result.Get(); }
-
-		void Build(
-			ID3D12Device5* pDevice, ID3D12GraphicsCommandList4* pCommandList,
-			span<const D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs,
-			bool updateOnly
-		) {
-			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
-			desc.Inputs = {
-				.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
-				.Flags = m_flags,
-				.NumDescs = static_cast<UINT>(size(instanceDescs)),
+				.NumDescs = static_cast<UINT>(size(descs)),
 				.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY
 			};
+			if constexpr (IsBottom) {
+				desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+				desc.Inputs.pGeometryDescs = data(descs);
+			}
+			else desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 
 			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result != nullptr) {
 				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
@@ -106,19 +64,22 @@ export namespace DirectX::RaytracingHelpers {
 			}
 			else {
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-				pDevice->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
+				m_device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
 
-				m_buffers = AccelerationStructureBuffers(pDevice, AlignUp(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * desc.Inputs.NumDescs, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT));
+				m_buffers = AccelerationStructureBuffers(m_device, AlignUp(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), IsBottom ? 0 : AlignUp(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * desc.Inputs.NumDescs, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT));
 
 				desc.SourceAccelerationStructureData = NULL;
 			}
 
-			D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
-			ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
-			copy(cbegin(instanceDescs), cend(instanceDescs), pInstanceDescs);
-			m_buffers.InstanceDescs->Unmap(0, nullptr);
+			if constexpr (!IsBottom) {
+				D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
+				ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
+				copy(cbegin(descs), cend(descs), pInstanceDescs);
+				m_buffers.InstanceDescs->Unmap(0, nullptr);
 
-			desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();
+				desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();
+			}
+
 			desc.DestAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
 			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetGPUVirtualAddress();
 			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
@@ -128,9 +89,14 @@ export namespace DirectX::RaytracingHelpers {
 		}
 
 	private:
+		ID3D12Device5* m_device;
+
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
 		AccelerationStructureBuffers m_buffers;
 	};
+
+	using BottomLevelAccelerationStructure = AccelerationStructure<D3D12_RAYTRACING_GEOMETRY_DESC>;
+	using TopLevelAccelerationStructure = AccelerationStructure<D3D12_RAYTRACING_INSTANCE_DESC>;
 
 	template <typename Vertex, typename Index> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	class TriangleMesh {

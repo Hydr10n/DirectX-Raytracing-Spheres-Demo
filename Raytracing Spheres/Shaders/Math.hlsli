@@ -5,9 +5,10 @@
 #include "Random.hlsli"
 
 namespace Math {
-	inline float3x3 CalculateTBN(float3 N, float3 rayDirection) {
-		const float3 T = normalize(cross(rayDirection, N)), B = cross(N, T);
-		return float3x3(T, B, N);
+	// http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-13-normal-mapping/
+	inline float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3]) {
+		const float2 d0 = textureCoordinates[1] - textureCoordinates[0], d1 = textureCoordinates[2] - textureCoordinates[0];
+		return ((positions[1] - positions[0]) * d1.y - (positions[2] - positions[0]) * d0.y) / (d0.x * d1.y - d0.y * d1.x);
 	}
 
 	inline float3 CalculatePerpendicularVector(float3 v) {

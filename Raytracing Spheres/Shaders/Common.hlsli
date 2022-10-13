@@ -23,18 +23,18 @@ struct GlobalResourceDescriptorHeapIndices {
 		GlobalData, LocalData,
 		Output,
 		EnvironmentCubeMap;
-	uint2 _padding;
+	uint2 _;
 };
 ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b0);
 
 struct LocalResourceDescriptorHeapIndices {
 	struct {
 		uint Vertices, Indices;
-		uint2 _padding;
+		uint2 _;
 	} TriangleMesh;
 	struct {
 		uint BaseColorMap, EmissiveMap, NormalMap, RoughnessMap, SpecularMap, MetallicMap, RefractiveIndexMap;
-		uint _padding;
+		uint _;
 	} Textures;
 };
 static const StructuredBuffer<LocalResourceDescriptorHeapIndices> g_localResourceDescriptorHeapIndices = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.LocalResourceDescriptorHeapIndices];
@@ -43,6 +43,7 @@ static const ConstantBuffer<Camera> g_camera = ResourceDescriptorHeap[g_globalRe
 
 struct GlobalData {
 	uint RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount, AccumulatedFrameIndex;
+	float4 AmbientColor;
 	float4x4 EnvironmentMapTransform;
 };
 static const ConstantBuffer<GlobalData> g_globalData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.GlobalData];
@@ -113,11 +114,13 @@ inline HitInfo GetHitInfo(uint instanceID, float3 worldRayOrigin, float3 worldRa
 
 	HitInfo hitInfo;
 	hitInfo.Vertex.Position = worldRayOrigin + worldRayDirection * rayT;
-	hitInfo.Vertex.Normal = normalize(mul(Vertex::Interpolate(normals, barycentrics), (float3x3) objectToWorld));
+	hitInfo.Vertex.Normal = normalize(mul(Vertex::Interpolate(normals, barycentrics), (float3x3)objectToWorld));
 	hitInfo.Vertex.TextureCoordinate = mul(float4(Vertex::Interpolate(textureCoordinates, barycentrics), 0, 1), g_localData[instanceID].TextureTransform).xy;
 	if (localResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
 		const Texture2D<float3> normalMap = ResourceDescriptorHeap[localResourceDescriptorHeapIndices.Textures.NormalMap];
-		const float3x3 TBN = Math::CalculateTBN(hitInfo.Vertex.Normal, worldRayDirection);
+		const float3 positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position };
+		const float3 T = Math::CalculateTangent(positions, textureCoordinates);
+		const float3x3 TBN = float3x3(T, cross(hitInfo.Vertex.Normal, T), hitInfo.Vertex.Normal);
 		hitInfo.Vertex.Normal = normalize(mul(normalize(normalMap.SampleLevel(g_anisotropicWrap, hitInfo.Vertex.TextureCoordinate, 0) * 2 - 1), TBN));
 	}
 	hitInfo.SetFaceNormal(worldRayDirection);

@@ -4,7 +4,7 @@
 
 struct Camera {
 	DirectX::XMFLOAT3 Position;
-	float _padding;
+	float _;
 	DirectX::XMMATRIX ProjectionToWorld;
 };
 
@@ -73,7 +73,7 @@ struct FirstPersonCamera {
 	}
 
 private:
-	mutable bool m_isViewChanged = true;
+	mutable bool m_isViewChanged{};
 
 	DirectX::SimpleMath::Vector3 m_position;
 

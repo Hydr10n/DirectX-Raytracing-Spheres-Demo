@@ -66,6 +66,8 @@ namespace {
 	constexpr auto& UISettings = MyAppData::Settings::UI;
 }
 
+#define MAKE_OBJECT_NAME(Name) static constexpr LPCSTR Name = #Name;
+
 struct D3DApp::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
 		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
@@ -131,7 +133,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		Render();
 
-		m_isCameraMoved = false;
+		m_isViewChanged = false;
 
 		if (m_isWindowSettingChanged) {
 			ThrowIfFailed(m_windowModeHelper->Apply());
@@ -171,7 +173,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		for (auto& [_, textures] : m_textures) for (auto& [_, texture] : get<0>(textures)) texture.Resource.Reset();
 
-		m_topLevelAccelerationStructure = {};
+		m_topLevelAccelerationStructure.reset();
 		m_bottomLevelAccelerationStructures = {};
 
 		m_triangleMeshes = {};
@@ -217,11 +219,13 @@ private:
 	} m_inputDeviceStateTrackers;
 
 	struct ObjectNames {
-		static constexpr LPCSTR
-			Environment = "Environment",
-			Sphere = "Sphere",
-			Earth = "Earth", Moon = "Moon", Star = "Star",
-			HarmonicOscillator = "HarmonicOscillator";
+		MAKE_OBJECT_NAME(Environment);
+		MAKE_OBJECT_NAME(Sphere);
+		MAKE_OBJECT_NAME(AlienMetal);
+		MAKE_OBJECT_NAME(Moon);
+		MAKE_OBJECT_NAME(Earth);
+		MAKE_OBJECT_NAME(Star);
+		MAKE_OBJECT_NAME(HarmonicOscillator);
 	};
 
 	struct ResourceDescriptorHeapIndex {
@@ -232,6 +236,7 @@ private:
 			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionVectorsSRV, MotionVectorsUAV, FinalOutputUAV,
 			SphereVertices, SphereIndices,
 			EnvironmentCubeMap,
+			AlienMetalBaseColorMap, AlienMetalNormalMap, AlienMetalRoughnessMap, AlienMetalMetallicMap,
 			MoonBaseColorMap, MoonNormalMap,
 			EarthBaseColorMap, EarthNormalMap,
 			Font,
@@ -254,20 +259,21 @@ private:
 			GlobalData = ~0u, LocalData = ~0u,
 			Output = ~0u,
 			EnvironmentCubeMap = ~0u;
-		XMUINT2 _padding;
+		XMUINT2 _;
 	};
 	struct LocalResourceDescriptorHeapIndices {
 		struct {
 			UINT Vertices = ~0u, Indices = ~0u;
-			XMUINT2 _padding;
+			XMUINT2 _;
 		} TriangleMesh;
 		struct {
 			UINT BaseColorMap = ~0u, EmissiveMap = ~0u, NormalMap = ~0u, RoughnessMap = ~0u, SpecularMap = ~0u, MetallicMap = ~0u, RefractiveIndexMap = ~0u;
-			UINT _padding;
+			UINT _;
 		} Textures;
 	};
 	struct GlobalData {
 		UINT RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount, AccumulatedFrameIndex;
+		XMFLOAT4 AmbientColor;
 		XMMATRIX EnvironmentMapTransform;
 	};
 	struct LocalData {
@@ -284,14 +290,14 @@ private:
 
 	map<string, shared_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>>, less<>> m_triangleMeshes;
 
-	map<string, BottomLevelAccelerationStructure, less<>> m_bottomLevelAccelerationStructures;
-	TopLevelAccelerationStructure m_topLevelAccelerationStructure;
+	map<string, shared_ptr<BottomLevelAccelerationStructure>, less<>> m_bottomLevelAccelerationStructures;
+	shared_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
 
 	struct { Texture PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextures;
 
 	TextureDictionary m_textures;
 
-	bool m_isCameraMoved = true;
+	bool m_isViewChanged{};
 	FirstPersonCamera m_firstPersonCamera;
 
 	struct RenderItem {
@@ -306,7 +312,7 @@ private:
 	};
 	vector<RenderItem> m_renderItems;
 
-	bool m_isPhysicsSimulationRunning = true;
+	bool m_isSimulatingPhysics = true;
 	struct {
 		map<string, tuple<PxRigidBody*, bool /*IsGravityEnabled*/>, less<>> RigidBodies;
 		const struct { PxReal PositionY = 0.5f, Period = 3; } Spring;
@@ -346,6 +352,13 @@ private:
 
 		const auto outputSize = GetOutputSize();
 
+		m_isViewChanged = true;
+
+		{
+			m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
+			m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
+		}
+
 		{
 			const auto CreateResource = [&](DXGI_FORMAT format, Texture& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
 				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
@@ -375,11 +388,6 @@ private:
 		m_temporalAntiAliasing->TextureSize = outputSize;
 
 		{
-			m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
-			m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
-		}
-
-		{
 			auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
@@ -397,7 +405,7 @@ private:
 
 		UpdateGlobalData();
 
-		if (m_isPhysicsSimulationRunning) m_myPhysX.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
+		if (m_isSimulatingPhysics) m_myPhysX.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
 
 		PIXEndEvent();
 	}
@@ -437,7 +445,7 @@ private:
 		DispatchRays();
 
 		{
-			const bool isTemporalAntiAliasingEnabled = GraphicsSettings.TemporalAntiAliasing.IsEnabled && (m_isPhysicsSimulationRunning || m_isCameraMoved);
+			const auto isTemporalAntiAliasingEnabled = GraphicsSettings.TemporalAntiAliasing.IsEnabled && (m_isSimulatingPhysics || m_isViewChanged);
 
 			if (isTemporalAntiAliasingEnabled) {
 				const ScopedBarrier scopedBarrier(
@@ -490,7 +498,7 @@ private:
 	void BuildTextures() {
 		decltype(m_textures) textures;
 
-		textures.DirectoryPath = path(*__wargv).replace_filename(L"Textures");
+		textures.DirectoryPath = path(*__wargv).replace_filename(path("Assets") / "Textures");
 
 		textures[ObjectNames::Environment] = {
 			{
@@ -505,6 +513,48 @@ private:
 				}
 			},
 			XMMatrixRotationRollPitchYaw(XM_PI, XM_PI * 0.2f, 0)
+		};
+
+		textures[ObjectNames::AlienMetal] = {
+			{
+				{
+					TextureType::BaseColorMap,
+					Texture{
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::AlienMetalBaseColorMap
+						},
+						.FilePath = L"Alien-Metal_Albedo.png"
+					}
+				},
+				{
+					TextureType::NormalMap,
+					Texture{
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::AlienMetalNormalMap
+						},
+						.FilePath = L"Alien-Metal_Normal.png"
+					}
+				},
+				{
+					TextureType::RoughnessMap,
+					Texture{
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::AlienMetalRoughnessMap
+						},
+						.FilePath = L"Alien-Metal_Roughness.png"
+					}
+				},
+				{
+					TextureType::MetallicMap,
+					Texture{
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::AlienMetalMetallicMap
+						},
+						.FilePath = L"Alien-Metal_Metallic.png"
+					}
+				}
+			},
+			XMMatrixIdentity()
 		};
 
 		textures[ObjectNames::Moon] = {
@@ -598,10 +648,12 @@ private:
 
 		{
 			const struct {
+				LPCSTR Name;
 				PxVec3 Position;
 				Material Material;
 			} objects[]{
 				{
+					.Name = ObjectNames::AlienMetal,
 					.Position{ -2, 0.5f, 0 },
 					.Material{
 						.BaseColor{ 0.1f, 0.2f, 0.5f, 1 },
@@ -617,6 +669,14 @@ private:
 					}
 				},
 				{
+					.Position{ 0, 2, 0 },
+					.Material{
+						.BaseColor{ 1, 1, 1, 1 },
+						.Roughness = 0.1f,
+						.RefractiveIndex = 1.5f,
+					}
+				},
+				{
 					.Position{ 2, 0.5f, 0 },
 					.Material{
 						.BaseColor{ 0.7f, 0.6f, 0.5f, 1 },
@@ -625,9 +685,13 @@ private:
 					}
 				}
 			};
-			for (const auto& [Position, Material] : objects) {
+			for (const auto& [Name, Position, Material] : objects) {
 				RenderItem renderItem;
+
+				if (Name != nullptr && m_textures.contains(Name)) renderItem.pTextures = &m_textures.at(Name);
+
 				renderItem.Material = Material;
+
 				AddRenderItem(renderItem, Position, PxSphereGeometry(0.5f));
 			}
 
@@ -643,7 +707,7 @@ private:
 					position.z = static_cast<float>(j) - 0.7f * random.Float();
 
 					bool isOverlapping = false;
-					for (const auto& [Position, Material] : objects) {
+					for (const auto& [_, Position, Material] : objects) {
 						if ((position - Position).magnitude() < 1) {
 							isOverlapping = true;
 							break;
@@ -658,26 +722,26 @@ private:
 					if (const auto randomValue = random.Float();
 						randomValue < 0.3f) {
 						renderItem.Material = {
-							.BaseColor = random.Float4()
+							.BaseColor = random.Float4(0.1f)
 						};
 					}
 					else if (randomValue < 0.6f) {
 						renderItem.Material = {
-							.BaseColor = random.Float4(),
+							.BaseColor = random.Float4(0.1f),
 							.Roughness = random.Float(0, 0.5f),
 							.Metallic = 1
 						};
 					}
 					else if (randomValue < 0.9f) {
 						renderItem.Material = {
-							.BaseColor = random.Float4(),
+							.BaseColor = random.Float4(0.1f),
 							.Roughness = random.Float(0, 0.5f),
 							.RefractiveIndex = 1.5f
 						};
 					}
 					else {
 						renderItem.Material = {
-							.BaseColor = random.Float4(),
+							.BaseColor = random.Float4(0.1f),
 							.EmissiveColor = random.Float4(0.2f),
 							.Roughness = random.Float(0.3f),
 							.Metallic = random.Float(0.4f)
@@ -824,6 +888,7 @@ private:
 				GlobalData{
 					.RaytracingMaxTraceRecursionDepth = GraphicsSettings.Raytracing.MaxTraceRecursionDepth,
 					.RaytracingSamplesPerPixel = GraphicsSettings.Raytracing.SamplesPerPixel,
+					.AmbientColor{ 0, 0, 0, -1 },
 					.EnvironmentMapTransform = m_textures.contains(ObjectNames::Environment) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::Environment))) : XMMatrixIdentity()
 				},
 				ResourceDescriptorHeapIndex::GlobalData
@@ -893,7 +958,7 @@ private:
 	}
 
 	void CreateBottomLevelAccelerationStructure(span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs, BottomLevelAccelerationStructure& accelerationStructure) {
-		accelerationStructure.Build(m_deviceResources->GetD3DDevice(), m_deviceResources->GetCommandList(), geometryDescs, false);
+		accelerationStructure.Build(m_deviceResources->GetCommandList(), geometryDescs, false);
 	}
 
 	void CreateTopLevelAccelerationStructure(bool updateOnly) {
@@ -934,21 +999,27 @@ private:
 			instanceDesc.InstanceMask = ~0u;
 			instanceDesc.InstanceContributionToHitGroupIndex = i;
 			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
-			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(object.Name).GetBuffer()->GetGPUVirtualAddress();
+			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(object.Name)->GetBuffer()->GetGPUVirtualAddress();
 			instanceDescs.emplace_back(instanceDesc);
 		}
 
-		m_topLevelAccelerationStructure.Build(m_deviceResources->GetD3DDevice(), m_deviceResources->GetCommandList(), instanceDescs, updateOnly);
+		m_topLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), instanceDescs, updateOnly);
 	}
 
 	void CreateAccelerationStructures() {
+		const auto device = m_deviceResources->GetD3DDevice();
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
 
-		CreateBottomLevelAccelerationStructure(initializer_list{ m_triangleMeshes.at(ObjectNames::Sphere)->GetGeometryDesc() }, m_bottomLevelAccelerationStructures[ObjectNames::Sphere] = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
+		CreateBottomLevelAccelerationStructure(
+			initializer_list{
+				m_triangleMeshes.at(ObjectNames::Sphere)->GetGeometryDesc()
+			},
+			*(m_bottomLevelAccelerationStructures[ObjectNames::Sphere] = make_shared<decltype(m_bottomLevelAccelerationStructures)::mapped_type::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE))
+		);
 
-		m_topLevelAccelerationStructure = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
+		m_topLevelAccelerationStructure = make_shared<decltype(m_topLevelAccelerationStructure)::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 		CreateTopLevelAccelerationStructure(false);
 
 		ThrowIfFailed(commandList->Close());
@@ -980,8 +1051,8 @@ private:
 		if (m_isMenuOpen) m_inputDevices.Mouse->SetMode(Mouse::MODE_ABSOLUTE);
 		else {
 			{
-				if (gamepadStateTracker.view == GamepadButtonState::PRESSED) m_isPhysicsSimulationRunning = !m_isPhysicsSimulationRunning;
-				if (keyboardStateTracker.IsKeyPressed(Key::Tab)) m_isPhysicsSimulationRunning = !m_isPhysicsSimulationRunning;
+				if (gamepadStateTracker.view == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
+				if (keyboardStateTracker.IsKeyPressed(Key::Tab)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
 			}
 
 			{
@@ -1008,7 +1079,7 @@ private:
 		const auto Translate = [&](const XMFLOAT3& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
-			m_isCameraMoved = true;
+			m_isViewChanged = true;
 
 			constexpr auto ToPxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
@@ -1028,7 +1099,7 @@ private:
 		const auto Yaw = [&](float angle) {
 			if (angle == 0) return;
 
-			m_isCameraMoved = true;
+			m_isViewChanged = true;
 
 			m_firstPersonCamera.Yaw(angle);
 		};
@@ -1036,7 +1107,7 @@ private:
 		const auto Pitch = [&](float angle) {
 			if (angle == 0) return;
 
-			m_isCameraMoved = true;
+			m_isViewChanged = true;
 
 			if (const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
 				pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
@@ -1068,17 +1139,19 @@ private:
 			Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 		}
 
-		m_shaderBuffers.Camera->GetData() = {
-			.Position = m_firstPersonCamera.GetPosition(),
-			.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
-		};
+		if (m_isViewChanged) {
+			m_shaderBuffers.Camera->GetData() = {
+				.Position = m_firstPersonCamera.GetPosition(),
+				.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
+			};
+		}
 	}
 
 	void UpdateGlobalData() {
 		auto& globalData = m_shaderBuffers.GlobalData->GetData();
 
 		globalData.FrameCount = m_stepTimer.GetFrameCount();
-		globalData.AccumulatedFrameIndex = m_isPhysicsSimulationRunning || m_isCameraMoved ? 0 : globalData.AccumulatedFrameIndex + 1;
+		globalData.AccumulatedFrameIndex = m_isSimulatingPhysics || m_isViewChanged ? 0 : globalData.AccumulatedFrameIndex + 1;
 	}
 
 	void UpdateRenderItem(RenderItem& renderItem) const {
@@ -1118,12 +1191,12 @@ private:
 	}
 
 	void DispatchRays() {
-		if (m_isPhysicsSimulationRunning) CreateTopLevelAccelerationStructure(true);
+		if (m_isSimulatingPhysics) CreateTopLevelAccelerationStructure(true);
 
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
-		commandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructure.GetBuffer()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructure->GetBuffer()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(1, m_shaderBuffers.GlobalResourceDescriptorHeapIndices->GetResource()->GetGPUVirtualAddress());
 
 		commandList->SetPipelineState(m_pipelineStateObject.Get());
@@ -1135,12 +1208,6 @@ private:
 	void RenderMenu() {
 		ImGui_ImplDX12_NewFrame();
 		ImGui_ImplWin32_NewFrame();
-
-		{
-			const auto& displayResolution = *--cend(g_displayResolutions);
-			ImGui::GetIO().DisplaySize = { static_cast<float>(displayResolution.cx), static_cast<float>(displayResolution.cy) };
-		}
-
 		ImGui::NewFrame();
 
 		{

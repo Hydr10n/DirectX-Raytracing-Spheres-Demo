@@ -4,7 +4,7 @@
 
 struct Camera {
 	float3 Position;
-	float _padding;
+	float _;
 	float4x4 ProjectionToWorld;
 
 	Ray GenerateRay(uint2 pixelCoordinate, uint2 dimension, float2 offset = 0.5f) {
