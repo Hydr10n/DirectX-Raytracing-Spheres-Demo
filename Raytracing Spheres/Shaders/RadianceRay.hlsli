@@ -9,11 +9,11 @@ struct RadianceRay {
 		float4 reflectedColor;
 
 		struct ScatterInfo { float4 EmissiveColor, Attenuation; };
-		Stack<ScatterInfo, RaytracingMaxDeclarableTraceRecursionDepth> scatterInfos;
+		Stack<ScatterInfo, RaytracingMaxTraceRecursionDepth> scatterInfos;
 		scatterInfos.Initialize();
 
 		RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
-		for (uint depth = 0, maxDepth = min(RaytracingMaxDeclarableTraceRecursionDepth, g_globalData.RaytracingMaxTraceRecursionDepth); ; depth++) {
+		for (uint depth = 0, maxDepth = min(RaytracingMaxTraceRecursionDepth, g_globalData.RaytracingMaxTraceRecursionDepth); ; depth++) {
 			if (depth == maxDepth) {
 				reflectedColor = depth == 1;
 

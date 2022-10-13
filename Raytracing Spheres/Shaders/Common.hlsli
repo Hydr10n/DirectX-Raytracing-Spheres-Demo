@@ -10,7 +10,7 @@
 
 #include "TriangleMeshIndexHelpers.hlsli"
 
-static const uint RaytracingMaxDeclarableTraceRecursionDepth = 31; //D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH
+static const uint RaytracingMaxTraceRecursionDepth = 16;
 
 SamplerState g_anisotropicWrap : register(s0);
 

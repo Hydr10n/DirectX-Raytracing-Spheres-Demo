@@ -73,11 +73,11 @@ struct D3DApp::Impl : IDeviceNotify {
 		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
 
 		{
-			GraphicsSettings.Raytracing.MaxTraceRecursionDepth = clamp(GraphicsSettings.Raytracing.MaxTraceRecursionDepth, 1u, static_cast<UINT>(D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH));
-			GraphicsSettings.Raytracing.SamplesPerPixel = clamp(GraphicsSettings.Raytracing.SamplesPerPixel, 1u, MaxRaytracingSamplesPerPixel);
+			GraphicsSettings.Raytracing.MaxTraceRecursionDepth = clamp(GraphicsSettings.Raytracing.MaxTraceRecursionDepth, 1u, RaytracingMaxTraceRecursionDepth);
+			GraphicsSettings.Raytracing.SamplesPerPixel = clamp(GraphicsSettings.Raytracing.SamplesPerPixel, 1u, RaytracingMaxSamplesPerPixel);
 
 			GraphicsSettings.TemporalAntiAliasing.Alpha = clamp(GraphicsSettings.TemporalAntiAliasing.Alpha, 0.0f, 1.0f);
-			GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma = clamp(GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma, 0.0f, MaxTemporalAntiAliasingColorBoxSigma);
+			GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma = clamp(GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma, 0.0f, TemporalAntiAliasingMaxColorBoxSigma);
 		}
 
 		{
@@ -249,7 +249,7 @@ private:
 
 	ComPtr<ID3D12PipelineState> m_pipelineStateObject;
 
-	static constexpr float MaxTemporalAntiAliasingColorBoxSigma = 2;
+	static constexpr float TemporalAntiAliasingMaxColorBoxSigma = 2;
 	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
 
 	struct GlobalResourceDescriptorHeapIndices {
@@ -319,7 +319,7 @@ private:
 	} m_physicsObjects;
 	MyPhysX m_myPhysX;
 
-	static constexpr UINT MaxRaytracingSamplesPerPixel = 16;
+	static constexpr UINT RaytracingMaxTraceRecursionDepth = 16, RaytracingMaxSamplesPerPixel = 16;
 
 	bool m_isMenuOpen = UISettings.Menu.IsOpenOnStartup;
 
@@ -1256,13 +1256,13 @@ private:
 
 						auto& globalData = m_shaderBuffers.GlobalData->GetData();
 
-						if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, D3D12_RAYTRACING_MAX_DECLARABLE_TRACE_RECURSION_DEPTH, "%d", ImGuiSliderFlags_NoInput)) {
+						if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, RaytracingMaxTraceRecursionDepth, "%d", ImGuiSliderFlags_NoInput)) {
 							globalData.RaytracingMaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth;
 
 							isChanged = true;
 						}
 
-						if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, static_cast<int>(MaxRaytracingSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
+						if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, static_cast<int>(RaytracingMaxSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
 							globalData.RaytracingSamplesPerPixel = raytracingSettings.SamplesPerPixel;
 
 							isChanged = true;
@@ -1282,7 +1282,7 @@ private:
 							isChanged = true;
 						}
 
-						if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, MaxTemporalAntiAliasingColorBoxSigma, "%.2f", ImGuiSliderFlags_NoInput)) {
+						if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, TemporalAntiAliasingMaxColorBoxSigma, "%.2f", ImGuiSliderFlags_NoInput)) {
 							m_temporalAntiAliasing->Constant.ColorBoxSigma = temporalAntiAliasingSettings.ColorBoxSigma;
 
 							isChanged = true;
