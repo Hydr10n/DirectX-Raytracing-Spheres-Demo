@@ -53,8 +53,8 @@ int WINAPI wWinMain(
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
 
 		{
-			GraphicsSettings.Load();
-			UISettings.Load();
+			ignore = GraphicsSettings.Load();
+			ignore = UISettings.Load();
 		}
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -217,7 +217,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 					if (GraphicsSettings.Resolution != resolution) {
 						GraphicsSettings.Resolution = resolution;
-						GraphicsSettings.Save();
+						ignore = GraphicsSettings.Save();
 					}
 				}
 
@@ -256,7 +256,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				ThrowIfFailed(g_windowModeHelper->Apply());
 
 				GraphicsSettings.WindowMode = g_windowModeHelper->GetMode();
-				GraphicsSettings.Save();
+				ignore = GraphicsSettings.Save();
 			}
 		} [[fallthrough]];
 		case WM_SYSKEYUP:

@@ -22,8 +22,6 @@ module;
 
 #include "MyPhysX.h"
 
-#include "Shaders/Raytracing.hlsl.h"
-
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
 #include "ImGuiEx.h"
@@ -35,6 +33,8 @@ module;
 #include <map>
 
 #include <shellapi.h>
+
+#include "Shaders/Raytracing.hlsl.h"
 
 module D3DApp;
 
@@ -1048,7 +1048,10 @@ private:
 			if (keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isMenuOpen = !m_isMenuOpen;
 		}
 
-		if (m_isMenuOpen) m_inputDevices.Mouse->SetMode(Mouse::MODE_ABSOLUTE);
+		if (m_isMenuOpen) {
+			m_inputDevices.Mouse->SetMode(Mouse::MODE_ABSOLUTE);
+			m_inputDevices.Mouse->SetVisible(true); // HACK: Fix no cursor after switching back the window
+		}
 		else {
 			{
 				if (gamepadStateTracker.view == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
@@ -1293,7 +1296,7 @@ private:
 
 					ImGui::TreePop();
 
-					if (isChanged) GraphicsSettings.Save();
+					if (isChanged) ignore = GraphicsSettings.Save();
 				}
 
 				if (ImGui::TreeNode("UI")) {
