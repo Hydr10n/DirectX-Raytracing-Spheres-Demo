@@ -332,19 +332,19 @@ private:
 
 		CreateDescriptorHeaps();
 
-		LoadTextures();
-
 		CreateRootSignatures();
 
 		CreatePipelineStateObjects();
 
 		CreatePostProcess();
 
-		CreateShaderBuffers();
-
 		CreateGeometries();
 
 		CreateAccelerationStructures();
+
+		LoadTextures();
+
+		CreateShaderBuffers();
 	}
 
 	void CreateWindowSizeDependentResources() {
@@ -403,14 +403,22 @@ private:
 
 		ProcessInput();
 
-		UpdateGlobalData();
+		if (m_isSimulatingPhysics) {
+			m_myPhysX.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
 
-		if (m_isSimulatingPhysics) m_myPhysX.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
+			m_isViewChanged = true;
+		}
+
+		UpdateGlobalData();
 
 		PIXEndEvent();
 	}
 
-	void Clear() {
+	void Render() {
+		if (!m_stepTimer.GetFrameCount()) return;
+
+		m_deviceResources->Prepare();
+
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Clear");
@@ -426,16 +434,6 @@ private:
 		commandList->RSSetScissorRects(1, &scissorRect);
 
 		PIXEndEvent(commandList);
-	}
-
-	void Render() {
-		if (!m_stepTimer.GetFrameCount()) return;
-
-		m_deviceResources->Prepare();
-
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		Clear();
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
@@ -445,7 +443,7 @@ private:
 		DispatchRays();
 
 		{
-			const auto isTemporalAntiAliasingEnabled = GraphicsSettings.TemporalAntiAliasing.IsEnabled && (m_isSimulatingPhysics || m_isViewChanged);
+			const auto isTemporalAntiAliasingEnabled = GraphicsSettings.TemporalAntiAliasing.IsEnabled && m_isViewChanged;
 
 			if (isTemporalAntiAliasingEnabled) {
 				const ScopedBarrier scopedBarrier(
@@ -957,8 +955,8 @@ private:
 		sphere->CreateShaderResourceViews(m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereVertices), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereIndices));
 	}
 
-	void CreateBottomLevelAccelerationStructure(span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs, BottomLevelAccelerationStructure& accelerationStructure) {
-		accelerationStructure.Build(m_deviceResources->GetCommandList(), geometryDescs, false);
+	void CreateBottomLevelAccelerationStructure(const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc, BottomLevelAccelerationStructure& accelerationStructure) {
+		accelerationStructure.Build(m_deviceResources->GetCommandList(), initializer_list{ geometryDesc }, false);
 	}
 
 	void CreateTopLevelAccelerationStructure(bool updateOnly) {
@@ -997,7 +995,7 @@ private:
 			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
 			instanceDesc.InstanceID = renderItem.InstanceID;
 			instanceDesc.InstanceMask = ~0u;
-			instanceDesc.InstanceContributionToHitGroupIndex = i;
+			instanceDesc.InstanceContributionToHitGroupIndex = 0;
 			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
 			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(object.Name)->GetBuffer()->GetGPUVirtualAddress();
 			instanceDescs.emplace_back(instanceDesc);
@@ -1012,12 +1010,12 @@ private:
 
 		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
 
-		CreateBottomLevelAccelerationStructure(
-			initializer_list{
-				m_triangleMeshes.at(ObjectNames::Sphere)->GetGeometryDesc()
-			},
-			*(m_bottomLevelAccelerationStructures[ObjectNames::Sphere] = make_shared<decltype(m_bottomLevelAccelerationStructures)::mapped_type::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE))
-		);
+		for (const auto& [Name, TriangleMesh] : m_triangleMeshes) {
+			CreateBottomLevelAccelerationStructure(
+				TriangleMesh->GetGeometryDesc(),
+				*(m_bottomLevelAccelerationStructures[Name] = make_shared<decltype(m_bottomLevelAccelerationStructures)::mapped_type::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE))
+			);
+		}
 
 		m_topLevelAccelerationStructure = make_shared<decltype(m_topLevelAccelerationStructure)::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 		CreateTopLevelAccelerationStructure(false);
@@ -1154,13 +1152,13 @@ private:
 		auto& globalData = m_shaderBuffers.GlobalData->GetData();
 
 		globalData.FrameCount = m_stepTimer.GetFrameCount();
-		globalData.AccumulatedFrameIndex = m_isSimulatingPhysics || m_isViewChanged ? 0 : globalData.AccumulatedFrameIndex + 1;
+		globalData.AccumulatedFrameIndex = m_isViewChanged ? 0 : globalData.AccumulatedFrameIndex + 1;
 	}
 
 	void UpdateRenderItem(RenderItem& renderItem) const {
 		const auto& shape = *renderItem.Shape;
 
-		const auto rigidBody = renderItem.Shape->getActor()->is<PxRigidBody>();
+		const auto rigidBody = shape.getActor()->is<PxRigidBody>();
 		if (rigidBody == nullptr) return;
 
 		const auto mass = rigidBody->getMass();
@@ -1261,12 +1259,14 @@ private:
 
 						if (ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, RaytracingMaxTraceRecursionDepth, "%d", ImGuiSliderFlags_NoInput)) {
 							globalData.RaytracingMaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth;
+							globalData.AccumulatedFrameIndex = 0;
 
 							isChanged = true;
 						}
 
 						if (ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, static_cast<int>(RaytracingMaxSamplesPerPixel), "%d", ImGuiSliderFlags_NoInput)) {
 							globalData.RaytracingSamplesPerPixel = raytracingSettings.SamplesPerPixel;
+							globalData.AccumulatedFrameIndex = 0;
 
 							isChanged = true;
 						}
@@ -1371,7 +1371,7 @@ private:
 
 				AddContents(
 					"Mouse",
-					"Mouse",
+					"##Mouse",
 					{
 						{ "(Move)", "Look around" }
 					}
