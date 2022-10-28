@@ -6,6 +6,8 @@ module;
 
 #include "StepTimer.h"
 
+#include "RenderTexture.h"
+
 #include "directxtk12/GraphicsMemory.h"
 
 #include "directxtk12/GamePad.h"
@@ -18,7 +20,7 @@ module;
 
 #include "directxtk12/GeometricPrimitive.h"
 
-#include "Camera.h"
+#include "directxtk12/SimpleMath.h"
 
 #include "MyPhysX.h"
 
@@ -28,21 +30,19 @@ module;
 
 #include "MyAppData.h"
 
-#include <span>
-
-#include <map>
-
 #include <shellapi.h>
 
 #include "Shaders/Raytracing.hlsl.h"
 
-module D3DApp;
+module App;
 
+import Camera;
 import DirectX.BufferHelpers;
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import Material;
 import Random;
+import ShaderCommonData;
 import SharedData;
 import Texture;
 
@@ -64,21 +64,46 @@ using Key = Keyboard::Keys;
 namespace {
 	constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
 	constexpr auto& UISettings = MyAppData::Settings::UI;
+	constexpr auto& ControlsSettings = MyAppData::Settings::Controls;
 }
 
 #define MAKE_OBJECT_NAME(Name) static constexpr LPCSTR Name = #Name;
 
-struct D3DApp::Impl : IDeviceNotify {
+struct App::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
-		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
-
 		{
-			GraphicsSettings.Raytracing.MaxTraceRecursionDepth = clamp(GraphicsSettings.Raytracing.MaxTraceRecursionDepth, 1u, RaytracingMaxTraceRecursionDepth);
-			GraphicsSettings.Raytracing.SamplesPerPixel = clamp(GraphicsSettings.Raytracing.SamplesPerPixel, 1u, RaytracingMaxSamplesPerPixel);
+			{
+				{
+					auto& cameraSettings = GraphicsSettings.Camera;
+					cameraSettings.VerticalFieldOfView = clamp(cameraSettings.VerticalFieldOfView, CameraMinVerticalFieldOfView, CameraMaxVerticalFieldOfView);
+				}
 
-			GraphicsSettings.TemporalAntiAliasing.Alpha = clamp(GraphicsSettings.TemporalAntiAliasing.Alpha, 0.0f, 1.0f);
-			GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma = clamp(GraphicsSettings.TemporalAntiAliasing.ColorBoxSigma, 0.0f, TemporalAntiAliasingMaxColorBoxSigma);
+				{
+					auto& raytracingSettings = GraphicsSettings.Raytracing;
+					raytracingSettings.MaxTraceRecursionDepth = clamp(raytracingSettings.MaxTraceRecursionDepth, 1u, RaytracingMaxTraceRecursionDepth);
+					raytracingSettings.SamplesPerPixel = clamp(raytracingSettings.SamplesPerPixel, 1u, RaytracingMaxSamplesPerPixel);
+				}
+
+				{
+					auto& temporalAntiAliasing = GraphicsSettings.TemporalAntiAliasing;
+					temporalAntiAliasing.Alpha = clamp(temporalAntiAliasing.Alpha, 0.0f, 1.0f);
+					temporalAntiAliasing.ColorBoxSigma = clamp(temporalAntiAliasing.ColorBoxSigma, 0.0f, TemporalAntiAliasingMaxColorBoxSigma);
+				}
+			}
+
+			{
+				auto& menuSettings = UISettings.Menu;
+				UISettings.Menu.BackgroundOpacity = clamp(menuSettings.BackgroundOpacity, 0.0f, 1.0f);
+			}
+
+			{
+				auto& speedSettings = ControlsSettings.Camera.Speed;
+				speedSettings.Movement = clamp(speedSettings.Movement, CameraMinMovementSpeed, CameraMaxMovementSpeed);
+				speedSettings.Rotation = clamp(speedSettings.Rotation, CameraMinRotationSpeed, CameraMaxRotationSpeed);
+			}
 		}
+
+		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
 
 		{
 			ImGui::CreateContext();
@@ -97,19 +122,23 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_firstPersonCamera.SetPosition({ 0, 0, -15 });
 
-		BuildTextures();
+		{
+			BuildTextures();
 
-		BuildRenderItems();
+			BuildRenderItems();
+		}
 
-		m_deviceResources->RegisterDeviceNotify(this);
+		{
+			m_deviceResources->RegisterDeviceNotify(this);
 
-		m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->GetResolution());
+			m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->GetResolution());
 
-		m_deviceResources->CreateDeviceResources();
-		CreateDeviceDependentResources();
+			m_deviceResources->CreateDeviceResources();
+			CreateDeviceDependentResources();
 
-		m_deviceResources->CreateWindowSizeDependentResources();
-		CreateWindowSizeDependentResources();
+			m_deviceResources->CreateWindowSizeDependentResources();
+			CreateWindowSizeDependentResources();
+		}
 
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
 	}
@@ -182,7 +211,7 @@ struct D3DApp::Impl : IDeviceNotify {
 
 		m_temporalAntiAliasing.reset();
 
-		m_pipelineStateObject.Reset();
+		m_pipelineState.Reset();
 
 		m_rootSignature.Reset();
 
@@ -200,16 +229,16 @@ struct D3DApp::Impl : IDeviceNotify {
 private:
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<decltype(m_deviceResources)::element_type>(D3D12_RAYTRACING_TIER_1_1);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(D3D12_RAYTRACING_TIER_1_1);
 
 	StepTimer m_stepTimer;
 
 	unique_ptr<GraphicsMemory> m_graphicsMemory;
 
 	const struct {
-		unique_ptr<GamePad> Gamepad = make_unique<decltype(Gamepad)::element_type>();
-		unique_ptr<Keyboard> Keyboard = make_unique<decltype(Keyboard)::element_type>();
-		unique_ptr<Mouse> Mouse = make_unique<decltype(Mouse)::element_type>();
+		unique_ptr<GamePad> Gamepad = make_unique<DirectX::GamePad>();
+		unique_ptr<Keyboard> Keyboard = make_unique<DirectX::Keyboard>();
+		unique_ptr<Mouse> Mouse = make_unique<DirectX::Mouse>();
 	} m_inputDevices;
 
 	struct {
@@ -236,7 +265,7 @@ private:
 			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionVectorsSRV, MotionVectorsUAV, FinalOutputUAV,
 			SphereVertices, SphereIndices,
 			EnvironmentCubeMap,
-			AlienMetalBaseColorMap, AlienMetalNormalMap, AlienMetalRoughnessMap, AlienMetalMetallicMap,
+			AlienMetalBaseColorMap, AlienMetalMetallicMap, AlienMetalRoughnessMap, AlienMetalAmbientOcclusionMap, AlienMetalNormalMap,
 			MoonBaseColorMap, MoonNormalMap,
 			EarthBaseColorMap, EarthNormalMap,
 			Font,
@@ -247,39 +276,11 @@ private:
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 
-	ComPtr<ID3D12PipelineState> m_pipelineStateObject;
+	ComPtr<ID3D12PipelineState> m_pipelineState;
 
 	static constexpr float TemporalAntiAliasingMaxColorBoxSigma = 2;
 	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
 
-	struct GlobalResourceDescriptorHeapIndices {
-		UINT
-			LocalResourceDescriptorHeapIndices = ~0u,
-			Camera = ~0u,
-			GlobalData = ~0u, LocalData = ~0u,
-			Output = ~0u,
-			EnvironmentCubeMap = ~0u;
-		XMUINT2 _;
-	};
-	struct LocalResourceDescriptorHeapIndices {
-		struct {
-			UINT Vertices = ~0u, Indices = ~0u;
-			XMUINT2 _;
-		} TriangleMesh;
-		struct {
-			UINT BaseColorMap = ~0u, EmissiveMap = ~0u, NormalMap = ~0u, RoughnessMap = ~0u, SpecularMap = ~0u, MetallicMap = ~0u, RefractiveIndexMap = ~0u;
-			UINT _;
-		} Textures;
-	};
-	struct GlobalData {
-		UINT RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount, AccumulatedFrameIndex;
-		XMFLOAT4 AmbientColor;
-		XMMATRIX EnvironmentMapTransform;
-	};
-	struct LocalData {
-		XMMATRIX TextureTransform;
-		Material Material;
-	};
 	struct {
 		unique_ptr<ConstantBuffer<GlobalResourceDescriptorHeapIndices>> GlobalResourceDescriptorHeapIndices;
 		unique_ptr<ConstantBuffer<Camera>> Camera;
@@ -291,18 +292,20 @@ private:
 	map<string, shared_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>>, less<>> m_triangleMeshes;
 
 	map<string, shared_ptr<BottomLevelAccelerationStructure>, less<>> m_bottomLevelAccelerationStructures;
-	shared_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
+	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
 
-	struct { Texture PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextures;
+	struct { unique_ptr<RenderTexture> PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextures;
 
 	TextureDictionary m_textures;
 
+	static constexpr float
+		CameraMinVerticalFieldOfView = 30, CameraMaxVerticalFieldOfView = 120,
+		CameraMinMovementSpeed = 1e-2f, CameraMaxMovementSpeed = 10, CameraMinRotationSpeed = 1e-1f, CameraMaxRotationSpeed = 5;
 	bool m_isViewChanged{};
 	FirstPersonCamera m_firstPersonCamera;
 
 	struct RenderItem {
 		string Name;
-		UINT InstanceID = ~0u;
 		struct {
 			struct { UINT Vertices = ~0u, Indices = ~0u; } TriangleMesh;
 		} ResourceDescriptorHeapIndices;
@@ -328,13 +331,13 @@ private:
 	void CreateDeviceDependentResources() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		m_graphicsMemory = make_unique<decltype(m_graphicsMemory)::element_type>(device);
+		m_graphicsMemory = make_unique<GraphicsMemory>(device);
 
 		CreateDescriptorHeaps();
 
 		CreateRootSignatures();
 
-		CreatePipelineStateObjects();
+		CreatePipelineStates();
 
 		CreatePostProcess();
 
@@ -355,25 +358,18 @@ private:
 		m_isViewChanged = true;
 
 		{
-			m_firstPersonCamera.SetLens(XM_PIDIV4, static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy), 1e-1f, 1e4f);
-			m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()));
+			m_firstPersonCamera.SetLens(XMConvertToRadians(GraphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+			m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(m_firstPersonCamera.InverseViewProjection());
 		}
 
 		{
-			const auto CreateResource = [&](DXGI_FORMAT format, Texture& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
-				const CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-				const auto tex2DDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, static_cast<UINT64>(outputSize.cx), static_cast<UINT64>(outputSize.cy), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-				ThrowIfFailed(device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &tex2DDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&texture.Resource)));
-
-				if (srvDescriptorHeapIndex != ~0u) {
-					device->CreateShaderResourceView(texture.Resource.Get(), nullptr, m_resourceDescriptorHeap->GetCpuHandle(srvDescriptorHeapIndex));
-					texture.DescriptorHeapIndices.SRV = srvDescriptorHeapIndex;
-				}
-				if (uavDescriptorHeapIndex != ~0u) {
-					device->CreateUnorderedAccessView(texture.Resource.Get(), nullptr, nullptr, m_resourceDescriptorHeap->GetCpuHandle(uavDescriptorHeapIndex));
-					texture.DescriptorHeapIndices.UAV = uavDescriptorHeapIndex;
-				}
+			const auto CreateResource = [&](DXGI_FORMAT format, unique_ptr<RenderTexture>& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
+				texture = make_unique<RenderTexture>(format);
+				texture->SetDevice(device, m_resourceDescriptorHeap.get(), srvDescriptorHeapIndex, uavDescriptorHeapIndex);
+				texture->CreateResource(outputSize.cx, outputSize.cy);
 			};
+
+			const auto backBufferFormat = m_deviceResources->GetBackBufferFormat();
 
 			{
 				const auto format = m_deviceResources->GetBackBufferFormat();
@@ -437,8 +433,8 @@ private:
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
-		ID3D12DescriptorHeap* const descriptorHeaps[]{ m_resourceDescriptorHeap->Heap() };
-		commandList->SetDescriptorHeaps(static_cast<UINT>(size(descriptorHeaps)), descriptorHeaps);
+		const auto descriptorHeaps = { m_resourceDescriptorHeap->Heap() };
+		commandList->SetDescriptorHeaps(static_cast<UINT>(size(descriptorHeaps)), descriptorHeaps.begin());
 
 		DispatchRays();
 
@@ -449,9 +445,9 @@ private:
 				const ScopedBarrier scopedBarrier(
 					commandList,
 					{
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.PreviousOutput.Resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.CurrentOutput.Resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.MotionVectors.Resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.PreviousOutput->GetResource(), m_renderTextures.PreviousOutput->GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.CurrentOutput->GetResource(), m_renderTextures.CurrentOutput->GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.MotionVectors->GetResource(), m_renderTextures.MotionVectors->GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 					}
 				);
 
@@ -459,22 +455,20 @@ private:
 			}
 
 			{
-				const auto
-					renderTarget = m_deviceResources->GetRenderTarget(),
-					previousOutput = m_renderTextures.PreviousOutput.Resource.Get(),
-					output = (isTemporalAntiAliasingEnabled ? m_renderTextures.FinalOutput : m_renderTextures.CurrentOutput).Resource.Get();
+				const auto renderTarget = m_deviceResources->GetRenderTarget();
+				const auto& previousOutput = m_renderTextures.PreviousOutput, & output = isTemporalAntiAliasingEnabled ? m_renderTextures.FinalOutput : m_renderTextures.CurrentOutput;
 
 				const ScopedBarrier scopedBarrier(
 					commandList,
 					{
 						CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
-						CD3DX12_RESOURCE_BARRIER::Transition(previousOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-						CD3DX12_RESOURCE_BARRIER::Transition(output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
+						CD3DX12_RESOURCE_BARRIER::Transition(previousOutput->GetResource(), previousOutput->GetCurrentState(), D3D12_RESOURCE_STATE_COPY_DEST),
+						CD3DX12_RESOURCE_BARRIER::Transition(output->GetResource(), output->GetCurrentState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
 					}
 				);
 
-				commandList->CopyResource(renderTarget, output);
-				commandList->CopyResource(previousOutput, output);
+				commandList->CopyResource(renderTarget, output->GetResource());
+				commandList->CopyResource(previousOutput->GetResource(), output->GetResource());
 			}
 		}
 
@@ -496,7 +490,7 @@ private:
 	void BuildTextures() {
 		decltype(m_textures) textures;
 
-		textures.DirectoryPath = path(*__wargv).replace_filename(path("Assets") / "Textures");
+		textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Assets\Textures)");
 
 		textures[ObjectNames::Environment] = {
 			{
@@ -534,6 +528,15 @@ private:
 					}
 				},
 				{
+					TextureType::MetallicMap,
+					Texture{
+						.DescriptorHeapIndices{
+							.SRV = ResourceDescriptorHeapIndex::AlienMetalMetallicMap
+						},
+						.FilePath = L"Alien-Metal_Metallic.png"
+					}
+				},
+				{
 					TextureType::RoughnessMap,
 					Texture{
 						.DescriptorHeapIndices{
@@ -543,12 +546,12 @@ private:
 					}
 				},
 				{
-					TextureType::MetallicMap,
+					TextureType::AmbientOcclusionMap,
 					Texture{
 						.DescriptorHeapIndices{
-							.SRV = ResourceDescriptorHeapIndex::AlienMetalMetallicMap
+							.SRV = ResourceDescriptorHeapIndex::AlienMetalAmbientOcclusionMap
 						},
-						.FilePath = L"Alien-Metal_Metallic.png"
+						.FilePath = L"Alien-Metal_AO.png"
 					}
 				}
 			},
@@ -609,9 +612,8 @@ private:
 	void LoadTextures() {
 		const auto device = m_deviceResources->GetD3DDevice();
 		const auto commandQueue = m_deviceResources->GetCommandQueue();
-		constexpr auto threadCount = 8;
 
-		m_textures.Load(device, commandQueue, *m_resourceDescriptorHeap, threadCount);
+		m_textures.Load(device, commandQueue, *m_resourceDescriptorHeap, 8);
 	}
 
 	void BuildRenderItems() {
@@ -620,8 +622,6 @@ private:
 		const auto& material = *m_myPhysX.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
 		const auto AddRenderItem = [&](RenderItem& renderItem, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
-			renderItem.InstanceID = static_cast<UINT>(size(renderItems));
-
 			renderItem.ResourceDescriptorHeapIndices = {
 				.TriangleMesh{
 					.Vertices = ResourceDescriptorHeapIndex::SphereVertices,
@@ -663,6 +663,7 @@ private:
 					.Material{
 						.BaseColor{ 1, 1, 1, 1 },
 						.Roughness = 0,
+						.Opacity = 0,
 						.RefractiveIndex = 1.5f,
 					}
 				},
@@ -670,7 +671,8 @@ private:
 					.Position{ 0, 2, 0 },
 					.Material{
 						.BaseColor{ 1, 1, 1, 1 },
-						.Roughness = 0.1f,
+						.Roughness = 0.5f,
+						.Opacity = 0,
 						.RefractiveIndex = 1.5f,
 					}
 				},
@@ -678,8 +680,8 @@ private:
 					.Position{ 2, 0.5f, 0 },
 					.Material{
 						.BaseColor{ 0.7f, 0.6f, 0.5f, 1 },
-						.Roughness = 0.1f,
-						.Metallic = 1
+						.Metallic = 1,
+						.Roughness = 0.3f
 					}
 				}
 			};
@@ -694,8 +696,8 @@ private:
 			}
 
 			Random random;
-			for (int i = -10; i < 10; i++) {
-				for (int j = -10; j < 10; j++) {
+			for (auto i : views::iota(-10, 11)) {
+				for (auto j : views::iota(-10, 11)) {
 					constexpr auto A = 0.5f;
 					const auto omega = PxTwoPi / m_physicsObjects.Spring.Period;
 
@@ -717,32 +719,35 @@ private:
 
 					renderItem.Name = ObjectNames::HarmonicOscillator;
 
+					constexpr auto RandomFloat4 = [&](float min) {
+						const auto value = random.Float3();
+						return XMFLOAT4(value.x, value.y, value.z, 1);
+					};
 					if (const auto randomValue = random.Float();
 						randomValue < 0.3f) {
-						renderItem.Material = {
-							.BaseColor = random.Float4(0.1f)
-						};
+						renderItem.Material = { .BaseColor = random.Float4(0.1f) };
 					}
 					else if (randomValue < 0.6f) {
 						renderItem.Material = {
-							.BaseColor = random.Float4(0.1f),
-							.Roughness = random.Float(0, 0.5f),
-							.Metallic = 1
+							.BaseColor = RandomFloat4(0.1f),
+							.Metallic = 1,
+							.Roughness = random.Float(0, 0.5f)
 						};
 					}
 					else if (randomValue < 0.9f) {
 						renderItem.Material = {
-							.BaseColor = random.Float4(0.1f),
+							.BaseColor = RandomFloat4(0.1f),
 							.Roughness = random.Float(0, 0.5f),
+							.Opacity = 0,
 							.RefractiveIndex = 1.5f
 						};
 					}
 					else {
 						renderItem.Material = {
-							.BaseColor = random.Float4(0.1f),
-							.EmissiveColor = random.Float4(0.2f),
-							.Roughness = random.Float(0.3f),
-							.Metallic = random.Float(0.4f)
+							.BaseColor = RandomFloat4(0.1f),
+							.EmissiveColor = RandomFloat4(0.2f),
+							.Metallic = random.Float(0.4f),
+							.Roughness = random.Float(0.3f)
 						};
 					}
 
@@ -783,8 +788,8 @@ private:
 				.Radius = 50,
 				.Material{
 					.BaseColor{ 0.5f, 0.5f, 0.5f, 1 },
-					.Roughness = 0,
-					.Metallic = 1
+					.Metallic = 1,
+					.Roughness = 0
 				}
 			};
 			for (const auto& [Name, Position, Radius, RotationPeriod, OrbitalPeriod, Mass, Material] : { moon, earth, star }) {
@@ -821,7 +826,7 @@ private:
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		m_resourceDescriptorHeap = make_unique<decltype(m_resourceDescriptorHeap)::element_type>(device, ResourceDescriptorHeapIndex::Count);
+		m_resourceDescriptorHeap = make_unique<DescriptorPile>(device, ResourceDescriptorHeapIndex::Count);
 	}
 
 	void CreateRootSignatures() {
@@ -830,18 +835,18 @@ private:
 		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(&m_rootSignature)));
 	}
 
-	void CreatePipelineStateObjects() {
+	void CreatePipelineStates() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pRaytracing, size(g_pRaytracing));
 		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
-		ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
+		ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 	}
 
 	void CreatePostProcess() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		m_temporalAntiAliasing = make_unique<decltype(m_temporalAntiAliasing)::element_type>(device);
+		m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
 		m_temporalAntiAliasing->Constant = GraphicsSettings.TemporalAntiAliasing;
 		m_temporalAntiAliasing->TextureDescriptors = {
 			.PreviousOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::PreviousOutputSRV),
@@ -851,12 +856,86 @@ private:
 		};
 	}
 
+	void CreateGeometries() {
+		const auto device = m_deviceResources->GetD3DDevice();
+
+		auto& sphere = m_triangleMeshes[ObjectNames::Sphere];
+
+		GeometricPrimitive::VertexCollection vertices;
+		GeometricPrimitive::IndexCollection indices;
+		GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
+
+		sphere = make_shared<decay_t<decltype(sphere)>::element_type>(device, vertices, indices);
+		sphere->CreateShaderResourceViews(m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereVertices), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereIndices));
+	}
+
+	void CreateTopLevelAccelerationStructure(bool updateOnly) {
+		vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
+		instanceDescs.reserve(size(m_renderItems));
+		for (UINT i = 0; auto & renderItem : m_renderItems) {
+			const auto& shape = *renderItem.Shape;
+
+			struct {
+				LPCSTR Name;
+				PxVec3 Scale;
+			} object;
+			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
+			case PxGeometryType::eSPHERE: {
+				object = {
+					.Name = ObjectNames::Sphere,
+					.Scale = PxVec3(geometry.sphere().radius * 2)
+				};
+			} break;
+
+			default: throw;
+			}
+
+			if (updateOnly) UpdateRenderItem(renderItem);
+
+			PxMat44 world(PxVec4(1, 1, -1, 1));
+			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
+			world.scale(PxVec4(object.Scale, 1));
+
+			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
+			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
+			instanceDesc.InstanceID = i++;
+			instanceDesc.InstanceMask = ~0u;
+			instanceDesc.InstanceContributionToHitGroupIndex = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
+			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(object.Name)->GetBuffer()->GetGPUVirtualAddress();
+			instanceDescs.emplace_back(instanceDesc);
+		}
+		m_topLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), instanceDescs, updateOnly);
+	}
+
+	void CreateAccelerationStructures() {
+		const auto device = m_deviceResources->GetD3DDevice();
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
+
+		for (const auto& [name, mesh] : m_triangleMeshes) {
+			auto& bottomLevelAccelerationStructure = m_bottomLevelAccelerationStructures[name];
+			bottomLevelAccelerationStructure = make_shared<BottomLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
+			bottomLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), initializer_list{ mesh->GetGeometryDesc() }, false);
+		}
+
+		m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+		CreateTopLevelAccelerationStructure(false);
+
+		ThrowIfFailed(commandList->Close());
+
+		m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
+
+		m_deviceResources->WaitForGpu();
+	}
+
 	void CreateShaderBuffers() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		{
-			const auto CreateBuffer = [&](auto& uploadBuffer, const auto& data, UINT descriptorHeapIndex = ~0u) {
-				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device);
+			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, const auto & data, UINT descriptorHeapIndex = ~0u) {
+				uploadBuffer = make_unique<T>(device);
 				uploadBuffer->GetData() = data;
 				if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
@@ -894,8 +973,8 @@ private:
 		}
 
 		{
-			const auto CreateBuffer = [&](auto& uploadBuffer, size_t count, UINT descriptorHeapIndex) {
-				uploadBuffer = make_unique<decay_t<decltype(uploadBuffer)>::element_type>(device, count);
+			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, UINT count, UINT descriptorHeapIndex) {
+				uploadBuffer = make_unique<T>(device, count);
 				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
@@ -905,8 +984,10 @@ private:
 
 			CreateBuffer(m_shaderBuffers.LocalData, renderItemsSize, ResourceDescriptorHeapIndex::LocalData);
 
-			for (const auto& renderItem : m_renderItems) {
-				auto& localResourceDescriptorHeapIndices = (*m_shaderBuffers.LocalResourceDescriptorHeapIndices)[renderItem.InstanceID];
+			for (auto i : views::iota(0u, renderItemsSize)) {
+				const auto& renderItem = m_renderItems[i];
+
+				auto& localResourceDescriptorHeapIndices = (*m_shaderBuffers.LocalResourceDescriptorHeapIndices)[i];
 
 				localResourceDescriptorHeapIndices = {
 					.TriangleMesh{
@@ -915,116 +996,31 @@ private:
 					}
 				};
 
-				auto& localData = (*m_shaderBuffers.LocalData)[renderItem.InstanceID];
+				auto& localData = (*m_shaderBuffers.LocalData)[i];
 
 				localData.Material = renderItem.Material;
 
 				if (renderItem.pTextures != nullptr) {
-					for (const auto& [TextureType, Texture] : get<0>(*renderItem.pTextures)) {
+					for (const auto& [textureType, texture] : get<0>(*renderItem.pTextures)) {
 						auto& textures = localResourceDescriptorHeapIndices.Textures;
 						UINT* p;
-						switch (TextureType) {
+						switch (textureType) {
 						case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
 						case TextureType::EmissiveMap: p = &textures.EmissiveMap; break;
-						case TextureType::NormalMap: p = &textures.NormalMap; break;
-						case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
 						case TextureType::SpecularMap: p = &textures.SpecularMap; break;
 						case TextureType::MetallicMap: p = &textures.MetallicMap; break;
-						case TextureType::RefractiveIndexMap: p = &textures.RefractiveIndexMap; break;
+						case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
+						case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
+						case TextureType::OpacityMap: p = &textures.OpacityMap; break;
+						case TextureType::NormalMap: p = &textures.NormalMap; break;
 						default: p = nullptr; break;
 						}
-						if (p != nullptr) *p = Texture.DescriptorHeapIndices.SRV;
+						if (p != nullptr) *p = texture.DescriptorHeapIndices.SRV;
 					}
-
 					localData.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
 				}
 			}
 		}
-	}
-
-	void CreateGeometries() {
-		const auto device = m_deviceResources->GetD3DDevice();
-
-		auto& sphere = m_triangleMeshes[ObjectNames::Sphere];
-
-		GeometricPrimitive::VertexCollection vertices;
-		GeometricPrimitive::IndexCollection indices;
-		GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
-
-		sphere = make_shared<decay_t<decltype(sphere)>::element_type>(device, vertices, indices, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE);
-		sphere->CreateShaderResourceViews(m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereVertices), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::SphereIndices));
-	}
-
-	void CreateBottomLevelAccelerationStructure(const D3D12_RAYTRACING_GEOMETRY_DESC& geometryDesc, BottomLevelAccelerationStructure& accelerationStructure) {
-		accelerationStructure.Build(m_deviceResources->GetCommandList(), initializer_list{ geometryDesc }, false);
-	}
-
-	void CreateTopLevelAccelerationStructure(bool updateOnly) {
-		const auto renderItemsSize = static_cast<UINT>(size(m_renderItems));
-
-		vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
-		instanceDescs.reserve(renderItemsSize);
-
-		for (UINT i = 0; i < renderItemsSize; i++) {
-			auto& renderItem = m_renderItems[i];
-
-			const auto& shape = *renderItem.Shape;
-
-			struct {
-				LPCSTR Name;
-				PxVec3 Scale;
-			} object;
-			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
-			case PxGeometryType::eSPHERE: {
-				object = {
-					.Name = ObjectNames::Sphere,
-					.Scale = PxVec3(geometry.sphere().radius * 2)
-				};
-			} break;
-
-			default: throw;
-			}
-
-			if (updateOnly) UpdateRenderItem(renderItem);
-
-			PxMat44 world(PxVec4(1, 1, -1, 1));
-			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
-			world.scale(PxVec4(object.Scale, 1));
-
-			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
-			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
-			instanceDesc.InstanceID = renderItem.InstanceID;
-			instanceDesc.InstanceMask = ~0u;
-			instanceDesc.InstanceContributionToHitGroupIndex = 0;
-			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
-			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(object.Name)->GetBuffer()->GetGPUVirtualAddress();
-			instanceDescs.emplace_back(instanceDesc);
-		}
-
-		m_topLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), instanceDescs, updateOnly);
-	}
-
-	void CreateAccelerationStructures() {
-		const auto device = m_deviceResources->GetD3DDevice();
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
-
-		for (const auto& [Name, TriangleMesh] : m_triangleMeshes) {
-			CreateBottomLevelAccelerationStructure(
-				TriangleMesh->GetGeometryDesc(),
-				*(m_bottomLevelAccelerationStructures[Name] = make_shared<decltype(m_bottomLevelAccelerationStructures)::mapped_type::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE))
-			);
-		}
-
-		m_topLevelAccelerationStructure = make_shared<decltype(m_topLevelAccelerationStructure)::element_type>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
-		CreateTopLevelAccelerationStructure(false);
-
-		ThrowIfFailed(commandList->Close());
-
-		m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
-
-		m_deviceResources->WaitForGpu();
 	}
 
 	void ProcessInput() {
@@ -1046,10 +1042,7 @@ private:
 			if (keyboardStateTracker.IsKeyPressed(Key::Escape)) m_isMenuOpen = !m_isMenuOpen;
 		}
 
-		if (m_isMenuOpen) {
-			m_inputDevices.Mouse->SetMode(Mouse::MODE_ABSOLUTE);
-			m_inputDevices.Mouse->SetVisible(true); // HACK: Fix no cursor after switching back the window
-		}
+		if (m_isMenuOpen) m_inputDevices.Mouse->SetMode(Mouse::MODE_ABSOLUTE);
 		else {
 			{
 				if (gamepadStateTracker.view == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
@@ -1077,6 +1070,8 @@ private:
 	void UpdateCamera(const GamePad::State& gamepadState, const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
+		const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
+
 		const auto Translate = [&](const XMFLOAT3& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
 
@@ -1084,7 +1079,6 @@ private:
 
 			constexpr auto ToPxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
-			const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
 			auto x = ToPxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
 			const auto magnitude = x.magnitude();
 			const auto normalized = x / magnitude;
@@ -1110,24 +1104,26 @@ private:
 
 			m_isViewChanged = true;
 
-			if (const auto pitch = asin(m_firstPersonCamera.GetDirections().Forward.y);
+			if (const auto pitch = asin(Forward.y);
 				pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 			else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
 			m_firstPersonCamera.Pitch(angle);
 		};
 
+		const auto& speed = ControlsSettings.Camera.Speed;
+
 		if (gamepadState.IsConnected()) {
-			const auto translationSpeed = elapsedSeconds * 15 * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1) * (gamepadState.IsRightTriggerPressed() ? 2.0f : 1);
+			const auto translationSpeed = elapsedSeconds * 10 * speed.Movement * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1) * (gamepadState.IsRightTriggerPressed() ? 2.0f : 1);
 			const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
 			Translate(displacement);
 
-			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f;
+			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.4f * speed.Rotation;
 			Yaw(gamepadState.thumbSticks.rightX * rotationSpeed);
 			Pitch(gamepadState.thumbSticks.rightY * rotationSpeed);
 		}
 
 		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
-			const auto translationSpeed = elapsedSeconds * 15 * (keyboardState.LeftControl ? 0.5f : 1) * (keyboardState.LeftShift ? 2.0f : 1);
+			const auto translationSpeed = elapsedSeconds * 10 * speed.Movement * (keyboardState.LeftControl ? 0.5f : 1) * (keyboardState.LeftShift ? 2.0f : 1);
 			XMFLOAT3 displacement{};
 			if (keyboardState.A) displacement.x -= translationSpeed;
 			if (keyboardState.D) displacement.x += translationSpeed;
@@ -1135,16 +1131,15 @@ private:
 			if (keyboardState.S) displacement.z -= translationSpeed;
 			Translate(displacement);
 
-			const auto rotationSpeed = elapsedSeconds * 20;
+			const auto rotationSpeed = elapsedSeconds * 20 * speed.Rotation;
 			Yaw(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed);
 			Pitch(XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
 		}
 
 		if (m_isViewChanged) {
-			m_shaderBuffers.Camera->GetData() = {
-				.Position = m_firstPersonCamera.GetPosition(),
-				.ProjectionToWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_firstPersonCamera.GetView() * m_firstPersonCamera.GetProjection()))
-			};
+			auto& camera = m_shaderBuffers.Camera->GetData();
+			camera.Position = m_firstPersonCamera.GetPosition();
+			camera.ProjectionToWorld = XMMatrixTranspose(m_firstPersonCamera.InverseViewProjection());
 		}
 	}
 
@@ -1200,10 +1195,10 @@ private:
 		commandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructure->GetBuffer()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(1, m_shaderBuffers.GlobalResourceDescriptorHeapIndices->GetResource()->GetGPUVirtualAddress());
 
-		commandList->SetPipelineState(m_pipelineStateObject.Get());
+		commandList->SetPipelineState(m_pipelineState.Get());
 
-		const auto outputSize = m_deviceResources->GetOutputSize();
-		commandList->Dispatch(static_cast<UINT>((outputSize.cx + 15) / 16), static_cast<UINT>((outputSize.cy + 15) / 16), 1);
+		const auto outputSize = GetOutputSize();
+		commandList->Dispatch(static_cast<UINT>((outputSize.cx + 16) / 16), static_cast<UINT>((outputSize.cy + 16) / 16), 1);
 	}
 
 	void RenderMenu() {
@@ -1212,8 +1207,10 @@ private:
 		ImGui::NewFrame();
 
 		{
+			const auto outputSize = GetOutputSize();
+
 			ImGui::SetNextWindowPos({});
-			ImGui::SetNextWindowSize({ static_cast<float>(GetOutputSize().cx), 0 });
+			ImGui::SetNextWindowSize({ static_cast<float>(outputSize.cx), 0 });
 			ImGui::SetNextWindowBgAlpha(UISettings.Menu.BackgroundOpacity);
 
 			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_HorizontalScrollbar);
@@ -1229,7 +1226,7 @@ private:
 							m_windowModeHelper->SetMode(windowMode);
 
 							GraphicsSettings.WindowMode = windowMode;
-							m_isWindowSettingChanged = isChanged = true;
+							isChanged = m_isWindowSettingChanged = true;
 						}
 					}
 
@@ -1250,6 +1247,21 @@ private:
 
 							ImGui::EndCombo();
 						}
+					}
+
+					if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& cameraSettings = GraphicsSettings.Camera;
+
+						if (ImGui::SliderFloat("Vertical Field of View", &cameraSettings.VerticalFieldOfView, CameraMinVerticalFieldOfView, CameraMaxVerticalFieldOfView, "%.1f", ImGuiSliderFlags_NoInput)) {
+							m_firstPersonCamera.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+							m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(m_firstPersonCamera.InverseViewProjection());
+
+							m_shaderBuffers.GlobalData->GetData().AccumulatedFrameIndex = 0;
+
+							isChanged = true;
+						}
+
+						ImGui::TreePop();
 					}
 
 					if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1305,9 +1317,9 @@ private:
 					if (ImGui::TreeNodeEx("Menu", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& menuSettings = UISettings.Menu;
 
-						if (ImGui::Checkbox("Open on Startup", &menuSettings.IsOpenOnStartup)) isChanged = true;
+						isChanged |= ImGui::Checkbox("Open on Startup", &menuSettings.IsOpenOnStartup);
 
-						if (ImGui::SliderFloat("Background Opacity", &menuSettings.BackgroundOpacity, 0, 1, "%.2f", ImGuiSliderFlags_NoInput)) isChanged = true;
+						isChanged |= ImGui::SliderFloat("Background Opacity", &menuSettings.BackgroundOpacity, 0, 1, "%.2f", ImGuiSliderFlags_NoInput);
 
 						ImGui::TreePop();
 					}
@@ -1315,6 +1327,34 @@ private:
 					ImGui::TreePop();
 
 					if (isChanged) UISettings.Save();
+				}
+
+				{
+					ImGui::PushID(0);
+
+					if (ImGui::TreeNode("Controls")) {
+						bool isChanged = false;
+
+						if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& cameraSettings = ControlsSettings.Camera;
+
+							if (ImGui::TreeNodeEx("Speed", ImGuiTreeNodeFlags_DefaultOpen)) {
+								isChanged |= ImGui::SliderFloat("Movement", &cameraSettings.Speed.Movement, CameraMinMovementSpeed, CameraMaxMovementSpeed, "%.2f", ImGuiSliderFlags_NoInput);
+
+								isChanged |= ImGui::SliderFloat("Rotation", &cameraSettings.Speed.Rotation, CameraMinRotationSpeed, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_NoInput);
+
+								ImGui::TreePop();
+							}
+
+							ImGui::TreePop();
+						}
+
+						ImGui::TreePop();
+
+						if (isChanged) ControlsSettings.Save();
+					}
+
+					ImGui::PopID();
 				}
 			}
 
@@ -1401,22 +1441,22 @@ private:
 	}
 };
 
-D3DApp::D3DApp(const shared_ptr<WindowModeHelper>& windowModeHelper) : m_impl(make_unique<Impl>(windowModeHelper)) {}
+App::App(const shared_ptr<WindowModeHelper>& windowModeHelper) : m_impl(make_unique<Impl>(windowModeHelper)) {}
 
-D3DApp::~D3DApp() = default;
+App::~App() = default;
 
-SIZE D3DApp::GetOutputSize() const noexcept { return m_impl->GetOutputSize(); }
+SIZE App::GetOutputSize() const noexcept { return m_impl->GetOutputSize(); }
 
-void D3DApp::Tick() { m_impl->Tick(); }
+void App::Tick() { m_impl->Tick(); }
 
-void D3DApp::OnWindowSizeChanged() { m_impl->OnWindowSizeChanged(); }
+void App::OnWindowSizeChanged() { m_impl->OnWindowSizeChanged(); }
 
-void D3DApp::OnDisplayChanged() { m_impl->OnDisplayChanged(); }
+void App::OnDisplayChanged() { m_impl->OnDisplayChanged(); }
 
-void D3DApp::OnResuming() { m_impl->OnResuming(); }
+void App::OnResuming() { m_impl->OnResuming(); }
 
-void D3DApp::OnSuspending() { m_impl->OnSuspending(); }
+void App::OnSuspending() { m_impl->OnSuspending(); }
 
-void D3DApp::OnActivated() { return m_impl->OnActivated(); }
+void App::OnActivated() { return m_impl->OnActivated(); }
 
-void D3DApp::OnDeactivated() { return m_impl->OnDeactivated(); }
+void App::OnDeactivated() { return m_impl->OnDeactivated(); }

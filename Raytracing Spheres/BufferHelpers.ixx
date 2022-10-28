@@ -23,21 +23,22 @@ export namespace DirectX::BufferHelpers {
 		UploadBuffer& operator=(UploadBuffer&) = delete;
 
 		UploadBuffer(ID3D12Device* pDevice, size_t count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ) noexcept(false) : Count(count), m_device(pDevice) {
+			if (!count) return;
 			const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * count);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState | D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_buffer)));
 			ThrowIfFailed(m_buffer->Map(0, nullptr, reinterpret_cast<void**>(&m_data)));
 		}
 
-		~UploadBuffer() { m_buffer->Unmap(0, nullptr); }
+		~UploadBuffer() { if (m_buffer != nullptr) m_buffer->Unmap(0, nullptr); }
 
-		ID3D12Resource* GetResource() const { return m_buffer.Get(); }
+		ID3D12Resource* GetResource() const noexcept { return m_buffer.Get(); }
 
-		T& operator[](size_t index) { return *reinterpret_cast<T*>(m_data + ItemSize * index); }
-		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + ItemSize * index); }
+		T& operator[](size_t index) noexcept { return *reinterpret_cast<T*>(m_data + ItemSize * index); }
+		const T& operator[](size_t index) const noexcept { return *reinterpret_cast<const T*>(m_data + ItemSize * index); }
 
-		T& GetData(size_t index = 0) { return (*this)[index]; }
-		const T& GetData(size_t index = 0) const { return (*this)[index]; }
+		T& GetData(size_t index = 0) noexcept { return (*this)[index]; }
+		const T& GetData(size_t index = 0) const noexcept { return (*this)[index]; }
 
 	protected:
 		ID3D12Device* m_device;

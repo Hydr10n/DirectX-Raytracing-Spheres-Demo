@@ -8,8 +8,7 @@ using namespace DirectX;
 
 export struct Material {
 	XMFLOAT4 BaseColor{}, EmissiveColor{};
-	float Roughness = 1;
 	XMFLOAT3 Specular{ 0.5f, 0.5f, 0.5f };
-	float Metallic{}, RefractiveIndex{};
-	XMFLOAT2 _;
+	float Metallic{}, Roughness = 0.5f, Opacity = 1, RefractiveIndex{};
+	float _;
 };

@@ -46,8 +46,8 @@
     <ClInclude Include="MyAppData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Camera.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="RenderTexture.h">
+      <Filter>Common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -57,7 +57,7 @@
     <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="D3DApp.cpp">
+    <ClCompile Include="App.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TemporalAntiAliasing.ixx">
@@ -75,7 +75,7 @@
     <ClCompile Include="SharedData.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="D3DApp.cppm">
+    <ClCompile Include="App.cppm">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Material.ixx">
@@ -88,6 +88,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="BufferHelpers.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ShaderCommonData.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RenderTexture.cpp">
       <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
@@ -120,7 +129,7 @@
     <None Include="Shaders\Ray.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\TriangleMeshIndexHelpers.hlsli">
+    <None Include="Shaders\TriangleMeshHelpers.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\Math.hlsli">

@@ -26,17 +26,17 @@ struct RadianceRay {
 			const float3 worldRayDirection = q.WorldRayDirection();
 
 			if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-				const uint instanceID = q.CommittedInstanceID();
+				const uint instanceIndex = q.CommittedInstanceIndex();
 
-				const HitInfo hitInfo = GetHitInfo(instanceID, q.WorldRayOrigin(), worldRayDirection, q.CommittedRayT(), q.CommittedObjectToWorld4x3(), q.CommittedPrimitiveIndex(), q.CommittedTriangleBarycentrics());
+				const HitInfo hitInfo = GetHitInfo(instanceIndex, q.WorldRayOrigin(), worldRayDirection, q.CommittedRayT(), q.CommittedObjectToWorld4x3(), q.CommittedPrimitiveIndex(), q.CommittedTriangleBarycentrics());
 
-				const Material material = GetMaterial(instanceID, hitInfo.Vertex.TextureCoordinate);
+				const Material material = GetMaterial(instanceIndex, hitInfo.Vertex.TextureCoordinate);
 
 				ScatterInfo scatterInfo;
 
 				scatterInfo.EmissiveColor = material.EmissiveColor;
 
-				material.Scatter(worldRayDirection, hitInfo, rayDesc.Direction, scatterInfo.Attenuation, random);
+				material.Scatter(hitInfo, worldRayDirection, rayDesc.Direction, scatterInfo.Attenuation, random);
 
 				scatterInfos.Push(scatterInfo);
 

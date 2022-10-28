@@ -11,7 +11,7 @@
 
 #include <set>
 
-import D3DApp;
+import App;
 import DisplayHelpers;
 import SharedData;
 import WindowHelpers;
@@ -25,13 +25,12 @@ using namespace WindowHelpers;
 
 namespace {
 	constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
-	constexpr auto& UISettings = MyAppData::Settings::UI;
 }
 
 namespace {
 	shared_ptr<WindowModeHelper> g_windowModeHelper;
 
-	unique_ptr<D3DApp> g_app;
+	unique_ptr<App> g_app;
 
 	exception_ptr g_exception;
 }
@@ -51,11 +50,6 @@ int WINAPI wWinMain(
 
 	try {
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
-
-		{
-			ignore = GraphicsSettings.Load();
-			ignore = UISettings.Load();
-		}
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
@@ -82,7 +76,7 @@ int WINAPI wWinMain(
 		);
 		ThrowIfFailed(static_cast<BOOL>(window != nullptr));
 
-		g_windowModeHelper = make_shared<decltype(g_windowModeHelper)::element_type>(window);
+		g_windowModeHelper = make_shared<WindowModeHelper>(window);
 
 		RECT clientRect;
 		if (GraphicsSettings.Resolution >= *cbegin(g_displayResolutions) && GraphicsSettings.Resolution <= *--cend(g_displayResolutions)) {
@@ -98,7 +92,7 @@ int WINAPI wWinMain(
 		AdjustWindowRectExForDpi(&clientRect, GetWindowStyle(window), GetMenu(window) != nullptr, GetWindowExStyle(window), GetDpiForWindow(window));
 		SetWindowPos(window, nullptr, static_cast<int>(clientRect.left), static_cast<int>(clientRect.top), static_cast<int>(clientRect.right - clientRect.left), static_cast<int>(clientRect.bottom - clientRect.top), SWP_NOZORDER);
 
-		g_app = make_unique<decltype(g_app)::element_type>(g_windowModeHelper);
+		g_app = make_unique<App>(g_windowModeHelper);
 
 		// HACK: Fix missing icon on title bar when initial WindowMode != Windowed
 		ThrowIfFailed(g_windowModeHelper->Apply());
@@ -117,7 +111,7 @@ int WINAPI wWinMain(
 			}
 			else g_app->Tick();
 		} while (msg.message != WM_QUIT);
-		ret = static_cast<decltype(ret)>(msg.wParam);
+		ret = static_cast<int>(msg.wParam);
 	}
 	catch (const system_error& e) {
 		ret = e.code().value();

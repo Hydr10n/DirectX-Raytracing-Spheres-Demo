@@ -5,12 +5,15 @@ module;
 #include "directxtk12/DirectXHelpers.h"
 
 #include "directxtk12/DescriptorHeap.h"
+
 #include "directxtk12/ResourceUploadBatch.h"
 
 #include "directxtk12/DDSTextureLoader.h"
 #include "directxtk12/WICTextureLoader.h"
 
 #include <map>
+
+#include <semaphore>
 
 #include <filesystem>
 
@@ -25,11 +28,24 @@ using namespace std::filesystem;
 export {
 	struct Texture {
 		ComPtr<ID3D12Resource> Resource;
+
 		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
+
 		path FilePath;
+
+		void Load(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeap& descriptorHeap, bool* pIsCubeMap = nullptr, const path& directoryPath = "") {
+			bool isCubeMap = false;
+			const auto filePath = directoryPath.empty() ? FilePath : directoryPath / FilePath;
+			if (const auto filePathString = filePath.string(); !lstrcmpiW(filePath.extension().c_str(), L".dds")) {
+				ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap), filePathString.c_str());
+			}
+			else ThrowIfFailed(CreateWICTextureFromFileEx(pDevice, resourceUploadBatch, filePath.c_str(), 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &Resource), filePathString.c_str());
+			CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
+			if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap;
+		}
 	};
 
-	enum class TextureType { Unknown, BaseColorMap, EmissiveMap, NormalMap, RoughnessMap, SpecularMap, MetallicMap, RefractiveIndexMap, CubeMap };
+	enum class TextureType { Unknown, BaseColorMap, EmissiveMap, SpecularMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, OpacityMap, NormalMap, CubeMap };
 
 	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, XMMATRIX /*Transform*/>, less<>> {
 		using map<key_type, mapped_type, key_compare>::map;
@@ -42,38 +58,55 @@ export {
 			exception_ptr exception;
 
 			vector<thread> threads;
-			threads.reserve(threadCount);
+
+			vector<pair<size_t, const Texture*>> loadedTextures;
+
+			mutex mutex;
+			vector<unique_ptr<binary_semaphore>> semaphores;
+			for (auto i : views::iota(0u, threadCount)) semaphores.emplace_back(make_unique<binary_semaphore>(0));
 
 			for (auto& [_, textures] : *this) {
 				for (auto& [type, texture] : get<0>(textures)) {
-					threads.emplace_back([&] {
-						try {
-							auto& [Resource, DescriptorHeapIndices, FilePath] = texture;
+					threads.emplace_back(
+						[&](size_t threadIndex) {
+							try {
+								{
+									const scoped_lock lock(mutex);
 
-							ResourceUploadBatch resourceUploadBatch(pDevice);
-							resourceUploadBatch.Begin();
+									const decltype(loadedTextures)::value_type* pLoadedTexture = nullptr;
+									for (const auto& loadedTexture : loadedTextures) {
+										if (loadedTexture.second->FilePath == texture.FilePath) {
+											pLoadedTexture = &loadedTexture;
+											break;
+										}
+									}
+									if (pLoadedTexture != nullptr) {
+										semaphores[pLoadedTexture->first]->acquire();
 
-							bool isCubeMap = false;
+										texture = *pLoadedTexture->second;
+										return;
+									}
 
-							const auto filePath = DirectoryPath / FilePath;
-							const auto filePathString = filePath.string();
-							if (!lstrcmpiW(filePath.extension().c_str(), L".dds")) {
-								ThrowIfFailed(CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap), filePathString.c_str());
+									loadedTextures.emplace_back(pair{ threadIndex, &texture });
+								}
 
-								if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(filePathString + ": Invalid texture");
+								ResourceUploadBatch resourceUploadBatch(pDevice);
+								resourceUploadBatch.Begin();
+
+								bool isCubeMap;
+								texture.Load(pDevice, resourceUploadBatch, descriptorHeap, &isCubeMap, DirectoryPath);
+								if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(format("{}: Incorrect texture type", (DirectoryPath / texture.FilePath).string()));
+
+								resourceUploadBatch.End(pCommandQueue).wait();
+
+								semaphores[threadIndex]->release();
 							}
-							else {
-								ThrowIfFailed(CreateWICTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource), filePathString.c_str());
-							}
+							catch (...) { if (!exception) exception = current_exception(); }
+						},
+						threads.size()
+							);
 
-							resourceUploadBatch.End(pCommandQueue).wait();
-
-							CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
-						}
-						catch (...) { if (!exception) exception = current_exception(); }
-						});
-
-					if (std::size(threads) == threads.capacity()) {
+					if (std::size(threads) == threadCount) {
 						for (auto& thread : threads) thread.join();
 						threads.clear();
 					}

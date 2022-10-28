@@ -4,12 +4,14 @@
 
 struct HitInfo {
 	VertexPositionNormalTexture Vertex;
+	float3 VertexUnmappedNormal;
 	bool IsFrontFace;
 
-	void SetFaceNormal(float3 outwardNormal, float3 rayDirection) {
-		IsFrontFace = dot(outwardNormal, rayDirection) < 0;
-		Vertex.Normal = IsFrontFace ? outwardNormal : -outwardNormal;
+	static bool SetFaceNormal(float3 rayDirection, inout float3 outwardNormal) {
+		const bool isFrontFace = dot(outwardNormal, rayDirection) < 0;
+		if (!isFrontFace) outwardNormal = -outwardNormal;
+		return isFrontFace;
 	}
 
-	void SetFaceNormal(float3 rayDirection) { SetFaceNormal(Vertex.Normal, rayDirection); }
+	void SetFaceNormal(float3 rayDirection) { IsFrontFace = SetFaceNormal(rayDirection, Vertex.Normal); }
 };

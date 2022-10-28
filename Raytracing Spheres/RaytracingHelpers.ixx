@@ -41,16 +41,19 @@ export namespace DirectX::RaytracingHelpers {
 		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) :
 			m_device(pDevice), m_flags(flags) {}
 
-		ID3D12Resource* GetBuffer() const { return m_buffers.Result.Get(); }
+		ID3D12Resource* GetBuffer() const noexcept { return m_buffers.Result.Get(); }
+
+		UINT GetDescCount() const noexcept { return m_descCount; }
 
 		void Build(ID3D12GraphicsCommandList4* pCommandList, span<const T> descs, bool updateOnly) {
 			constexpr bool IsBottom = is_same_v<T, D3D12_RAYTRACING_GEOMETRY_DESC>;
 
+			m_descCount = static_cast<UINT>(size(descs));
+
 			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
 			desc.Inputs = {
 				.Flags = m_flags,
-				.NumDescs = static_cast<UINT>(size(descs)),
-				.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY
+				.NumDescs = m_descCount
 			};
 			if constexpr (IsBottom) {
 				desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
@@ -72,12 +75,14 @@ export namespace DirectX::RaytracingHelpers {
 			}
 
 			if constexpr (!IsBottom) {
-				D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
-				ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
-				copy(cbegin(descs), cend(descs), pInstanceDescs);
-				m_buffers.InstanceDescs->Unmap(0, nullptr);
+				if (m_buffers.InstanceDescs != nullptr) {
+					D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
+					ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
+					copy(cbegin(descs), cend(descs), pInstanceDescs);
+					m_buffers.InstanceDescs->Unmap(0, nullptr);
 
-				desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();
+					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();
+				}
 			}
 
 			desc.DestAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
@@ -92,6 +97,9 @@ export namespace DirectX::RaytracingHelpers {
 		ID3D12Device5* m_device;
 
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
+
+		UINT m_descCount{};
+
 		AccelerationStructureBuffers m_buffers;
 	};
 
@@ -107,10 +115,13 @@ export namespace DirectX::RaytracingHelpers {
 		TriangleMesh(
 			ID3D12Device* pDevice,
 			span<const Vertex> vertices, span<const Index> indices,
-			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
+			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
 			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 		) noexcept(false) : m_device(pDevice) {
+			if (vertices.size() < 3) throw invalid_argument("Vertex count cannot be fewer than 3");
+			if (indices.size() < 3) throw invalid_argument("Index count cannot be fewer than 3");
+
 			const auto CreateBuffer = [&](const auto& data, D3D12_RESOURCE_STATES initialState, ComPtr<ID3D12Resource>& buffer) {
 				const auto size = std::size(data) * sizeof(data[0]);
 

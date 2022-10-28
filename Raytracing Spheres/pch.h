@@ -31,6 +31,9 @@
 #include <wrl.h>
 
 #include <algorithm>
+#include <ranges>
+
+#include <numbers>
 
 #include <system_error>
 

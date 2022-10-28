@@ -5,10 +5,9 @@
 #include "Random.hlsli"
 
 namespace Math {
-	// https://learnopengl.com/Advanced-Lighting/Normal-Mapping
 	inline float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3]) {
 		const float2 d0 = textureCoordinates[1] - textureCoordinates[0], d1 = textureCoordinates[2] - textureCoordinates[0];
-		return ((positions[1] - positions[0]) * d1.y - (positions[2] - positions[0]) * d0.y) / (d0.x * d1.y - d0.y * d1.x);
+		return normalize(((positions[1] - positions[0]) * d1.y - (positions[2] - positions[0]) * d0.y) / (d0.x * d1.y - d0.y * d1.x));
 	}
 
 	inline float3 CalculatePerpendicularVector(float3 v) {

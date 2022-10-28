@@ -65,6 +65,12 @@ public:
 
 			DisplayHelpers::Resolution Resolution{};
 
+			struct Camera {
+				float VerticalFieldOfView = 45;
+
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, VerticalFieldOfView);
+			} Camera;
+
 			struct Raytracing {
 				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 2;
 
@@ -77,7 +83,7 @@ public:
 				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(TemporalAntiAliasing, IsEnabled, Alpha, ColorBoxSigma);
 			} TemporalAntiAliasing;
 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, Raytracing, TemporalAntiAliasing);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, Camera, Raytracing, TemporalAntiAliasing);
 		} Graphics;
 
 		inline static struct UI : Data<UI> {
@@ -86,7 +92,7 @@ public:
 			struct Menu {
 				bool IsOpenOnStartup = true;
 
-				float BackgroundOpacity = 1;
+				float BackgroundOpacity = 0.5f;
 
 				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Menu, IsOpenOnStartup, BackgroundOpacity);
 			} Menu;
@@ -94,7 +100,31 @@ public:
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(UI, Menu);
 		} UI;
 
+		inline static struct Controls : Data<Controls> {
+			inline static const std::filesystem::path FilePath = DirectoryPath / L"Controls.json";
+
+			struct Camera {
+				struct Speed {
+					float Movement = 1, Rotation = 1;
+
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Speed, Movement, Rotation);
+				} Speed;
+
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, Speed);
+			} Camera;
+
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Controls, Camera);
+		} Controls;
+
 	private:
-		inline static const struct _ { _() { create_directories(DirectoryPath); } } ms_settings;
+		inline static const struct _ {
+			_() {
+				create_directories(DirectoryPath);
+
+				std::ignore = Graphics.Load();
+				std::ignore = UI.Load();
+				std::ignore = Controls.Load();
+			}
+		} _;
 	};
 };

@@ -34,7 +34,7 @@ namespace DirectX::PostProcess {
 			commandList->SetComputeRootDescriptorTable(3, TextureDescriptors.FinalOutputUAV);
 			commandList->SetComputeRoot32BitConstants(4, 2, &Constant, 0);
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
-			commandList->Dispatch(static_cast<UINT>((TextureSize.cx + 15) / 16), static_cast<UINT>((TextureSize.cy + 15) / 16), 1);
+			commandList->Dispatch(static_cast<UINT>((TextureSize.cx + 16) / 16), static_cast<UINT>((TextureSize.cy + 16) / 16), 1);
 		}
 
 	private:

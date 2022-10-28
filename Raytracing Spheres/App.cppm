@@ -4,15 +4,15 @@ module;
 
 #include <memory>
 
-export module D3DApp;
+export module App;
 
 import WindowHelpers;
 
 using namespace WindowHelpers;
 
-export struct D3DApp {
-	D3DApp(const std::shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false);
-	~D3DApp();
+export struct App {
+	App(const std::shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false);
+	~App();
 
 	SIZE GetOutputSize() const noexcept;
 

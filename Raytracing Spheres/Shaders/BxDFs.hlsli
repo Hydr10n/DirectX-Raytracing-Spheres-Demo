@@ -25,9 +25,8 @@ namespace BxDFs {
 
 	struct GGX {
 		static float NormalDistribution(float NoH, float roughness) {
-			const float a2 = roughness * roughness;
-			const float d = NoH * NoH * (a2 - 1) + 1;
-			return a2 / max(1e-6f, Numbers::Pi * d * d);
+			const float a = roughness * roughness, d = NoH * NoH * (a - 1) + 1;
+			return a / max(1e-6f, Numbers::Pi * d * d);
 		}
 
 		static float SchlickGeometry(float cosine, float k) { return cosine / (cosine * (1 - k) + k); }
@@ -47,10 +46,10 @@ namespace BxDFs {
 			const float2 value = random.Float2();
 			const float3 B = Math::CalculatePerpendicularVector(N), T = cross(B, N);
 			const float
-				a2 = roughness * roughness,
-				cosThetaH = sqrt(max(0, (1 - value.x) / ((a2 - 1) * value.x + 1))), sinThetaH = sqrt(1 - cosThetaH * cosThetaH),
-				phiH = value.y * 2 * Numbers::Pi;
-			return T * (sinThetaH * cos(phiH)) + B * (sinThetaH * sin(phiH)) + N * cosThetaH;
+				a = roughness * roughness,
+				cosTheta = sqrt((1 - value.y) / (1 + (a * a - 1) * value.y)), sinTheta = sqrt(1 - cosTheta * cosTheta),
+				phi = 2 * Numbers::Pi * value.x;
+			return T * (sinTheta * cos(phi)) + B * (sinTheta * sin(phi)) + N * cosTheta;
 		}
 	};
 }
