@@ -2,9 +2,9 @@
 
 #include "nlohmann/json.hpp"
 
-#include <fstream>
-
 #include <Windows.h>
+
+#include <fstream>
 
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DisplayHelpers;

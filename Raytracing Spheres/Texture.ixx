@@ -84,6 +84,9 @@ export {
 										semaphores[pLoadedTexture->first]->acquire();
 
 										texture = *pLoadedTexture->second;
+
+										semaphores[pLoadedTexture->first]->release();
+
 										return;
 									}
 

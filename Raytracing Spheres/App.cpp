@@ -157,6 +157,11 @@ struct App::Impl : IDeviceNotify {
 
 	SIZE GetOutputSize() const noexcept { return m_deviceResources->GetOutputSize(); }
 
+	float GetOutputAspectRatio() const noexcept {
+		const auto outputSize = GetOutputSize();
+		return static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy);
+	}
+
 	void Tick() {
 		m_stepTimer.Tick([&] { Update(); });
 
@@ -358,7 +363,7 @@ private:
 		m_isViewChanged = true;
 
 		{
-			m_firstPersonCamera.SetLens(XMConvertToRadians(GraphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+			m_firstPersonCamera.SetLens(XMConvertToRadians(GraphicsSettings.Camera.VerticalFieldOfView), GetOutputAspectRatio());
 			m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(m_firstPersonCamera.InverseViewProjection());
 		}
 
@@ -661,18 +666,16 @@ private:
 				{
 					.Position{ 0, 0.5f, 0 },
 					.Material{
-						.BaseColor{ 1, 1, 1, 1 },
+						.BaseColor{ 1, 1, 1, 0 },
 						.Roughness = 0,
-						.Opacity = 0,
 						.RefractiveIndex = 1.5f,
 					}
 				},
 				{
 					.Position{ 0, 2, 0 },
 					.Material{
-						.BaseColor{ 1, 1, 1, 1 },
+						.BaseColor{ 1, 1, 1, 0 },
 						.Roughness = 0.5f,
-						.Opacity = 0,
 						.RefractiveIndex = 1.5f,
 					}
 				},
@@ -725,7 +728,7 @@ private:
 					};
 					if (const auto randomValue = random.Float();
 						randomValue < 0.3f) {
-						renderItem.Material = { .BaseColor = random.Float4(0.1f) };
+						renderItem.Material = { .BaseColor = RandomFloat4(0.1f) };
 					}
 					else if (randomValue < 0.6f) {
 						renderItem.Material = {
@@ -1215,6 +1218,8 @@ private:
 
 			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_HorizontalScrollbar);
 
+			if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
+
 			if (ImGui::CollapsingHeader("Settings")) {
 				if (ImGui::TreeNode("Graphics")) {
 					bool isChanged = false;
@@ -1253,7 +1258,7 @@ private:
 						auto& cameraSettings = GraphicsSettings.Camera;
 
 						if (ImGui::SliderFloat("Vertical Field of View", &cameraSettings.VerticalFieldOfView, CameraMinVerticalFieldOfView, CameraMaxVerticalFieldOfView, "%.1f", ImGuiSliderFlags_NoInput)) {
-							m_firstPersonCamera.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+							m_firstPersonCamera.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), GetOutputAspectRatio());
 							m_shaderBuffers.Camera->GetData().ProjectionToWorld = XMMatrixTranspose(m_firstPersonCamera.InverseViewProjection());
 
 							m_shaderBuffers.GlobalData->GetData().AccumulatedFrameIndex = 0;
@@ -1446,6 +1451,8 @@ App::App(const shared_ptr<WindowModeHelper>& windowModeHelper) : m_impl(make_uni
 App::~App() = default;
 
 SIZE App::GetOutputSize() const noexcept { return m_impl->GetOutputSize(); }
+
+float App::GetOutputAspectRatio() const noexcept { return m_impl->GetOutputAspectRatio(); }
 
 void App::Tick() { m_impl->Tick(); }
 

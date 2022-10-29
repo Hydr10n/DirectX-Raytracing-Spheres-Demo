@@ -32,7 +32,7 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 - (Environment) Cube
 
 ### Graphics Settings
-- Window Mode
+- Window Mode: Windowed | Borderless | Fullscreen
 - Resolution
 - Camera
 	- Field of View

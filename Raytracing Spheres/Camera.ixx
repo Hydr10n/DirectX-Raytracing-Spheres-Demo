@@ -76,7 +76,7 @@ export {
 		auto InverseViewProjection() const { return XMMatrixInverse(nullptr, GetViewProjection()); }
 
 	private:
-		mutable bool m_isViewChanged{};
+		mutable bool m_isViewChanged = true;
 		Vector3 m_position;
 		mutable struct { Vector3 Right{ 1, 0, 0 }, Up{ 0, 1, 0 }, Forward{ 0, 0, 1 }; } m_directions;
 		mutable XMMATRIX m_view{};
