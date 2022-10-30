@@ -43,10 +43,17 @@ struct RadianceRay {
 				rayDesc.Origin = hitInfo.Vertex.Position;
 			}
 			else {
-				if (g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != ~0u) {
-					reflectedColor = g_environmentCubeMap.SampleLevel(g_anisotropicWrap, normalize(mul(worldRayDirection, (float3x3)g_globalData.EnvironmentMapTransform)), 0);
+				if (!depth) {
+					if (g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != ~0u) {
+						return g_environmentCubeMap.SampleLevel(g_anisotropicWrap, normalize(mul(worldRayDirection, (float3x3)g_globalData.EnvironmentCubeMapTransform)), 0);
+					}
+					if (g_globalData.EnvironmentColor.a >= 0) return g_globalData.EnvironmentColor;
 				}
-				else if (g_globalData.AmbientColor.a >= 0) reflectedColor = g_globalData.AmbientColor;
+
+				if (g_globalResourceDescriptorHeapIndices.EnvironmentLightCubeMap != ~0u) {
+					reflectedColor = g_environmentLightCubeMap.SampleLevel(g_anisotropicWrap, normalize(mul(worldRayDirection, (float3x3)g_globalData.EnvironmentLightCubeMapTransform)), 0);
+				}
+				else if (g_globalData.EnvironmentLightColor.a >= 0) reflectedColor = g_globalData.EnvironmentLightColor;
 				else reflectedColor = lerp(float4(1, 1, 1, 1), float4(0.5f, 0.7f, 1, 1), 0.5f * worldRayDirection.y + 0.5f);
 
 				break;

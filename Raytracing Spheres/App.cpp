@@ -253,6 +253,7 @@ private:
 	} m_inputDeviceStateTrackers;
 
 	struct ObjectNames {
+		MAKE_OBJECT_NAME(EnvironmentLight);
 		MAKE_OBJECT_NAME(Environment);
 		MAKE_OBJECT_NAME(Sphere);
 		MAKE_OBJECT_NAME(AlienMetal);
@@ -269,7 +270,7 @@ private:
 			GlobalData, LocalData,
 			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionVectorsSRV, MotionVectorsUAV, FinalOutputUAV,
 			SphereVertices, SphereIndices,
-			EnvironmentCubeMap,
+			EnvironmentLightCubeMap, EnvironmentCubeMap,
 			AlienMetalBaseColorMap, AlienMetalMetallicMap, AlienMetalRoughnessMap, AlienMetalAmbientOcclusionMap, AlienMetalNormalMap,
 			MoonBaseColorMap, MoonNormalMap,
 			EarthBaseColorMap, EarthNormalMap,
@@ -305,7 +306,7 @@ private:
 
 	static constexpr float
 		CameraMinVerticalFieldOfView = 30, CameraMaxVerticalFieldOfView = 120,
-		CameraMinMovementSpeed = 1e-2f, CameraMaxMovementSpeed = 10, CameraMinRotationSpeed = 1e-1f, CameraMaxRotationSpeed = 5;
+		CameraMinMovementSpeed = 0.1f, CameraMaxMovementSpeed = 100, CameraMinRotationSpeed = 0.01f, CameraMaxRotationSpeed = 5;
 	bool m_isViewChanged{};
 	FirstPersonCamera m_firstPersonCamera;
 
@@ -497,13 +498,13 @@ private:
 
 		textures.DirectoryPath = path(*__wargv).replace_filename(LR"(Assets\Textures)");
 
-		textures[ObjectNames::Environment] = {
+		textures[ObjectNames::EnvironmentLight] = {
 			{
 				{
 					TextureType::CubeMap,
 					Texture{
 						.DescriptorHeapIndices{
-							.SRV = ResourceDescriptorHeapIndex::EnvironmentCubeMap
+							.SRV = ResourceDescriptorHeapIndex::EnvironmentLightCubeMap
 						},
 						.FilePath = L"Space.dds"
 					}
@@ -951,15 +952,14 @@ private:
 					.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
 					.LocalData = ResourceDescriptorHeapIndex::LocalData,
 					.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
+					.EnvironmentLightCubeMap = m_textures.contains(ObjectNames::EnvironmentLight) && get<0>(m_textures.at(ObjectNames::EnvironmentLight)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentLightCubeMap : ~0u,
 					.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures.at(ObjectNames::Environment)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : ~0u
 				}
 			);
 
 			CreateBuffer(
 				m_shaderBuffers.Camera,
-				Camera{
-					.Position = m_firstPersonCamera.GetPosition()
-				},
+				Camera{ .Position = m_firstPersonCamera.GetPosition() },
 				ResourceDescriptorHeapIndex::Camera
 			);
 
@@ -968,8 +968,10 @@ private:
 				GlobalData{
 					.RaytracingMaxTraceRecursionDepth = GraphicsSettings.Raytracing.MaxTraceRecursionDepth,
 					.RaytracingSamplesPerPixel = GraphicsSettings.Raytracing.SamplesPerPixel,
-					.AmbientColor{ 0, 0, 0, -1 },
-					.EnvironmentMapTransform = m_textures.contains(ObjectNames::Environment) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::Environment))) : XMMatrixIdentity()
+					.EnvironmentLightColor{ 0, 0, 0, -1 },
+					.EnvironmentLightCubeMapTransform = m_textures.contains(ObjectNames::EnvironmentLight) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::EnvironmentLight))) : XMMatrixIdentity(),
+					.EnvironmentColor{ 0, 0, 0, -1 },
+					.EnvironmentCubeMapTransform = m_textures.contains(ObjectNames::Environment) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::Environment))) : XMMatrixIdentity()
 				},
 				ResourceDescriptorHeapIndex::GlobalData
 			);
@@ -1344,7 +1346,7 @@ private:
 							auto& cameraSettings = ControlsSettings.Camera;
 
 							if (ImGui::TreeNodeEx("Speed", ImGuiTreeNodeFlags_DefaultOpen)) {
-								isChanged |= ImGui::SliderFloat("Movement", &cameraSettings.Speed.Movement, CameraMinMovementSpeed, CameraMaxMovementSpeed, "%.2f", ImGuiSliderFlags_NoInput);
+								isChanged |= ImGui::SliderFloat("Movement", &cameraSettings.Speed.Movement, CameraMinMovementSpeed, CameraMaxMovementSpeed, "%.1f", ImGuiSliderFlags_NoInput);
 
 								isChanged |= ImGui::SliderFloat("Rotation", &cameraSettings.Speed.Rotation, CameraMinRotationSpeed, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_NoInput);
 

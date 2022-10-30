@@ -17,8 +17,8 @@ export {
 			Camera = ~0u,
 			GlobalData = ~0u, LocalData = ~0u,
 			Output = ~0u,
-			EnvironmentCubeMap = ~0u;
-		XMUINT2 _;
+			EnvironmentLightCubeMap = ~0u, EnvironmentCubeMap = ~0u;
+		UINT _;
 	};
 
 	struct LocalResourceDescriptorHeapIndices {
@@ -31,8 +31,10 @@ export {
 
 	struct GlobalData {
 		UINT RaytracingMaxTraceRecursionDepth, RaytracingSamplesPerPixel, FrameCount, AccumulatedFrameIndex;
-		XMFLOAT4 AmbientColor;
-		XMMATRIX EnvironmentMapTransform;
+		XMFLOAT4 EnvironmentLightColor;
+		XMMATRIX EnvironmentLightCubeMapTransform;
+		XMFLOAT4 EnvironmentColor;
+		XMMATRIX EnvironmentCubeMapTransform;
 	};
 
 	struct LocalData {
