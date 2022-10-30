@@ -944,18 +944,39 @@ private:
 				if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
-			CreateBuffer(
-				m_shaderBuffers.GlobalResourceDescriptorHeapIndices,
-				GlobalResourceDescriptorHeapIndices{
-					.LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
-					.Camera = ResourceDescriptorHeapIndex::Camera,
-					.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
-					.LocalData = ResourceDescriptorHeapIndex::LocalData,
-					.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
-					.EnvironmentLightCubeMap = m_textures.contains(ObjectNames::EnvironmentLight) && get<0>(m_textures.at(ObjectNames::EnvironmentLight)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentLightCubeMap : ~0u,
-					.EnvironmentCubeMap = m_textures.contains(ObjectNames::Environment) && get<0>(m_textures.at(ObjectNames::Environment)).contains(TextureType::CubeMap) ? ResourceDescriptorHeapIndex::EnvironmentCubeMap : ~0u
-				}
-			);
+			XMMATRIX environmentLightCubeMapTransform, environmentCubeMapTransform;
+
+			{
+				const auto GetTexture = [&](LPCSTR name, UINT& srvDescriptorHeapIndex, XMMATRIX& transform) {
+					if (const auto pTextures = m_textures.find(name); pTextures != m_textures.cend()) {
+						const auto& textures = get<0>(pTextures->second);
+						if (const auto pTexture = textures.find(TextureType::CubeMap); pTexture != textures.cend()) {
+							srvDescriptorHeapIndex = pTexture->second.DescriptorHeapIndices.SRV;
+							transform = get<1>(pTextures->second);
+							return;
+						}
+					}
+					srvDescriptorHeapIndex = ~0u;
+					transform = XMMatrixIdentity();
+				};
+
+				UINT environmentLightCubeMapDescriptorHeapIndex, environmentCubeMapDescriptorHeapIndex;
+				GetTexture(ObjectNames::EnvironmentLight, environmentLightCubeMapDescriptorHeapIndex, environmentLightCubeMapTransform);
+				GetTexture(ObjectNames::Environment, environmentCubeMapDescriptorHeapIndex, environmentCubeMapTransform);
+
+				CreateBuffer(
+					m_shaderBuffers.GlobalResourceDescriptorHeapIndices,
+					GlobalResourceDescriptorHeapIndices{
+						.LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
+						.Camera = ResourceDescriptorHeapIndex::Camera,
+						.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
+						.LocalData = ResourceDescriptorHeapIndex::LocalData,
+						.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
+						.EnvironmentLightCubeMap = environmentLightCubeMapDescriptorHeapIndex,
+						.EnvironmentCubeMap = environmentCubeMapDescriptorHeapIndex
+					}
+				);
+			}
 
 			CreateBuffer(
 				m_shaderBuffers.Camera,
@@ -969,9 +990,9 @@ private:
 					.RaytracingMaxTraceRecursionDepth = GraphicsSettings.Raytracing.MaxTraceRecursionDepth,
 					.RaytracingSamplesPerPixel = GraphicsSettings.Raytracing.SamplesPerPixel,
 					.EnvironmentLightColor{ 0, 0, 0, -1 },
-					.EnvironmentLightCubeMapTransform = m_textures.contains(ObjectNames::EnvironmentLight) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::EnvironmentLight))) : XMMatrixIdentity(),
+					.EnvironmentLightCubeMapTransform = environmentLightCubeMapTransform,
 					.EnvironmentColor{ 0, 0, 0, -1 },
-					.EnvironmentCubeMapTransform = m_textures.contains(ObjectNames::Environment) ? XMMatrixTranspose(get<1>(m_textures.at(ObjectNames::Environment))) : XMMatrixIdentity()
+					.EnvironmentCubeMapTransform = environmentCubeMapTransform
 				},
 				ResourceDescriptorHeapIndex::GlobalData
 			);
