@@ -25,29 +25,33 @@ namespace BxDFs {
 
 	struct GGX {
 		static float NormalDistribution(float NoH, float roughness) {
-			const float a = roughness * roughness, d = NoH * NoH * (a - 1) + 1;
-			return a / max(1e-6f, Numbers::Pi * d * d);
+			roughness *= roughness;
+			roughness *= roughness;
+			const float d = NoH * NoH * (roughness - 1) + 1;
+			return roughness / max(1e-6f, Numbers::Pi * d * d);
 		}
 
 		static float SchlickGeometry(float cosine, float k) { return cosine / (cosine * (1 - k) + k); }
 
 		static float SmithGeometryDirect(float NoL, float NoV, float roughness) {
-			const float r = roughness + 1, k = r * r / 8;
-			return SchlickGeometry(NoL, k) * SchlickGeometry(NoV, k);
+			roughness += 1;
+			roughness *= roughness / 8;
+			return SchlickGeometry(NoL, roughness) * SchlickGeometry(NoV, roughness);
 		}
 
 		static float SmithGeometryIndirect(float NoL, float NoV, float roughness) {
-			const float k = roughness * roughness / 2;
-			return SchlickGeometry(NoL, k) * SchlickGeometry(NoV, k);
+			roughness *= roughness / 2;
+			return SchlickGeometry(NoL, roughness) * SchlickGeometry(NoV, roughness);
 		}
 
 		// Sample according to normal distribution. PDF = D * NoH / (4 * HoL)
 		static float3 ImportanceSample(float3 N, float roughness, inout Random random) {
+			roughness *= roughness;
+			roughness *= roughness;
 			const float2 value = random.Float2();
 			const float3 B = Math::CalculatePerpendicularVector(N), T = cross(B, N);
 			const float
-				a = roughness * roughness,
-				cosTheta = sqrt((1 - value.y) / (1 + (a * a - 1) * value.y)), sinTheta = sqrt(1 - cosTheta * cosTheta),
+				cosTheta = sqrt((1 - value.y) / (1 + (roughness - 1) * value.y)), sinTheta = sqrt(1 - cosTheta * cosTheta),
 				phi = 2 * Numbers::Pi * value.x;
 			return T * (sinTheta * cos(phi)) + B * (sinTheta * sin(phi)) + N * cosTheta;
 		}
