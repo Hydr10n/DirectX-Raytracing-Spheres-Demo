@@ -307,7 +307,7 @@ private:
 	static constexpr float
 		CameraMinVerticalFieldOfView = 30, CameraMaxVerticalFieldOfView = 120,
 		CameraMinMovementSpeed = 0.1f, CameraMaxMovementSpeed = 100, CameraMinRotationSpeed = 0.01f, CameraMaxRotationSpeed = 5;
-	bool m_isViewChanged{};
+	bool m_isViewChanged = true;
 	FirstPersonCamera m_firstPersonCamera;
 
 	struct RenderItem {
@@ -881,13 +881,13 @@ private:
 
 			struct {
 				LPCSTR Name;
-				PxVec3 Scale;
+				PxVec3 Scaling;
 			} object;
 			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
 			case PxGeometryType::eSPHERE: {
 				object = {
 					.Name = ObjectNames::Sphere,
-					.Scale = PxVec3(geometry.sphere().radius * 2)
+					.Scaling = PxVec3(geometry.sphere().radius * 2)
 				};
 			} break;
 
@@ -898,7 +898,7 @@ private:
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));
 			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
-			world.scale(PxVec4(object.Scale, 1));
+			world.scale(PxVec4(object.Scaling, 1));
 
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
 			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
@@ -978,11 +978,7 @@ private:
 				);
 			}
 
-			CreateBuffer(
-				m_shaderBuffers.Camera,
-				Camera{ .Position = m_firstPersonCamera.GetPosition() },
-				ResourceDescriptorHeapIndex::Camera
-			);
+			CreateBuffer(m_shaderBuffers.Camera, Camera{ .Position = m_firstPersonCamera.GetPosition() }, ResourceDescriptorHeapIndex::Camera);
 
 			CreateBuffer(
 				m_shaderBuffers.GlobalData,

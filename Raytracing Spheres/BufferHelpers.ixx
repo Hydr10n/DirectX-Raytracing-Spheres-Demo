@@ -22,7 +22,7 @@ export namespace DirectX::BufferHelpers {
 		UploadBuffer(UploadBuffer&) = delete;
 		UploadBuffer& operator=(UploadBuffer&) = delete;
 
-		UploadBuffer(ID3D12Device* pDevice, size_t count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ) noexcept(false) : Count(count), m_device(pDevice) {
+		UploadBuffer(ID3D12Device* pDevice, size_t count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ) noexcept(false) : Count(count) {
 			if (!count) return;
 			const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * count);
@@ -41,30 +41,33 @@ export namespace DirectX::BufferHelpers {
 		const T& GetData(size_t index = 0) const noexcept { return (*this)[index]; }
 
 	protected:
-		ID3D12Device* m_device;
-
 		ComPtr<ID3D12Resource> m_buffer;
 		PBYTE m_data;
 	};
 
 	template <typename T>
-	struct ConstantBuffer : UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT> {
+	class ConstantBuffer : public UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT> {
+	public:
 		ConstantBuffer(ID3D12Device* pDevice, size_t count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ) noexcept(false) :
-			UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>(pDevice, count, initialState) {}
+			UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>(pDevice, count, initialState), m_device(pDevice) {}
 
 		void CreateConstantBufferView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
 				.BufferLocation = this->m_buffer->GetGPUVirtualAddress(),
 				.SizeInBytes = static_cast<UINT>(this->ItemSize * this->Count)
 			};
-			this->m_device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
+			m_device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
 		}
+
+	protected:
+		ID3D12Device* m_device;
 	};
 
 	template <typename T>
-	struct StructuredBuffer : UploadBuffer<T> {
+	class StructuredBuffer : public UploadBuffer<T> {
+	public:
 		StructuredBuffer(ID3D12Device* pDevice, size_t count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ) noexcept(false) :
-			UploadBuffer<T>(pDevice, count, initialState) {}
+			UploadBuffer<T>(pDevice, count, initialState), m_device(pDevice) {}
 
 		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
@@ -77,6 +80,9 @@ export namespace DirectX::BufferHelpers {
 			};
 			this->m_device->CreateShaderResourceView(this->m_buffer.Get(), &shaderResourceViewDesc, descriptor);
 		}
+
+	protected:
+		ID3D12Device* m_device;
 	};
 
 	template <typename T>
