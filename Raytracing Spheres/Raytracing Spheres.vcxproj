@@ -67,6 +67,9 @@
       <AdditionalOptions>/Fd "$(OutDir)%(RelativeDir)%(Filename).pdb" %(AdditionalOptions)</AdditionalOptions>
       <ShaderModel>6.0</ShaderModel>
     </FxCompile>
+    <PostBuildEvent>
+      <Command>xcopy /y /d /i /s "$(ProjectDir)Assets" "$(OutDir)Assets"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -90,6 +93,9 @@
       <ObjectFileOutput>$(OutDir)%(RelativeDir)%(Filename).cso</ObjectFileOutput>
       <ShaderModel>6.0</ShaderModel>
     </FxCompile>
+    <PostBuildEvent>
+      <Command>xcopy /y /d /i /s "$(ProjectDir)Assets" "$(OutDir)Assets"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -98,7 +104,7 @@
     <ClInclude Include="ImGuiEx.h" />
     <ClInclude Include="DeviceResources.h" />
     <ClInclude Include="MyAppData.h" />
-    <ClInclude Include="MyPhysX.h" />
+    <ClInclude Include="PhysXWrapper.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="RenderTexture.h" />
     <ClInclude Include="resource.h" />
@@ -127,11 +133,6 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="DirectX.ico" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Assets\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Camera.hlsli" />

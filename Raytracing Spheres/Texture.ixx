@@ -98,7 +98,7 @@ export {
 
 								bool isCubeMap;
 								texture.Load(pDevice, resourceUploadBatch, descriptorHeap, &isCubeMap, DirectoryPath);
-								if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(format("{}: Incorrect texture type", (DirectoryPath / texture.FilePath).string()));
+								if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(format("{}: Invalid texture", (DirectoryPath / texture.FilePath).string()));
 
 								resourceUploadBatch.End(pCommandQueue).wait();
 

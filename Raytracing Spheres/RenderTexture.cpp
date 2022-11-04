@@ -42,8 +42,8 @@ RenderTexture::RenderTexture(DXGI_FORMAT format) noexcept :
 }
 
 void RenderTexture::SetDevice(_In_ ID3D12Device* device,
-    DescriptorHeap* resourceDescriptorHeap, UINT srvDescriptorHeapIndex, UINT uavDescriptorHeapIndex,
-    DescriptorHeap* renderDescriptorHeap, UINT rtvDescriptorHeapIndex)
+    const DescriptorHeap* resourceDescriptorHeap, UINT srvDescriptorHeapIndex, UINT uavDescriptorHeapIndex,
+    const DescriptorHeap* renderDescriptorHeap, UINT rtvDescriptorHeapIndex)
 {
     {
         D3D12_FEATURE_DATA_FORMAT_SUPPORT formatSupport = { m_format, D3D12_FORMAT_SUPPORT1_NONE, D3D12_FORMAT_SUPPORT2_NONE };

@@ -37,7 +37,7 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="MyPhysX.h">
+    <ClInclude Include="PhysXWrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ImGuiEx.h">

@@ -22,7 +22,7 @@ module;
 
 #include "directxtk12/SimpleMath.h"
 
-#include "MyPhysX.h"
+#include "PhysXWrapper.h"
 
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
@@ -103,6 +103,14 @@ struct App::Impl : IDeviceNotify {
 			}
 		}
 
+		{
+			BuildTextures();
+
+			BuildRenderItems();
+		}
+
+		m_firstPersonCamera.SetPosition({ 0, 0, -15 });
+
 		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
 
 		{
@@ -118,14 +126,6 @@ struct App::Impl : IDeviceNotify {
 			IO.BackendFlags |= ImGuiBackendFlags_HasGamepad;
 
 			ImGui_ImplWin32_Init(m_windowModeHelper->hWnd);
-		}
-
-		m_firstPersonCamera.SetPosition({ 0, 0, -15 });
-
-		{
-			BuildTextures();
-
-			BuildRenderItems();
 		}
 
 		{
@@ -175,11 +175,7 @@ struct App::Impl : IDeviceNotify {
 		}
 	}
 
-	void OnWindowSizeChanged() {
-		if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->GetResolution())) {
-			CreateWindowSizeDependentResources();
-		}
-	}
+	void OnWindowSizeChanged() { if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
 
 	void OnDisplayChanged() { m_deviceResources->UpdateColorSpace(); }
 
@@ -326,7 +322,7 @@ private:
 		map<string, tuple<PxRigidBody*, bool /*IsGravityEnabled*/>, less<>> RigidBodies;
 		const struct { PxReal PositionY = 0.5f, Period = 3; } Spring;
 	} m_physicsObjects;
-	MyPhysX m_myPhysX;
+	PhysXWrapper m_physXWrapper;
 
 	static constexpr UINT RaytracingMaxTraceRecursionDepth = 16, RaytracingMaxSamplesPerPixel = 16;
 
@@ -406,7 +402,7 @@ private:
 		ProcessInput();
 
 		if (m_isSimulatingPhysics) {
-			m_myPhysX.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
+			m_physXWrapper.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
 
 			m_isViewChanged = true;
 		}
@@ -625,7 +621,7 @@ private:
 	void BuildRenderItems() {
 		decltype(m_renderItems) renderItems;
 
-		const auto& material = *m_myPhysX.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
+		const auto& material = *m_physXWrapper.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
 		const auto AddRenderItem = [&](RenderItem& renderItem, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
 			renderItem.ResourceDescriptorHeapIndices = {
@@ -635,7 +631,7 @@ private:
 				}
 			};
 
-			auto& rigidDynamic = *m_myPhysX.GetPhysics().createRigidDynamic(PxTransform(transform));
+			auto& rigidDynamic = *m_physXWrapper.GetPhysics().createRigidDynamic(PxTransform(transform));
 
 			renderItem.Shape = PxRigidActorExt::createExclusiveShape(rigidDynamic, geometry, material);
 
@@ -643,7 +639,7 @@ private:
 
 			rigidDynamic.setAngularDamping(0);
 
-			m_myPhysX.GetScene().addActor(rigidDynamic);
+			m_physXWrapper.GetScene().addActor(rigidDynamic);
 
 			renderItems.emplace_back(renderItem);
 
@@ -1092,7 +1088,7 @@ private:
 	void UpdateCamera(const GamePad::State& gamepadState, const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-		const auto& [Right, Up, Forward] = m_firstPersonCamera.GetDirections();
+		const auto& rightDirection = m_firstPersonCamera.GetRightDirection(), & upDirection = m_firstPersonCamera.GetUpDirection(), & forwardDirection = m_firstPersonCamera.GetForwardDirection();
 
 		const auto Translate = [&](const XMFLOAT3& displacement) {
 			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
@@ -1101,12 +1097,12 @@ private:
 
 			constexpr auto ToPxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
-			auto x = ToPxVec3(Right * displacement.x + Up * displacement.y + Forward * displacement.z);
+			auto x = ToPxVec3(rightDirection * displacement.x + upDirection * displacement.y + forwardDirection * displacement.z);
 			const auto magnitude = x.magnitude();
 			const auto normalized = x / magnitude;
 
 			if (PxRaycastBuffer raycastBuffer;
-				m_myPhysX.GetScene().raycast(ToPxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
+				m_physXWrapper.GetScene().raycast(ToPxVec3(m_firstPersonCamera.GetPosition()), normalized, magnitude + 0.1f, raycastBuffer) && raycastBuffer.block.distance < magnitude) {
 				x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 			}
 
@@ -1126,7 +1122,7 @@ private:
 
 			m_isViewChanged = true;
 
-			if (const auto pitch = asin(Forward.y);
+			if (const auto pitch = asin(forwardDirection.y);
 				pitch - angle > XM_PIDIV2) angle = -max(0.0f, XM_PIDIV2 - pitch - 0.1f);
 			else if (pitch - angle < -XM_PIDIV2) angle = -min(0.0f, XM_PIDIV2 + pitch + 0.1f);
 			m_firstPersonCamera.Pitch(angle);
@@ -1313,18 +1309,20 @@ private:
 					if (ImGui::TreeNodeEx("Temporal Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& temporalAntiAliasingSettings = GraphicsSettings.TemporalAntiAliasing;
 
-						if (ImGui::Checkbox("Enable", &temporalAntiAliasingSettings.IsEnabled)) isChanged = true;
+						isChanged |= ImGui::Checkbox("Enable", &temporalAntiAliasingSettings.IsEnabled);
 
-						if (ImGui::SliderFloat("Alpha", &temporalAntiAliasingSettings.Alpha, 0, 1, "%.2f", ImGuiSliderFlags_NoInput)) {
-							m_temporalAntiAliasing->Constant.Alpha = temporalAntiAliasingSettings.Alpha;
+						if (temporalAntiAliasingSettings.IsEnabled) {
+							if (ImGui::SliderFloat("Alpha", &temporalAntiAliasingSettings.Alpha, 0, 1, "%.2f", ImGuiSliderFlags_NoInput)) {
+								m_temporalAntiAliasing->Constant.Alpha = temporalAntiAliasingSettings.Alpha;
 
-							isChanged = true;
-						}
+								isChanged = true;
+							}
 
-						if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, TemporalAntiAliasingMaxColorBoxSigma, "%.2f", ImGuiSliderFlags_NoInput)) {
-							m_temporalAntiAliasing->Constant.ColorBoxSigma = temporalAntiAliasingSettings.ColorBoxSigma;
+							if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, TemporalAntiAliasingMaxColorBoxSigma, "%.2f", ImGuiSliderFlags_NoInput)) {
+								m_temporalAntiAliasing->Constant.ColorBoxSigma = temporalAntiAliasingSettings.ColorBoxSigma;
 
-							isChanged = true;
+								isChanged = true;
+							}
 						}
 
 						ImGui::TreePop();
@@ -1350,7 +1348,7 @@ private:
 
 					ImGui::TreePop();
 
-					if (isChanged) UISettings.Save();
+					if (isChanged) ignore = UISettings.Save();
 				}
 
 				{
@@ -1375,7 +1373,7 @@ private:
 
 						ImGui::TreePop();
 
-						if (isChanged) ControlsSettings.Save();
+						if (isChanged) ignore = ControlsSettings.Save();
 					}
 
 					ImGui::PopID();

@@ -31,8 +31,8 @@ namespace DX
         RenderTexture& operator= (RenderTexture const&) = delete;
 
         void SetDevice(_In_ ID3D12Device* device,
-            DirectX::DescriptorHeap* resourceDescriptorHeap = nullptr, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u,
-            DirectX::DescriptorHeap* renderDescriptorHeap = nullptr, UINT rtvDescriptorHeapIndex = ~0u);
+            const DirectX::DescriptorHeap* resourceDescriptorHeap = nullptr, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u,
+            const DirectX::DescriptorHeap* renderDescriptorHeap = nullptr, UINT rtvDescriptorHeapIndex = ~0u);
 
         void CreateResource(UINT64 width, UINT height);
 

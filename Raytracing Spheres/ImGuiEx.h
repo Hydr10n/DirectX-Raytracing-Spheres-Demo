@@ -9,7 +9,7 @@ namespace ImGuiEx {
 		ImGui::GetWindowDrawList()->AddLine(itemRectMin, itemRectMax, color);
 	}
 
-	inline bool Hyperlink(const char* label, const char* link) {
+	inline auto Hyperlink(const char* label, const char* link) {
 		const auto& style = ImGui::GetStyle();
 		ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_ButtonHovered]);
 		ImGui::Text(label);
