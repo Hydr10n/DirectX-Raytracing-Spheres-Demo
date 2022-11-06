@@ -324,7 +324,7 @@ private:
 	} m_physicsObjects;
 	PhysXWrapper m_physXWrapper;
 
-	static constexpr UINT RaytracingMaxTraceRecursionDepth = 16, RaytracingMaxSamplesPerPixel = 16;
+	static constexpr UINT RaytracingMaxTraceRecursionDepth = 32, RaytracingMaxSamplesPerPixel = 32;
 
 	bool m_isMenuOpen = UISettings.Menu.IsOpenOnStartup;
 

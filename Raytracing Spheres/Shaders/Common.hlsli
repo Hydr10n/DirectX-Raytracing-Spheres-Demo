@@ -10,8 +10,6 @@
 
 #include "TriangleMeshHelpers.hlsli"
 
-static const uint RaytracingMaxTraceRecursionDepth = 16;
-
 SamplerState g_anisotropicWrap : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);

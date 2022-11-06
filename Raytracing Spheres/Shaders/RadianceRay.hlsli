@@ -2,19 +2,13 @@
 
 #include "Common.hlsli"
 
-#include "Stack.hlsli"
-
 struct RadianceRay {
 	static float4 Trace(RayDesc rayDesc, inout Random random) {
-		float4 reflectedColor;
-
-		struct ScatterInfo { float4 EmissiveColor, Attenuation; };
-		Stack<ScatterInfo, RaytracingMaxTraceRecursionDepth> scatterInfos;
-		scatterInfos.Initialize();
+		float4 emissiveColor = 0, attenuation = 1, reflectedColor;
 
 		RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
-		for (uint depth = 0, maxDepth = min(RaytracingMaxTraceRecursionDepth, g_globalData.RaytracingMaxTraceRecursionDepth); ; depth++) {
-			if (depth == maxDepth) {
+		for (uint depth = 0; ; depth++) {
+			if (depth == g_globalData.RaytracingMaxTraceRecursionDepth) {
 				reflectedColor = depth == 1;
 
 				break;
@@ -25,24 +19,7 @@ struct RadianceRay {
 
 			const float3 worldRayDirection = q.WorldRayDirection();
 
-			if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-				const uint instanceIndex = q.CommittedInstanceIndex();
-
-				const HitInfo hitInfo = GetHitInfo(instanceIndex, q.WorldRayOrigin(), worldRayDirection, q.CommittedRayT(), q.CommittedObjectToWorld4x3(), q.CommittedPrimitiveIndex(), q.CommittedTriangleBarycentrics());
-
-				const Material material = GetMaterial(instanceIndex, hitInfo.Vertex.TextureCoordinate);
-
-				ScatterInfo scatterInfo;
-
-				scatterInfo.EmissiveColor = material.EmissiveColor;
-
-				material.Scatter(hitInfo, worldRayDirection, rayDesc.Direction, scatterInfo.Attenuation, random);
-
-				scatterInfos.Push(scatterInfo);
-
-				rayDesc.Origin = hitInfo.Vertex.Position;
-			}
-			else {
+			if (q.CommittedStatus() == COMMITTED_NOTHING) {
 				if (!depth) {
 					if (g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != ~0u) {
 						return g_environmentCubeMap.SampleLevel(g_anisotropicWrap, normalize(mul(worldRayDirection, (float3x3)g_globalData.EnvironmentCubeMapTransform)), 0);
@@ -58,14 +35,22 @@ struct RadianceRay {
 
 				break;
 			}
+
+			const uint instanceIndex = q.CommittedInstanceIndex();
+
+			const HitInfo hitInfo = GetHitInfo(instanceIndex, q.WorldRayOrigin(), worldRayDirection, q.CommittedRayT(), q.CommittedObjectToWorld4x3(), q.CommittedPrimitiveIndex(), q.CommittedTriangleBarycentrics());
+
+			const Material material = GetMaterial(instanceIndex, hitInfo.Vertex.TextureCoordinate);
+
+			float4 attenuationTemp;
+			material.Scatter(hitInfo, worldRayDirection, rayDesc.Direction, attenuationTemp, random);
+
+			emissiveColor += attenuation * material.EmissiveColor;
+			attenuation *= attenuationTemp;
+
+			rayDesc.Origin = hitInfo.Vertex.Position;
 		}
 
-		while (!scatterInfos.IsEmpty()) {
-			const ScatterInfo scatterInfo = scatterInfos.GetTop();
-			reflectedColor = scatterInfo.EmissiveColor + scatterInfo.Attenuation * reflectedColor;
-			scatterInfos.Pop();
-		}
-
-		return reflectedColor;
+		return emissiveColor + attenuation * reflectedColor;
 	}
 };

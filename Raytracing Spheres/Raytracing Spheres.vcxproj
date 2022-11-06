@@ -141,7 +141,6 @@
     <None Include="Shaders\HitInfo.hlsli" />
     <None Include="Shaders\BxDFs.hlsli" />
     <None Include="Shaders\Numbers.hlsli" />
-    <None Include="Shaders\Stack.hlsli" />
     <None Include="Shaders\TriangleMeshHelpers.hlsli" />
     <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\Math.hlsli" />

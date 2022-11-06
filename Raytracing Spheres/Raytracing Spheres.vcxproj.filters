@@ -147,9 +147,6 @@
     <None Include="Shaders\BxDFs.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\Stack.hlsli">
-      <Filter>Shader Files</Filter>
-    </None>
     <None Include="Shaders\ColorHelpers.hlsli">
       <Filter>Shader Files</Filter>
     </None>
