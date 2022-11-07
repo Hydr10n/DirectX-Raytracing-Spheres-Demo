@@ -90,14 +90,14 @@ float3 bicubicSampleCatmullRom(Texture2D tex, SamplerState samp, float2 samplePo
 [numthreads(16, 16, 1)]
 void main(int2 ipos : SV_DispatchThreadID)
 {
+    uint2 texDim;
+    gTexColor.GetDimensions(texDim.x, texDim.y);
+    if (ipos.x >= texDim.x || ipos.y >= texDim.y) return;
+    
     const int2 offset[8] = { int2(-1, -1), int2(-1,  1),
                               int2( 1, -1), int2( 1,  1),
                               int2( 1,  0), int2( 0, -1),
                               int2( 0,  1), int2(-1,  0), };
-
-    uint2 texDim;
-    uint levels;
-    gTexColor.GetDimensions(0, texDim.x, texDim.y, levels);
 
     // Fetch the current pixel color and compute the color bounding box
     // Details here: http://www.gdcvault.com/play/1023521/From-the-Lab-Bench-Real

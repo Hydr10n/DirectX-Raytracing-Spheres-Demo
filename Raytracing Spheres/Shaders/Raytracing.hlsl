@@ -11,14 +11,14 @@
 void main(uint2 raysIndex : SV_DispatchThreadID) {
 	uint2 raysDimensions;
 	g_output.GetDimensions(raysDimensions.x, raysDimensions.y);
-	if (raysIndex.x > raysDimensions.x || raysIndex.y > raysDimensions.y) return;
+	if (raysIndex.x >= raysDimensions.x || raysIndex.y >= raysDimensions.y) return;
 
 	Random random;
 	random.Initialize(raysIndex.x + raysIndex.y * raysDimensions.x, g_globalData.FrameCount);
 
 	float4 color = 0;
 	for (uint i = 0; i < g_globalData.RaytracingSamplesPerPixel; i++) {
-		const Ray ray = g_camera.GenerateRay(raysIndex, raysDimensions, random.Float2());
+		const Ray ray = g_camera.GenerateRay(raysIndex, raysDimensions);
 		color += RadianceRay::Trace(ray.ToDesc(), random);
 	}
 	color = any(isnan(color)) ? 0 : color;

@@ -12,6 +12,8 @@ export {
 	struct Camera {
 		XMFLOAT3 Position;
 		float _;
+		XMFLOAT2 Jitter;
+		XMFLOAT2 _1;
 		XMMATRIX ProjectionToWorld;
 	};
 

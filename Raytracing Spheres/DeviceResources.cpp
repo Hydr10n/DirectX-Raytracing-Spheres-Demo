@@ -65,6 +65,7 @@ DeviceResources::DeviceResources(
         m_outputSize{1, 1},
         m_colorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709),
         m_options(flags),
+        m_isVSyncEnabled(true),
         m_deviceNotify(nullptr)
 {
     if (backBufferCount < 2 || backBufferCount > MAX_BACK_BUFFER_COUNT)
@@ -433,6 +434,12 @@ void DeviceResources::SetWindow(HWND window, const SIZE& size) noexcept
     m_outputSize = size;
 }
 
+bool DeviceResources::EnableVSync(bool enable) noexcept {
+    const auto ret = enable || m_options & c_AllowTearing;
+    if (ret) m_isVSyncEnabled = enable;
+    return ret;
+}
+
 // This method is called when the Win32 window changes size.
 bool DeviceResources::WindowSizeChanged(const SIZE& size)
 {
@@ -527,7 +534,7 @@ void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState)
     m_commandQueue->ExecuteCommandLists(1, CommandListCast(m_commandList.GetAddressOf()));
 
     HRESULT hr;
-    if (m_options & c_AllowTearing)
+    if (!m_isVSyncEnabled)
     {
         // Recommended to always use tearing if supported when using a sync interval of 0.
         // Note this will fail if in true 'fullscreen' mode.

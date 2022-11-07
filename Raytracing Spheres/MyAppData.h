@@ -65,6 +65,8 @@ public:
 
 			DisplayHelpers::Resolution Resolution{};
 
+			bool IsVSyncEnabled = true;
+
 			struct Camera {
 				float VerticalFieldOfView = 45;
 
@@ -83,7 +85,7 @@ public:
 				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(TemporalAntiAliasing, IsEnabled, Alpha, ColorBoxSigma);
 			} TemporalAntiAliasing;
 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, Camera, Raytracing, TemporalAntiAliasing);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, TemporalAntiAliasing);
 		} Graphics;
 
 		inline static struct UI : Data<UI> {

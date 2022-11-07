@@ -113,6 +113,7 @@
   <ItemGroup>
     <ClCompile Include="App.cppm" />
     <ClCompile Include="Camera.ixx" />
+    <ClCompile Include="HaltonSamplePattern.ixx" />
     <ClCompile Include="RaytracingHelpers.ixx" />
     <ClCompile Include="DisplayHelpers.ixx" />
     <ClCompile Include="Main.cpp" />

@@ -40,6 +40,7 @@ import Camera;
 import DirectX.BufferHelpers;
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
+import HaltonSamplePattern;
 import Material;
 import Random;
 import ShaderCommonData;
@@ -132,6 +133,8 @@ struct App::Impl : IDeviceNotify {
 			m_deviceResources->RegisterDeviceNotify(this);
 
 			m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->GetResolution());
+
+			m_deviceResources->EnableVSync(GraphicsSettings.IsVSyncEnabled);
 
 			m_deviceResources->CreateDeviceResources();
 			CreateDeviceDependentResources();
@@ -230,7 +233,7 @@ struct App::Impl : IDeviceNotify {
 private:
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(D3D12_RAYTRACING_TIER_1_1);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(D3D12_RAYTRACING_TIER_1_1, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_D32_FLOAT, 2, D3D_FEATURE_LEVEL_12_0, DeviceResources::c_AllowTearing);
 
 	StepTimer m_stepTimer;
 
@@ -305,6 +308,8 @@ private:
 		CameraMinMovementSpeed = 0.1f, CameraMaxMovementSpeed = 100, CameraMinRotationSpeed = 0.01f, CameraMaxRotationSpeed = 5;
 	bool m_isViewChanged = true;
 	FirstPersonCamera m_firstPersonCamera;
+
+	HaltonSamplePattern m_haltonSamplePattern;
 
 	struct RenderItem {
 		string Name;
@@ -406,6 +411,8 @@ private:
 
 			m_isViewChanged = true;
 		}
+
+		m_shaderBuffers.Camera->GetData().Jitter = m_haltonSamplePattern.GetNext();
 
 		UpdateGlobalData();
 
@@ -1237,12 +1244,12 @@ private:
 
 			if (ImGui::CollapsingHeader("Settings")) {
 				if (ImGui::TreeNode("Graphics")) {
-					bool isChanged = false;
+					auto isChanged = false;
 
 					{
-						constexpr LPCSTR WindowModes[]{ "Windowed", "Borderless", "Fullscreen" };
+						const auto windowModes = { "Windowed", "Borderless", "Fullscreen" };
 						if (auto windowMode = m_windowModeHelper->GetMode();
-							ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), WindowModes, static_cast<int>(size(WindowModes)))) {
+							ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), windowModes.begin(), static_cast<int>(size(windowModes)))) {
 							m_windowModeHelper->SetMode(windowMode);
 
 							GraphicsSettings.WindowMode = windowMode;
@@ -1267,6 +1274,12 @@ private:
 
 							ImGui::EndCombo();
 						}
+					}
+
+					if (auto isVSyncEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isVSyncEnabled) && m_deviceResources->EnableVSync(isVSyncEnabled)) {
+						GraphicsSettings.IsVSyncEnabled = m_deviceResources->EnableVSync(isVSyncEnabled);
+
+						isChanged = true;
 					}
 
 					if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1334,7 +1347,7 @@ private:
 				}
 
 				if (ImGui::TreeNode("UI")) {
-					bool isChanged = false;
+					auto isChanged = false;
 
 					if (ImGui::TreeNodeEx("Menu", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& menuSettings = UISettings.Menu;
@@ -1355,7 +1368,7 @@ private:
 					ImGui::PushID(0);
 
 					if (ImGui::TreeNode("Controls")) {
-						bool isChanged = false;
+						auto isChanged = false;
 
 						if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& cameraSettings = ControlsSettings.Camera;

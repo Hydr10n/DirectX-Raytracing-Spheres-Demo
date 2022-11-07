@@ -40,6 +40,7 @@ namespace DX
         void CreateDeviceResources();
         void CreateWindowSizeDependentResources();
         void SetWindow(HWND window, const SIZE& size) noexcept;
+        bool EnableVSync(bool enable) noexcept;
         bool WindowSizeChanged(const SIZE& size);
         void HandleDeviceLost();
         void RegisterDeviceNotify(IDeviceNotify* deviceNotify) noexcept { m_deviceNotify = deviceNotify; }
@@ -51,7 +52,7 @@ namespace DX
 
         // Device Accessors.
         SIZE GetOutputSize() const noexcept { return m_outputSize; }
-
+        
         // Direct3D Accessors.
         auto                        GetD3DDevice() const noexcept            { return m_d3dDevice.Get(); }
         auto                        GetSwapChain() const noexcept            { return m_swapChain.Get(); }
@@ -72,6 +73,7 @@ namespace DX
         UINT                        GetBackBufferCount() const noexcept      { return m_backBufferCount; }
         DXGI_COLOR_SPACE_TYPE       GetColorSpace() const noexcept           { return m_colorSpace; }
         unsigned int                GetDeviceOptions() const noexcept        { return m_options; }
+        bool                        IsVSyncEnabled() const noexcept          { return m_isVSyncEnabled; }
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView() const noexcept
         {
@@ -135,6 +137,7 @@ namespace DX
 
         // DeviceResources options (see flags above)
         unsigned int                                        m_options;
+        bool                                                m_isVSyncEnabled;
 
         // The IDeviceNotify can be held directly as it owns the DeviceResources.
         IDeviceNotify*                                      m_deviceNotify;

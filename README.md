@@ -34,8 +34,9 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 ### Graphics Settings
 - Window Mode: Windowed | Borderless | Fullscreen
 - Resolution
+- V-Sync
 - Camera
-	- Field of View
+	- Vertical Field of View
 - Raytracing
 	- Max Trace Recursion Depth
 	- Samples Per Pixel

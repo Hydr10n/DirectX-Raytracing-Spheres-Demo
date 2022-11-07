@@ -99,6 +99,9 @@
     <ClCompile Include="RenderTexture.cpp">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="HaltonSamplePattern.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Direct3D 12 Win32 App.rc">
