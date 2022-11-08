@@ -233,7 +233,7 @@ struct App::Impl : IDeviceNotify {
 private:
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(D3D12_RAYTRACING_TIER_1_1, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_D32_FLOAT, 2, D3D_FEATURE_LEVEL_12_0, DeviceResources::c_AllowTearing);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_D32_FLOAT, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing);
 
 	StepTimer m_stepTimer;
 
@@ -329,7 +329,7 @@ private:
 	} m_physicsObjects;
 	PhysXWrapper m_physXWrapper;
 
-	static constexpr UINT RaytracingMaxTraceRecursionDepth = 32, RaytracingMaxSamplesPerPixel = 32;
+	static constexpr UINT RaytracingMaxTraceRecursionDepth = 32, RaytracingMaxSamplesPerPixel = 16;
 
 	bool m_isMenuOpen = UISettings.Menu.IsOpenOnStartup;
 
@@ -376,13 +376,11 @@ private:
 				texture->CreateResource(outputSize.cx, outputSize.cy);
 			};
 
-			const auto backBufferFormat = m_deviceResources->GetBackBufferFormat();
-
 			{
-				const auto format = m_deviceResources->GetBackBufferFormat();
-				CreateResource(format, m_renderTextures.PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
-				CreateResource(format, m_renderTextures.CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
-				CreateResource(format, m_renderTextures.FinalOutput, ~0u, ResourceDescriptorHeapIndex::FinalOutputUAV);
+				const auto backBufferFormat = m_deviceResources->GetBackBufferFormat();
+				CreateResource(backBufferFormat, m_renderTextures.PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
+				CreateResource(backBufferFormat, m_renderTextures.CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
+				CreateResource(backBufferFormat, m_renderTextures.FinalOutput, ~0u, ResourceDescriptorHeapIndex::FinalOutputUAV);
 			}
 
 			CreateResource(DXGI_FORMAT_R32G32_FLOAT, m_renderTextures.MotionVectors, ResourceDescriptorHeapIndex::MotionVectorsSRV, ResourceDescriptorHeapIndex::MotionVectorsUAV);
@@ -1276,10 +1274,14 @@ private:
 						}
 					}
 
-					if (auto isVSyncEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isVSyncEnabled) && m_deviceResources->EnableVSync(isVSyncEnabled)) {
-						GraphicsSettings.IsVSyncEnabled = m_deviceResources->EnableVSync(isVSyncEnabled);
+					{
+						const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->GetDeviceOptions() & DeviceResources::c_AllowTearing);
 
-						isChanged = true;
+						if (auto isEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) {
+							GraphicsSettings.IsVSyncEnabled = isEnabled;
+
+							isChanged = true;
+						}
 					}
 
 					if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {

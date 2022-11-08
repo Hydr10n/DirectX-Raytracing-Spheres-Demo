@@ -23,11 +23,11 @@ namespace DX
         static constexpr unsigned int c_AllowTearing = 0x1;
         static constexpr unsigned int c_EnableHDR    = 0x2;
 
-        DeviceResources(D3D12_RAYTRACING_TIER minRaytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED,
-                        DXGI_FORMAT backBufferFormat = DXGI_FORMAT_B8G8R8A8_UNORM,
+        DeviceResources(DXGI_FORMAT backBufferFormat = DXGI_FORMAT_B8G8R8A8_UNORM,
                         DXGI_FORMAT depthBufferFormat = DXGI_FORMAT_D32_FLOAT,
                         UINT backBufferCount = 2,
                         D3D_FEATURE_LEVEL minFeatureLevel = D3D_FEATURE_LEVEL_12_0,
+                        D3D12_RAYTRACING_TIER minRaytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED,
                         unsigned int flags = 0) noexcept(false);
         ~DeviceResources();
 
@@ -58,8 +58,8 @@ namespace DX
         auto                        GetSwapChain() const noexcept            { return m_swapChain.Get(); }
         auto                        GetDXGIFactory() const noexcept          { return m_dxgiFactory.Get(); }
         HWND                        GetWindow() const noexcept               { return m_window; }
-        D3D12_RAYTRACING_TIER       GetDeviceRaytracingTier() const noexcept { return m_raytracingTier; }
         D3D_FEATURE_LEVEL           GetDeviceFeatureLevel() const noexcept   { return m_d3dFeatureLevel; }
+        D3D12_RAYTRACING_TIER       GetDeviceRaytracingTier() const noexcept { return m_raytracingTier; }
         ID3D12Resource*             GetRenderTarget() const noexcept         { return m_renderTargets[m_backBufferIndex].Get(); }
         ID3D12Resource*             GetDepthStencil() const noexcept         { return m_depthStencil.Get(); }
         ID3D12CommandQueue*         GetCommandQueue() const noexcept         { return m_commandQueue.Get(); }
@@ -119,16 +119,16 @@ namespace DX
         D3D12_RECT                                          m_scissorRect;
 
         // Direct3D properties.
-        D3D12_RAYTRACING_TIER                               m_minRaytracingTier;
         DXGI_FORMAT                                         m_backBufferFormat;
         DXGI_FORMAT                                         m_depthBufferFormat;
         UINT                                                m_backBufferCount;
         D3D_FEATURE_LEVEL                                   m_d3dMinFeatureLevel;
+        D3D12_RAYTRACING_TIER                               m_minRaytracingTier;
 
         // Cached device properties.
         HWND                                                m_window;
-        D3D12_RAYTRACING_TIER                               m_raytracingTier;
         D3D_FEATURE_LEVEL                                   m_d3dFeatureLevel;
+        D3D12_RAYTRACING_TIER                               m_raytracingTier;
         DWORD                                               m_dxgiFactoryFlags;
         SIZE                                                m_outputSize;
 

@@ -11,8 +11,8 @@ export module DirectX.PostProcess.TemporalAntiAliasing;
 using namespace DX;
 using namespace std;
 
-namespace DirectX::PostProcess {
-	export struct TemporalAntiAliasing : IPostProcess {
+export namespace DirectX::PostProcess {
+	struct TemporalAntiAliasing : IPostProcess {
 		struct Constant { float Alpha = 0.2f, ColorBoxSigma = 1; } Constant;
 
 		SIZE TextureSize{};
