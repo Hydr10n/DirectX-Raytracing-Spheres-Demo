@@ -65,7 +65,7 @@ export {
 			vector<unique_ptr<binary_semaphore>> semaphores;
 			for (auto i : views::iota(0u, threadCount)) semaphores.emplace_back(make_unique<binary_semaphore>(0));
 
-			for (auto& [_, textures] : *this) {
+			for (auto& textures : *this | views::values) {
 				for (auto& [type, texture] : get<0>(textures)) {
 					threads.emplace_back(
 						[&](size_t threadIndex) {

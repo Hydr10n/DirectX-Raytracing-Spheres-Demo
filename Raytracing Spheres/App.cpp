@@ -161,8 +161,8 @@ struct App::Impl : IDeviceNotify {
 	SIZE GetOutputSize() const noexcept { return m_deviceResources->GetOutputSize(); }
 
 	float GetOutputAspectRatio() const noexcept {
-		const auto outputSize = GetOutputSize();
-		return static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy);
+		const auto [cx, cy] = GetOutputSize();
+		return static_cast<float>(cx) / static_cast<float>(cy);
 	}
 
 	void Tick() {
@@ -204,7 +204,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_renderTextures = {};
 
-		for (auto& [_, textures] : m_textures) for (auto& [_, texture] : get<0>(textures)) texture.Resource.Reset();
+		for (auto& textures : m_textures | views::values) for (auto& texture : get<0>(textures) | views::values) texture.Resource.Reset();
 
 		m_topLevelAccelerationStructure.reset();
 		m_bottomLevelAccelerationStructures = {};
@@ -1376,9 +1376,11 @@ private:
 							auto& cameraSettings = ControlsSettings.Camera;
 
 							if (ImGui::TreeNodeEx("Speed", ImGuiTreeNodeFlags_DefaultOpen)) {
-								isChanged |= ImGui::SliderFloat("Movement", &cameraSettings.Speed.Movement, CameraMinMovementSpeed, CameraMaxMovementSpeed, "%.1f", ImGuiSliderFlags_NoInput);
+								auto& speedSettings = cameraSettings.Speed;
 
-								isChanged |= ImGui::SliderFloat("Rotation", &cameraSettings.Speed.Rotation, CameraMinRotationSpeed, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_NoInput);
+								isChanged |= ImGui::SliderFloat("Movement", &speedSettings.Movement, CameraMinMovementSpeed, CameraMaxMovementSpeed, "%.1f", ImGuiSliderFlags_NoInput);
+
+								isChanged |= ImGui::SliderFloat("Rotation", &speedSettings.Rotation, CameraMinRotationSpeed, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_NoInput);
 
 								ImGui::TreePop();
 							}

@@ -30,6 +30,7 @@ using Microsoft::WRL::ComPtr;
 RenderTexture::RenderTexture(DXGI_FORMAT format) noexcept :
     m_state(D3D12_RESOURCE_STATE_COMMON),
     m_srvDescriptor{},
+    m_uavDescriptor{},
     m_rtvDescriptor{},
     m_srvDescriptorHeapIndex(~0u),
     m_uavDescriptorHeapIndex(~0u),
