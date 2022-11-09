@@ -46,7 +46,7 @@ export namespace DirectX::RaytracingHelpers {
 		UINT GetDescCount() const noexcept { return m_descCount; }
 
 		void Build(ID3D12GraphicsCommandList4* pCommandList, span<const T> descs, bool updateOnly) {
-			constexpr bool IsBottom = is_same_v<T, D3D12_RAYTRACING_GEOMETRY_DESC>;
+			constexpr auto IsBottom = is_same_v<T, D3D12_RAYTRACING_GEOMETRY_DESC>;
 
 			m_descCount = static_cast<UINT>(size(descs));
 

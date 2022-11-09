@@ -45,11 +45,12 @@ int WINAPI wWinMain(
 	}
 
 	int ret;
+	string error;
 
 	RoInitializeWrapper roInitializeWrapper(RO_INIT_MULTITHREADED);
 
 	try {
-		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
+		ThrowIfFailed(roInitializeWrapper);
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
@@ -60,7 +61,7 @@ int WINAPI wWinMain(
 			.hCursor = LoadCursor(nullptr, IDC_ARROW),
 			.lpszClassName = L"Direct3D 12"
 		};
-		ThrowIfFailed(static_cast<BOOL>(RegisterClassExW(&wndClassEx)));
+		ThrowIfFailed(RegisterClassExW(&wndClassEx));
 
 		const auto window = CreateWindowExW(
 			0,
@@ -74,7 +75,7 @@ int WINAPI wWinMain(
 			wndClassEx.hInstance,
 			nullptr
 		);
-		ThrowIfFailed(static_cast<BOOL>(window != nullptr));
+		ThrowIfFailed(window != nullptr);
 
 		g_windowModeHelper = make_shared<WindowModeHelper>(window);
 
@@ -115,18 +116,20 @@ int WINAPI wWinMain(
 	}
 	catch (const system_error& e) {
 		ret = e.code().value();
-		MessageBoxA(nullptr, e.what(), nullptr, MB_OK | MB_ICONERROR);
+		error = e.what();
 	}
 	catch (const exception& e) {
 		ret = ERROR_CAN_NOT_COMPLETE;
-		MessageBoxA(nullptr, e.what(), nullptr, MB_OK | MB_ICONERROR);
+		error = e.what();
 	}
 	catch (...) {
 		ret = static_cast<int>(GetLastError());
-		if (ret != ERROR_SUCCESS) MessageBoxA(nullptr, system_category().message(ret).c_str(), nullptr, MB_OK | MB_ICONERROR);
+		if (ret != ERROR_SUCCESS) error = system_category().message(ret).c_str();
 	}
 
 	g_app.reset();
+
+	if (!error.empty()) MessageBoxA(nullptr, error.c_str(), nullptr, MB_OK | MB_ICONERROR);
 
 	return ret;
 }
@@ -135,7 +138,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	try {
 		{
 			LPARAM param;
-			if (uMsg == WM_MOUSEMOVE) {
+			if (uMsg == WM_MOUSEMOVE && g_app) {
 				const auto [cx, cy] = g_app->GetOutputSize();
 				RECT rect;
 				ThrowIfFailed(GetClientRect(hWnd, &rect));
@@ -153,7 +156,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 		const auto GetDisplayResolutions = [&](bool forceUpdate = false) {
 			const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
-			ThrowIfFailed(static_cast<BOOL>(monitor != nullptr));
+			ThrowIfFailed(monitor != nullptr);
 
 			if (monitor != s_hMonitor || forceUpdate) {
 				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));

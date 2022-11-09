@@ -78,7 +78,7 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 
 ## Minimum Build Requirements
 ### Development Tools
-- Microsoft Visual Studio 2022
+- Microsoft Visual Studio 2022 (17.4)
 
 - vcpkg
 	```cmd

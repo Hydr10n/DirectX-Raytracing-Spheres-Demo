@@ -35,22 +35,24 @@
 
 #include <numbers>
 
-#include <system_error>
+#include <format>
+
+#include <stacktrace>
 
 // To use graphics and CPU markup events with the latest version of PIX, change this to include <pix3.h>
 // then add the NuGet package WinPixEventRuntime to the project.
 #include <pix.h>
 
 namespace DX {
-	[[noreturn]] inline void throw_std_system_error(int code, const char* message = "") {
-		throw std::system_error(code, std::system_category(), message);
+	[[noreturn]] inline void throw_std_system_error(int code, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {
+		throw std::system_error(code, std::system_category(), std::format("{}{}{}", message, message.empty() ? "" : "\n\n", std::to_string(stacktrace)).c_str());
 	}
 
-	void ThrowIfFailed(std::same_as<BOOL> auto value, LPCSTR lpMessage = "") {
-		if (!value) throw_std_system_error(static_cast<int>(GetLastError()), lpMessage);
+	inline void ThrowIfFailed(BOOL value, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {
+		if (!value) throw_std_system_error(static_cast<int>(GetLastError()), message, stacktrace);
 	}
 
-	void ThrowIfFailed(std::same_as<HRESULT> auto value, LPCSTR lpMessage = "") {
-		if (FAILED(value)) throw_std_system_error(static_cast<int>(value), lpMessage);
+	inline void ThrowIfFailed(HRESULT value, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {
+		if (FAILED(value)) throw_std_system_error(static_cast<int>(value), message, stacktrace);
 	}
 }

@@ -5,8 +5,6 @@
 #include "pch.h"
 #include "DeviceResources.h"
 
-#include <format>
-
 using namespace DirectX;
 using namespace DX;
 

@@ -51,6 +51,7 @@ using namespace DirectX;
 using namespace DirectX::BufferHelpers;
 using namespace DirectX::PostProcess;
 using namespace DirectX::RaytracingHelpers;
+using namespace DirectX::SimpleMath;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace PhysicsHelpers;
