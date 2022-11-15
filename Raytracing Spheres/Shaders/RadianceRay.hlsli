@@ -49,6 +49,8 @@ struct RadianceRay {
 			attenuation *= attenuationTemp;
 
 			rayDesc.Origin = hitInfo.Vertex.Position;
+			rayDesc.TMin = 1e-3f;
+			rayDesc.TMax = 1.#INFf;
 		}
 
 		return emissiveColor + attenuation * reflectedColor;

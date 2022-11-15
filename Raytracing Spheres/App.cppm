@@ -15,7 +15,6 @@ export struct App {
 	~App();
 
 	SIZE GetOutputSize() const noexcept;
-	float GetOutputAspectRatio() const noexcept;
 
 	void Tick();
 

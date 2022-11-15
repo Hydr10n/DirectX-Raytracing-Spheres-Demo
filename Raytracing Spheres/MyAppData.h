@@ -70,7 +70,15 @@ public:
 			struct Camera {
 				float VerticalFieldOfView = 45;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, VerticalFieldOfView);
+				struct DepthOfField {
+					bool IsEnabled = true;
+
+					float FocusDistance = std::numeric_limits<float>::infinity(), ApertureRadius = 5;
+
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(DepthOfField, IsEnabled, FocusDistance, ApertureRadius);
+				} DepthOfField;
+
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, VerticalFieldOfView, DepthOfField);
 			} Camera;
 
 			struct Raytracing {
@@ -107,9 +115,9 @@ public:
 
 			struct Camera {
 				struct Speed {
-					float Movement = 1, Rotation = 1;
+					float Translation = 10, Rotation = 0.5f;
 
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Speed, Movement, Rotation);
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Speed, Translation, Rotation);
 				} Speed;
 
 				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, Speed);

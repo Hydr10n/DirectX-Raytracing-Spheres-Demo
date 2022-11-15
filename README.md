@@ -37,6 +37,9 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 - V-Sync
 - Camera
 	- Vertical Field of View
+	- Depth of Field
+		- Focus Distance
+		- Aperture Radius
 - Raytracing
 	- Max Trace Recursion Depth
 	- Samples Per Pixel

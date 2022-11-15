@@ -41,7 +41,7 @@ struct Material {
 			 * ReflectedLight *= SurfaceColor
 			 */
 
-			L = Math::CosineSampleHemisphere(N, random);
+			L = Math::SampleCosineHemisphere(N, random);
 
 			attenuation = dot(hitInfo.VertexUnmappedNormal, L) <= 0 ? 0 : BaseColor / diffuseProbability * AmbientOcclusion;
 		}
