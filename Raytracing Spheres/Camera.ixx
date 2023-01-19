@@ -6,7 +6,6 @@ export module Camera;
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
-using namespace std;
 
 export {
 	struct Camera {
@@ -53,6 +52,22 @@ export {
 			m_isViewChanged = true;
 		}
 
+		const auto& GetRotation() const { return m_rotation; }
+
+		void SetRotation(const XMFLOAT3& rotation) {
+			m_rotation = { remainder(rotation.x, XM_2PI), remainder(rotation.y, XM_2PI), remainder(rotation.z, XM_2PI) };
+
+			const auto transform = Quaternion::CreateFromYawPitchRoll(m_rotation.y, -m_rotation.x, -m_rotation.z);
+			Vector3::Transform({ 1, 0, 0 }, transform).Normalize(m_rightDirection);
+			Vector3::Transform({ 0, 0, 1 }, transform).Normalize(m_forwardDirection);
+
+			m_upDirection = m_forwardDirection.Cross(m_rightDirection) * m_upDirectionLength;
+			m_rightDirection *= m_rightDirectionLength;
+			m_forwardDirection *= m_forwardDirectionLength;
+
+			m_isViewChanged = true;
+		}
+
 		void LookAt(const XMFLOAT3& origin, const XMFLOAT3& focusPosition, const XMFLOAT3& upDirection = { 0, 1, 0 }, bool setFocusDistance = true) {
 			SetDirections(focusPosition - origin, upDirection, setFocusDistance);
 		}
@@ -77,26 +92,9 @@ export {
 			return m_view;
 		}
 
-		void Translate(const XMFLOAT3& displacement) {
-			m_position += displacement;
+		void Translate(const XMFLOAT3& displacement) { SetPosition(m_position + displacement); }
 
-			m_isViewChanged = true;
-		}
-
-		void Rotate(float yaw, float pitch) {
-			auto rotation = Matrix::CreateRotationY(yaw);
-			Vector3::Transform(m_rightDirection, rotation).Normalize(m_rightDirection);
-			m_forwardDirection = Vector3::Transform(m_forwardDirection, rotation);
-
-			rotation = Matrix::CreateFromAxisAngle(m_rightDirection, pitch);
-			Vector3::Transform(m_forwardDirection, rotation).Normalize(m_forwardDirection);
-
-			m_upDirection = m_forwardDirection.Cross(m_rightDirection) * m_upDirectionLength;
-			m_rightDirection *= m_rightDirectionLength;
-			m_forwardDirection *= m_forwardDirectionLength;
-
-			m_isViewChanged = true;
-		}
+		void Rotate(const XMFLOAT3& rotation) { SetRotation(m_rotation + rotation); }
 
 		auto GetNearZ() const { return m_nearZ; }
 
@@ -104,12 +102,12 @@ export {
 
 		const auto& GetProjection() const { return m_projection; }
 
-		void SetLens(float fovAngleY, float aspectRatio, float nearZ = 1e-2f, float farZ = 1e3f) {
-			m_projection = XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, nearZ, farZ);
+		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ = 1e-2f, float farZ = 1e3f) {
+			m_projection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
 			m_nearZ = nearZ;
 			m_farZ = farZ;
 
-			m_upDirectionLength = tan(fovAngleY / 2) * m_forwardDirectionLength;
+			m_upDirectionLength = tan(verticalFieldOfView / 2) * m_forwardDirectionLength;
 			m_rightDirectionLength = m_upDirectionLength * aspectRatio;
 			m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
@@ -122,7 +120,7 @@ export {
 	private:
 		mutable bool m_isViewChanged = true;
 		float m_rightDirectionLength = 1, m_upDirectionLength = 1, m_forwardDirectionLength = 1;
-		Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 };
+		Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 }, m_rotation;
 		mutable XMMATRIX m_view{};
 
 		float m_nearZ = 1e-2f, m_farZ = 1e3f;

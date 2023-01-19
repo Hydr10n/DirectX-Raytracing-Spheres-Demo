@@ -17,6 +17,11 @@
 
 #include "directxtk12/DescriptorHeap.h"
 
+namespace DirectX
+{
+    class DescriptorHeap;
+}
+
 namespace DX
 {
     class RenderTexture

@@ -895,24 +895,24 @@ private:
 
 			struct {
 				LPCSTR Name;
-				PxVec3 Scaling;
+				PxVec3 Scale;
 			} object;
 			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
-			case PxGeometryType::eSPHERE: {
-				object = {
-					.Name = ObjectNames::Sphere,
-					.Scaling = PxVec3(geometry.sphere().radius * 2)
-				};
-			} break;
+				case PxGeometryType::eSPHERE: {
+					object = {
+						.Name = ObjectNames::Sphere,
+						.Scale = PxVec3(geometry.sphere().radius * 2)
+					};
+				} break;
 
-			default: throw;
+				default: throw;
 			}
 
 			if (updateOnly) UpdateRenderItem(renderItem);
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));
 			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
-			world.scale(PxVec4(object.Scaling, 1));
+			world.scale(PxVec4(object.Scale, 1));
 
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
 			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
@@ -1050,15 +1050,15 @@ private:
 						auto& textures = localResourceDescriptorHeapIndices.Textures;
 						UINT* p;
 						switch (textureType) {
-						case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
-						case TextureType::EmissiveMap: p = &textures.EmissiveMap; break;
-						case TextureType::SpecularMap: p = &textures.SpecularMap; break;
-						case TextureType::MetallicMap: p = &textures.MetallicMap; break;
-						case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
-						case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
-						case TextureType::OpacityMap: p = &textures.OpacityMap; break;
-						case TextureType::NormalMap: p = &textures.NormalMap; break;
-						default: p = nullptr; break;
+							case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
+							case TextureType::EmissiveMap: p = &textures.EmissiveMap; break;
+							case TextureType::SpecularMap: p = &textures.SpecularMap; break;
+							case TextureType::MetallicMap: p = &textures.MetallicMap; break;
+							case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
+							case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
+							case TextureType::OpacityMap: p = &textures.OpacityMap; break;
+							case TextureType::NormalMap: p = &textures.NormalMap; break;
+							default: p = nullptr; break;
 						}
 						if (p != nullptr) *p = texture.DescriptorHeapIndices.SRV;
 					}
@@ -1134,16 +1134,16 @@ private:
 			m_cameraController.Translate({ x.x, x.y, -x.z });
 		};
 
-		const auto Rotate = [&](float yaw, float pitch) {
-			if (yaw == 0 && pitch == 0) return;
+		const auto Rotate = [&](float pitch, float yaw) {
+			if (const auto angle = m_cameraController.GetRotation().x + pitch;
+				angle > XM_PIDIV2) pitch = max(0.0f, -angle + XM_PIDIV2 - 0.1f);
+			else if (angle < -XM_PIDIV2) pitch = min(0.0f, -angle - XM_PIDIV2 + 0.1f);
+
+			if (pitch == 0 && yaw == 0) return;
 
 			m_isViewChanged = true;
 
-			if (const auto angle = asin(m_cameraController.GetNormalizedForwardDirection().y);
-				angle - pitch > XM_PIDIV2) pitch = -max(0.0f, XM_PIDIV2 - angle - 0.1f);
-			else if (angle - pitch < -XM_PIDIV2) pitch = -min(0.0f, XM_PIDIV2 + angle + 0.1f);
-
-			m_cameraController.Rotate(yaw, pitch);
+			m_cameraController.Rotate({ pitch, yaw, 0 });
 		};
 
 		const auto& speedSettings = ControlsSettings.Camera.Speed;
@@ -1154,7 +1154,7 @@ private:
 			Translate(displacement);
 
 			const auto rotationSpeed = elapsedSeconds * XM_2PI * speedSettings.Rotation;
-			Rotate(gamepadState.thumbSticks.rightX * rotationSpeed, gamepadState.thumbSticks.rightY * rotationSpeed);
+			Rotate(gamepadState.thumbSticks.rightY * rotationSpeed, gamepadState.thumbSticks.rightX * rotationSpeed);
 		}
 
 		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
@@ -1166,8 +1166,8 @@ private:
 			if (keyboardState.S) displacement.z -= translationSpeed;
 			Translate(displacement);
 
-			const auto rotationSpeed = elapsedSeconds * XM_2PI * 8 * speedSettings.Rotation;
-			Rotate(XMConvertToRadians(static_cast<float>(mouseState.x)) * rotationSpeed, XMConvertToRadians(static_cast<float>(mouseState.y)) * rotationSpeed);
+			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.13f * speedSettings.Rotation;
+			Rotate(static_cast<float>(-mouseState.y) * rotationSpeed, static_cast<float>(mouseState.x) * rotationSpeed);
 		}
 
 		if (m_isViewChanged) {

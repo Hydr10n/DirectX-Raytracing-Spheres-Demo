@@ -11,6 +11,7 @@
 #include "RenderTexture.h"
 
 #include "directxtk12/DirectXHelpers.h"
+#include "directxtk12/DescriptorHeap.h"
 
 #include <algorithm>
 #include <cstdio>

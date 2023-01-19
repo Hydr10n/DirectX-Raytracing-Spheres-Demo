@@ -12,11 +12,11 @@ using namespace DirectX;
 using namespace std;
 
 export struct HaltonSamplePattern {
-	HaltonSamplePattern(uint32_t sampleCount = 16) : m_sampleCount(sampleCount) { if (!sampleCount) throw invalid_argument("Sample count cannot be 0"); }
+	HaltonSamplePattern(uint32_t sampleCount = 16) noexcept(false) : m_sampleCount(sampleCount) { if (!sampleCount) throw invalid_argument("Sample count cannot be 0"); }
 
-	auto GetSampleCount() const { return m_sampleCount; }
+	auto GetSampleCount() const noexcept { return m_sampleCount; }
 
-	auto GetNext() const {
+	auto GetNext() const noexcept {
 		constexpr auto Halton = [](uint32_t index, uint32_t base) {
 			float factor = 1, ret = 0;
 			for (; index > 0; index /= base) {
@@ -35,7 +35,7 @@ export struct HaltonSamplePattern {
 		return XMFLOAT2(Fract(value.x + 0.5f) - 0.5f, Fract(value.y + 0.5f) - 0.5f);
 	}
 
-	void Reset() { m_sampleIndex = 0; }
+	void Reset() noexcept { m_sampleIndex = 0; }
 
 private:
 	uint32_t m_sampleCount;
