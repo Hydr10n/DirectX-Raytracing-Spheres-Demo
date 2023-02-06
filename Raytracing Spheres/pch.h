@@ -25,17 +25,18 @@
 #include <dxgidebug.h>
 #endif
 
-#include <DirectXCollision.h>
-#include <DirectXColors.h>
-
 #include <wrl.h>
 
-#include <algorithm>
-#include <ranges>
+#include "directxtk12/SimpleMath.h"
+#include <DirectXColors.h>
 
 #include <numbers>
 
 #include <format>
+
+#include <span>
+
+#include <ranges>
 
 #include <stacktrace>
 
@@ -45,7 +46,7 @@
 
 namespace DX {
 	[[noreturn]] inline void throw_std_system_error(int code, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {
-		throw std::system_error(code, std::system_category(), std::format("{}{}{}", message, message.empty() ? "" : "\n\n", std::to_string(stacktrace)).c_str());
+		throw std::system_error(code, std::system_category(), std::format("{}{}{}", message, message.empty() ? "" : "\n\n", std::to_string(stacktrace)));
 	}
 
 	inline void ThrowIfFailed(BOOL value, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {

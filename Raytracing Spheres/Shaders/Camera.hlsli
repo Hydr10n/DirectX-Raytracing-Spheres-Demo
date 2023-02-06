@@ -14,8 +14,7 @@ struct Camera {
 	float2 PixelJitter;
 	float NearZ, FarZ;
 
-	RayDesc GeneratePinholeRay(uint2 pixelCoordinate, uint2 pixelDimensions) {
-		const float2 NDC = Math::CalculateNDC(pixelCoordinate, pixelDimensions, PixelJitter);
+	RayDesc GeneratePinholeRay(float2 NDC) {
 		RayDesc rayDesc;
 		rayDesc.Origin = Position;
 		rayDesc.Direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
@@ -25,8 +24,8 @@ struct Camera {
 		return rayDesc;
 	}
 
-	RayDesc GenerateThinLensRay(uint2 pixelCoordinate, uint2 pixelDimensions, inout Random random) {
-		const float2 NDC = Math::CalculateNDC(pixelCoordinate, pixelDimensions, PixelJitter), value = Math::SampleDisk(random);
+	RayDesc GenerateThinLensRay(float2 NDC, inout Random random) {
+		const float2 value = Math::SampleDisk(random);
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
 		rayDesc.Origin = Position + offset;

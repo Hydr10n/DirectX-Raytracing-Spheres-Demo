@@ -20,6 +20,7 @@ module;
 export module Texture;
 
 using namespace DirectX;
+using namespace DirectX::SimpleMath;
 using namespace DX;
 using namespace Microsoft::WRL;
 using namespace std;
@@ -45,10 +46,10 @@ export {
 		}
 	};
 
-	enum class TextureType { Unknown, BaseColorMap, EmissiveMap, SpecularMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, OpacityMap, NormalMap, CubeMap };
+	enum class TextureType { Unknown, BaseColorMap, EmissiveColorMap, SpecularMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, OpacityMap, NormalMap, CubeMap };
 
-	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, XMMATRIX /*Transform*/>, less<>> {
-		using map<key_type, mapped_type, key_compare>::map;
+	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, Matrix /*Transform*/>, less<>> {
+		using map::map;
 
 		path DirectoryPath;
 
@@ -66,7 +67,7 @@ export {
 			for (const auto i : views::iota(0u, threadCount)) semaphores.emplace_back(make_unique<binary_semaphore>(0));
 
 			for (auto& textures : *this | views::values) {
-				for (auto& [type, texture] : get<0>(textures)) {
+				for (auto& [Type, Texture] : get<0>(textures)) {
 					threads.emplace_back(
 						[&](size_t threadIndex) {
 							try {
@@ -75,38 +76,40 @@ export {
 
 									const decltype(loadedTextures)::value_type* pLoadedTexture = nullptr;
 									for (const auto& loadedTexture : loadedTextures) {
-										if (loadedTexture.second->FilePath == texture.FilePath) {
+										if (loadedTexture.second->FilePath == Texture.FilePath) {
 											pLoadedTexture = &loadedTexture;
 											break;
 										}
 									}
 									if (pLoadedTexture != nullptr) {
-										semaphores[pLoadedTexture->first]->acquire();
+										auto& semaphore = *semaphores.at(pLoadedTexture->first);
 
-										texture = *pLoadedTexture->second;
+										semaphore.acquire();
 
-										semaphores[pLoadedTexture->first]->release();
+										Texture = *pLoadedTexture->second;
+
+										semaphore.release();
 
 										return;
 									}
 
-									loadedTextures.emplace_back(pair{ threadIndex, &texture });
+									loadedTextures.emplace_back(pair{ threadIndex, &Texture });
 								}
 
 								ResourceUploadBatch resourceUploadBatch(pDevice);
 								resourceUploadBatch.Begin();
 
 								bool isCubeMap;
-								texture.Load(pDevice, resourceUploadBatch, descriptorHeap, &isCubeMap, DirectoryPath);
-								if (isCubeMap != (type == TextureType::CubeMap)) throw runtime_error(format("{}: Invalid texture", (DirectoryPath / texture.FilePath).string()));
+								Texture.Load(pDevice, resourceUploadBatch, descriptorHeap, &isCubeMap, DirectoryPath);
+								if (isCubeMap != (Type == TextureType::CubeMap)) throw runtime_error(format("{}: Invalid texture", (DirectoryPath / Texture.FilePath).string()));
 
 								resourceUploadBatch.End(pCommandQueue).wait();
 
 								semaphores[threadIndex]->release();
-							}
-							catch (...) { if (!exception) exception = current_exception(); }
+					}
+					catch (...) { if (!exception) exception = current_exception(); }
 						},
-						threads.size()
+						std::size(threads)
 							);
 
 					if (std::size(threads) == threadCount) {

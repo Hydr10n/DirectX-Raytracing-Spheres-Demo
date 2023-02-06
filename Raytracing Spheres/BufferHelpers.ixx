@@ -83,11 +83,11 @@ export namespace DirectX::BufferHelpers {
 			ThrowIfFailed(this->m_buffer->Map(0, nullptr, reinterpret_cast<void**>(&m_data)));
 		}
 
-		T& operator[](UINT index) noexcept { return *reinterpret_cast<T*>(m_data + this->ItemSize * index); }
 		const T& operator[](UINT index) const noexcept { return *reinterpret_cast<const T*>(m_data + this->ItemSize * index); }
+		T& operator[](UINT index) noexcept { return *reinterpret_cast<T*>(m_data + this->ItemSize * index); }
 
-		T& GetData(UINT index = 0) noexcept { return (*this)[index]; }
 		const T& GetData(UINT index = 0) const noexcept { return (*this)[index]; }
+		T& GetData(UINT index = 0) noexcept { return (*this)[index]; }
 
 	private:
 		PBYTE m_data;

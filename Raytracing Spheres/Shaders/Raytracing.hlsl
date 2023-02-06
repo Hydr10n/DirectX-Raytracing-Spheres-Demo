@@ -14,15 +14,18 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	if (raysIndex.x >= raysDimensions.x || raysIndex.y >= raysDimensions.y) return;
 
 	Random random;
-	random.Initialize(raysIndex.x + raysIndex.y * raysDimensions.x, g_globalData.FrameCount);
+	random.Initialize(raysIndex.x + raysIndex.y * raysDimensions.x, g_globalData.FrameIndex);
+
+	const float2 UV = Math::CalculateUV(raysIndex, raysDimensions, g_camera.PixelJitter), NDC = Math::CalculateNDC(UV);
 
 	float4 color = 0;
 	for (uint i = 0; i < g_globalData.RaytracingSamplesPerPixel; i++) {
-		const RayDesc rayDesc = g_camera.GenerateThinLensRay(raysIndex, raysDimensions, random);
+		const RayDesc rayDesc = g_camera.GenerateThinLensRay(NDC, random);
 		color += RadianceRay::Trace(rayDesc, random);
 	}
 	color = any(isnan(color)) ? 0 : color;
 	color /= g_globalData.RaytracingSamplesPerPixel;
 	color = (g_globalData.AccumulatedFrameIndex * g_output[raysIndex] + color) / (g_globalData.AccumulatedFrameIndex + 1);
+
 	g_output[raysIndex] = color;
 }

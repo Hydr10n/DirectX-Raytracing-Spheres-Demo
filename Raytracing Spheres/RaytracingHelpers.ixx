@@ -4,8 +4,6 @@ module;
 
 #include "directxtk12/DirectXHelpers.h"
 
-#include <span>
-
 export module DirectX.RaytracingHelpers;
 
 using namespace DX;
@@ -119,8 +117,8 @@ export namespace DirectX::RaytracingHelpers {
 			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 		) noexcept(false) : m_device(pDevice) {
-			if (vertices.size() < 3) throw invalid_argument("Vertex count cannot be fewer than 3");
-			if (indices.size() < 3) throw invalid_argument("Index count cannot be fewer than 3");
+			if (size(vertices) < 3) throw invalid_argument("Vertex count cannot be fewer than 3");
+			if (size(indices) < 3) throw invalid_argument("Index count cannot be fewer than 3");
 
 			const auto CreateBuffer = [&](const auto& data, D3D12_RESOURCE_STATES initialState, ComPtr<ID3D12Resource>& buffer) {
 				const auto size = std::size(data) * sizeof(data[0]);

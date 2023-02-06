@@ -175,7 +175,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		if (s_hMonitor == nullptr) GetDisplayResolutions();
 
 		switch (uMsg) {
-			case WM_GETMINMAXINFO: {
+			case WM_GETMINMAXINFO:
+			{
 				if (lParam) {
 					const auto style = GetWindowStyle(hWnd), exStyle = GetWindowExStyle(hWnd);
 					const auto hasMenu = GetMenu(hWnd) != nullptr;
@@ -192,21 +193,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);
 					AdjustSize(s_displayResolution, minMaxInfo.ptMaxTrackSize);
 				}
-			} break;
+			}
+			break;
 
 			case WM_MOVE: GetDisplayResolutions(); break;
 
 			case WM_MOVING:
 			case WM_SIZING: g_app->Tick(); break;
 
-			case WM_SIZE: {
+			case WM_SIZE:
+			{
 				if (!g_app) return 0;
 
 				switch (wParam) {
 					case SIZE_MINIMIZED: g_app->OnSuspending(); break;
 
 					case SIZE_RESTORED: g_app->OnResuming(); [[fallthrough]];
-					default: {
+					default:
+					{
 						if (g_windowModeHelper->GetMode() != WindowMode::Fullscreen || g_windowModeHelper->IsFullscreenResolutionHandledByWindow()) {
 							const Resolution resolution{ LOWORD(lParam), HIWORD(lParam) };
 
@@ -219,35 +223,46 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						}
 
 						g_app->OnWindowSizeChanged();
-					} break;
+					}
+					break;
 				}
-			} break;
+			}
+			break;
 
-			case WM_DISPLAYCHANGE: {
+			case WM_DISPLAYCHANGE:
+			{
 				GetDisplayResolutions(true);
 
 				ThrowIfFailed(g_windowModeHelper->Apply());
 
 				g_app->OnDisplayChanged();
-			} break;
+			}
+			break;
 
-			case WM_DPICHANGED: {
+			case WM_DPICHANGED:
+			{
 				const auto& [left, top, right, bottom] = *reinterpret_cast<PRECT>(lParam);
 				SetWindowPos(hWnd, nullptr, static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top), SWP_NOZORDER);
-			} break;
+			}
+			break;
 
-			case WM_ACTIVATEAPP: {
+			case WM_ACTIVATEAPP:
+			{
 				if (g_app) {
 					if (wParam) g_app->OnActivated();
 					else g_app->OnDeactivated();
 				}
-			} [[fallthrough]];
-			case WM_ACTIVATE: {
+			}
+			[[fallthrough]];
+			case WM_ACTIVATE:
+			{
 				Keyboard::ProcessMessage(uMsg, wParam, lParam);
 				Mouse::ProcessMessage(uMsg, wParam, lParam);
-			} break;
+			}
+			break;
 
-			case WM_SYSKEYDOWN: {
+			case WM_SYSKEYDOWN:
+			{
 				if (wParam == VK_RETURN && (HIWORD(lParam) & (KF_ALTDOWN | KF_REPEAT)) == KF_ALTDOWN) {
 					g_windowModeHelper->ToggleMode();
 					ThrowIfFailed(g_windowModeHelper->Apply());
@@ -255,7 +270,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					GraphicsSettings.WindowMode = g_windowModeHelper->GetMode();
 					ignore = GraphicsSettings.Save();
 				}
-			} [[fallthrough]];
+			}
+			[[fallthrough]];
 			case WM_SYSKEYUP:
 			case WM_KEYDOWN:
 			case WM_KEYUP: Keyboard::ProcessMessage(uMsg, wParam, lParam); break;
@@ -263,11 +279,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			case WM_LBUTTONDOWN:
 			case WM_RBUTTONDOWN:
 			case WM_MBUTTONDOWN:
-			case WM_XBUTTONDOWN: {
+			case WM_XBUTTONDOWN:
+			{
 				SetCapture(hWnd);
 
 				Mouse::ProcessMessage(uMsg, wParam, lParam);
-			} break;
+			}
+			break;
 
 			case WM_LBUTTONUP:
 			case WM_RBUTTONUP:

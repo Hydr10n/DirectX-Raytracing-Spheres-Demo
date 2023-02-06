@@ -54,21 +54,21 @@ export namespace WindowHelpers {
 			m_windowedExStyle = windowedExStyle;
 		}
 
-		WindowMode GetMode() const { return m_currentMode; }
+		WindowMode GetMode() const { return m_mode; }
 
-		void SetMode(WindowMode mode) {
-			if (m_isApplying || m_currentMode == mode) return;
-			m_previousMode = m_currentMode;
-			m_currentMode = mode;
+		void SetMode(WindowMode value) {
+			if (m_isApplying || m_mode == value) return;
+			m_previousMode = m_mode;
+			m_mode = value;
 		}
 
-		void ToggleMode() { SetMode(m_currentMode == WindowMode::Fullscreen ? m_previousMode : WindowMode::Fullscreen); }
+		void ToggleMode() { SetMode(m_mode == WindowMode::Fullscreen ? m_previousMode : WindowMode::Fullscreen); }
 
 		Resolution GetResolution() const { return m_resolution; }
 
-		void SetResolution(const Resolution& resolution) {
+		void SetResolution(const Resolution& value) {
 			if (m_isApplying) return;
-			m_resolution = resolution;
+			m_resolution = value;
 		}
 
 		[[nodiscard]] BOOL Apply() {
@@ -87,7 +87,7 @@ export namespace WindowHelpers {
 
 			DWORD offStyle = 0, offExStyle = 0;
 			auto style = m_windowedStyle, exStyle = m_windowedExStyle;
-			if (m_currentMode != WindowMode::Windowed) {
+			if (m_mode != WindowMode::Windowed) {
 				style &= ~(offStyle = WS_OVERLAPPEDWINDOW);
 				exStyle &= ~(offExStyle = WS_EX_OVERLAPPEDWINDOW | WS_EX_STATICEDGE);
 			}
@@ -102,7 +102,7 @@ export namespace WindowHelpers {
 				SetLastError(ERROR_SUCCESS);
 				return (SetWindowLongPtrW(hWnd, GWL_EXSTYLE, exStyle) || GetLastError() == ERROR_SUCCESS)
 					&& (SetWindowLongPtrW(hWnd, GWL_STYLE, style) || GetLastError() == ERROR_SUCCESS)
-					&& (m_currentMode == WindowMode::Windowed ?
+					&& (m_mode == WindowMode::Windowed ?
 						SetWindowPos(hWnd, nullptr, 0, 0, 0, 0, SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE) : TRUE);
 			};
 
@@ -116,7 +116,7 @@ export namespace WindowHelpers {
 
 				const auto displayResolution = ToResolution(displayRect);
 
-				if (m_currentMode == WindowMode::Fullscreen) {
+				if (m_mode == WindowMode::Fullscreen) {
 					m_previousWindowResolution = ToResolution(windowPlacement.rcNormalPosition);
 
 					if (m_isFullscreenResolutionHandledByWindow) m_resolution = displayResolution;
@@ -187,7 +187,7 @@ export namespace WindowHelpers {
 
 		DWORD m_windowedStyle = WS_OVERLAPPEDWINDOW, m_windowedExStyle{};
 
-		WindowMode m_previousMode{}, m_currentMode{};
+		WindowMode m_previousMode = WindowMode::Windowed, m_mode = WindowMode::Windowed;
 
 		Resolution m_previousWindowResolution{}, m_resolution{};
 	};

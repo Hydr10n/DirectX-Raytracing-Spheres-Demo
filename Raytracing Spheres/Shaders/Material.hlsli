@@ -1,8 +1,13 @@
 #pragma once
 
+#include "BxDFs.hlsli"
+
 #include "HitInfo.hlsli"
 
-#include "BxDFs.hlsli"
+struct ScatterResult {
+	float3 Direction;
+	float4 Attenuation;
+};
 
 struct Material {
 	float4 BaseColor, EmissiveColor;
@@ -10,26 +15,25 @@ struct Material {
 	float Metallic, Roughness, Opacity, RefractiveIndex;
 	float AmbientOcclusion;
 
-	void Scatter(HitInfo hitInfo, float3 worldRayDirection, out float3 L, out float4 attenuation, inout Random random) {
-		const float3 N = hitInfo.Vertex.Normal;
+	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, inout Random random) {
+		ScatterResult scatterResult;
+
+		const float3 N = hitInfo.Vertex.Normal, V = -worldRayDirection;
+		float3 L;
 
 		float3 f0;
-		if (BaseColor.a >= 0.94f && Opacity == 1) f0 = Specular * 0.08f;
+		if (BaseColor.a == 1 && Opacity == 1) f0 = Specular * 0.08f;
 		else {
 			const float3 H = BxDFs::GGX::ImportanceSample(N, Roughness, random);
 
-			const float
-				cosTheta = saturate(dot(-worldRayDirection, H)),
-				sinTheta = sqrt(1 - cosTheta * cosTheta);
+			const float VoH = saturate(dot(V, H)), refractiveIndex = hitInfo.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
 
-			float refractiveIndex = RefractiveIndex == 0 ? 1 : RefractiveIndex;
-			refractiveIndex = hitInfo.IsFrontFace ? 1 / refractiveIndex : refractiveIndex;
+			L = refractiveIndex * sqrt(1 - VoH * VoH) > 1 || random.Float() < BxDFs::SchlickFresnel(VoH, refractiveIndex) ? reflect(worldRayDirection, H) : refract(worldRayDirection, H, refractiveIndex);
 
-			L = refractiveIndex * sinTheta > 1 || random.Float() < BxDFs::SchlickFresnel(cosTheta, refractiveIndex) ? reflect(worldRayDirection, H) : refract(worldRayDirection, H, refractiveIndex);
+			scatterResult.Direction = L;
+			scatterResult.Attenuation = BaseColor * (1 - (Opacity == 1 ? BaseColor.a : Opacity)) * AmbientOcclusion;
 
-			attenuation = BaseColor * (1 - (Opacity == 1 ? BaseColor.a : Opacity)) * AmbientOcclusion;
-
-			return;
+			return scatterResult;
 		}
 
 		const float diffuseProbability = (1 - Metallic) / 2;
@@ -43,7 +47,8 @@ struct Material {
 
 			L = Math::SampleCosineHemisphere(N, random);
 
-			attenuation = dot(hitInfo.VertexUnmappedNormal, L) <= 0 ? 0 : BaseColor / diffuseProbability * AmbientOcclusion;
+			scatterResult.Direction = L;
+			scatterResult.Attenuation = dot(hitInfo.VertexUnmappedNormal, L) <= 0 ? 0 : BaseColor / diffuseProbability * AmbientOcclusion;
 		}
 		else {
 			/*
@@ -57,14 +62,17 @@ struct Material {
 
 			L = reflect(worldRayDirection, H);
 
-			if (dot(hitInfo.VertexUnmappedNormal, L) <= 0) attenuation = 0;
+			scatterResult.Direction = L;
+			if (dot(hitInfo.VertexUnmappedNormal, L) <= 0) scatterResult.Attenuation = 0;
 			else {
 				const float
-					NoL = saturate(dot(N, L)), NoV = saturate(dot(N, -worldRayDirection)), NoH = saturate(dot(N, H)), HoL = saturate(dot(H, L)),
+					NoL = saturate(dot(N, L)), NoV = saturate(dot(N, V)), NoH = saturate(dot(N, H)), HoL = saturate(dot(H, L)),
 					G = BxDFs::GGX::SmithGeometryIndirect(NoL, NoV, Roughness);
 				const float3 F = BxDFs::SchlickFresnel(HoL, lerp(f0, BaseColor.rgb, Metallic));
-				attenuation = float4(G * F * HoL / (NoV * NoH * (1 - diffuseProbability)), 1) * AmbientOcclusion;
+				scatterResult.Attenuation = float4(G * F * HoL / (NoV * NoH * (1 - diffuseProbability)), 1) * AmbientOcclusion;
 			}
 		}
+
+		return scatterResult;
 	}
 };

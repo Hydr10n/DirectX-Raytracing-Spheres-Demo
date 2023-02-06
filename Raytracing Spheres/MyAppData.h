@@ -82,18 +82,22 @@ public:
 			} Camera;
 
 			struct Raytracing {
-				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 2;
+				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 1;
 
 				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Raytracing, MaxTraceRecursionDepth, SamplesPerPixel);
 			} Raytracing;
 
-			struct TemporalAntiAliasing : DirectX::PostProcess::TemporalAntiAliasing::Constant {
-				bool IsEnabled = true;
+			struct PostProcessing {
+				struct TemporalAntiAliasing : DirectX::PostProcess::TemporalAntiAliasing::Constant {
+					bool IsEnabled = true;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(TemporalAntiAliasing, IsEnabled, Alpha, ColorBoxSigma);
-			} TemporalAntiAliasing;
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(TemporalAntiAliasing, IsEnabled, Alpha, ColorBoxSigma);
+				} TemporalAntiAliasing;
 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, TemporalAntiAliasing);
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(PostProcessing, TemporalAntiAliasing);
+			} PostProcessing;
+
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
 		} Graphics;
 
 		inline static struct UI : Data<UI> {

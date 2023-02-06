@@ -43,7 +43,7 @@ import DirectX.RaytracingHelpers;
 import HaltonSamplePattern;
 import Material;
 import Random;
-import ShaderCommonData;
+import RaytracingShaderData;
 import SharedData;
 import Texture;
 
@@ -69,7 +69,7 @@ namespace {
 	constexpr auto& ControlsSettings = MyAppData::Settings::Controls;
 }
 
-#define MAKE_OBJECT_NAME(Name) static constexpr LPCSTR Name = #Name;
+#define MAKE_NAME(name) static constexpr LPCSTR name = #name;
 
 struct App::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -83,10 +83,8 @@ struct App::Impl : IDeviceNotify {
 		{
 			BuildTextures();
 
-			BuildRenderItems();
+			BuildRenderObjects();
 		}
-
-		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
 
 		{
 			ImGui::CreateContext();
@@ -118,6 +116,8 @@ struct App::Impl : IDeviceNotify {
 		}
 
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
+
+		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
 	}
 
 	~Impl() {
@@ -169,18 +169,18 @@ struct App::Impl : IDeviceNotify {
 	void OnDeactivated() {}
 
 	void OnDeviceLost() override {
-		ImGui_ImplDX12_Shutdown();
-
-		m_renderTextures = {};
+		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
 		for (auto& textures : m_textures | views::values) for (auto& texture : get<0>(textures) | views::values) texture.Resource.Reset();
 
-		m_topLevelAccelerationStructure.reset();
-		m_bottomLevelAccelerationStructures = {};
-
 		m_triangleMeshes = {};
 
+		m_renderTextures = {};
+
 		m_shaderBuffers = {};
+
+		m_topLevelAccelerationStructure.reset();
+		m_bottomLevelAccelerationStructures = {};
 
 		m_temporalAntiAliasing.reset();
 
@@ -220,23 +220,30 @@ private:
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
 
+	struct RenderTextureNames {
+		MAKE_NAME(PreviousOutput);
+		MAKE_NAME(CurrentOutput);
+		MAKE_NAME(Motion);
+		MAKE_NAME(FinalOutput);
+	};
+
 	struct ObjectNames {
-		MAKE_OBJECT_NAME(EnvironmentLight);
-		MAKE_OBJECT_NAME(Environment);
-		MAKE_OBJECT_NAME(Sphere);
-		MAKE_OBJECT_NAME(AlienMetal);
-		MAKE_OBJECT_NAME(Moon);
-		MAKE_OBJECT_NAME(Earth);
-		MAKE_OBJECT_NAME(Star);
-		MAKE_OBJECT_NAME(HarmonicOscillator);
+		MAKE_NAME(EnvironmentLight);
+		MAKE_NAME(Environment);
+		MAKE_NAME(Sphere);
+		MAKE_NAME(AlienMetal);
+		MAKE_NAME(Moon);
+		MAKE_NAME(Earth);
+		MAKE_NAME(Star);
+		MAKE_NAME(HarmonicOscillator);
 	};
 
 	struct ResourceDescriptorHeapIndex {
 		enum {
-			LocalResourceDescriptorHeapIndices,
+			InstanceResourceDescriptorHeapIndices,
 			Camera,
-			GlobalData, LocalData,
-			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionVectorsSRV, MotionVectorsUAV, FinalOutputUAV,
+			GlobalData, InstanceData,
+			PreviousOutputSRV, CurrentOutputSRV, CurrentOutputUAV, MotionSRV, MotionUAV, FinalOutputUAV,
 			SphereVertices, SphereIndices,
 			EnvironmentLightCubeMap, EnvironmentCubeMap,
 			AlienMetalBaseColorMap, AlienMetalMetallicMap, AlienMetalRoughnessMap, AlienMetalAmbientOcclusionMap, AlienMetalNormalMap,
@@ -255,20 +262,20 @@ private:
 	static constexpr float TemporalAntiAliasingMaxColorBoxSigma = 2;
 	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
 
+	map<string, shared_ptr<BottomLevelAccelerationStructure>, less<>> m_bottomLevelAccelerationStructures;
+	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
+
 	struct {
 		unique_ptr<ConstantBuffer<GlobalResourceDescriptorHeapIndices>> GlobalResourceDescriptorHeapIndices;
 		unique_ptr<ConstantBuffer<Camera>> Camera;
 		unique_ptr<ConstantBuffer<GlobalData>> GlobalData;
-		unique_ptr<StructuredBuffer<LocalResourceDescriptorHeapIndices>> LocalResourceDescriptorHeapIndices;
-		unique_ptr<StructuredBuffer<LocalData>> LocalData;
+		unique_ptr<StructuredBuffer<InstanceResourceDescriptorHeapIndices>> InstanceResourceDescriptorHeapIndices;
+		unique_ptr<StructuredBuffer<InstanceData>> InstanceData;
 	} m_shaderBuffers;
 
+	map<string, shared_ptr<RenderTexture>, less<>> m_renderTextures;
+
 	map<string, shared_ptr<TriangleMesh<VertexPositionNormalTexture, UINT16>>, less<>> m_triangleMeshes;
-
-	map<string, shared_ptr<BottomLevelAccelerationStructure>, less<>> m_bottomLevelAccelerationStructures;
-	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
-
-	struct { unique_ptr<RenderTexture> PreviousOutput, CurrentOutput, MotionVectors, FinalOutput; } m_renderTextures;
 
 	TextureDictionary m_textures;
 
@@ -283,7 +290,7 @@ private:
 
 	HaltonSamplePattern m_haltonSamplePattern;
 
-	struct RenderItem {
+	struct RenderObject {
 		string Name;
 		struct {
 			struct { UINT Vertices = ~0u, Indices = ~0u; } TriangleMesh;
@@ -292,7 +299,7 @@ private:
 		TextureDictionary::mapped_type* pTextures{};
 		PxShape* Shape{};
 	};
-	vector<RenderItem> m_renderItems;
+	vector<RenderObject> m_renderObjects;
 
 	bool m_isSimulatingPhysics = true;
 	struct {
@@ -334,8 +341,6 @@ private:
 
 		const auto outputSize = GetOutputSize();
 
-		m_isViewChanged = true;
-
 		{
 			m_cameraController.SetLens(XMConvertToRadians(GraphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
 
@@ -346,20 +351,21 @@ private:
 		}
 
 		{
-			const auto CreateResource = [&](DXGI_FORMAT format, unique_ptr<RenderTexture>& texture, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
-				texture = make_unique<RenderTexture>(format);
+			const auto CreateTexture = [&](DXGI_FORMAT format, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
+				auto& texture = m_renderTextures[textureName];
+				texture = make_shared<RenderTexture>(format);
 				texture->SetDevice(device, m_resourceDescriptorHeap.get(), srvDescriptorHeapIndex, uavDescriptorHeapIndex);
 				texture->CreateResource(outputSize.cx, outputSize.cy);
 			};
 
 			{
 				const auto backBufferFormat = m_deviceResources->GetBackBufferFormat();
-				CreateResource(backBufferFormat, m_renderTextures.PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
-				CreateResource(backBufferFormat, m_renderTextures.CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
-				CreateResource(backBufferFormat, m_renderTextures.FinalOutput, ~0u, ResourceDescriptorHeapIndex::FinalOutputUAV);
+				CreateTexture(backBufferFormat, RenderTextureNames::PreviousOutput, ResourceDescriptorHeapIndex::PreviousOutputSRV);
+				CreateTexture(backBufferFormat, RenderTextureNames::CurrentOutput, ResourceDescriptorHeapIndex::CurrentOutputSRV, ResourceDescriptorHeapIndex::CurrentOutputUAV);
+				CreateTexture(backBufferFormat, RenderTextureNames::FinalOutput, ~0u, ResourceDescriptorHeapIndex::FinalOutputUAV);
 			}
 
-			CreateResource(DXGI_FORMAT_R32G32_FLOAT, m_renderTextures.MotionVectors, ResourceDescriptorHeapIndex::MotionVectorsSRV, ResourceDescriptorHeapIndex::MotionVectorsUAV);
+			CreateTexture(DXGI_FORMAT_R32G32_FLOAT, RenderTextureNames::Motion, ResourceDescriptorHeapIndex::MotionSRV, ResourceDescriptorHeapIndex::MotionUAV);
 		}
 
 		m_temporalAntiAliasing->TextureSize = outputSize;
@@ -373,20 +379,31 @@ private:
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\segoeui.ttf)", static_cast<float>(outputSize.cy) * 0.025f);
 		}
+
+		m_isViewChanged = true;
 	}
 
 	void Update() {
 		PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
-		ProcessInput();
+		{
+			auto& camera = m_shaderBuffers.Camera->GetData();
+
+			camera.PixelJitter = m_haltonSamplePattern.GetNext();
+
+			ProcessInput();
+
+			camera.Position = m_cameraController.GetPosition();
+			camera.RightDirection = m_cameraController.GetRightDirection();
+			camera.UpDirection = m_cameraController.GetUpDirection();
+			camera.ForwardDirection = m_cameraController.GetForwardDirection();
+		}
 
 		if (m_isSimulatingPhysics) {
 			m_physXWrapper.Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())));
 
 			m_isViewChanged = true;
 		}
-
-		m_shaderBuffers.Camera->GetData().PixelJitter = m_haltonSamplePattern.GetNext();
 
 		UpdateGlobalData();
 
@@ -416,21 +433,25 @@ private:
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
-		const auto descriptorHeaps = { m_resourceDescriptorHeap->Heap() };
-		commandList->SetDescriptorHeaps(static_cast<UINT>(size(descriptorHeaps)), descriptorHeaps.begin());
+		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		DispatchRays();
 
 		{
-			const auto isTemporalAntiAliasingEnabled = GraphicsSettings.TemporalAntiAliasing.IsEnabled && m_isViewChanged;
+			const auto isTemporalAntiAliasingEnabled = GraphicsSettings.PostProcessing.TemporalAntiAliasing.IsEnabled && m_isViewChanged && m_isSimulatingPhysics;
+
+			const auto& previousOutput = *m_renderTextures[RenderTextureNames::PreviousOutput];
 
 			if (isTemporalAntiAliasingEnabled) {
+				const auto& currentOutput = *m_renderTextures[RenderTextureNames::CurrentOutput], & motion = *m_renderTextures[RenderTextureNames::Motion];
+
 				const ScopedBarrier scopedBarrier(
 					commandList,
 					{
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.PreviousOutput->GetResource(), m_renderTextures.PreviousOutput->GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.CurrentOutput->GetResource(), m_renderTextures.CurrentOutput->GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(m_renderTextures.MotionVectors->GetResource(), m_renderTextures.MotionVectors->GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+						CD3DX12_RESOURCE_BARRIER::Transition(previousOutput.GetResource(), previousOutput.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(currentOutput.GetResource(), currentOutput.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(motion.GetResource(), motion.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 					}
 				);
 
@@ -439,19 +460,19 @@ private:
 
 			{
 				const auto renderTarget = m_deviceResources->GetRenderTarget();
-				const auto& previousOutput = m_renderTextures.PreviousOutput, & output = isTemporalAntiAliasingEnabled ? m_renderTextures.FinalOutput : m_renderTextures.CurrentOutput;
+				const auto& output = *m_renderTextures[isTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::CurrentOutput];
 
 				const ScopedBarrier scopedBarrier(
 					commandList,
 					{
 						CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST),
-						CD3DX12_RESOURCE_BARRIER::Transition(previousOutput->GetResource(), previousOutput->GetCurrentState(), D3D12_RESOURCE_STATE_COPY_DEST),
-						CD3DX12_RESOURCE_BARRIER::Transition(output->GetResource(), output->GetCurrentState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
+						CD3DX12_RESOURCE_BARRIER::Transition(previousOutput.GetResource(), previousOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_DEST),
+						CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
 					}
 				);
 
-				commandList->CopyResource(renderTarget, output->GetResource());
-				commandList->CopyResource(previousOutput->GetResource(), output->GetResource());
+				commandList->CopyResource(renderTarget, output.GetResource());
+				commandList->CopyResource(previousOutput.GetResource(), output.GetResource());
 			}
 		}
 
@@ -490,9 +511,13 @@ private:
 		}
 
 		{
-			auto& temporalAntiAliasing = GraphicsSettings.TemporalAntiAliasing;
-			temporalAntiAliasing.Alpha = clamp(temporalAntiAliasing.Alpha, 0.0f, 1.0f);
-			temporalAntiAliasing.ColorBoxSigma = clamp(temporalAntiAliasing.ColorBoxSigma, 0.0f, TemporalAntiAliasingMaxColorBoxSigma);
+			auto& postProcessingSettings = GraphicsSettings.PostProcessing;
+
+			{
+				auto& temporalAntiAliasingSettings = postProcessingSettings.TemporalAntiAliasing;
+				temporalAntiAliasingSettings.Alpha = clamp(temporalAntiAliasingSettings.Alpha, 0.0f, 1.0f);
+				temporalAntiAliasingSettings.ColorBoxSigma = clamp(temporalAntiAliasingSettings.ColorBoxSigma, 0.0f, TemporalAntiAliasingMaxColorBoxSigma);
+			}
 		}
 
 		{
@@ -636,13 +661,13 @@ private:
 		m_textures.Load(device, commandQueue, *m_resourceDescriptorHeap, 8);
 	}
 
-	void BuildRenderItems() {
-		decltype(m_renderItems) renderItems;
+	void BuildRenderObjects() {
+		decltype(m_renderObjects) renderObjects;
 
 		const auto& material = *m_physXWrapper.GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
-		const auto AddRenderItem = [&](RenderItem& renderItem, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
-			renderItem.ResourceDescriptorHeapIndices = {
+		const auto AddRenderObject = [&](RenderObject& renderObject, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
+			renderObject.ResourceDescriptorHeapIndices = {
 				.TriangleMesh{
 					.Vertices = ResourceDescriptorHeapIndex::SphereVertices,
 					.Indices = ResourceDescriptorHeapIndex::SphereIndices
@@ -651,7 +676,7 @@ private:
 
 			auto& rigidDynamic = *m_physXWrapper.GetPhysics().createRigidDynamic(PxTransform(transform));
 
-			renderItem.Shape = PxRigidActorExt::createExclusiveShape(rigidDynamic, geometry, material);
+			renderObject.Shape = PxRigidActorExt::createExclusiveShape(rigidDynamic, geometry, material);
 
 			PxRigidBodyExt::updateMassAndInertia(rigidDynamic, 1);
 
@@ -659,7 +684,7 @@ private:
 
 			m_physXWrapper.GetScene().addActor(rigidDynamic);
 
-			renderItems.emplace_back(renderItem);
+			renderObjects.emplace_back(renderObject);
 
 			return rigidDynamic;
 		};
@@ -704,13 +729,13 @@ private:
 				}
 			};
 			for (const auto& [Name, Position, Material] : objects) {
-				RenderItem renderItem;
+				RenderObject renderObject;
 
-				if (Name != nullptr && m_textures.contains(Name)) renderItem.pTextures = &m_textures.at(Name);
+				if (Name != nullptr && m_textures.contains(Name)) renderObject.pTextures = &m_textures.at(Name);
 
-				renderItem.Material = Material;
+				renderObject.Material = Material;
 
-				AddRenderItem(renderItem, Position, PxSphereGeometry(0.5f));
+				AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
 			}
 
 			Random random;
@@ -733,9 +758,9 @@ private:
 					}
 					if (isOverlapping) continue;
 
-					RenderItem renderItem;
+					RenderObject renderObject;
 
-					renderItem.Name = ObjectNames::HarmonicOscillator;
+					renderObject.Name = ObjectNames::HarmonicOscillator;
 
 					constexpr auto RandomFloat4 = [&](float min) {
 						const auto value = random.Float3();
@@ -743,17 +768,17 @@ private:
 					};
 					if (const auto randomValue = random.Float();
 						randomValue < 0.3f) {
-						renderItem.Material = { .BaseColor = RandomFloat4(0.1f) };
+						renderObject.Material = { .BaseColor = RandomFloat4(0.1f) };
 					}
 					else if (randomValue < 0.6f) {
-						renderItem.Material = {
+						renderObject.Material = {
 							.BaseColor = RandomFloat4(0.1f),
 							.Metallic = 1,
 							.Roughness = random.Float(0, 0.5f)
 						};
 					}
 					else if (randomValue < 0.9f) {
-						renderItem.Material = {
+						renderObject.Material = {
 							.BaseColor = RandomFloat4(0.1f),
 							.Roughness = random.Float(0, 0.5f),
 							.Opacity = 0,
@@ -761,7 +786,7 @@ private:
 						};
 					}
 					else {
-						renderItem.Material = {
+						renderObject.Material = {
 							.BaseColor = RandomFloat4(0.1f),
 							.EmissiveColor = RandomFloat4(0.2f),
 							.Metallic = random.Float(0.4f),
@@ -769,7 +794,7 @@ private:
 						};
 					}
 
-					auto& rigidDynamic = AddRenderItem(renderItem, position, PxSphereGeometry(0.075f));
+					auto& rigidDynamic = AddRenderObject(renderObject, position, PxSphereGeometry(0.075f));
 					rigidDynamic.setLinearVelocity({ 0, SimpleHarmonicMotion::Spring::CalculateVelocity(A, omega, 0.0f, position.x), 0 });
 				}
 			}
@@ -811,16 +836,16 @@ private:
 				}
 			};
 			for (const auto& [Name, Position, Radius, RotationPeriod, OrbitalPeriod, Mass, Material] : { moon, earth, star }) {
-				RenderItem renderItem;
+				RenderObject renderObject;
 
-				renderItem.Name = Name;
+				renderObject.Name = Name;
 
-				renderItem.Material = Material;
+				renderObject.Material = Material;
 
-				if (m_textures.contains(Name)) renderItem.pTextures = &m_textures.at(Name);
+				if (m_textures.contains(Name)) renderObject.pTextures = &m_textures.at(Name);
 
-				auto& rigidDynamic = AddRenderItem(renderItem, Position, PxSphereGeometry(Radius));
-				if (renderItem.Name == ObjectNames::Moon) {
+				auto& rigidDynamic = AddRenderObject(renderObject, Position, PxSphereGeometry(Radius));
+				if (renderObject.Name == ObjectNames::Moon) {
 					const auto x = earth.Position - Position;
 					const auto magnitude = x.magnitude();
 					const auto normalized = x / magnitude;
@@ -828,17 +853,17 @@ private:
 					rigidDynamic.setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 					rigidDynamic.setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 				}
-				else if (renderItem.Name == ObjectNames::Earth) {
+				else if (renderObject.Name == ObjectNames::Earth) {
 					rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
 					PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &Mass, 1);
 				}
-				else if (renderItem.Name == ObjectNames::Star) rigidDynamic.setMass(0);
+				else if (renderObject.Name == ObjectNames::Star) rigidDynamic.setMass(0);
 
 				m_physicsObjects.RigidBodies[Name] = { &rigidDynamic, false };
 			}
 		}
 
-		m_renderItems = move(renderItems);
+		m_renderObjects = move(renderObjects);
 	}
 
 	void CreateDescriptorHeaps() {
@@ -865,11 +890,11 @@ private:
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
-		m_temporalAntiAliasing->Constant = GraphicsSettings.TemporalAntiAliasing;
+		m_temporalAntiAliasing->Constant = GraphicsSettings.PostProcessing.TemporalAntiAliasing;
 		m_temporalAntiAliasing->TextureDescriptors = {
 			.PreviousOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::PreviousOutputSRV),
 			.CurrentOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::CurrentOutputSRV),
-			.MotionVectorsSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionVectorsSRV),
+			.MotionSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionSRV),
 			.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::FinalOutputUAV)
 		};
 	}
@@ -889,30 +914,31 @@ private:
 
 	void CreateTopLevelAccelerationStructure(bool updateOnly) {
 		vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
-		instanceDescs.reserve(size(m_renderItems));
-		for (UINT i = 0; auto & renderItem : m_renderItems) {
-			const auto& shape = *renderItem.Shape;
+		instanceDescs.reserve(size(m_renderObjects));
+		for (UINT i = 0; auto & renderObject : m_renderObjects) {
+			const auto& shape = *renderObject.Shape;
 
 			struct {
 				LPCSTR Name;
-				PxVec3 Scale;
+				PxVec3 Scaling;
 			} object;
 			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
-				case PxGeometryType::eSPHERE: {
+				case PxGeometryType::eSPHERE:
+				{
 					object = {
 						.Name = ObjectNames::Sphere,
-						.Scale = PxVec3(geometry.sphere().radius * 2)
+						.Scaling = PxVec3(geometry.sphere().radius * 2)
 					};
 				} break;
 
 				default: throw;
 			}
 
-			if (updateOnly) UpdateRenderItem(renderItem);
+			if (updateOnly) UpdateRenderObject(renderObject);
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));
 			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
-			world.scale(PxVec4(object.Scale, 1));
+			world.scale(PxVec4(object.Scaling, 1));
 
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
 			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(world.front())));
@@ -958,20 +984,19 @@ private:
 				if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
-			XMMATRIX environmentLightCubeMapTransform, environmentCubeMapTransform;
+			Matrix environmentLightCubeMapTransform, environmentCubeMapTransform;
 
 			{
-				const auto GetTexture = [&](LPCSTR name, UINT& srvDescriptorHeapIndex, XMMATRIX& transform) {
-					if (const auto pTextures = m_textures.find(name); pTextures != m_textures.cend()) {
+				const auto GetTexture = [&](LPCSTR name, UINT& srvDescriptorHeapIndex, Matrix& transform) {
+					if (const auto pTextures = m_textures.find(name); pTextures != cend(m_textures)) {
 						const auto& textures = get<0>(pTextures->second);
-						if (const auto pTexture = textures.find(TextureType::CubeMap); pTexture != textures.cend()) {
+						if (const auto pTexture = textures.find(TextureType::CubeMap); pTexture != cend(textures)) {
 							srvDescriptorHeapIndex = pTexture->second.DescriptorHeapIndices.SRV;
 							transform = get<1>(pTextures->second);
 							return;
 						}
 					}
 					srvDescriptorHeapIndex = ~0u;
-					transform = XMMatrixIdentity();
 				};
 
 				UINT environmentLightCubeMapDescriptorHeapIndex, environmentCubeMapDescriptorHeapIndex;
@@ -981,10 +1006,10 @@ private:
 				CreateBuffer(
 					m_shaderBuffers.GlobalResourceDescriptorHeapIndices,
 					GlobalResourceDescriptorHeapIndices{
-						.LocalResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices,
+						.InstanceResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::InstanceResourceDescriptorHeapIndices,
 						.Camera = ResourceDescriptorHeapIndex::Camera,
 						.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
-						.LocalData = ResourceDescriptorHeapIndex::LocalData,
+						.InstanceData = ResourceDescriptorHeapIndex::InstanceData,
 						.Output = ResourceDescriptorHeapIndex::CurrentOutputUAV,
 						.EnvironmentLightCubeMap = environmentLightCubeMapDescriptorHeapIndex,
 						.EnvironmentCubeMap = environmentCubeMapDescriptorHeapIndex
@@ -1008,6 +1033,7 @@ private:
 				GlobalData{
 					.RaytracingMaxTraceRecursionDepth = GraphicsSettings.Raytracing.MaxTraceRecursionDepth,
 					.RaytracingSamplesPerPixel = GraphicsSettings.Raytracing.SamplesPerPixel,
+					.MaterialBaseColorAlphaThreshold = 0.94f,
 					.EnvironmentLightColor{ 0, 0, 0, -1 },
 					.EnvironmentLightCubeMapTransform = environmentLightCubeMapTransform,
 					.EnvironmentColor{ 0, 0, 0, -1 },
@@ -1023,35 +1049,35 @@ private:
 				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
-			const auto renderItemsSize = static_cast<UINT>(size(m_renderItems));
+			const auto renderObjectsSize = static_cast<UINT>(size(m_renderObjects));
 
-			CreateBuffer(m_shaderBuffers.LocalResourceDescriptorHeapIndices, renderItemsSize, ResourceDescriptorHeapIndex::LocalResourceDescriptorHeapIndices);
+			CreateBuffer(m_shaderBuffers.InstanceResourceDescriptorHeapIndices, renderObjectsSize, ResourceDescriptorHeapIndex::InstanceResourceDescriptorHeapIndices);
 
-			CreateBuffer(m_shaderBuffers.LocalData, renderItemsSize, ResourceDescriptorHeapIndex::LocalData);
+			CreateBuffer(m_shaderBuffers.InstanceData, renderObjectsSize, ResourceDescriptorHeapIndex::InstanceData);
 
-			for (const auto i : views::iota(0u, renderItemsSize)) {
-				const auto& renderItem = m_renderItems[i];
+			for (const auto i : views::iota(0u, renderObjectsSize)) {
+				const auto& renderObject = m_renderObjects[i];
 
-				auto& localResourceDescriptorHeapIndices = (*m_shaderBuffers.LocalResourceDescriptorHeapIndices)[i];
+				auto& instanceResourceDescriptorHeapIndices = (*m_shaderBuffers.InstanceResourceDescriptorHeapIndices)[i];
 
-				localResourceDescriptorHeapIndices = {
+				instanceResourceDescriptorHeapIndices = {
 					.TriangleMesh{
-						.Vertices = renderItem.ResourceDescriptorHeapIndices.TriangleMesh.Vertices,
-						.Indices = renderItem.ResourceDescriptorHeapIndices.TriangleMesh.Indices
+						.Vertices = renderObject.ResourceDescriptorHeapIndices.TriangleMesh.Vertices,
+						.Indices = renderObject.ResourceDescriptorHeapIndices.TriangleMesh.Indices
 					}
 				};
 
-				auto& localData = (*m_shaderBuffers.LocalData)[i];
+				auto& instanceData = (*m_shaderBuffers.InstanceData)[i];
 
-				localData.Material = renderItem.Material;
+				instanceData.Material = renderObject.Material;
 
-				if (renderItem.pTextures != nullptr) {
-					for (const auto& [textureType, texture] : get<0>(*renderItem.pTextures)) {
-						auto& textures = localResourceDescriptorHeapIndices.Textures;
+				if (renderObject.pTextures != nullptr) {
+					for (const auto& [textureType, texture] : get<0>(*renderObject.pTextures)) {
+						auto& textures = instanceResourceDescriptorHeapIndices.Textures;
 						UINT* p;
 						switch (textureType) {
 							case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
-							case TextureType::EmissiveMap: p = &textures.EmissiveMap; break;
+							case TextureType::EmissiveColorMap: p = &textures.EmissiveColorMap; break;
 							case TextureType::SpecularMap: p = &textures.SpecularMap; break;
 							case TextureType::MetallicMap: p = &textures.MetallicMap; break;
 							case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
@@ -1062,7 +1088,7 @@ private:
 						}
 						if (p != nullptr) *p = texture.DescriptorHeapIndices.SRV;
 					}
-					localData.TextureTransform = XMMatrixTranspose(get<1>(*renderItem.pTextures));
+					instanceData.TextureTransform = XMMatrixTranspose(get<1>(*renderObject.pTextures));
 				}
 			}
 		}
@@ -1115,14 +1141,37 @@ private:
 	void UpdateCamera(const GamePad::State& gamepadState, const Keyboard::State& keyboardState, const Mouse::State& mouseState) {
 		const auto elapsedSeconds = static_cast<float>(m_stepTimer.GetElapsedSeconds());
 
-		const auto Translate = [&](const XMFLOAT3& displacement) {
-			if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0) return;
+		Vector3 translation;
+		float yaw = 0, pitch = 0;
 
-			m_isViewChanged = true;
+		const auto& speedSettings = ControlsSettings.Camera.Speed;
 
+		if (gamepadState.IsConnected()) {
+			const auto translationSpeed = elapsedSeconds * speedSettings.Translation * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1.0f) * (gamepadState.IsRightTriggerPressed() ? 2.0f : 1.0f);
+			translation.x += gamepadState.thumbSticks.leftX * translationSpeed;
+			translation.z += gamepadState.thumbSticks.leftY * translationSpeed;
+
+			const auto rotationSpeed = elapsedSeconds * XM_2PI * speedSettings.Rotation;
+			yaw += gamepadState.thumbSticks.rightX * rotationSpeed;
+			pitch += gamepadState.thumbSticks.rightY * rotationSpeed;
+		}
+
+		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
+			const auto translationSpeed = elapsedSeconds * speedSettings.Translation * (keyboardState.LeftControl ? 0.5f : 1.0f) * (keyboardState.LeftShift ? 2.0f : 1.0f);
+			if (keyboardState.A) translation.x -= translationSpeed;
+			if (keyboardState.D) translation.x += translationSpeed;
+			if (keyboardState.W) translation.z += translationSpeed;
+			if (keyboardState.S) translation.z -= translationSpeed;
+
+			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.13f * speedSettings.Rotation;
+			yaw += static_cast<float>(mouseState.x) * rotationSpeed;
+			pitch += static_cast<float>(-mouseState.y) * rotationSpeed;
+		}
+
+		if (translation.x != 0 || translation.y != 0 || translation.z != 0) {
 			constexpr auto ToPxVec3 = [](const XMFLOAT3& value) { return PxVec3(value.x, value.y, -value.z); };
 
-			auto x = ToPxVec3(m_cameraController.GetNormalizedRightDirection() * displacement.x + m_cameraController.GetNormalizedUpDirection() * displacement.y + m_cameraController.GetNormalizedForwardDirection() * displacement.z);
+			auto x = ToPxVec3(m_cameraController.GetNormalizedRightDirection() * translation.x + m_cameraController.GetNormalizedUpDirection() * translation.y + m_cameraController.GetNormalizedForwardDirection() * translation.z);
 			const auto magnitude = x.magnitude();
 			const auto normalized = x / magnitude;
 
@@ -1131,63 +1180,30 @@ private:
 				x = normalized * max(0.0f, raycastBuffer.block.distance - 0.1f);
 			}
 
-			m_cameraController.Translate({ x.x, x.y, -x.z });
-		};
-
-		const auto Rotate = [&](float pitch, float yaw) {
-			if (const auto angle = m_cameraController.GetRotation().x + pitch;
-				angle > XM_PIDIV2) pitch = max(0.0f, -angle + XM_PIDIV2 - 0.1f);
-			else if (angle < -XM_PIDIV2) pitch = min(0.0f, -angle - XM_PIDIV2 + 0.1f);
-
-			if (pitch == 0 && yaw == 0) return;
-
-			m_isViewChanged = true;
-
-			m_cameraController.Rotate({ pitch, yaw, 0 });
-		};
-
-		const auto& speedSettings = ControlsSettings.Camera.Speed;
-
-		if (gamepadState.IsConnected()) {
-			const auto translationSpeed = elapsedSeconds * speedSettings.Translation * (gamepadState.IsLeftTriggerPressed() ? 0.5f : 1.0f) * (gamepadState.IsRightTriggerPressed() ? 2.0f : 1.0f);
-			const XMFLOAT3 displacement{ gamepadState.thumbSticks.leftX * translationSpeed, 0, gamepadState.thumbSticks.leftY * translationSpeed };
-			Translate(displacement);
-
-			const auto rotationSpeed = elapsedSeconds * XM_2PI * speedSettings.Rotation;
-			Rotate(gamepadState.thumbSticks.rightY * rotationSpeed, gamepadState.thumbSticks.rightX * rotationSpeed);
+			translation = { x.x, x.y, -x.z };
 		}
 
-		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
-			const auto translationSpeed = elapsedSeconds * speedSettings.Translation * (keyboardState.LeftControl ? 0.5f : 1.0f) * (keyboardState.LeftShift ? 2.0f : 1.0f);
-			XMFLOAT3 displacement{};
-			if (keyboardState.A) displacement.x -= translationSpeed;
-			if (keyboardState.D) displacement.x += translationSpeed;
-			if (keyboardState.W) displacement.z += translationSpeed;
-			if (keyboardState.S) displacement.z -= translationSpeed;
-			Translate(displacement);
+		if (const auto angle = asin(m_cameraController.GetNormalizedForwardDirection().y) + pitch;
+			angle > XM_PIDIV2) pitch = max(0.0f, -angle + XM_PIDIV2 - 0.1f);
+		else if (angle < -XM_PIDIV2) pitch = min(0.0f, -angle - XM_PIDIV2 + 0.1f);
 
-			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.13f * speedSettings.Rotation;
-			Rotate(static_cast<float>(-mouseState.y) * rotationSpeed, static_cast<float>(mouseState.x) * rotationSpeed);
-		}
+		if (translation.x == 0 && translation.y == 0 && translation.z == 0 && yaw == 0 && pitch == 0) return;
 
-		if (m_isViewChanged) {
-			auto& camera = m_shaderBuffers.Camera->GetData();
-			camera.Position = m_cameraController.GetPosition();
-			camera.RightDirection = m_cameraController.GetRightDirection();
-			camera.UpDirection = m_cameraController.GetUpDirection();
-			camera.ForwardDirection = m_cameraController.GetForwardDirection();
-		}
+		m_cameraController.Translate(translation);
+		m_cameraController.Rotate(yaw, pitch);
+
+		m_isViewChanged = true;
 	}
 
 	void UpdateGlobalData() {
 		auto& globalData = m_shaderBuffers.GlobalData->GetData();
 
-		globalData.FrameCount = m_stepTimer.GetFrameCount();
+		globalData.FrameIndex = m_stepTimer.GetFrameCount() - 1;
 		globalData.AccumulatedFrameIndex = m_isViewChanged ? 0 : globalData.AccumulatedFrameIndex + 1;
 	}
 
-	void UpdateRenderItem(RenderItem& renderItem) const {
-		const auto& shape = *renderItem.Shape;
+	void UpdateRenderObject(RenderObject& renderObject) const {
+		const auto& shape = *renderObject.Shape;
 
 		const auto rigidBody = shape.getActor()->is<PxRigidBody>();
 		if (rigidBody == nullptr) return;
@@ -1198,15 +1214,15 @@ private:
 		const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
 
 		if (const auto& [PositionY, Period] = m_physicsObjects.Spring;
-			renderItem.Name == ObjectNames::HarmonicOscillator) {
+			renderObject.Name == ObjectNames::HarmonicOscillator) {
 			const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Period);
 			const PxVec3 x(0, position.y - PositionY, 0);
 			rigidBody->addForce(-k * x);
 		}
 
 		if (const auto& earth = m_physicsObjects.RigidBodies.at(ObjectNames::Earth);
-			(get<1>(earth) && renderItem.Name != ObjectNames::Earth)
-			|| renderItem.Name == ObjectNames::Moon) {
+			(get<1>(earth) && renderObject.Name != ObjectNames::Earth)
+			|| renderObject.Name == ObjectNames::Moon) {
 			const auto& earthRigidBody = *get<0>(earth);
 			const auto x = earthRigidBody.getGlobalPose().p - position;
 			const auto magnitude = x.magnitude();
@@ -1215,7 +1231,7 @@ private:
 		}
 
 		if (const auto& star = m_physicsObjects.RigidBodies.at(ObjectNames::Star);
-			get<1>(star) && renderItem.Name != ObjectNames::Star) {
+			get<1>(star) && renderObject.Name != ObjectNames::Star) {
 			const auto x = get<0>(star)->getGlobalPose().p - position;
 			const auto normalized = x.getNormalized();
 			rigidBody->addForce(10 * normalized, PxForceMode::eACCELERATION);
@@ -1240,16 +1256,18 @@ private:
 	void RenderMenu() {
 		ImGui_ImplDX12_NewFrame();
 		ImGui_ImplWin32_NewFrame();
+
+		const auto outputSize = GetOutputSize();
+
+		ImGui::GetIO().DisplaySize = { static_cast<float>(outputSize.cx), static_cast<float>(outputSize.cy) };
+
 		ImGui::NewFrame();
 
 		{
-			const auto outputSize = GetOutputSize();
-
-			ImGui::SetNextWindowPos({});
-			ImGui::SetNextWindowSize({ static_cast<float>(outputSize.cx), 0 });
 			ImGui::SetNextWindowBgAlpha(UISettings.Menu.BackgroundOpacity);
+			ImGui::SetNextWindowPos({});
 
-			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_HorizontalScrollbar);
+			ImGui::Begin("Menu", &m_isMenuOpen, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_HorizontalScrollbar);
 
 			if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) ImGui::SetWindowFocus();
 
@@ -1260,11 +1278,11 @@ private:
 					{
 						const auto windowModes = { "Windowed", "Borderless", "Fullscreen" };
 						if (auto windowMode = m_windowModeHelper->GetMode();
-							ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), windowModes.begin(), static_cast<int>(size(windowModes)))) {
+							ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), data(windowModes), static_cast<int>(size(windowModes)))) {
 							m_windowModeHelper->SetMode(windowMode);
 
 							GraphicsSettings.WindowMode = windowMode;
-							isChanged = m_isWindowSettingChanged = true;
+							m_isWindowSettingChanged = isChanged = true;
 						}
 					}
 
@@ -1278,7 +1296,7 @@ private:
 									m_windowModeHelper->SetResolution(displayResolution);
 
 									GraphicsSettings.Resolution = displayResolution;
-									m_isWindowSettingChanged = isChanged = true;
+									isChanged = m_isWindowSettingChanged = true;
 								}
 								if (isSelected) ImGui::SetItemDefaultFocus();
 							}
@@ -1314,10 +1332,17 @@ private:
 							isLensChanged = isChanged = true;
 						}
 
-						if (ImGui::TreeNodeEx("Depth of View", ImGuiTreeNodeFlags_DefaultOpen)) {
+						if (ImGui::TreeNodeEx("Depth of Field", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& depthOfFieldSettings = cameraSettings.DepthOfField;
 
-							auto isDepthOfFieldChanged = ImGui::Checkbox("Enable", &depthOfFieldSettings.IsEnabled);
+							bool isDepthOfFieldChanged;
+							{
+								ImGui::PushID("Enable Depth of Field");
+
+								isDepthOfFieldChanged = ImGui::Checkbox("Enable", &depthOfFieldSettings.IsEnabled);
+
+								ImGui::PopID();
+							}
 
 							if (depthOfFieldSettings.IsEnabled) {
 								if (auto focusDistance = m_cameraController.GetFocusDistance(); ImGui::DragFloat("Focus Distance", &focusDistance, 0.1f, CameraMinFocusDistance, m_cameraController.GetFarZ(), "%.1f", ImGuiSliderFlags_AlwaysClamp)) {
@@ -1374,23 +1399,35 @@ private:
 						ImGui::TreePop();
 					}
 
-					if (ImGui::TreeNodeEx("Temporal Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
-						auto& temporalAntiAliasingSettings = GraphicsSettings.TemporalAntiAliasing;
+					if (ImGui::TreeNodeEx("Post-Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& postProcessingSetttings = GraphicsSettings.PostProcessing;
 
-						isChanged |= ImGui::Checkbox("Enable", &temporalAntiAliasingSettings.IsEnabled);
+						if (ImGui::TreeNodeEx("Temporal Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& temporalAntiAliasingSettings = postProcessingSetttings.TemporalAntiAliasing;
 
-						if (temporalAntiAliasingSettings.IsEnabled) {
-							if (ImGui::SliderFloat("Alpha", &temporalAntiAliasingSettings.Alpha, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
-								m_temporalAntiAliasing->Constant.Alpha = temporalAntiAliasingSettings.Alpha;
+							{
+								ImGui::PushID("Enable Temporal Anti-Aliasing");
 
-								isChanged = true;
+								isChanged |= ImGui::Checkbox("Enable", &temporalAntiAliasingSettings.IsEnabled);
+
+								ImGui::PopID();
 							}
 
-							if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, TemporalAntiAliasingMaxColorBoxSigma, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
-								m_temporalAntiAliasing->Constant.ColorBoxSigma = temporalAntiAliasingSettings.ColorBoxSigma;
+							if (temporalAntiAliasingSettings.IsEnabled) {
+								if (ImGui::SliderFloat("Alpha", &temporalAntiAliasingSettings.Alpha, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+									m_temporalAntiAliasing->Constant.Alpha = temporalAntiAliasingSettings.Alpha;
 
-								isChanged = true;
+									isChanged = true;
+								}
+
+								if (ImGui::SliderFloat("Color-Box Sigma", &temporalAntiAliasingSettings.ColorBoxSigma, 0, TemporalAntiAliasingMaxColorBoxSigma, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+									m_temporalAntiAliasing->Constant.ColorBoxSigma = temporalAntiAliasingSettings.ColorBoxSigma;
+
+									isChanged = true;
+								}
 							}
+
+							ImGui::TreePop();
 						}
 
 						ImGui::TreePop();
@@ -1420,7 +1457,7 @@ private:
 				}
 
 				{
-					ImGui::PushID(0);
+					ImGui::PushID("Controls Settings");
 
 					if (ImGui::TreeNode("Controls")) {
 						auto isChanged = false;
@@ -1452,7 +1489,7 @@ private:
 
 			if (ImGui::CollapsingHeader("Controls")) {
 				const auto AddContents = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& list) {
-					if (ImGui::TreeNode(treeLabel)) {
+					if (ImGui::TreeNodeEx(treeLabel, ImGuiTreeNodeFlags_DefaultOpen)) {
 						if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInner)) {
 							for (const auto& [first, second] : list) {
 								ImGui::TableNextRow();

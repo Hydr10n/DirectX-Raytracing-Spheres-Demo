@@ -9,6 +9,7 @@ module;
 export module DirectX.PostProcess.TemporalAntiAliasing;
 
 using namespace DX;
+using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX::PostProcess {
@@ -17,7 +18,7 @@ export namespace DirectX::PostProcess {
 
 		SIZE TextureSize{};
 
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE PreviousOutputSRV, CurrentOutputSRV, MotionVectorsSRV, FinalOutputUAV; } TextureDescriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE PreviousOutputSRV, CurrentOutputSRV, MotionSRV, FinalOutputUAV; } TextureDescriptors{};
 
 		TemporalAntiAliasing(ID3D12Device* device) {
 			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pTemporalAntiAliasing, size(g_pTemporalAntiAliasing));
@@ -30,7 +31,7 @@ export namespace DirectX::PostProcess {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(0, TextureDescriptors.PreviousOutputSRV);
 			commandList->SetComputeRootDescriptorTable(1, TextureDescriptors.CurrentOutputSRV);
-			commandList->SetComputeRootDescriptorTable(2, TextureDescriptors.MotionVectorsSRV);
+			commandList->SetComputeRootDescriptorTable(2, TextureDescriptors.MotionSRV);
 			commandList->SetComputeRootDescriptorTable(3, TextureDescriptors.FinalOutputUAV);
 			commandList->SetComputeRoot32BitConstants(4, 2, &Constant, 0);
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
@@ -38,7 +39,7 @@ export namespace DirectX::PostProcess {
 		}
 
 	private:
-		Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
-		Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineStateObject;
+		ComPtr<ID3D12RootSignature> m_rootSignature;
+		ComPtr<ID3D12PipelineState> m_pipelineStateObject;
 	};
 }

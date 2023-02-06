@@ -47,35 +47,10 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 	- Alpha
 	- Color-Box Sigma
 
-### Controls
+### Supported Input Devices
 - Xbox Controller
-	|||
-	|-|-|
-	|Menu|Open/close menu|
-	|View|Run/pause physics simulation|
-	|LS (rotate)|Move|
-	|LT (hold)|Move slower|
-	|RT (hold)|Move faster|
-	|RS (rotate)|Look around|
-	|X|Toggle gravity of Earth|
-	|B|Toggle gravity of the star|
-
 - Keyboard
-	|||
-	|-|-|
-	|Alt + Enter|Toggle between windowed/borderless and fullscreen modes|
-	|Esc|Open/close menu|
-	|Tab|Run/pause physics simulation|
-	|W A S D|Move|
-	|Left Ctrl (hold)|Move slower|
-	|Left Shift (hold)|Move faster|
-	|G|Toggle gravity of Earth|
-	|H|Toggle gravity of the star|
-
 - Mouse
-	|||
-	|-|-|
-	|(Move)|Look around|
 
 ---
 

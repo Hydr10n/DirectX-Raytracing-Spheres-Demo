@@ -122,7 +122,7 @@
     <ClCompile Include="Material.ixx" />
     <ClCompile Include="Random.ixx" />
     <ClCompile Include="RenderTexture.cpp" />
-    <ClCompile Include="ShaderCommonData.ixx" />
+    <ClCompile Include="RaytracingShaderData.ixx" />
     <ClCompile Include="SharedData.ixx" />
     <ClCompile Include="TemporalAntiAliasing.ixx" />
     <ClCompile Include="Texture.ixx" />
@@ -138,7 +138,7 @@
   <ItemGroup>
     <None Include="Shaders\Camera.hlsli" />
     <None Include="Shaders\ColorHelpers.hlsli" />
-    <None Include="Shaders\Common.hlsli" />
+    <None Include="Shaders\Raytracing.hlsli" />
     <None Include="Shaders\HitInfo.hlsli" />
     <None Include="Shaders\BxDFs.hlsli" />
     <None Include="Shaders\Numbers.hlsli" />

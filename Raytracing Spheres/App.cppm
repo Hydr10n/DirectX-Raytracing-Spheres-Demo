@@ -9,9 +9,10 @@ export module App;
 import WindowHelpers;
 
 using namespace WindowHelpers;
+using namespace std;
 
 export struct App {
-	App(const std::shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false);
+	App(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false);
 	~App();
 
 	SIZE GetOutputSize() const noexcept;
@@ -30,5 +31,5 @@ export struct App {
 
 private:
 	struct Impl;
-	const std::unique_ptr<Impl> m_impl;
+	const unique_ptr<Impl> m_impl;
 };

@@ -24,8 +24,8 @@ export {
 	struct CameraController {
 		const auto& GetPosition() const { return m_position; }
 
-		void SetPosition(const XMFLOAT3& position) {
-			m_position = position;
+		void SetPosition(const XMFLOAT3& value) {
+			m_position = value;
 
 			m_isViewChanged = true;
 		}
@@ -34,9 +34,9 @@ export {
 		const auto& GetUpDirection() const { return m_upDirection; }
 		const auto& GetForwardDirection() const { return m_forwardDirection; }
 
-		const auto GetNormalizedRightDirection() const { return m_rightDirection / m_rightDirection.Length(); }
-		const auto GetNormalizedUpDirection() const { return m_upDirection / m_upDirection.Length(); }
-		const auto GetNormalizedForwardDirection() const { return m_forwardDirection / m_forwardDirection.Length(); }
+		auto GetNormalizedRightDirection() const { return m_rightDirection / m_rightDirection.Length(); }
+		auto GetNormalizedUpDirection() const { return m_upDirection / m_upDirection.Length(); }
+		auto GetNormalizedForwardDirection() const { return m_forwardDirection / m_forwardDirection.Length(); }
 
 		void SetDirections(const XMFLOAT3& forwardDirection, const XMFLOAT3& upDirection = { 0, 1, 0 }, bool setFocusDistance = true) {
 			m_forwardDirection = forwardDirection;
@@ -54,56 +54,60 @@ export {
 
 		const auto& GetRotation() const { return m_rotation; }
 
-		void SetRotation(const XMFLOAT3& rotation) {
-			m_rotation = { remainder(rotation.x, XM_2PI), remainder(rotation.y, XM_2PI), remainder(rotation.z, XM_2PI) };
+		void SetRotation(const Quaternion& value) {
+			value.Normalize(m_rotation);
 
-			const auto transform = Quaternion::CreateFromYawPitchRoll(m_rotation.y, -m_rotation.x, -m_rotation.z);
-			Vector3::Transform({ 1, 0, 0 }, transform).Normalize(m_rightDirection);
-			Vector3::Transform({ 0, 0, 1 }, transform).Normalize(m_forwardDirection);
+			Vector3::Transform({ 0, 0, 1 }, m_rotation).Normalize(m_forwardDirection);
+			Vector3::Transform({ 1, 0, 0 }, m_rotation).Normalize(m_rightDirection);
 
 			m_upDirection = m_forwardDirection.Cross(m_rightDirection) * m_upDirectionLength;
-			m_rightDirection *= m_rightDirectionLength;
 			m_forwardDirection *= m_forwardDirectionLength;
+			m_rightDirection *= m_rightDirectionLength;
 
 			m_isViewChanged = true;
 		}
 
-		void LookAt(const XMFLOAT3& origin, const XMFLOAT3& focusPosition, const XMFLOAT3& upDirection = { 0, 1, 0 }, bool setFocusDistance = true) {
-			SetDirections(focusPosition - origin, upDirection, setFocusDistance);
+		void LookAt(const XMFLOAT3& position, const XMFLOAT3& upDirection = { 0, 1, 0 }, bool setFocusDistance = true) {
+			SetDirections(position - m_position, upDirection, setFocusDistance);
 		}
 
 		auto GetFocusDistance() const { return m_forwardDirectionLength; }
 
-		void SetFocusDistance(float length) {
-			m_rightDirectionLength *= length / m_forwardDirectionLength;
-			m_upDirectionLength *= length / m_forwardDirectionLength;
-			m_forwardDirectionLength = length;
+		void SetFocusDistance(float value) {
+			m_rightDirectionLength *= value / m_forwardDirectionLength;
+			m_upDirectionLength *= value / m_forwardDirectionLength;
+			m_forwardDirectionLength = value;
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 			m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 			m_forwardDirection = GetNormalizedForwardDirection() * m_forwardDirectionLength;
 		}
 
-		const auto& GetView() const {
+		void Translate(const XMFLOAT3& value) { SetPosition(m_position + value); }
+
+		void Rotate(float yaw, float pitch, float roll = 0) {
+			m_rotation *= Quaternion::CreateFromAxisAngle(m_rightDirection, -pitch);
+			m_rotation *= Quaternion::CreateFromAxisAngle({ 0, 1, 0 }, yaw);
+			m_rotation *= Quaternion::CreateFromAxisAngle(m_forwardDirection, -roll);
+			SetRotation(m_rotation);
+		}
+
+		const auto& GetWorldToView() const {
 			if (m_isViewChanged) {
-				m_view = XMMatrixLookToLH(m_position, m_forwardDirection, m_upDirection);
+				m_worldToView = XMMatrixLookToLH(m_position, m_forwardDirection, m_upDirection);
 
 				m_isViewChanged = false;
 			}
-			return m_view;
+			return m_worldToView;
 		}
-
-		void Translate(const XMFLOAT3& displacement) { SetPosition(m_position + displacement); }
-
-		void Rotate(const XMFLOAT3& rotation) { SetRotation(m_rotation + rotation); }
 
 		auto GetNearZ() const { return m_nearZ; }
 
 		auto GetFarZ() const { return m_farZ; }
 
-		const auto& GetProjection() const { return m_projection; }
+		const auto& GetViewToProjection() const { return m_viewToProjection; }
 
-		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ = 1e-2f, float farZ = 1e3f) {
-			m_projection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
+		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ, float farZ) {
+			m_viewToProjection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
 			m_nearZ = nearZ;
 			m_farZ = farZ;
 
@@ -113,17 +117,19 @@ export {
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 		}
 
-		auto GetViewProjection() const { return GetView() * GetProjection(); }
+		void SetLens(float verticalFieldOfView, float aspectRatio) { SetLens(verticalFieldOfView, aspectRatio, m_nearZ, m_farZ); }
 
-		auto GetInverseViewProjection() const { return XMMatrixInverse(nullptr, GetViewProjection()); }
+		auto GetWorldToProjection() const { return GetWorldToView() * GetViewToProjection(); }
+		auto GetProjectionToWorld() const { return GetWorldToProjection().Invert(); }
 
 	private:
 		mutable bool m_isViewChanged = true;
 		float m_rightDirectionLength = 1, m_upDirectionLength = 1, m_forwardDirectionLength = 1;
-		Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 }, m_rotation;
-		mutable XMMATRIX m_view{};
+		Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 };
+		Quaternion m_rotation;
+		mutable Matrix m_worldToView{};
 
-		float m_nearZ = 1e-2f, m_farZ = 1e3f;
-		XMMATRIX m_projection{};
+		float m_nearZ = 1e-2f, m_farZ = 1e4f;
+		Matrix m_viewToProjection{};
 	};
 }

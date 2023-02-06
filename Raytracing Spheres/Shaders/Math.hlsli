@@ -5,7 +5,14 @@
 #include "Random.hlsli"
 
 namespace Math {
-	inline float2 CalculateNDC(uint2 pixelCoordinate, uint2 pixelDimensions, float2 pixelJitter = 0) { return (pixelCoordinate + 0.5f + pixelJitter) / pixelDimensions * float2(2, -2) + float2(-1, 1); }
+	inline float2 CalculateUV(float3 position, float4x4 worldToProjection) {
+		const float4 projection = mul(worldToProjection, float4(position, 1));
+		return projection.xy / projection.w * float2(0.5f, -0.5f) + 0.5f;
+	}
+
+	inline float2 CalculateUV(uint2 pixelCoordinate, uint2 pixelDimensions, float2 pixelJitter = 0) { return (pixelCoordinate + 0.5f + pixelJitter) / pixelDimensions; }
+
+	inline float2 CalculateNDC(float2 UV) { return UV * float2(2, -2) + float2(-1, 1); }
 
 	inline float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3]) {
 		const float2 d0 = textureCoordinates[1] - textureCoordinates[0], d1 = textureCoordinates[2] - textureCoordinates[0];
