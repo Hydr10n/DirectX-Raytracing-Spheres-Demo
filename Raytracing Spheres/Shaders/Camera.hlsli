@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Math.hlsli"
+#include "STL.hlsli"
 
 struct Camera {
 	float3 Position;
@@ -13,6 +13,7 @@ struct Camera {
 	float ApertureRadius;
 	float2 PixelJitter;
 	float NearZ, FarZ;
+	float4x4 PreviousWorldToView, PreviousWorldToProjection;
 
 	RayDesc GeneratePinholeRay(float2 NDC) {
 		RayDesc rayDesc;
@@ -24,8 +25,8 @@ struct Camera {
 		return rayDesc;
 	}
 
-	RayDesc GenerateThinLensRay(float2 NDC, inout Random random) {
-		const float2 value = Math::SampleDisk(random);
+	RayDesc GenerateThinLensRay(float2 NDC) {
+		const float2 value = STL::ImportanceSampling::Uniform::GetRay(STL::Rng::GetFloat2()).xy;
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
 		rayDesc.Origin = Position + offset;

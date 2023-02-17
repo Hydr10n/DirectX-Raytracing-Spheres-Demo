@@ -11,7 +11,8 @@ export module HaltonSamplePattern;
 using namespace DirectX;
 using namespace std;
 
-export struct HaltonSamplePattern {
+export class HaltonSamplePattern {
+public:
 	HaltonSamplePattern(uint32_t sampleCount = ~0u) noexcept(false) : m_sampleCount(sampleCount) { if (!sampleCount) throw invalid_argument("Sample count cannot be 0"); }
 
 	static auto Get(uint32_t index, uint32_t base) {

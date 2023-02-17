@@ -4,9 +4,9 @@
 
 namespace ImGuiEx {
 	struct ScopedEnablement {
-		ScopedEnablement(bool enable) {
-			ImGui::PushItemFlag(ImGuiItemFlags_Disabled, !enable);
-			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * (enable ? 1.0f : 0.5f));
+		ScopedEnablement(bool value) {
+			ImGui::PushItemFlag(ImGuiItemFlags_Disabled, !value);
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * (value ? 1.0f : 0.5f));
 		}
 
 		~ScopedEnablement() {
@@ -14,6 +14,10 @@ namespace ImGuiEx {
 			ImGui::PopItemFlag();
 		}
 	};
+
+	inline void AlignForWidth(float width, float alignment = 0.5f) {
+		if (const auto offset = (ImGui::GetContentRegionAvail().x - width) * alignment; offset > 0) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+	}
 
 	inline void AddUnderline(const ImColor& color) {
 		auto itemRectMin = ImGui::GetItemRectMin(), itemRectMax = ImGui::GetItemRectMax();

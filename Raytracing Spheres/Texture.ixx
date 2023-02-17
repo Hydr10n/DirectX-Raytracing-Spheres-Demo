@@ -28,6 +28,8 @@ using namespace std::filesystem;
 
 export {
 	struct Texture {
+		string Name;
+
 		ComPtr<ID3D12Resource> Resource;
 
 		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
@@ -46,7 +48,7 @@ export {
 		}
 	};
 
-	enum class TextureType { Unknown, BaseColorMap, EmissiveColorMap, SpecularMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, OpacityMap, NormalMap, CubeMap };
+	enum class TextureType { Unknown, BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, OpacityMap, NormalMap, CubeMap };
 
 	struct TextureDictionary : map<string, tuple<map<TextureType, Texture>, Matrix /*Transform*/>, less<>> {
 		using map::map;
@@ -70,44 +72,46 @@ export {
 				for (auto& [Type, Texture] : get<0>(textures)) {
 					threads.emplace_back(
 						[&](size_t threadIndex) {
-							try {
-								{
-									const scoped_lock lock(mutex);
+							{
+								try {
+									{
+										const scoped_lock lock(mutex);
 
-									const decltype(loadedTextures)::value_type* pLoadedTexture = nullptr;
-									for (const auto& loadedTexture : loadedTextures) {
-										if (loadedTexture.second->FilePath == Texture.FilePath) {
-											pLoadedTexture = &loadedTexture;
-											break;
+										const decltype(loadedTextures)::value_type* pLoadedTexture = nullptr;
+										for (const auto& loadedTexture : loadedTextures) {
+											if (loadedTexture.second->FilePath == Texture.FilePath) {
+												pLoadedTexture = &loadedTexture;
+												break;
+											}
 										}
+										if (pLoadedTexture != nullptr) {
+											auto& semaphore = *semaphores.at(pLoadedTexture->first);
+
+											semaphore.acquire();
+
+											Texture = *pLoadedTexture->second;
+
+											semaphore.release();
+
+											return;
+										}
+
+										loadedTextures.emplace_back(threadIndex, &Texture);
 									}
-									if (pLoadedTexture != nullptr) {
-										auto& semaphore = *semaphores.at(pLoadedTexture->first);
 
-										semaphore.acquire();
+									ResourceUploadBatch resourceUploadBatch(pDevice);
+									resourceUploadBatch.Begin();
 
-										Texture = *pLoadedTexture->second;
+									bool isCubeMap;
+									Texture.Load(pDevice, resourceUploadBatch, descriptorHeap, &isCubeMap, DirectoryPath);
+									if (isCubeMap != (Type == TextureType::CubeMap)) throw runtime_error(format("{}: Invalid texture", (DirectoryPath / Texture.FilePath).string()));
 
-										semaphore.release();
+									resourceUploadBatch.End(pCommandQueue).wait();
 
-										return;
-									}
-
-									loadedTextures.emplace_back(pair{ threadIndex, &Texture });
+									semaphores[threadIndex]->release();
 								}
-
-								ResourceUploadBatch resourceUploadBatch(pDevice);
-								resourceUploadBatch.Begin();
-
-								bool isCubeMap;
-								Texture.Load(pDevice, resourceUploadBatch, descriptorHeap, &isCubeMap, DirectoryPath);
-								if (isCubeMap != (Type == TextureType::CubeMap)) throw runtime_error(format("{}: Invalid texture", (DirectoryPath / Texture.FilePath).string()));
-
-								resourceUploadBatch.End(pCommandQueue).wait();
-
-								semaphores[threadIndex]->release();
-					}
-					catch (...) { if (!exception) exception = current_exception(); }
+								catch (...) { if (!exception) exception = current_exception(); }
+							}
 						},
 						std::size(threads)
 							);

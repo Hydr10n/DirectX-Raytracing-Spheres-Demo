@@ -1,76 +1,97 @@
 #pragma once
 
-#include "BxDFs.hlsli"
+#include "STL.hlsli"
 
 #include "HitInfo.hlsli"
 
+enum class ScatterType { DiffuseReflection, SpecularReflection, SpecularTransmission };
+
 struct ScatterResult {
-	float3 Direction;
-	float4 Attenuation;
+	ScatterType Type;
+	float3 Direction, Attenuation;
 };
 
 struct Material {
 	float4 BaseColor, EmissiveColor;
-	float3 Specular; // Amount of dielectric specular reflection. Specifies facing (along normal) reflectivity in the most common 0 - 8% range.
 	float Metallic, Roughness, Opacity, RefractiveIndex;
 	float AmbientOcclusion;
+	float3 _;
 
-	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, inout Random random) {
+	float EstimateDiffuseProbability(float3 N, float3 V, float3 albedo, float3 Rf0) {
+		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, abs(dot(N, V)), Roughness);
+		const float
+			diffuse = STL::Color::Luminance(albedo * (1 - Fenvironment)), specular = STL::Color::Luminance(Fenvironment),
+			diffProb = diffuse / (diffuse + specular + 1e-6);
+		return diffProb < 5e-3 ? 0 : diffProb;
+	}
+
+	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection) {
+		/*
+		 * Sampling the GGX Distribution of Visible Normals
+		 * https://jcgt.org/published/0007/04/01/
+		 */
+
 		ScatterResult scatterResult;
 
+		const float2 random = STL::Rng::GetFloat2();
+
 		const float3 N = hitInfo.Vertex.Normal, V = -worldRayDirection;
-		float3 L;
+		const float3x3 basis = STL::Geometry::GetBasis(N);
 
-		float3 f0;
-		if (BaseColor.a == 1 && Opacity == 1) f0 = Specular * 0.08f;
-		else {
-			const float3 H = BxDFs::GGX::ImportanceSample(N, Roughness, random);
+		float3 H, L;
+		float VoH;
 
-			const float VoH = saturate(dot(V, H)), refractiveIndex = hitInfo.IsFrontFace ? 1 / RefractiveIndex : RefractiveIndex;
+		if (BaseColor.a != 1 || Opacity != 1) {
+			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(random, Roughness, STL::Geometry::RotateVector(basis, V)));
 
-			L = refractiveIndex * sqrt(1 - VoH * VoH) > 1 || random.Float() < BxDFs::SchlickFresnel(VoH, refractiveIndex) ? reflect(worldRayDirection, H) : refract(worldRayDirection, H, refractiveIndex);
+			VoH = abs(dot(V, H));
+
+			const float refractiveIndex = hitInfo.IsFrontFace ? STL::BRDF::IOR::Vacuum / RefractiveIndex : RefractiveIndex;
+			if (refractiveIndex * sqrt(1 - VoH * VoH) > 1 || STL::Rng::GetFloat2().x < STL::BRDF::FresnelTerm_Dielectric(refractiveIndex, VoH)) {
+				L = reflect(-V, H);
+
+				scatterResult.Type = ScatterType::SpecularReflection;
+			}
+			else {
+				L = refract(-V, H, refractiveIndex);
+
+				scatterResult.Type = ScatterType::SpecularTransmission;
+			}
 
 			scatterResult.Direction = L;
-			scatterResult.Attenuation = BaseColor * (1 - (Opacity == 1 ? BaseColor.a : Opacity)) * AmbientOcclusion;
+			scatterResult.Attenuation = BaseColor.rgb * (1 - (Opacity == 1 ? BaseColor.a : Opacity)) * AmbientOcclusion;
 
 			return scatterResult;
 		}
 
-		const float diffuseProbability = (1 - Metallic) / 2;
-		if (random.Float() < diffuseProbability) {
-			/*
-			 * IncidentLight = ReflectedLight * NoL
-			 * BRDF = SurfaceColor / Pi
-			 * PDF = NoL / Pi
-			 * ReflectedLight *= SurfaceColor
-			 */
+		float3 albedo, Rf0;
+		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
 
-			L = Math::SampleCosineHemisphere(N, random);
+		const float diffuseProbability = EstimateDiffuseProbability(N, V, albedo, Rf0);
 
-			scatterResult.Direction = L;
-			scatterResult.Attenuation = dot(hitInfo.VertexUnmappedNormal, L) <= 0 ? 0 : BaseColor / diffuseProbability * AmbientOcclusion;
+		if (STL::Rng::GetFloat2().x < diffuseProbability) {
+			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(random));
+			H = normalize(V + L);
+
+			scatterResult.Type = ScatterType::DiffuseReflection;
+			scatterResult.Attenuation = 1;
 		}
 		else {
-			/*
-			 * IncidentLight = ReflectedLight * NoL
-			 * BRDF = D * G * F / (4 * NoL * NoV)
-			 * PDF = D * NoH / (4 * HoL)
-			 * ReflectedLight *= G * F * HoL / (NoV * NoH)
-			 */
+			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(random, Roughness, STL::Geometry::RotateVector(basis, V)));
+			L = reflect(-V, H);
 
-			const float3 H = BxDFs::GGX::ImportanceSample(N, Roughness, random);
+			scatterResult.Type = ScatterType::SpecularReflection;
+			scatterResult.Attenuation = STL::BRDF::GeometryTerm_Smith(Roughness, abs(dot(N, L)));
+		}
 
-			L = reflect(worldRayDirection, H);
+		scatterResult.Direction = L;
 
-			scatterResult.Direction = L;
-			if (dot(hitInfo.VertexUnmappedNormal, L) <= 0) scatterResult.Attenuation = 0;
-			else {
-				const float
-					NoL = saturate(dot(N, L)), NoV = saturate(dot(N, V)), NoH = saturate(dot(N, H)), HoL = saturate(dot(H, L)),
-					G = BxDFs::GGX::SmithGeometryIndirect(NoL, NoV, Roughness);
-				const float3 F = BxDFs::SchlickFresnel(HoL, lerp(f0, BaseColor.rgb, Metallic));
-				scatterResult.Attenuation = float4(G * F * HoL / (NoV * NoH * (1 - diffuseProbability)), 1) * AmbientOcclusion;
-			}
+		if (dot(hitInfo.VertexUnmappedNormal, L) <= 0) scatterResult.Attenuation = 0;
+		else {
+			VoH = abs(dot(V, H));
+
+			const float3 F = STL::BRDF::FresnelTerm_Schlick(Rf0, VoH);
+			scatterResult.Attenuation *= scatterResult.Type == ScatterType::DiffuseReflection ? albedo * (1 - F) / diffuseProbability : F / (1 - diffuseProbability);
 		}
 
 		return scatterResult;

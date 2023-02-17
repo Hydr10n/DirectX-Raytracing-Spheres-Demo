@@ -37,7 +37,7 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="PhysXWrapper.h">
+    <ClInclude Include="PhysX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ImGuiEx.h">
@@ -100,7 +100,16 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="HaltonSamplePattern.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="DenoisedComposition.ixx">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TextureAlphaBlend.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="NRD.ixx">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -120,10 +129,7 @@
     <None Include="Shaders\Material.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\RadianceRay.hlsli">
-      <Filter>Shader Files</Filter>
-    </None>
-    <None Include="Shaders\Random.hlsli">
+    <None Include="Shaders\IndirectRay.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\TriangleMeshHelpers.hlsli">
@@ -138,15 +144,6 @@
     <None Include="Shaders\Camera.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\Numbers.hlsli">
-      <Filter>Shader Files</Filter>
-    </None>
-    <None Include="Shaders\BxDFs.hlsli">
-      <Filter>Shader Files</Filter>
-    </None>
-    <None Include="Shaders\ColorHelpers.hlsli">
-      <Filter>Shader Files</Filter>
-    </None>
     <None Include="Shaders\Raytracing.hlsli">
       <Filter>Shader Files</Filter>
     </None>
@@ -156,6 +153,12 @@
       <Filter>Shader Files</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\TemporalAntiAliasing.hlsl">
+      <Filter>Shader Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\DenoisedComposition.hlsl">
+      <Filter>Shader Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\TextureAlphaBlend.hlsl">
       <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>

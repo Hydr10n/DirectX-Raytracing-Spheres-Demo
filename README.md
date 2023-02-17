@@ -1,6 +1,6 @@
 # DirectX Raytracing Spheres Demo
 
-Real-time physically based rendering using GPUs capable of DirectX Raytracing, plus physics simulation using NVIDIA PhysX.
+Real-time physically based rendering using GPU capable of DirectX Raytracing, plus physics simulation using NVIDIA PhysX.
 
 ![Raytracing Spheres](Screenshots/Raytracing-Spheres-01.png)
 ![Raytracing Spheres](Screenshots/Raytracing-Spheres-02.png)
@@ -10,15 +10,14 @@ Real-time physically based rendering using GPUs capable of DirectX Raytracing, p
 
 https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-98f5-4541a75a80b9.mp4
 
-https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-8277-692bdc43d389.mp4
+https://user-images.githubusercontent.com/39995363/219587553-93f61d89-2c03-4e37-b1e6-92cd8fbdf4b9.mp4
 
 ---
 
 ## Features
-### Supported Physically Based Material Attributes and Texture Map Types
+### Supported Physically Based Material Attributes & Texture Map Types
 - Base Color
 - Emissive Color
-- Specular
 - Metallic
 - Roughness
 - Opacity
@@ -36,16 +35,20 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 - Resolution
 - V-Sync
 - Camera
+	- Jitter
 	- Vertical Field of View
-	- Depth of Field
-		- Focus Distance
-		- Aperture Radius
 - Raytracing
+	- Russian Roulette
 	- Max Trace Recursion Depth
 	- Samples Per Pixel
-- Temporal Anti-Aliasing
-	- Alpha
-	- Color-Box Sigma
+- Post-Processing
+	- Raytracing Denoising
+		- Validation Layer
+		- Split Screen
+	- Temporal Anti-Aliasing
+	- Bloom
+		- Threshold
+		- Blur Size
 
 ### Supported Input Devices
 - Xbox Controller
@@ -68,6 +71,12 @@ https://user-images.githubusercontent.com/39995363/182796109-f6d74781-0917-4c1d-
 
 ### Dependencies
 - Windows 11 SDK (10.0.22621.0)
+
+- [MathLib](https://github.com/NVIDIAGameWorks/MathLib)
+
+- [NVIDIA Real-Time Denoisers](https://github.com/NVIDIAGameWorks/RayTracingDenoiser)
+
+- [NVIDIA Render Interface](https://github.com/NVIDIAGameWorks/NRI)
 
 - [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
 	```cmd

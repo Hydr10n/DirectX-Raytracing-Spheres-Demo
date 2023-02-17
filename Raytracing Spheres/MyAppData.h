@@ -6,7 +6,6 @@
 
 #include <fstream>
 
-import DirectX.PostProcess.TemporalAntiAliasing;
 import DisplayHelpers;
 import WindowHelpers;
 
@@ -68,33 +67,41 @@ public:
 			bool IsVSyncEnabled = true;
 
 			struct Camera {
+				bool IsJitterEnabled = true;
+
 				float VerticalFieldOfView = 45;
 
-				struct DepthOfField {
-					bool IsEnabled = true;
-
-					float FocusDistance = std::numeric_limits<float>::infinity(), ApertureRadius = 5;
-
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(DepthOfField, IsEnabled, FocusDistance, ApertureRadius);
-				} DepthOfField;
-
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, VerticalFieldOfView, DepthOfField);
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, IsJitterEnabled, VerticalFieldOfView);
 			} Camera;
 
 			struct Raytracing {
+				bool IsRussianRouletteEnabled = true;
+
 				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 1;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Raytracing, MaxTraceRecursionDepth, SamplesPerPixel);
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Raytracing, IsRussianRouletteEnabled, MaxTraceRecursionDepth, SamplesPerPixel);
 			} Raytracing;
 
 			struct PostProcessing {
-				struct TemporalAntiAliasing : DirectX::PostProcess::TemporalAntiAliasing::Constant {
+				struct RaytracingDenoising {
+					bool IsEnabled = true, IsValidationLayerEnabled{};
+
+					float SplitScreen{};
+
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(RaytracingDenoising, IsEnabled, IsValidationLayerEnabled, SplitScreen);
+				} RaytracingDenoising;
+
+				bool IsTemporalAntiAliasingEnabled = true;
+
+				struct Bloom {
 					bool IsEnabled = true;
 
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(TemporalAntiAliasing, IsEnabled, Alpha, ColorBoxSigma);
-				} TemporalAntiAliasing;
+					float Threshold = 0.5f, BlurSize = 4;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(PostProcessing, TemporalAntiAliasing);
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Bloom, IsEnabled, Threshold, BlurSize);
+				} Bloom;
+
+				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(PostProcessing, RaytracingDenoising, IsTemporalAntiAliasingEnabled, Bloom);
 			} PostProcessing;
 
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
@@ -103,15 +110,11 @@ public:
 		inline static struct UI : Data<UI> {
 			inline static const std::filesystem::path FilePath = DirectoryPath / L"UI.json";
 
-			struct Menu {
-				bool IsOpenOnStartup = true;
+			bool ShowOnStartup = true;
 
-				float BackgroundOpacity = 0.5f;
+			float WindowOpacity = 0.5f;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Menu, IsOpenOnStartup, BackgroundOpacity);
-			} Menu;
-
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(UI, Menu);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(UI, ShowOnStartup, WindowOpacity);
 		} UI;
 
 		inline static struct Controls : Data<Controls> {

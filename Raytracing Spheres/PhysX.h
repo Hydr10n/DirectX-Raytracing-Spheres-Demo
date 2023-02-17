@@ -38,12 +38,11 @@ namespace PhysicsHelpers {
 
 #pragma warning(pop)
 
-class PhysXWrapper {
-public:
-	PhysXWrapper(const PhysXWrapper&) = delete;
-	PhysXWrapper& operator=(const PhysXWrapper&) = delete;
+struct PhysX {
+	PhysX(const PhysX&) = delete;
+	PhysX& operator=(const PhysX&) = delete;
 
-	PhysXWrapper() noexcept(false) {
+	PhysX() noexcept(false) {
 		using namespace physx;
 
 		auto& foundation = *PxCreateFoundation(PX_PHYSICS_VERSION, m_allocatorCallback, m_errorCallback);
@@ -74,7 +73,7 @@ public:
 		}
 	}
 
-	~PhysXWrapper() {
+	~PhysX() {
 		auto& foundation = m_physics->getFoundation();
 
 		m_physics->release();

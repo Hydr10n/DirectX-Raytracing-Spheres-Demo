@@ -1,149 +1,207 @@
-/***************************************************************************
- # Copyright (c) 2015-21, NVIDIA CORPORATION. All rights reserved.
- #
- # Redistribution and use in source and binary forms, with or without
- # modification, are permitted provided that the following conditions
- # are met:
- #  * Redistributions of source code must retain the above copyright
- #    notice, this list of conditions and the following disclaimer.
- #  * Redistributions in binary form must reproduce the above copyright
- #    notice, this list of conditions and the following disclaimer in the
- #    documentation and/or other materials provided with the distribution.
- #  * Neither the name of NVIDIA CORPORATION nor the names of its
- #    contributors may be used to endorse or promote products derived
- #    from this software without specific prior written permission.
- #
- # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS" AND ANY
- # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- # PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- # CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- # EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- # PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- # PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- # OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- **************************************************************************/
+/*
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
-// https://github.com/NVIDIAGameWorks/Falcor/blob/master/Source/RenderPasses/Antialiasing/TAA/TAA.ps.slang
+NVIDIA CORPORATION and its licensors retain all intellectual property
+and proprietary rights in and to this software, related documentation
+and any modifications thereto. Any use, reproduction, disclosure or
+distribution of this software and related documentation without an express
+license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
 
-#include "ColorHelpers.hlsli"
+#define NRD_HEADER_ONLY
+#include "NRDEncoding.hlsli"
+#include "NRD.hlsli"
+
+#include "STL.hlsli"
+
+#include "Math.hlsli"
+
+SamplerState gLinearSampler : register( s0 );
+
+Texture2D<float3> gIn_Motion : register( t0 );
+Texture2D<float3> gIn_HistoryOutput : register( t1 );
+Texture2D<float4> gIn_Output : register( t2 );
+
+RWTexture2D<float3> gOut_FinalOutput : register( u0 );
+
+cbuffer Data : register( b0 )
+{
+    uint gFrameIndex;
+    uint3 _;
+    float3 gCameraPosition;
+    float _1;
+    float3 gCameraRightDirection;
+    float _2;
+    float3 gCameraUpDirection;
+    float _3;
+    float3 gCameraForwardDirection;
+    float gCameraNearZ;
+    float4x4 gWorldToClipPrev;
+}
 
 #define ROOT_SIGNATURE \
-    "StaticSampler(s0, filter=FILTER_MIN_MAG_MIP_LINEAR)," \
-    "DescriptorTable(SRV(t0))," \
-    "DescriptorTable(SRV(t1))," \
-    "DescriptorTable(SRV(t2))," \
-    "DescriptorTable(UAV(u0))," \
-    "RootConstants(num32BitConstants=2, b0)"
+    "StaticSampler( s0, filter=FILTER_MIN_MAG_MIP_LINEAR )," \
+    "DescriptorTable( SRV( t0 ) )," \
+    "DescriptorTable( SRV( t1 ) )," \
+    "DescriptorTable( SRV( t2 ) )," \
+    "DescriptorTable( UAV( u0 ) )," \
+    "CBV( b0 )"
 
-SamplerState gSampler : register(s0);
-Texture2D<float4> gTexPrevColor : register(t0);
-Texture2D<float4> gTexColor : register(t1);
-Texture2D<float2> gTexMotionVec : register(t2);
-RWTexture2D<float4> gOutput : register(u0);
+#define BORDER          1
+#define GROUP_X         16
+#define GROUP_Y         16
+#define BUFFER_X        ( GROUP_X + BORDER * 2 )
+#define BUFFER_Y        ( GROUP_Y + BORDER * 2 )
 
-cbuffer PerFrameCB : register(b0)
+groupshared float4 s_Data[ BUFFER_Y ][ BUFFER_X ];
+
+void Preload( uint2 sharedPos, int2 globalPos, uint2 rectSize )
 {
-    float gAlpha;
-    float gColorBoxSigma;
+    globalPos = clamp( globalPos, 0, rectSize - 1.0 );
+
+    float4 color_viewZ = gIn_Output[ globalPos ];
+    color_viewZ.w = abs( color_viewZ.w ) * STL::Math::Sign( gCameraNearZ ) / NRD_FP16_VIEWZ_SCALE;
+
+    s_Data[ sharedPos.y ][ sharedPos.x ] = color_viewZ;
 }
 
+#define TAA_HISTORY_SHARPNESS               0.5 // [0; 1], 0.5 matches Catmull-Rom
+#define TAA_MOTION_MAX_REUSE                0.1
+#define TAA_MAX_HISTORY_WEIGHT              0.95
+#define TAA_MIN_HISTORY_WEIGHT              0.1
 
-// Catmull-Rom filtering code from http://vec3.ca/bicubic-filtering-in-fewer-taps/
-float3 bicubicSampleCatmullRom(Texture2D tex, SamplerState samp, float2 samplePos, float2 texDim)
+float3 BicubicFilterNoCorners( Texture2D<float3> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float sharpness )
 {
-    float2 invTextureSize = 1.0 / texDim;
-    float2 tc = floor(samplePos - 0.5f) + 0.5f;
-    float2 f = samplePos - tc;
+    float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
+    float2 f = samplePos - centerPos;
     float2 f2 = f * f;
-    float2 f3 = f2 * f;
+    float2 f3 = f * f2;
+    float2 w0 = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
+    float2 w1 = ( 2.0 - sharpness ) * f3 - ( 3.0 - sharpness ) * f2 + 1.0;
+    float2 w2 = -( 2.0 - sharpness ) * f3 + ( 3.0 - 2.0 * sharpness ) * f2 + sharpness * f;
+    float2 w3 = sharpness * f3 - sharpness * f2;
+    float2 wl2 = w1 + w2;
+    float2 tc2 = invTextureSize * ( centerPos + w2 * STL::Math::PositiveRcp( wl2 ) );
+    float2 tc0 = invTextureSize * ( centerPos - 1.0 );
+    float2 tc3 = invTextureSize * ( centerPos + 2.0 );
 
-    float2 w0 = f2 - 0.5f * (f3 + f);
-    float2 w1 = 1.5f * f3 - 2.5f * f2 + 1.f;
-    float2 w3 = 0.5f * (f3 - f2);
-    float2 w2 = 1 - w0 - w1 - w3;
+    float w = wl2.x * w0.y;
+    float3 color = tex.SampleLevel( samp, float2( tc2.x, tc0.y ), 0 ) * w;
+    float sum = w;
 
-    float2 w12 = w1 + w2;
+    w = w0.x  * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc0.x, tc2.y ), 0 ) * w;
+    sum += w;
 
-    float2 tc0 = (tc - 1.f) * invTextureSize;
-    float2 tc12 = (tc + w2 / w12) * invTextureSize;
-    float2 tc3 = (tc + 2.f) * invTextureSize;
+    w = wl2.x * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc2.x, tc2.y ), 0 ) * w;
+    sum += w;
 
-    float3 result =
-        tex.SampleLevel(samp, float2(tc0.x,  tc0.y), 0.f).rgb  * (w0.x  * w0.y) +
-        tex.SampleLevel(samp, float2(tc0.x,  tc12.y), 0.f).rgb * (w0.x  * w12.y) +
-        tex.SampleLevel(samp, float2(tc0.x,  tc3.y), 0.f).rgb  * (w0.x  * w3.y) +
-        tex.SampleLevel(samp, float2(tc12.x, tc0.y), 0.f).rgb  * (w12.x * w0.y) +
-        tex.SampleLevel(samp, float2(tc12.x, tc12.y), 0.f).rgb * (w12.x * w12.y) +
-        tex.SampleLevel(samp, float2(tc12.x, tc3.y), 0.f).rgb  * (w12.x * w3.y) +
-        tex.SampleLevel(samp, float2(tc3.x,  tc0.y), 0.f).rgb  * (w3.x  * w0.y) +
-        tex.SampleLevel(samp, float2(tc3.x,  tc12.y), 0.f).rgb * (w3.x  * w12.y) +
-        tex.SampleLevel(samp, float2(tc3.x,  tc3.y), 0.f).rgb  * (w3.x  * w3.y);
+    w = w3.x  * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc3.x, tc2.y ), 0 ) * w;
+    sum += w;
 
-    return result;
+    w = wl2.x * w3.y;
+    color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
+    sum += w;
+
+    color *= STL::Math::PositiveRcp( sum );
+
+    return color;
 }
 
-
-[RootSignature(ROOT_SIGNATURE)]
-[numthreads(16, 16, 1)]
-void main(int2 ipos : SV_DispatchThreadID)
+[RootSignature( ROOT_SIGNATURE )]
+[numthreads( GROUP_X, GROUP_Y, 1 )]
+void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    uint2 texDim;
-    gTexColor.GetDimensions(texDim.x, texDim.y);
-    if (ipos.x >= texDim.x || ipos.y >= texDim.y) return;
-    
-    const int2 offset[8] = { int2(-1, -1), int2(-1,  1),
-                              int2( 1, -1), int2( 1,  1),
-                              int2( 1,  0), int2( 0, -1),
-                              int2( 0,  1), int2(-1,  0), };
+    uint2 rectSize;
+    gOut_FinalOutput.GetDimensions( rectSize.x, rectSize.y );
 
-    // Fetch the current pixel color and compute the color bounding box
-    // Details here: http://www.gdcvault.com/play/1023521/From-the-Lab-Bench-Real
-    // and here: http://cwyman.org/papers/siga16_gazeTrackedFoveatedRendering.pdf
-    float3 color = gTexColor.Load(int3(ipos, 0)).rgb;
-    color = ColorHelpers::RGBToYCgCo(color);
-    float3 colorAvg = color;
-    float3 colorVar = color * color;
+    int2 groupBase = pixelPos - threadPos - BORDER;
+    uint stageNum = ( BUFFER_X * BUFFER_Y + GROUP_X * GROUP_Y - 1 ) / ( GROUP_X * GROUP_Y );
     [unroll]
-    for (int k = 0; k < 8; k++)
+    for( uint stage = 0; stage < stageNum; stage++ )
     {
-        float3 c = gTexColor.Load(int3(ipos + offset[k], 0)).rgb;
-        c = ColorHelpers::RGBToYCgCo(c);
-        colorAvg += c;
-        colorVar += c * c;
+        uint virtualIndex = threadIndex + stage * GROUP_X * GROUP_Y; \
+        uint2 newId = uint2( virtualIndex % BUFFER_X, virtualIndex / BUFFER_X );
+        if( stage == 0 || virtualIndex < BUFFER_X * BUFFER_Y )
+            Preload( newId, groupBase + newId, rectSize );
+    }
+    GroupMemoryBarrierWithGroupSync( );
+
+    // Do not generate NANs for unused threads
+    if( pixelPos.x >= rectSize.x || pixelPos.y >= rectSize.y )
+        return;
+
+    // Neighborhood
+    float3 m1 = 0;
+    float3 m2 = 0;
+    float3 input = 0;
+
+    float viewZ = s_Data[ threadPos.y + BORDER ][ threadPos.x + BORDER ].w;
+    float viewZnearest = viewZ;
+    int2 offseti = int2( BORDER, BORDER );
+
+    [unroll]
+    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    {
+        [unroll]
+        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        {
+            int2 t = int2( dx, dy );
+            int2 smemPos = threadPos + t;
+            float4 data = s_Data[ smemPos.y ][ smemPos.x ];
+
+            if( dx == BORDER && dy == BORDER )
+                input = data.xyz;
+            else
+            {
+                int2 t1 = t - BORDER;
+                if( ( abs( t1.x ) + abs( t1.y ) == 1 ) && abs( data.w ) < abs( viewZnearest ) )
+                {
+                    viewZnearest = data.w;
+                    offseti = t;
+                }
+            }
+
+            m1 += data.xyz;
+            m2 += data.xyz * data.xyz;
+        }
     }
 
-    float oneOverNine = 1.f / 9.f;
-    colorAvg *= oneOverNine;
-    colorVar *= oneOverNine;
+    float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
+    m1 *= invSum;
+    m2 *= invSum;
 
-    float3 sigma = sqrt(max(0.f, colorVar - colorAvg * colorAvg));
-    float3 colorMin = colorAvg - gColorBoxSigma * sigma;
-    float3 colorMax = colorAvg + gColorBoxSigma * sigma;
+    float3 sigma = sqrt( abs( m2 - m1 * m1 ) );
 
-    // Find the longest motion vector
-    float2 motion = gTexMotionVec.Load(int3(ipos, 0)).xy;
-    [unroll]
-    for (int a = 0; a < 8; a++)
-    {
-        float2 m = gTexMotionVec.Load(int3(ipos + offset[a], 0)).rg;
-        motion = dot(m, m) > dot(motion, motion) ? m : motion;
-    }
+    float2 invRectSize = 1.0 / rectSize;
 
-    // Use motion vector to fetch previous frame color (history)
-    float3 history = bicubicSampleCatmullRom(gTexPrevColor, gSampler, ipos + motion * texDim, texDim);
+    // Previous pixel position
+    offseti -= BORDER;
+    float2 offset = float2( offseti ) * invRectSize;
+    float2 pixelUv = Math::CalculateUV( pixelPos, rectSize ), NDC = Math::CalculateNDC( pixelUv + offset );
+    float3 worldRayDirection = normalize( NDC.x * gCameraRightDirection + NDC.y * gCameraUpDirection + gCameraForwardDirection );
+    float3 Xnearest = gCameraPosition + worldRayDirection * viewZnearest / dot( worldRayDirection, normalize( gCameraForwardDirection ) );
+    float3 mvNearest = gIn_Motion[ pixelPos + offseti ] * invRectSize.xyy;
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, 0 );
+    pixelUvPrev -= offset;
 
-    history = ColorHelpers::RGBToYCgCo(history);
+    // History clamping
+    float2 pixelPosPrev = saturate( pixelUvPrev ) * rectSize;
+    float3 history = BicubicFilterNoCorners( gIn_HistoryOutput, gLinearSampler, pixelPosPrev, invRectSize, TAA_HISTORY_SHARPNESS ).xyz;
+    float3 historyClamped = STL::Color::ClampAabb( m1, sigma, history );
 
-    // Anti-flickering, based on Brian Karis talk @Siggraph 2014
-    // https://de45xmedrsdbp.cloudfront.net/Resources/files/TemporalAA_small-59732822.pdf
-    // Reduce blend factor when history is near clamping
-    float distToClamp = min(abs(colorMin.x - history.x), abs(colorMax.x - history.x));
-    float alpha = clamp((gAlpha * distToClamp) / (distToClamp + colorMax.x - colorMin.x), 0.f, 1.f);
+    // History weight
+    bool isInScreen = all( saturate( pixelUvPrev ) == pixelUvPrev );
+    float2 pixelMotion = pixelUvPrev - pixelUv;
+    float motionAmount = saturate( length( pixelMotion ) / TAA_MOTION_MAX_REUSE );
+    float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, motionAmount );
+    historyWeight *= float( isInScreen );
 
-    history = clamp(history, colorMin, colorMax);
-    float3 result = ColorHelpers::YCgCoToRGB(lerp(history, color, alpha));
-    gOutput[ipos] = float4(result, 1.f);
+    // Final mix
+    float3 result = lerp( input, historyClamped, historyWeight );
+
+    // Output
+    gOut_FinalOutput[ pixelPos ] = result;
 }

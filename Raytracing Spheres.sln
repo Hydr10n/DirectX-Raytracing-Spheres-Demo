@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31919.166
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Raytracing Spheres", "Raytracing Spheres\Raytracing Spheres.vcxproj", "{C3328E2B-F852-401C-B0B8-8A91B522204E}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Externals", "Externals\Externals.vcxitems", "{ECDA8CCC-9416-4E55-A1A4-888C9CD68BB7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,5 +23,9 @@ Global
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {CE1DCA90-4B57-4136-B09C-D231F549A118}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		Externals\Externals.vcxitems*{c3328e2b-f852-401c-b0b8-8a91b522204e}*SharedItemsImports = 4
+		Externals\Externals.vcxitems*{ecda8ccc-9416-4e55-a1a4-888c9cd68bb7}*SharedItemsImports = 9
 	EndGlobalSection
 EndGlobal

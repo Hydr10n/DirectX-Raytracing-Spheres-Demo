@@ -19,6 +19,7 @@ export {
 		float ApertureRadius;
 		XMFLOAT2 PixelJitter;
 		float NearZ, FarZ;
+		XMFLOAT4X4 PreviousWorldToView, PreviousWorldToProjection;
 	};
 
 	struct CameraController {
@@ -48,6 +49,8 @@ export {
 				m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 				m_forwardDirection = GetNormalizedForwardDirection() * m_forwardDirectionLength;
 			}
+
+			m_rotation = Quaternion::LookRotation(m_forwardDirection, m_upDirection);
 
 			m_isViewChanged = true;
 		}
@@ -100,14 +103,17 @@ export {
 			return m_worldToView;
 		}
 
-		auto GetNearZ() const { return m_nearZ; }
+		auto GetViewToWorld() const { return GetWorldToView().Transpose(); }
 
+		auto GetNearZ() const { return m_nearZ; }
 		auto GetFarZ() const { return m_farZ; }
 
 		const auto& GetViewToProjection() const { return m_viewToProjection; }
+		auto GetProjectionToView() const { return m_viewToProjection.Invert(); }
 
 		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ, float farZ) {
 			m_viewToProjection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
+
 			m_nearZ = nearZ;
 			m_farZ = farZ;
 
@@ -127,9 +133,9 @@ export {
 		float m_rightDirectionLength = 1, m_upDirectionLength = 1, m_forwardDirectionLength = 1;
 		Vector3 m_position, m_rightDirection{ 1, 0, 0 }, m_upDirection{ 0, 1, 0 }, m_forwardDirection{ 0, 0, 1 };
 		Quaternion m_rotation;
-		mutable Matrix m_worldToView{};
+		mutable Matrix m_worldToView;
 
 		float m_nearZ = 1e-2f, m_farZ = 1e4f;
-		Matrix m_viewToProjection{};
+		Matrix m_viewToProjection;
 	};
 }
