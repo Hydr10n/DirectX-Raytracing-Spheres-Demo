@@ -75,8 +75,7 @@ namespace {
 	constexpr auto& ControlsSettings = MyAppData::Settings::Controls;
 }
 
-#define MAKE_CONST_NAME(name) static constexpr LPCSTR name = #name;
-#define MAKE_NAME(name) inline static LPCSTR name = #name;
+#define MAKE_NAME(name) static constexpr LPCSTR name = #name;
 
 struct App::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -234,32 +233,32 @@ private:
 	} m_inputDeviceStateTrackers;
 
 	struct RenderTextureNames {
-		MAKE_CONST_NAME(Motion);
-		MAKE_CONST_NAME(NormalRoughness);
-		MAKE_CONST_NAME(ViewZ);
-		MAKE_CONST_NAME(BaseColorMetalness);
-		MAKE_CONST_NAME(NoisyDiffuse);
-		MAKE_CONST_NAME(NoisySpecular);
-		MAKE_CONST_NAME(DenoisedDiffuse);
-		MAKE_CONST_NAME(DenoisedSpecular);
-		MAKE_CONST_NAME(Validation);
+		MAKE_NAME(Motion);
+		MAKE_NAME(NormalRoughness);
+		MAKE_NAME(ViewZ);
+		MAKE_NAME(BaseColorMetalness);
+		MAKE_NAME(NoisyDiffuse);
+		MAKE_NAME(NoisySpecular);
+		MAKE_NAME(DenoisedDiffuse);
+		MAKE_NAME(DenoisedSpecular);
+		MAKE_NAME(Validation);
 		MAKE_NAME(HistoryOutput);
-		MAKE_CONST_NAME(Output);
+		MAKE_NAME(Output);
 		MAKE_NAME(FinalOutput);
-		MAKE_CONST_NAME(Blur);
-		MAKE_CONST_NAME(Blur1);
-		MAKE_CONST_NAME(Blur2);
+		MAKE_NAME(Blur);
+		MAKE_NAME(Blur1);
+		MAKE_NAME(Blur2);
 	};
 
 	struct ObjectNames {
-		MAKE_CONST_NAME(EnvironmentLight);
-		MAKE_CONST_NAME(Environment);
-		MAKE_CONST_NAME(Sphere);
-		MAKE_CONST_NAME(AlienMetal);
-		MAKE_CONST_NAME(Moon);
-		MAKE_CONST_NAME(Earth);
-		MAKE_CONST_NAME(Star);
-		MAKE_CONST_NAME(HarmonicOscillator);
+		MAKE_NAME(EnvironmentLight);
+		MAKE_NAME(Environment);
+		MAKE_NAME(Sphere);
+		MAKE_NAME(AlienMetal);
+		MAKE_NAME(Moon);
+		MAKE_NAME(Earth);
+		MAKE_NAME(Star);
+		MAKE_NAME(HarmonicOscillator);
 	};
 
 	struct ResourceDescriptorHeapIndex {
@@ -949,7 +948,9 @@ private:
 			m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
 			m_temporalAntiAliasing->TextureDescriptors = {
 				.MotionSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionSRV),
-				.OutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputSRV)
+				.HistoryOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::HistoryOutputSRV),
+				.OutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputSRV),
+				.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::FinalOutputUAV)
 			};
 		}
 
@@ -1380,14 +1381,14 @@ private:
 
 		if (postProcessingSettings.IsTemporalAntiAliasingEnabled) ProcessTemporalAntiAliasing();
 
+		const auto& output = m_renderTextures[postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::Output];
+
 		if (isNRDEnabled && postProcessingSettings.RaytracingDenoising.IsValidationLayerEnabled) {
-			const auto
-				& validation = *m_renderTextures.at(RenderTextureNames::Validation),
-				& output = *m_renderTextures[postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::Output];
+			const auto& validation = *m_renderTextures.at(RenderTextureNames::Validation);
 
 			const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(validation.GetResource(), validation.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) });
 
-			m_textureAlphaBlend->TextureDescriptors.BackgroundUAV = m_resourceDescriptorHeap->GetGpuHandle(output.GetUavDescriptorHeapIndex());
+			m_textureAlphaBlend->TextureDescriptors.BackgroundUAV = m_resourceDescriptorHeap->GetGpuHandle(output->GetUavDescriptorHeapIndex());
 
 			m_textureAlphaBlend->Process(commandList);
 		}
@@ -1401,7 +1402,7 @@ private:
 
 		{
 			auto& toneMapping = *m_toneMapping.at(ToneMapPostProcess::None);
-			toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(postProcessingSettings.IsTemporalAntiAliasingEnabled ? ResourceDescriptorHeapIndex::FinalOutputSRV : ResourceDescriptorHeapIndex::OutputSRV));
+			toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(output->GetSrvDescriptorHeapIndex()));
 			toneMapping.Process(commandList);
 		}
 
@@ -1456,37 +1457,46 @@ private:
 	void ProcessTemporalAntiAliasing() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		swap(RenderTextureNames::HistoryOutput, RenderTextureNames::FinalOutput);
+		const auto& historyOutput = *m_renderTextures[RenderTextureNames::HistoryOutput];
 
-		const auto
-			& motion = *m_renderTextures[RenderTextureNames::Motion],
-			& historyOutput = *m_renderTextures[RenderTextureNames::HistoryOutput],
-			& output = *m_renderTextures[RenderTextureNames::Output],
-			& finalOutput = *m_renderTextures[RenderTextureNames::FinalOutput];
+		{
+			const auto& motion = *m_renderTextures[RenderTextureNames::Motion], & output = *m_renderTextures[RenderTextureNames::Output];
 
-		const ScopedBarrier scopedBarrier(
-			commandList,
-			{
-				CD3DX12_RESOURCE_BARRIER::Transition(motion.GetResource(), motion.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
-			}
-		);
+			const ScopedBarrier scopedBarrier(
+				commandList,
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(motion.GetResource(), motion.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+				}
+			);
 
-		m_temporalAntiAliasing->TextureDescriptors.HistoryOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(historyOutput.GetSrvDescriptorHeapIndex());
-		m_temporalAntiAliasing->TextureDescriptors.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(finalOutput.GetUavDescriptorHeapIndex());
+			m_temporalAntiAliasing->GetData() = {
+				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+				.CameraPosition = m_cameraController.GetPosition(),
+				.CameraRightDirection = m_cameraController.GetRightDirection(),
+				.CameraUpDirection = m_cameraController.GetUpDirection(),
+				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
+				.CameraNearZ = m_cameraController.GetNearZ(),
+				.PreviousWorldToProjection = m_shaderBuffers.Camera->GetData().PreviousWorldToProjection
+			};
 
-		m_temporalAntiAliasing->GetData() = {
-			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-			.CameraPosition = m_cameraController.GetPosition(),
-			.CameraRightDirection = m_cameraController.GetRightDirection(),
-			.CameraUpDirection = m_cameraController.GetUpDirection(),
-			.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-			.CameraNearZ = m_cameraController.GetNearZ(),
-			.PreviousWorldToProjection = m_shaderBuffers.Camera->GetData().PreviousWorldToProjection
-		};
+			m_temporalAntiAliasing->Process(commandList);
+		}
 
-		m_temporalAntiAliasing->Process(commandList);
+		{
+			const auto& finalOutput = *m_renderTextures[RenderTextureNames::FinalOutput];
+
+			const ScopedBarrier scopedBarrier(
+				commandList,
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_DEST),
+					CD3DX12_RESOURCE_BARRIER::Transition(finalOutput.GetResource(), finalOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
+				}
+			);
+
+			commandList->CopyResource(historyOutput.GetResource(), finalOutput.GetResource());
+		}
 	}
 
 	void ProcessBloom() {
