@@ -75,7 +75,8 @@ namespace {
 	constexpr auto& ControlsSettings = MyAppData::Settings::Controls;
 }
 
-#define MAKE_NAME(name) static constexpr LPCSTR name = #name;
+#define MAKE_CONST_NAME(name) static constexpr LPCSTR name = #name;
+#define MAKE_NAME(name) inline static LPCSTR name = #name;
 
 struct App::Impl : IDeviceNotify {
 	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -233,32 +234,32 @@ private:
 	} m_inputDeviceStateTrackers;
 
 	struct RenderTextureNames {
-		MAKE_NAME(Motion);
-		MAKE_NAME(NormalRoughness);
-		MAKE_NAME(ViewZ);
-		MAKE_NAME(BaseColorMetalness);
-		MAKE_NAME(NoisyDiffuse);
-		MAKE_NAME(NoisySpecular);
-		MAKE_NAME(DenoisedDiffuse);
-		MAKE_NAME(DenoisedSpecular);
-		MAKE_NAME(Validation);
+		MAKE_CONST_NAME(Motion);
+		MAKE_CONST_NAME(NormalRoughness);
+		MAKE_CONST_NAME(ViewZ);
+		MAKE_CONST_NAME(BaseColorMetalness);
+		MAKE_CONST_NAME(NoisyDiffuse);
+		MAKE_CONST_NAME(NoisySpecular);
+		MAKE_CONST_NAME(DenoisedDiffuse);
+		MAKE_CONST_NAME(DenoisedSpecular);
+		MAKE_CONST_NAME(Validation);
 		MAKE_NAME(HistoryOutput);
-		MAKE_NAME(Output);
+		MAKE_CONST_NAME(Output);
 		MAKE_NAME(FinalOutput);
-		MAKE_NAME(Blur);
-		MAKE_NAME(Blur1);
-		MAKE_NAME(Blur2);
+		MAKE_CONST_NAME(Blur);
+		MAKE_CONST_NAME(Blur1);
+		MAKE_CONST_NAME(Blur2);
 	};
 
 	struct ObjectNames {
-		MAKE_NAME(EnvironmentLight);
-		MAKE_NAME(Environment);
-		MAKE_NAME(Sphere);
-		MAKE_NAME(AlienMetal);
-		MAKE_NAME(Moon);
-		MAKE_NAME(Earth);
-		MAKE_NAME(Star);
-		MAKE_NAME(HarmonicOscillator);
+		MAKE_CONST_NAME(EnvironmentLight);
+		MAKE_CONST_NAME(Environment);
+		MAKE_CONST_NAME(Sphere);
+		MAKE_CONST_NAME(AlienMetal);
+		MAKE_CONST_NAME(Moon);
+		MAKE_CONST_NAME(Earth);
+		MAKE_CONST_NAME(Star);
+		MAKE_CONST_NAME(HarmonicOscillator);
 	};
 
 	struct ResourceDescriptorHeapIndex {
@@ -948,9 +949,7 @@ private:
 			m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
 			m_temporalAntiAliasing->TextureDescriptors = {
 				.MotionSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionSRV),
-				.HistoryOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::HistoryOutputSRV),
-				.OutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputSRV),
-				.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::FinalOutputUAV)
+				.OutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputSRV)
 			};
 		}
 
@@ -1102,19 +1101,17 @@ private:
 			);
 		}
 
-		{
+		if (const auto instanceDescCount = m_topLevelAccelerationStructure->GetDescCount()) {
 			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, UINT count, UINT descriptorHeapIndex) {
 				uploadBuffer = make_unique<T>(device, count);
 				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
-			const auto renderObjectsSize = static_cast<UINT>(size(m_renderObjects));
+			CreateBuffer(m_shaderBuffers.InstanceResourceDescriptorHeapIndices, instanceDescCount, ResourceDescriptorHeapIndex::InstanceResourceDescriptorHeapIndices);
 
-			CreateBuffer(m_shaderBuffers.InstanceResourceDescriptorHeapIndices, renderObjectsSize, ResourceDescriptorHeapIndex::InstanceResourceDescriptorHeapIndices);
+			CreateBuffer(m_shaderBuffers.InstanceData, instanceDescCount, ResourceDescriptorHeapIndex::InstanceData);
 
-			CreateBuffer(m_shaderBuffers.InstanceData, renderObjectsSize, ResourceDescriptorHeapIndex::InstanceData);
-
-			for (const auto i : views::iota(0u, renderObjectsSize)) {
+			for (const auto i : views::iota(0u, instanceDescCount)) {
 				const auto& renderObject = m_renderObjects[i];
 
 				auto& instanceResourceDescriptorHeapIndices = (*m_shaderBuffers.InstanceResourceDescriptorHeapIndices)[i];
@@ -1193,13 +1190,13 @@ private:
 
 			{
 				auto& isGravityEnabled = get<1>(m_physicsObjects.RigidBodies.at(ObjectNames::Earth));
-				if (gamepadStateTracker.x == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
+				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
 				if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
 			}
 
 			{
 				auto& isGravityEnabled = get<1>(m_physicsObjects.RigidBodies.at(ObjectNames::Star));
-				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
+				if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
 				if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
 			}
 
@@ -1372,7 +1369,9 @@ private:
 
 		const auto& postProcessingSettings = GraphicsSettings.PostProcessing;
 
-		if (postProcessingSettings.RaytracingDenoising.IsEnabled && postProcessingSettings.RaytracingDenoising.SplitScreen != 1 && m_NRD->IsAvailable()) {
+		const auto isNRDEnabled = postProcessingSettings.RaytracingDenoising.IsEnabled && postProcessingSettings.RaytracingDenoising.SplitScreen != 1 && m_NRD->IsAvailable();
+
+		if (isNRDEnabled) {
 			Denoise();
 
 			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
@@ -1381,7 +1380,7 @@ private:
 
 		if (postProcessingSettings.IsTemporalAntiAliasingEnabled) ProcessTemporalAntiAliasing();
 
-		if (postProcessingSettings.RaytracingDenoising.IsEnabled && postProcessingSettings.RaytracingDenoising.IsValidationLayerEnabled) {
+		if (isNRDEnabled && postProcessingSettings.RaytracingDenoising.IsValidationLayerEnabled) {
 			const auto
 				& validation = *m_renderTextures.at(RenderTextureNames::Validation),
 				& output = *m_renderTextures[postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::Output];
@@ -1457,46 +1456,37 @@ private:
 	void ProcessTemporalAntiAliasing() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& historyOutput = *m_renderTextures[RenderTextureNames::HistoryOutput];
+		swap(RenderTextureNames::HistoryOutput, RenderTextureNames::FinalOutput);
 
-		{
-			const auto& motion = *m_renderTextures[RenderTextureNames::Motion], & output = *m_renderTextures[RenderTextureNames::Output];
+		const auto
+			& motion = *m_renderTextures[RenderTextureNames::Motion],
+			& historyOutput = *m_renderTextures[RenderTextureNames::HistoryOutput],
+			& output = *m_renderTextures[RenderTextureNames::Output],
+			& finalOutput = *m_renderTextures[RenderTextureNames::FinalOutput];
 
-			const ScopedBarrier scopedBarrier(
-				commandList,
-				{
-					CD3DX12_RESOURCE_BARRIER::Transition(motion.GetResource(), motion.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
-				}
-			);
+		const ScopedBarrier scopedBarrier(
+			commandList,
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(motion.GetResource(), motion.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+			}
+		);
 
-			m_temporalAntiAliasing->GetData() = {
-				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-				.CameraPosition = m_cameraController.GetPosition(),
-				.CameraRightDirection = m_cameraController.GetRightDirection(),
-				.CameraUpDirection = m_cameraController.GetUpDirection(),
-				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-				.CameraNearZ = m_cameraController.GetNearZ(),
-				.PreviousWorldToProjection = m_shaderBuffers.Camera->GetData().PreviousWorldToProjection
-			};
+		m_temporalAntiAliasing->TextureDescriptors.HistoryOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(historyOutput.GetSrvDescriptorHeapIndex());
+		m_temporalAntiAliasing->TextureDescriptors.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(finalOutput.GetUavDescriptorHeapIndex());
 
-			m_temporalAntiAliasing->Process(commandList);
-		}
+		m_temporalAntiAliasing->GetData() = {
+			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+			.CameraPosition = m_cameraController.GetPosition(),
+			.CameraRightDirection = m_cameraController.GetRightDirection(),
+			.CameraUpDirection = m_cameraController.GetUpDirection(),
+			.CameraForwardDirection = m_cameraController.GetForwardDirection(),
+			.CameraNearZ = m_cameraController.GetNearZ(),
+			.PreviousWorldToProjection = m_shaderBuffers.Camera->GetData().PreviousWorldToProjection
+		};
 
-		{
-			const auto& finalOutput = *m_renderTextures[RenderTextureNames::FinalOutput];
-
-			const ScopedBarrier scopedBarrier(
-				commandList,
-				{
-					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_DEST),
-					CD3DX12_RESOURCE_BARRIER::Transition(finalOutput.GetResource(), finalOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
-				}
-			);
-
-			commandList->CopyResource(historyOutput.GetResource(), finalOutput.GetResource());
-		}
+		m_temporalAntiAliasing->Process(commandList);
 	}
 
 	void ProcessBloom() {
@@ -1863,8 +1853,8 @@ private:
 								{ "RT (hold)", "Move faster" },
 								{ "RS (rotate)", "Look around" },
 								{ "A", "Run/pause physics simulation" },
-								{ "X", "Toggle gravity of Earth" },
-								{ "B", "Toggle gravity of the star" }
+								{ "B", "Toggle gravity of Earth" },
+								{ "Y", "Toggle gravity of the star" }
 							}
 						);
 
