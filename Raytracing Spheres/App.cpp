@@ -992,8 +992,8 @@ private:
 		for (UINT i = 0; const auto & renderObject : m_renderObjects) {
 			LPCSTR objectName;
 			switch (renderObject.Shape->getGeometryType()) {
-				case PxGeometryType::eSPHERE: objectName = ObjectNames::Sphere; break;
-				default: throw;
+			case PxGeometryType::eSPHERE: objectName = ObjectNames::Sphere; break;
+			default: throw;
 			}
 
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
@@ -1134,14 +1134,14 @@ private:
 						auto& textures = instanceResourceDescriptorHeapIndices.Textures;
 						UINT* p;
 						switch (textureType) {
-							case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
-							case TextureType::EmissiveColorMap: p = &textures.EmissiveColorMap; break;
-							case TextureType::MetallicMap: p = &textures.MetallicMap; break;
-							case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
-							case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
-							case TextureType::OpacityMap: p = &textures.OpacityMap; break;
-							case TextureType::NormalMap: p = &textures.NormalMap; break;
-							default: p = nullptr; break;
+						case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
+						case TextureType::EmissiveColorMap: p = &textures.EmissiveColorMap; break;
+						case TextureType::MetallicMap: p = &textures.MetallicMap; break;
+						case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
+						case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
+						case TextureType::OpacityMap: p = &textures.OpacityMap; break;
+						case TextureType::NormalMap: p = &textures.NormalMap; break;
+						default: p = nullptr; break;
 						}
 						if (p != nullptr) *p = texture.DescriptorHeapIndices.SRV;
 					}
@@ -1172,7 +1172,7 @@ private:
 
 		if (auto& IO = ImGui::GetIO(); m_UIStates.IsVisible) {
 			if (IO.WantCaptureKeyboard) m_UIStates.HasFocus = true;
-			if (IO.WantCaptureMouse) m_UIStates.HasFocus = true;
+			if (IO.WantCaptureMouse && !(IO.ConfigFlags & ImGuiConfigFlags_NoMouse)) m_UIStates.HasFocus = true;
 			else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) m_UIStates.HasFocus = false;
 
 			if (m_UIStates.HasFocus) {
@@ -1294,8 +1294,8 @@ private:
 		const auto Transform = [&](const PxShape& shape) {
 			PxVec3 scaling;
 			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
-				case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius * 2); break;
-				default: throw;
+			case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius * 2); break;
+			default: throw;
 			}
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));
@@ -1381,14 +1381,14 @@ private:
 
 		if (postProcessingSettings.IsTemporalAntiAliasingEnabled) ProcessTemporalAntiAliasing();
 
-		const auto& output = m_renderTextures[postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::Output];
+		const auto& output = *m_renderTextures.at(postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::Output);
 
 		if (isNRDEnabled && postProcessingSettings.RaytracingDenoising.IsValidationLayerEnabled) {
 			const auto& validation = *m_renderTextures.at(RenderTextureNames::Validation);
 
 			const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(validation.GetResource(), validation.GetCurrentState(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) });
 
-			m_textureAlphaBlend->TextureDescriptors.BackgroundUAV = m_resourceDescriptorHeap->GetGpuHandle(output->GetUavDescriptorHeapIndex());
+			m_textureAlphaBlend->TextureDescriptors.BackgroundUAV = m_resourceDescriptorHeap->GetGpuHandle(output.GetUavDescriptorHeapIndex());
 
 			m_textureAlphaBlend->Process(commandList);
 		}
@@ -1402,7 +1402,7 @@ private:
 
 		{
 			auto& toneMapping = *m_toneMapping.at(ToneMapPostProcess::None);
-			toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(output->GetSrvDescriptorHeapIndex()));
+			toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(output.GetSrvDescriptorHeapIndex()));
 			toneMapping.Process(commandList);
 		}
 
@@ -1457,10 +1457,10 @@ private:
 	void ProcessTemporalAntiAliasing() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& historyOutput = *m_renderTextures[RenderTextureNames::HistoryOutput];
+		const auto& historyOutput = *m_renderTextures.at(RenderTextureNames::HistoryOutput);
 
 		{
-			const auto& motion = *m_renderTextures[RenderTextureNames::Motion], & output = *m_renderTextures[RenderTextureNames::Output];
+			const auto& motion = *m_renderTextures.at(RenderTextureNames::Motion), & output = *m_renderTextures.at(RenderTextureNames::Output);
 
 			const ScopedBarrier scopedBarrier(
 				commandList,
@@ -1485,7 +1485,7 @@ private:
 		}
 
 		{
-			const auto& finalOutput = *m_renderTextures[RenderTextureNames::FinalOutput];
+			const auto& finalOutput = *m_renderTextures.at(RenderTextureNames::FinalOutput);
 
 			const ScopedBarrier scopedBarrier(
 				commandList,
@@ -1511,8 +1511,6 @@ private:
 			& blur1 = *m_renderTextures.at(RenderTextureNames::Blur1),
 			& blur2 = *m_renderTextures.at(RenderTextureNames::Blur2);
 
-		const auto blurResource = blur.GetResource(), blur1Resource = blur1.GetResource(), blur2Resource = blur2.GetResource();
-
 		const auto blurState = blur.GetCurrentState(), blur1State = blur1.GetCurrentState(), blur2State = blur2.GetCurrentState();
 
 		const auto
@@ -1526,7 +1524,7 @@ private:
 
 		blur.TransitionTo(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-		Extraction->SetSourceTexture(blurSRV, blurResource);
+		Extraction->SetSourceTexture(blurSRV, blur.GetResource());
 		Extraction->SetBloomExtractParameter(bloomSettings.Threshold);
 
 		commandList->OMSetRenderTargets(1, &blur1RTV, FALSE, nullptr);
@@ -1542,7 +1540,7 @@ private:
 
 		blur1.TransitionTo(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-		Blur->SetSourceTexture(blur1SRV, blur1Resource);
+		Blur->SetSourceTexture(blur1SRV, blur1.GetResource());
 		Blur->SetBloomBlurParameters(true, bloomSettings.BlurSize, 1);
 
 		commandList->OMSetRenderTargets(1, &blur2RTV, FALSE, nullptr);
@@ -1552,7 +1550,7 @@ private:
 		blur1.TransitionTo(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		blur2.TransitionTo(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-		Blur->SetSourceTexture(blur2SRV, blur2Resource);
+		Blur->SetSourceTexture(blur2SRV, blur2.GetResource());
 		Blur->SetBloomBlurParameters(false, bloomSettings.BlurSize, 1);
 
 		commandList->OMSetRenderTargets(1, &blur1RTV, FALSE, nullptr);

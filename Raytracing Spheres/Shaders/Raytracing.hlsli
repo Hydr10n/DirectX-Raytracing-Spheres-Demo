@@ -75,6 +75,23 @@ static const RWTexture2D<float4> g_noisyDiffuse = ResourceDescriptorHeap[g_globa
 static const RWTexture2D<float4> g_noisySpecular = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.NoisySpecular];
 static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
 
+inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
+	if (g_globalResourceDescriptorHeapIndices.EnvironmentLightCubeMap != ~0u) {
+		return g_environmentLightCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_globalData.EnvironmentLightCubeMapTransform, worldRayDirection)), 0);
+	}
+	if (g_globalData.EnvironmentLightColor.a >= 0) return g_globalData.EnvironmentLightColor.rgb;
+	return lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f);
+}
+
+inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
+	bool ret;
+	if ((ret = g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != ~0u)) {
+		color = g_environmentCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_globalData.EnvironmentCubeMapTransform, worldRayDirection)), 0);
+	}
+	else if ((ret = g_globalData.EnvironmentColor.a >= 0)) color = g_globalData.EnvironmentColor.rgb;
+	return ret;
+}
+
 inline Material GetMaterial(uint instanceIndex, float2 textureCoordinate) {
 	Material material;
 
@@ -160,4 +177,25 @@ inline HitInfo GetHitInfo(uint instanceIndex, float3 worldRayOrigin, float3 worl
 	}
 	hitInfo.SetFaceNormal(worldRayDirection);
 	return hitInfo;
+}
+
+struct RayCastResult {
+	uint InstanceIndex;
+	float HitDistance;
+	HitInfo HitInfo;
+	Material Material;
+};
+
+bool CastRay(RayDesc rayDesc, out RayCastResult rayCastResult) {
+	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
+	q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0u, rayDesc);
+	q.Proceed();
+	const bool ret = q.CommittedStatus() != COMMITTED_NOTHING;
+	if (ret) {
+		rayCastResult.InstanceIndex = q.CommittedInstanceIndex();
+		rayCastResult.HitDistance = q.CommittedRayT();
+		rayCastResult.HitInfo = GetHitInfo(rayCastResult.InstanceIndex, rayDesc.Origin, rayDesc.Direction, rayCastResult.HitDistance, q.CommittedObjectToWorld3x4(), q.CommittedPrimitiveIndex(), q.CommittedTriangleBarycentrics());
+		rayCastResult.Material = GetMaterial(rayCastResult.InstanceIndex, rayCastResult.HitInfo.Vertex.TextureCoordinate);
+	}
+	return ret;
 }

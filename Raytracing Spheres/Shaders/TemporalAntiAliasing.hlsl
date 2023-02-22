@@ -40,7 +40,7 @@ cbuffer Data : register( b0 )
 }
 
 #define ROOT_SIGNATURE \
-    "StaticSampler( s0, filter=FILTER_MIN_MAG_MIP_LINEAR )," \
+    "StaticSampler( s0, filter=FILTER_MIN_MAG_MIP_LINEAR, addressU=TEXTURE_ADDRESS_CLAMP, addressV=TEXTURE_ADDRESS_CLAMP )," \
     "DescriptorTable( SRV( t0 ) )," \
     "DescriptorTable( SRV( t1 ) )," \
     "DescriptorTable( SRV( t2 ) )," \
