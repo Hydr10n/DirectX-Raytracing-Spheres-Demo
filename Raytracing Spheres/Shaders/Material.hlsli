@@ -21,8 +21,8 @@ struct Material {
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, abs(dot(N, V)), Roughness);
 		const float
 			diffuse = STL::Color::Luminance(albedo * (1 - Fenvironment)), specular = STL::Color::Luminance(Fenvironment),
-			diffProb = diffuse / (diffuse + specular + 1e-6);
-		return diffProb < 5e-3 ? 0 : diffProb;
+			diffuseProbability = diffuse / (diffuse + specular + 1e-6f);
+		return diffuseProbability < 5e-3f ? 0 : diffuseProbability;
 	}
 
 	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection) {
@@ -32,6 +32,10 @@ struct Material {
 		 */
 
 		ScatterResult scatterResult;
+		scatterResult.Attenuation = AmbientOcclusion;
+
+		float3 albedo, Rf0;
+		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
 
 		const float2 random = STL::Rng::GetFloat2();
 
@@ -39,13 +43,11 @@ struct Material {
 		const float3x3 basis = STL::Geometry::GetBasis(N);
 
 		float3 H, L;
-		float VoH;
 
-		if (BaseColor.a != 1 || Opacity != 1) {
+		if (Metallic != 1 && (BaseColor.a != 1 || Opacity != 1)) {
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(random, Roughness, STL::Geometry::RotateVector(basis, V)));
 
-			VoH = abs(dot(V, H));
-
+			const float VoH = abs(dot(V, H));
 			const float refractiveIndex = hitInfo.IsFrontFace ? STL::BRDF::IOR::Vacuum / RefractiveIndex : RefractiveIndex;
 			if (refractiveIndex * sqrt(1 - VoH * VoH) > 1 || STL::Rng::GetFloat2().x < STL::BRDF::FresnelTerm_Dielectric(refractiveIndex, VoH)) {
 				L = reflect(-V, H);
@@ -59,13 +61,10 @@ struct Material {
 			}
 
 			scatterResult.Direction = L;
-			scatterResult.Attenuation = BaseColor.rgb * (1 - (Opacity == 1 ? BaseColor.a : Opacity)) * AmbientOcclusion;
+			scatterResult.Attenuation *= albedo * (1 - (Opacity == 1 ? BaseColor.a : Opacity));
 
 			return scatterResult;
 		}
-
-		float3 albedo, Rf0;
-		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
 
 		const float diffuseProbability = EstimateDiffuseProbability(N, V, albedo, Rf0);
 
@@ -74,24 +73,22 @@ struct Material {
 			H = normalize(V + L);
 
 			scatterResult.Type = ScatterType::DiffuseReflection;
-			scatterResult.Attenuation = 1;
+			scatterResult.Attenuation *= albedo / diffuseProbability;
 		}
 		else {
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(random, Roughness, STL::Geometry::RotateVector(basis, V)));
 			L = reflect(-V, H);
 
 			scatterResult.Type = ScatterType::SpecularReflection;
-			scatterResult.Attenuation = STL::BRDF::GeometryTerm_Smith(Roughness, abs(dot(N, L)));
+			scatterResult.Attenuation *= STL::BRDF::GeometryTerm_Smith(Roughness, abs(dot(N, L))) / (1 - diffuseProbability);
 		}
 
 		scatterResult.Direction = L;
 
 		if (dot(hitInfo.VertexUnmappedNormal, L) <= 0) scatterResult.Attenuation = 0;
 		else {
-			VoH = abs(dot(V, H));
-
-			const float3 F = STL::BRDF::FresnelTerm_Schlick(Rf0, VoH);
-			scatterResult.Attenuation *= scatterResult.Type == ScatterType::DiffuseReflection ? albedo * (1 - F) / diffuseProbability : F / (1 - diffuseProbability);
+			const float3 F = STL::BRDF::FresnelTerm_Schlick(Rf0, abs(dot(V, H)));
+			scatterResult.Attenuation *= scatterResult.Type == ScatterType::DiffuseReflection ? 1 - F : F;
 		}
 
 		return scatterResult;

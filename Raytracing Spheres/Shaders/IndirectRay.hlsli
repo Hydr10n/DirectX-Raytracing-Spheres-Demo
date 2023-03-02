@@ -4,7 +4,7 @@
 
 struct IndirectRay {
 	struct TraceResult {
-		float3 Irradiance;
+		float3 Radiance;
 		float HitDistance;
 	};
 
@@ -44,7 +44,7 @@ struct IndirectRay {
 			}
 		}
 
-		traceResult.Irradiance = emissiveColor + incidentColor * attenuation;
+		traceResult.Radiance = emissiveColor + incidentColor * attenuation;
 
 		return traceResult;
 	}

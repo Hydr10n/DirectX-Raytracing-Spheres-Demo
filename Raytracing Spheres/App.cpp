@@ -992,8 +992,8 @@ private:
 		for (UINT i = 0; const auto & renderObject : m_renderObjects) {
 			LPCSTR objectName;
 			switch (renderObject.Shape->getGeometryType()) {
-			case PxGeometryType::eSPHERE: objectName = ObjectNames::Sphere; break;
-			default: throw;
+				case PxGeometryType::eSPHERE: objectName = ObjectNames::Sphere; break;
+				default: throw;
 			}
 
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
@@ -1134,14 +1134,14 @@ private:
 						auto& textures = instanceResourceDescriptorHeapIndices.Textures;
 						UINT* p;
 						switch (textureType) {
-						case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
-						case TextureType::EmissiveColorMap: p = &textures.EmissiveColorMap; break;
-						case TextureType::MetallicMap: p = &textures.MetallicMap; break;
-						case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
-						case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
-						case TextureType::OpacityMap: p = &textures.OpacityMap; break;
-						case TextureType::NormalMap: p = &textures.NormalMap; break;
-						default: p = nullptr; break;
+							case TextureType::BaseColorMap: p = &textures.BaseColorMap; break;
+							case TextureType::EmissiveColorMap: p = &textures.EmissiveColorMap; break;
+							case TextureType::MetallicMap: p = &textures.MetallicMap; break;
+							case TextureType::RoughnessMap: p = &textures.RoughnessMap; break;
+							case TextureType::AmbientOcclusionMap: p = &textures.AmbientOcclusionMap; break;
+							case TextureType::OpacityMap: p = &textures.OpacityMap; break;
+							case TextureType::NormalMap: p = &textures.NormalMap; break;
+							default: p = nullptr; break;
 						}
 						if (p != nullptr) *p = texture.DescriptorHeapIndices.SRV;
 					}
@@ -1294,8 +1294,8 @@ private:
 		const auto Transform = [&](const PxShape& shape) {
 			PxVec3 scaling;
 			switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
-			case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius * 2); break;
-			default: throw;
+				case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius * 2); break;
+				default: throw;
 			}
 
 			PxMat44 world(PxVec4(1, 1, -1, 1));

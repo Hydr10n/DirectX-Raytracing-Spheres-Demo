@@ -20,7 +20,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	STL::Rng::Initialize(raysIndex, g_globalData.FrameIndex);
 
 	float viewZ = 1.#INFf;
-	float3 motion = 0, irradiance = 0;
+	float3 motion = 0, radiance = 0;
 
 	RayCastResult rayCastResult;
 	const float2 UV = Math::CalculateUV(raysIndex, raysDimensions, g_camera.PixelJitter);
@@ -45,11 +45,11 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 				scatterResult = scatterResultTemp;
 				hitDistance = traceResult.HitDistance;
 			}
-			irradiance += traceResult.Irradiance;
+			radiance += traceResult.Radiance;
 		}
 
-		irradiance *= NRD_IsValidRadiance(irradiance) ? 1.0f / g_globalData.SamplesPerPixel : 0;
-		irradiance = rayCastResult.Material.EmissiveColor.rgb + (g_globalData.MaxTraceRecursionDepth ? irradiance * scatterResult.Attenuation : rayCastResult.Material.BaseColor.rgb);
+		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_globalData.SamplesPerPixel : 0;
+		radiance = rayCastResult.Material.EmissiveColor.rgb + (g_globalData.MaxTraceRecursionDepth > 1 ? radiance * scatterResult.Attenuation : rayCastResult.Material.BaseColor.rgb);
 
 		const bool isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 
@@ -59,13 +59,13 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic, albedo, Rf0);
 
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(rayCastResult.HitInfo.Vertex.Normal, -rayDesc.Direction)), rayCastResult.Material.Roughness);
-		const float4 radiance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(irradiance / (isDiffuse ? (1 - Fenvironment) * albedo * 0.99f + 0.01f : Fenvironment * 0.99f + 0.01f), hitDistance);
-		g_noisyDiffuse[raysIndex] = isDiffuse ? radiance : 0;
-		g_noisySpecular[raysIndex] = isDiffuse ? 0 : radiance;
+		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / (isDiffuse ? (1 - Fenvironment) * albedo * 0.99f + 0.01f : Fenvironment * 0.99f + 0.01f), hitDistance);
+		g_noisyDiffuse[raysIndex] = isDiffuse ? radianceHitDistance : 0;
+		g_noisySpecular[raysIndex] = isDiffuse ? 0 : radianceHitDistance;
 	}
-	else if (!GetEnvironmentColor(rayDesc.Direction, irradiance)) irradiance = GetEnvironmentLightColor(rayDesc.Direction);
+	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
 	g_viewZ[raysIndex] = viewZ;
 	g_motion[raysIndex] = motion;
-	g_output[raysIndex] = float4(irradiance, viewZ * NRD_FP16_VIEWZ_SCALE);
+	g_output[raysIndex] = float4(radiance, viewZ * NRD_FP16_VIEWZ_SCALE);
 }
