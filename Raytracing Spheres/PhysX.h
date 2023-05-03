@@ -42,22 +42,19 @@ struct PhysX {
 	PhysX(const PhysX&) = delete;
 	PhysX& operator=(const PhysX&) = delete;
 
-	PhysX() noexcept(false) {
+	PhysX(physx::PxU32 threadCount = 8) noexcept(false) {
 		using namespace physx;
 
-		auto& foundation = *PxCreateFoundation(PX_PHYSICS_VERSION, m_allocatorCallback, m_errorCallback);
+		auto& foundation = *_.Foundation;
 
-		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(8);
+		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(threadCount);
 
 		m_cudaContextManager = PxCreateCudaContextManager(foundation, PxCudaContextManagerDesc());
-
-		m_pvd = PxCreatePvd(foundation);
-		m_pvd->connect(*PxDefaultPvdSocketTransportCreate("localhost", 5425, 10), PxPvdInstrumentationFlag::eALL);
 
 		PxTolerancesScale tolerancesScale;
 		tolerancesScale.speed = 3;
 
-		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, foundation, tolerancesScale, true, m_pvd);
+		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, foundation, tolerancesScale);
 
 		PxSceneDesc sceneDesc(tolerancesScale);
 		sceneDesc.cpuDispatcher = m_defaultCpuDispatcher;
@@ -74,19 +71,11 @@ struct PhysX {
 	}
 
 	~PhysX() {
-		auto& foundation = m_physics->getFoundation();
-
 		m_physics->release();
-
-		m_pvd->disconnect();
-		m_pvd->getTransport()->release();
-		m_pvd->release();
 
 		if (m_cudaContextManager != nullptr) m_cudaContextManager->release();
 
 		m_defaultCpuDispatcher->release();
-
-		foundation.release();
 	}
 
 	auto& GetPhysics() const noexcept { return *m_physics; }
@@ -99,21 +88,25 @@ struct PhysX {
 	}
 
 private:
-	struct PxAllocator : physx::PxDefaultAllocator {
-		void* allocate(size_t size, const char* typeName, const char* filename, int line) override {
-			void* ptr = PxDefaultAllocator::allocate(size, typeName, filename, line);
-			if (ptr == nullptr) throw std::bad_alloc();
-			return ptr;
-		}
-	} m_allocatorCallback;
+	inline static const struct _ {
+		struct PxAllocator : physx::PxDefaultAllocator {
+			void* allocate(size_t size, const char* typeName, const char* filename, int line) override {
+				void* ptr = PxDefaultAllocator::allocate(size, typeName, filename, line);
+				if (ptr == nullptr) throw std::bad_alloc();
+				return ptr;
+			}
+		} AllocatorCallback;
 
-	physx::PxDefaultErrorCallback m_errorCallback;
+		physx::PxDefaultErrorCallback ErrorCallback;
+
+		physx::PxFoundation* Foundation = PxCreateFoundation(PX_PHYSICS_VERSION, AllocatorCallback, ErrorCallback);
+
+		~_() { Foundation->release(); }
+	} _;
 
 	physx::PxDefaultCpuDispatcher* m_defaultCpuDispatcher{};
 
 	physx::PxCudaContextManager* m_cudaContextManager{};
-
-	physx::PxPvd* m_pvd{};
 
 	physx::PxPhysics* m_physics{};
 

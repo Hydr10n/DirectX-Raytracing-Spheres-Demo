@@ -15,7 +15,7 @@ using ordered_json_f = nlohmann::basic_json<nlohmann::ordered_map, std::vector, 
 	friend void to_json(ordered_json_f& nlohmann_json_j, const Type& nlohmann_json_t) { NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, __VA_ARGS__)) } \
 	friend void from_json(const ordered_json_f& nlohmann_json_j, Type& nlohmann_json_t) { Type nlohmann_json_default_obj; NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM_WITH_DEFAULT, __VA_ARGS__)) }
 
-inline void to_json(ordered_json_f& json, const SIZE& data) { json = { { "Width", data.cx }, { "Height", data.cy } }; }
+inline void to_json(ordered_json_f& json, SIZE data) { json = { { "Width", data.cx }, { "Height", data.cy } }; }
 inline void from_json(const ordered_json_f& json, SIZE& data) { data = { json.value("Width", 0), json.value("Height", 0) }; }
 
 namespace WindowHelpers {

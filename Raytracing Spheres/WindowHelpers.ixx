@@ -16,12 +16,12 @@ using namespace DisplayHelpers;
 using namespace std;
 
 namespace {
-	constexpr Resolution ToResolution(const RECT& value) { return { value.right - value.left, value.bottom - value.top }; }
+	constexpr Resolution CalculateResolution(const RECT& value) { return { value.right - value.left, value.bottom - value.top }; }
 }
 
 export namespace WindowHelpers {
 	constexpr void CenterRect(_In_ const RECT& bounds, _Inout_ RECT& rect) {
-		const auto size = ToResolution(rect);
+		const auto size = CalculateResolution(rect);
 		rect.left = (bounds.right + bounds.left - size.cx) / 2;
 		rect.top = (bounds.bottom + bounds.top - size.cy) / 2;
 		rect.right = rect.left + size.cx;
@@ -102,8 +102,7 @@ export namespace WindowHelpers {
 				SetLastError(ERROR_SUCCESS);
 				return (SetWindowLongPtrW(hWnd, GWL_EXSTYLE, exStyle) || GetLastError() == ERROR_SUCCESS)
 					&& (SetWindowLongPtrW(hWnd, GWL_STYLE, style) || GetLastError() == ERROR_SUCCESS)
-					&& (m_mode == WindowMode::Windowed ?
-						SetWindowPos(hWnd, nullptr, 0, 0, 0, 0, SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE) : TRUE);
+					&& (m_mode != WindowMode::Windowed || SetWindowPos(hWnd, nullptr, 0, 0, 0, 0, SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE));
 			};
 
 			const auto SetWindowPos = [&] {
@@ -114,10 +113,10 @@ export namespace WindowHelpers {
 				RECT displayRect;
 				if (!GetDisplayRect(displayRect, hWnd)) return false;
 
-				const auto displayResolution = ToResolution(displayRect);
+				const auto displayResolution = CalculateResolution(displayRect);
 
 				if (m_mode == WindowMode::Fullscreen) {
-					m_previousWindowResolution = ToResolution(windowPlacement.rcNormalPosition);
+					m_previousWindowResolution = CalculateResolution(windowPlacement.rcNormalPosition);
 
 					if (m_isFullscreenResolutionHandledByWindow) m_resolution = displayResolution;
 
@@ -126,7 +125,7 @@ export namespace WindowHelpers {
 					RECT clientRect;
 					if (!GetClientRect(hWnd, &clientRect)) return false;
 
-					const auto ret = ToResolution(clientRect) == displayResolution ? true : SetWindowPos(displayRect);
+					const auto ret = CalculateResolution(clientRect) == displayResolution || SetWindowPos(displayRect);
 					if (ret && !m_isFullscreenResolutionHandledByWindow) {
 						SendMessageW(hWnd, WM_SIZE, SIZE_MAXIMIZED, MAKELPARAM(displayResolution.cx, displayResolution.cy));
 					}
@@ -138,10 +137,10 @@ export namespace WindowHelpers {
 				RECT windowRect{ 0, 0, m_resolution.cx, m_resolution.cy };
 				AdjustWindowRectExForDpi(&windowRect, style, GetMenu(hWnd) != nullptr, exStyle, GetDpiForWindow(hWnd));
 
-				const auto windowResolution = ToResolution(windowRect);
+				const auto windowResolution = CalculateResolution(windowRect);
 
-				if (const auto resolution = ToResolution(windowPlacement.rcNormalPosition);
-					m_previousMode == WindowMode::Fullscreen && ToResolution(clientRect) == displayResolution
+				if (const auto resolution = CalculateResolution(windowPlacement.rcNormalPosition);
+					m_previousMode == WindowMode::Fullscreen && CalculateResolution(clientRect) == displayResolution
 					&& ((m_isFullscreenResolutionHandledByWindow && resolution == m_previousWindowResolution)
 						|| (!m_isFullscreenResolutionHandledByWindow && resolution == windowResolution))) {
 					m_isApplying = false;
@@ -164,12 +163,12 @@ export namespace WindowHelpers {
 					margin.right - newClientRect.right, margin.bottom - newClientRect.bottom
 				};
 
-				windowRect.left += (m_resolution.cx + margin.left + margin.right - displayResolution.cx < 0 ?
+				windowRect.left += m_resolution.cx + margin.left + margin.right - displayResolution.cx < 0 ?
 					clamp((clientRect.right + clientRect.left - m_resolution.cx) / 2, displayRect.left + margin.left, displayRect.right - margin.right - m_resolution.cx) :
-					(displayRect.right + displayRect.left - m_resolution.cx) / 2);
-				windowRect.top += (m_resolution.cy + margin.top + margin.bottom - displayResolution.cy < 0 ?
+					(displayRect.right + displayRect.left - m_resolution.cx) / 2;
+				windowRect.top += m_resolution.cy + margin.top + margin.bottom - displayResolution.cy < 0 ?
 					clamp((clientRect.bottom + clientRect.top - m_resolution.cy) / 2, displayRect.top + margin.top, displayRect.bottom - margin.bottom - m_resolution.cy) :
-					(displayRect.bottom + displayRect.top - m_resolution.cy) / 2);
+					(displayRect.bottom + displayRect.top - m_resolution.cy) / 2;
 				windowRect.right = windowRect.left + windowResolution.cx;
 				windowRect.bottom = windowRect.top + windowResolution.cy;
 				return SetWindowPos(windowRect);

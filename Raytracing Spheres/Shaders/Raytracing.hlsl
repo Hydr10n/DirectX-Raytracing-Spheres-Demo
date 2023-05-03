@@ -17,7 +17,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	g_output.GetDimensions(raysDimensions.x, raysDimensions.y);
 	if (raysIndex.x >= raysDimensions.x || raysIndex.y >= raysDimensions.y) return;
 
-	STL::Rng::Initialize(raysIndex, g_globalData.FrameIndex);
+	STL::Rng::Hash::Initialize(raysIndex, g_globalData.FrameIndex);
 
 	float viewZ = 1.#INFf;
 	float3 motion = 0, radiance = 0;
@@ -28,7 +28,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	if (CastRay(rayDesc, rayCastResult)) {
 		viewZ = dot(rayCastResult.HitInfo.Vertex.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 
-		const float3 previousPosition = STL::Geometry::AffineTransform(g_instanceData[rayCastResult.InstanceIndex].WorldToPreviousWorld, rayCastResult.HitInfo.Vertex.Position);
+		const float3 previousPosition = g_globalData.IsWorldStatic || g_instanceData[rayCastResult.InstanceIndex].IsStatic ? rayCastResult.HitInfo.Vertex.Position : STL::Geometry::AffineTransform(g_instanceData[rayCastResult.InstanceIndex].PreviousObjectToWorld, rayCastResult.HitInfo.ObjectVertexPosition);
 		motion.xy = STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV;
 		motion.z = STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - viewZ;
 
@@ -59,7 +59,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic, albedo, Rf0);
 
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(rayCastResult.HitInfo.Vertex.Normal, -rayDesc.Direction)), rayCastResult.Material.Roughness);
-		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / (isDiffuse ? (1 - Fenvironment) * albedo * 0.99f + 0.01f : Fenvironment * 0.99f + 0.01f), hitDistance);
+		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
 		g_noisyDiffuse[raysIndex] = isDiffuse ? radianceHitDistance : 0;
 		g_noisySpecular[raysIndex] = isDiffuse ? 0 : radianceHitDistance;
 	}

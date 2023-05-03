@@ -17,7 +17,7 @@ struct IndirectRay {
 		RayDesc rayDesc;
 		rayDesc.Origin = worldRayOrigin;
 		rayDesc.Direction = worldRayDirection;
-		rayDesc.TMin = 1e-3f;
+		rayDesc.TMin = 1e-4f;
 		rayDesc.TMax = 1.#INFf;
 
 		for (uint depth = 1; depth < g_globalData.MaxTraceRecursionDepth; depth++) {
@@ -31,7 +31,7 @@ struct IndirectRay {
 				if (depth == 1) traceResult.HitDistance = rayCastResult.HitDistance;
 				else if (g_globalData.IsRussianRouletteEnabled && depth > 3) {
 					const float probability = max(attenuation.r, max(attenuation.g, attenuation.b));
-					if (STL::Rng::GetFloat2().x >= probability) break;
+					if (STL::Rng::Hash::GetFloat() >= probability) break;
 					attenuation /= probability;
 				}
 

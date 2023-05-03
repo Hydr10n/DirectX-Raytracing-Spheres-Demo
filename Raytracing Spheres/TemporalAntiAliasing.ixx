@@ -18,11 +18,9 @@ using namespace std;
 export namespace DirectX::PostProcess {
 	struct TemporalAntiAliasing : IPostProcess {
 		SIZE TextureSize{};
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE MotionSRV, HistoryOutputSRV, OutputSRV, FinalOutputUAV; } TextureDescriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE MotionSRV, HistoryOutputSRV, CurrentOutputSRV, FinalOutputUAV; } TextureDescriptors{};
 
 		struct Data {
-			UINT FrameIndex;
-			XMUINT3 _;
 			XMFLOAT3 CameraPosition;
 			float _1;
 			XMFLOAT3 CameraRightDirection;
@@ -48,7 +46,7 @@ export namespace DirectX::PostProcess {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(0, TextureDescriptors.MotionSRV);
 			commandList->SetComputeRootDescriptorTable(1, TextureDescriptors.HistoryOutputSRV);
-			commandList->SetComputeRootDescriptorTable(2, TextureDescriptors.OutputSRV);
+			commandList->SetComputeRootDescriptorTable(2, TextureDescriptors.CurrentOutputSRV);
 			commandList->SetComputeRootDescriptorTable(3, TextureDescriptors.FinalOutputUAV);
 			commandList->SetComputeRootConstantBufferView(4, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());

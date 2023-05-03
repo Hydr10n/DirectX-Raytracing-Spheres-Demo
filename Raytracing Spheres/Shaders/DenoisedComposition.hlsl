@@ -55,7 +55,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	const float3
 		V = -normalize(NDC.x * g_cameraRightDirection + NDC.y * g_cameraUpDirection + g_cameraForwardDirection),
 		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(normalRoughness.xyz, V)), normalRoughness.w),
-		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelCoordinate]).rgb * ((1 - Fenvironment) * albedo * 0.99f + 0.01f),
-		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelCoordinate]).rgb * (Fenvironment * 0.99f + 0.01f);
+		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelCoordinate]).rgb * lerp((1 - Fenvironment) * albedo, 1, 0.01f),
+		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelCoordinate]).rgb * lerp(Fenvironment, 1, 0.01f);
 	g_output[pixelCoordinate] = diffuse + specular;
 }

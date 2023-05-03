@@ -4,7 +4,7 @@
 
 struct HitInfo {
 	VertexPositionNormalTexture Vertex;
-	float3 VertexUnmappedNormal;
+	float3 ObjectVertexPosition, UnmappedVertexNormal;
 	bool IsFrontFace;
 
 	static bool SetFaceNormal(float3 rayDirection, inout float3 outwardNormal) {

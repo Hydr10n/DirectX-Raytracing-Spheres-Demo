@@ -20,14 +20,12 @@ SamplerState gLinearSampler : register( s0 );
 
 Texture2D<float3> gIn_Motion : register( t0 );
 Texture2D<float3> gIn_HistoryOutput : register( t1 );
-Texture2D<float4> gIn_Output : register( t2 );
+Texture2D<float4> gIn_CurrentOutput : register( t2 );
 
 RWTexture2D<float3> gOut_FinalOutput : register( u0 );
 
 cbuffer Data : register( b0 )
 {
-    uint gFrameIndex;
-    uint3 _;
     float3 gCameraPosition;
     float _1;
     float3 gCameraRightDirection;
@@ -59,7 +57,7 @@ void Preload( uint2 sharedPos, int2 globalPos, uint2 rectSize )
 {
     globalPos = clamp( globalPos, 0, rectSize - 1.0 );
 
-    float4 color_viewZ = gIn_Output[ globalPos ];
+    float4 color_viewZ = gIn_CurrentOutput[ globalPos ];
     color_viewZ.w = abs( color_viewZ.w ) * STL::Math::Sign( gCameraNearZ ) / NRD_FP16_VIEWZ_SCALE;
 
     s_Data[ sharedPos.y ][ sharedPos.x ] = color_viewZ;
@@ -184,7 +182,7 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
     float3 worldRayDirection = normalize( NDC.x * gCameraRightDirection + NDC.y * gCameraUpDirection + gCameraForwardDirection );
     float3 Xnearest = gCameraPosition + worldRayDirection * viewZnearest / dot( worldRayDirection, normalize( gCameraForwardDirection ) );
     float3 mvNearest = gIn_Motion[ pixelPos + offseti ] * invRectSize.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, 0 );
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, STL_SCREEN_MOTION );
     pixelUvPrev -= offset;
 
     // History clamping

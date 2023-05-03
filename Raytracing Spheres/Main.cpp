@@ -12,9 +12,7 @@
 #include <set>
 
 import App;
-import DisplayHelpers;
 import SharedData;
-import WindowHelpers;
 
 using namespace DirectX;
 using namespace DisplayHelpers;
@@ -80,7 +78,7 @@ int WINAPI wWinMain(
 		g_windowModeHelper = make_shared<WindowModeHelper>(window);
 
 		RECT clientRect;
-		if (GraphicsSettings.Resolution >= *cbegin(g_displayResolutions) && GraphicsSettings.Resolution <= *--cend(g_displayResolutions)) {
+		if (GraphicsSettings.Resolution >= *cbegin(SharedData::DisplayResolutions) && GraphicsSettings.Resolution <= *--cend(SharedData::DisplayResolutions)) {
 			clientRect = { 0, 0, GraphicsSettings.Resolution.cx, GraphicsSettings.Resolution.cy };
 		}
 		else ThrowIfFailed(GetClientRect(window, &clientRect));
@@ -159,11 +157,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			ThrowIfFailed(monitor != nullptr);
 
 			if (monitor != s_hMonitor || forceUpdate) {
-				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
+				ThrowIfFailed(::GetDisplayResolutions(SharedData::DisplayResolutions, monitor));
 
-				if (const auto resolution = cbegin(g_displayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
-					*--cend(g_displayResolutions) > resolution) {
-					erase_if(g_displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
+				if (const auto resolution = cbegin(SharedData::DisplayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
+					*--cend(SharedData::DisplayResolutions) > resolution) {
+					erase_if(SharedData::DisplayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
 				}
 
 				ThrowIfFailed(GetDisplayResolution(s_displayResolution, monitor));
@@ -182,7 +180,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					const auto hasMenu = GetMenu(hWnd) != nullptr;
 					const auto DPI = GetDpiForWindow(hWnd);
 
-					const auto AdjustSize = [&](const SIZE& size, POINT& newSize) {
+					const auto AdjustSize = [&](SIZE size, POINT& newSize) {
 						RECT rect{ 0, 0, size.cx, size.cy };
 						if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
 							newSize = { rect.right - rect.left, rect.bottom - rect.top };
@@ -190,7 +188,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					};
 
 					auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
-					AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);
+					AdjustSize(*cbegin(SharedData::DisplayResolutions), minMaxInfo.ptMinTrackSize);
 					AdjustSize(s_displayResolution, minMaxInfo.ptMaxTrackSize);
 				}
 			}

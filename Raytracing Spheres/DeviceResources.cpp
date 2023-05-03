@@ -389,10 +389,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
             );
         depthStencilDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-        D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
-        depthOptimizedClearValue.Format = m_depthBufferFormat;
-        depthOptimizedClearValue.DepthStencil.Depth = 1.0f;
-        depthOptimizedClearValue.DepthStencil.Stencil = 0;
+        const CD3DX12_CLEAR_VALUE depthOptimizedClearValue(m_depthBufferFormat, (m_options & c_ReverseDepth) ? 0.0f : 1.0f, 0u);
 
         ThrowIfFailed(m_d3dDevice->CreateCommittedResource(
             &depthHeapProperties,
@@ -425,7 +422,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
 }
 
 // This method is called when the Win32 window is created (or re-created).
-void DeviceResources::SetWindow(HWND window, const SIZE& size) noexcept
+void DeviceResources::SetWindow(HWND window, SIZE size) noexcept
 {
     m_window = window;
 
@@ -439,7 +436,7 @@ bool DeviceResources::EnableVSync(bool enable) noexcept {
 }
 
 // This method is called when the Win32 window changes size.
-bool DeviceResources::WindowSizeChanged(const SIZE& size)
+bool DeviceResources::WindowSizeChanged(SIZE size)
 {
     if (size.cx == m_outputSize.cx
         && size.cy == m_outputSize.cy)

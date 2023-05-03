@@ -15,20 +15,10 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ---
 
 ## Features
-### Supported Physically Based Material Attributes & Texture Map Types
-- Base Color
-- Emissive Color
-- Metallic
-- Roughness
-- Opacity
-
-#### Other Material Attributes
-- Refractive Index
-
-#### Other Texture Map Types
-- Ambient Occlusion
-- Normal
-- (Environment) Cube
+### Raytracing
+- Diffuse Reflection
+- Specular Reflection
+- Specular Transmission
 
 ### Graphics Settings
 - Window Mode: Windowed | Borderless | Fullscreen

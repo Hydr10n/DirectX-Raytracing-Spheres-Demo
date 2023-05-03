@@ -22,6 +22,7 @@ namespace DX
     public:
         static constexpr unsigned int c_AllowTearing = 0x1;
         static constexpr unsigned int c_EnableHDR    = 0x2;
+        static constexpr unsigned int c_ReverseDepth = 0x4;
 
         DeviceResources(DXGI_FORMAT backBufferFormat = DXGI_FORMAT_B8G8R8A8_UNORM,
                         DXGI_FORMAT depthBufferFormat = DXGI_FORMAT_D32_FLOAT,
@@ -39,9 +40,9 @@ namespace DX
 
         void CreateDeviceResources();
         void CreateWindowSizeDependentResources();
-        void SetWindow(HWND window, const SIZE& size) noexcept;
+        void SetWindow(HWND window, SIZE size) noexcept;
         bool EnableVSync(bool enable) noexcept;
-        bool WindowSizeChanged(const SIZE& size);
+        bool WindowSizeChanged(SIZE size);
         void HandleDeviceLost();
         void RegisterDeviceNotify(IDeviceNotify* deviceNotify) noexcept { m_deviceNotify = deviceNotify; }
         void Prepare(D3D12_RESOURCE_STATES beforeState = D3D12_RESOURCE_STATE_PRESENT,

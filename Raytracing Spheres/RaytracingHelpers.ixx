@@ -23,13 +23,11 @@ export namespace DirectX::RaytracingHelpers {
 				ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&buffer)));
 			};
 
-			CreateBuffer(scratchSize, D3D12_RESOURCE_STATE_COMMON, Scratch);
+			CreateBuffer(scratchSize, D3D12_RESOURCE_STATE_GENERIC_READ, Scratch);
 
 			CreateBuffer(resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, Result);
 
-			if (instanceDescsSize) {
-				CreateBuffer(instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, InstanceDescs, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
-			}
+			if (instanceDescsSize) CreateBuffer(instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, InstanceDescs, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
 		}
 	};
 
@@ -113,7 +111,7 @@ export namespace DirectX::RaytracingHelpers {
 		TriangleMesh(
 			ID3D12Device* pDevice,
 			span<const Vertex> vertices, span<const Index> indices,
-			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
+			D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 			D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 			DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 		) noexcept(false) : m_device(pDevice) {
@@ -121,7 +119,7 @@ export namespace DirectX::RaytracingHelpers {
 			if (size(indices) < 3) throw invalid_argument("Index count cannot be fewer than 3");
 
 			const auto CreateBuffer = [&](const auto& data, D3D12_RESOURCE_STATES initialState, ComPtr<ID3D12Resource>& buffer) {
-				const auto size = std::size(data) * sizeof(data[0]);
+				const auto size = ::size(data) * sizeof(data[0]);
 
 				const D3D12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
 				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size);
@@ -129,7 +127,7 @@ export namespace DirectX::RaytracingHelpers {
 
 				PVOID pMappedData;
 				ThrowIfFailed(buffer->Map(0, nullptr, &pMappedData));
-				memcpy(pMappedData, std::data(data), size);
+				memcpy(pMappedData, ::data(data), size);
 				buffer->Unmap(0, nullptr);
 			};
 

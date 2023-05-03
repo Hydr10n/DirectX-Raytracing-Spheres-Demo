@@ -9,6 +9,6 @@ import DisplayHelpers;
 using namespace DisplayHelpers;
 using namespace std;
 
-export {
-	inline set<Resolution> g_displayResolutions;
+export namespace SharedData {
+	set<Resolution> DisplayResolutions;
 }

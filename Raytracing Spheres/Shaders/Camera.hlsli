@@ -26,7 +26,7 @@ struct Camera {
 	}
 
 	RayDesc GenerateThinLensRay(float2 NDC) {
-		const float2 value = STL::ImportanceSampling::Uniform::GetRay(STL::Rng::GetFloat2()).xy;
+		const float2 value = STL::ImportanceSampling::Uniform::GetRay(STL::Rng::Hash::GetFloat2()).xy;
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
 		rayDesc.Origin = Position + offset;

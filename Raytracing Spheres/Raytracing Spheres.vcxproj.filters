@@ -105,11 +105,23 @@
     <ClCompile Include="DenoisedComposition.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TextureAlphaBlend.ixx">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="NRD.ixx">
       <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="DescriptorHeap.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Model.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MyScene.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ResourceHelpers.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Scene.ixx">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -147,6 +159,9 @@
     <None Include="Shaders\Raytracing.hlsli">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="Shaders\RaytracingHelpers.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Raytracing.hlsl">
@@ -156,9 +171,6 @@
       <Filter>Shader Files</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\DenoisedComposition.hlsl">
-      <Filter>Shader Files</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\TextureAlphaBlend.hlsl">
       <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>

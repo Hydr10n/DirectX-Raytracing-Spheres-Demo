@@ -35,7 +35,7 @@
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="Shared">
-    <Import Project="..\Externals\Externals.vcxitems" Label="Shared" />
+    <Import Project="..\External\External.vcxitems" Label="Shared" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -57,24 +57,24 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);$(SolutionDir)Externals\NVIDIA\NRD\Include;..\Externals\NVIDIA\NRD\Integration;..\Externals\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);$(SolutionDir)External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;dwmapi.lib;dxgi.lib;dxguid.lib;d3d12.lib;NRD.lib;NRI.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\Externals\NVIDIA\NRD\Lib\Debug;..\Externals\NVIDIA\NRI\Lib\Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\External\NVIDIA\NRD\Lib\Debug;..\External\NVIDIA\NRI\Lib\Debug</AdditionalLibraryDirectories>
     </Link>
     <FxCompile>
       <ObjectFileOutput>$(OutDir)%(RelativeDir)%(Filename).cso</ObjectFileOutput>
       <AdditionalOptions>/Fd "$(OutDir)%(RelativeDir)%(Filename).pdb" %(AdditionalOptions)</AdditionalOptions>
       <ShaderModel>6.3</ShaderModel>
       <HeaderFileOutput>$(IntDir)%(Identity).h</HeaderFileOutput>
-      <AdditionalIncludeDirectories>..\Externals\NVIDIA\MathLib;..\Externals\NVIDIA\NRD\Shaders\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\External\NVIDIA\MathLib;..\External\NVIDIA\NRD\Shaders\Include</AdditionalIncludeDirectories>
     </FxCompile>
     <PostBuildEvent>
-      <Command>xcopy /y /d "..\Externals\NVIDIA\NRD\Lib\Debug\*.dll" "$(OutDir)"
-xcopy /y /d "..\Externals\NVIDIA\NRI\Lib\Debug\*.dll" "$(OutDir)"
+      <Command>xcopy /y /d "..\External\NVIDIA\NRD\Lib\Debug\*.dll" "$(OutDir)"
+xcopy /y /d "..\External\NVIDIA\NRI\Lib\Debug\*.dll" "$(OutDir)"
 xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -87,7 +87,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);$(SolutionDir)Externals\NVIDIA\NRD\Include;..\Externals\NVIDIA\NRD\Integration;..\Externals\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);$(SolutionDir)External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -95,17 +95,17 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;dwmapi.lib;dxgi.lib;dxguid.lib;d3d12.lib;NRD.lib;NRI.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\Externals\NVIDIA\NRD\Lib\Release;..\Externals\NVIDIA\NRI\Lib\Release</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\External\NVIDIA\NRD\Lib\Release;..\External\NVIDIA\NRI\Lib\Release</AdditionalLibraryDirectories>
     </Link>
     <FxCompile>
       <ObjectFileOutput>$(OutDir)%(RelativeDir)%(Filename).cso</ObjectFileOutput>
       <ShaderModel>6.3</ShaderModel>
       <HeaderFileOutput>$(IntDir)%(Identity).h</HeaderFileOutput>
-      <AdditionalIncludeDirectories>..\Externals\NVIDIA\MathLib;..\Externals\NVIDIA\NRD\Shaders\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\External\NVIDIA\MathLib;..\External\NVIDIA\NRD\Shaders\Include</AdditionalIncludeDirectories>
     </FxCompile>
     <PostBuildEvent>
-      <Command>xcopy /y /d "..\Externals\NVIDIA\NRD\Lib\Release\*.dll" "$(OutDir)"
-xcopy /y /d "..\Externals\NVIDIA\NRI\Lib\Release\*.dll" "$(OutDir)"
+      <Command>xcopy /y /d "..\External\NVIDIA\NRD\Lib\Release\*.dll" "$(OutDir)"
+xcopy /y /d "..\External\NVIDIA\NRI\Lib\Release\*.dll" "$(OutDir)"
 xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -126,7 +126,10 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClCompile Include="App.cppm" />
     <ClCompile Include="Camera.ixx" />
     <ClCompile Include="DenoisedComposition.ixx" />
+    <ClCompile Include="DescriptorHeap.ixx" />
     <ClCompile Include="HaltonSamplePattern.ixx" />
+    <ClCompile Include="Model.ixx" />
+    <ClCompile Include="MyScene.ixx" />
     <ClCompile Include="NRD.ixx" />
     <ClCompile Include="RaytracingHelpers.ixx" />
     <ClCompile Include="DisplayHelpers.ixx" />
@@ -137,11 +140,12 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClCompile Include="Random.ixx" />
     <ClCompile Include="RenderTexture.cpp" />
     <ClCompile Include="RaytracingShaderData.ixx" />
+    <ClCompile Include="ResourceHelpers.ixx" />
+    <ClCompile Include="Scene.ixx" />
     <ClCompile Include="SharedData.ixx" />
     <ClCompile Include="TemporalAntiAliasing.ixx" />
     <ClCompile Include="Texture.ixx" />
     <ClCompile Include="BufferHelpers.ixx" />
-    <ClCompile Include="TextureAlphaBlend.ixx" />
     <ClCompile Include="WindowHelpers.ixx" />
   </ItemGroup>
   <ItemGroup>
@@ -154,6 +158,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <None Include="Shaders\Camera.hlsli" />
     <None Include="Shaders\Raytracing.hlsli" />
     <None Include="Shaders\HitInfo.hlsli" />
+    <None Include="Shaders\RaytracingHelpers.hlsli" />
     <None Include="Shaders\TriangleMeshHelpers.hlsli" />
     <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\Math.hlsli" />
@@ -183,12 +188,6 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="Shaders\TextureAlphaBlend.hlsl">
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-      <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
-      <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
     </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
