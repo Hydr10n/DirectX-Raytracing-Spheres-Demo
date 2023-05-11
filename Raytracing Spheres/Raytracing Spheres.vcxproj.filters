@@ -108,9 +108,6 @@
     <ClCompile Include="NRD.ixx">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="DescriptorHeap.ixx">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Model.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -122,6 +119,9 @@
     </ClCompile>
     <ClCompile Include="Scene.ixx">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DescriptorHeap.ixx">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -144,7 +144,7 @@
     <None Include="Shaders\IndirectRay.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\TriangleMeshHelpers.hlsli">
+    <None Include="Shaders\MeshHelpers.hlsli">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="Shaders\Math.hlsli">

@@ -1,6 +1,6 @@
 # DirectX Raytracing Spheres Demo
 
-Real-time physically based rendering using GPU capable of DirectX Raytracing, plus physics simulation using NVIDIA PhysX.
+Real-time physically based rendering using GPU capable of DirectX Raytracing.
 
 ![Raytracing Spheres](Screenshots/Raytracing-Spheres-01.png)
 ![Raytracing Spheres](Screenshots/Raytracing-Spheres-02.png)
@@ -15,10 +15,14 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ---
 
 ## Features
-### Raytracing
+### Inline Raytracing
 - Diffuse Reflection
 - Specular Reflection
 - Specular Transmission
+
+### PBR Metallic/Roughness Workflow
+
+### Rigid-Body Simulation using NVIDIA PhysX
 
 ### Graphics Settings
 - Window Mode: Windowed | Borderless | Fullscreen

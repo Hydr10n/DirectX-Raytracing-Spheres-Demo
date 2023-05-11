@@ -159,7 +159,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <None Include="Shaders\Raytracing.hlsli" />
     <None Include="Shaders\HitInfo.hlsli" />
     <None Include="Shaders\RaytracingHelpers.hlsli" />
-    <None Include="Shaders\TriangleMeshHelpers.hlsli" />
+    <None Include="Shaders\MeshHelpers.hlsli" />
     <None Include="Shaders\Material.hlsli" />
     <None Include="Shaders\Math.hlsli" />
     <None Include="Shaders\IndirectRay.hlsli" />

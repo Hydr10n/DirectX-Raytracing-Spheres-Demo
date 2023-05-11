@@ -18,7 +18,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 SamplerState gLinearSampler : register( s0 );
 
-Texture2D<float3> gIn_Motion : register( t0 );
+Texture2D<float3> gIn_Motions : register( t0 );
 Texture2D<float3> gIn_HistoryOutput : register( t1 );
 Texture2D<float4> gIn_CurrentOutput : register( t2 );
 
@@ -181,7 +181,7 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
     float2 pixelUv = Math::CalculateUV( pixelPos, rectSize ), NDC = Math::CalculateNDC( pixelUv + offset );
     float3 worldRayDirection = normalize( NDC.x * gCameraRightDirection + NDC.y * gCameraUpDirection + gCameraForwardDirection );
     float3 Xnearest = gCameraPosition + worldRayDirection * viewZnearest / dot( worldRayDirection, normalize( gCameraForwardDirection ) );
-    float3 mvNearest = gIn_Motion[ pixelPos + offseti ] * invRectSize.xyy;
+    float3 mvNearest = gIn_Motions[ pixelPos + offseti ] * invRectSize.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, STL_SCREEN_MOTION );
     pixelUvPrev -= offset;
 

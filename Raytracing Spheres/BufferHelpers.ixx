@@ -2,8 +2,11 @@ module;
 
 #include "pch.h"
 
+#include "directxtk12/DirectXHelpers.h"
+
 export module DirectX.BufferHelpers;
 
+using namespace DirectX;
 using namespace DX;
 using namespace Microsoft::WRL;
 
@@ -16,33 +19,6 @@ export namespace DirectX::BufferHelpers {
 			.SizeInBytes = stride * count
 		};
 		device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
-	}
-
-	void CreateShaderResourceView(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT stride, UINT count = 1) {
-		ComPtr<ID3D12Device> device;
-		ThrowIfFailed(pResource->GetDevice(IID_PPV_ARGS(&device)));
-		const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
-			.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-			.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-			.Buffer{
-				.NumElements = count,
-				.StructureByteStride = stride
-			}
-		};
-		device->CreateShaderResourceView(pResource, &shaderResourceViewDesc, descriptor);
-	}
-
-	void CreateUnorderedAccessView(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT stride, UINT count = 1) {
-		ComPtr<ID3D12Device> device;
-		ThrowIfFailed(pResource->GetDevice(IID_PPV_ARGS(&device)));
-		const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessDesc{
-			.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-			.Buffer{
-				.NumElements = count,
-				.StructureByteStride = stride
-			}
-		};
-		device->CreateUnorderedAccessView(pResource, nullptr, &unorderedAccessDesc, descriptor);
 	}
 
 	template <typename T, D3D12_HEAP_TYPE Type = D3D12_HEAP_TYPE_DEFAULT, UINT Alignment = 2>
@@ -58,8 +34,8 @@ export namespace DirectX::BufferHelpers {
 
 		const UINT Count;
 
-		GPUBuffer(GPUBuffer&) = delete;
-		GPUBuffer& operator=(GPUBuffer&) = delete;
+		GPUBuffer(const GPUBuffer&) = delete;
+		GPUBuffer& operator=(const GPUBuffer&) = delete;
 
 		GPUBuffer(ID3D12Device* pDevice, UINT count = 1, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE) noexcept(false) : Count(count) {
 			if (count) {
@@ -110,15 +86,27 @@ export namespace DirectX::BufferHelpers {
 	struct StructuredBuffer : UploadBuffer<T> {
 		StructuredBuffer(ID3D12Device* pDevice, UINT count = 1) noexcept(false) : UploadBuffer<T>(pDevice, count) {}
 
-		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const { ::CreateShaderResourceView(this->m_buffer.Get(), descriptor, this->ItemSize, this->Count); }
+		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(this->m_buffer->GetDevice(IID_PPV_ARGS(&device)));
+			CreateBufferShaderResourceView(device.Get(), this->m_buffer.Get(), descriptor, this->ItemSize);
+		}
 	};
 
 	template <typename T>
 	struct RWStructuredBuffer : GPUBuffer<T> {
 		RWStructuredBuffer(ID3D12Device* pDevice, UINT count = 1) noexcept(false) : GPUBuffer<T>(pDevice, count, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {}
 
-		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const { ::CreateShaderResourceView(this->m_buffer.Get(), descriptor, this->ItemSize, this->Count); }
+		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(this->m_buffer->GetDevice(IID_PPV_ARGS(&device)));
+			CreateBufferShaderResourceView(device.Get(), this->m_buffer.Get(), descriptor, this->ItemSize);
+		}
 
-		void CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const { ::CreateUnorderedAccessView(this->m_buffer.Get(), descriptor, this->ItemSize, this->Count); }
+		void CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(this->m_buffer->GetDevice(IID_PPV_ARGS(&device)));
+			CreateBufferUnorderedAccessView(device.Get(), this->m_buffer.Get(), descriptor, this->ItemSize);
+		}
 	};
 }

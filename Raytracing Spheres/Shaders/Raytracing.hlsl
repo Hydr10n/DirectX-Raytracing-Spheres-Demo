@@ -28,9 +28,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	if (CastRay(rayDesc, rayCastResult)) {
 		viewZ = dot(rayCastResult.HitInfo.Vertex.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 
-		const float3 previousPosition = g_globalData.IsWorldStatic || g_instanceData[rayCastResult.InstanceIndex].IsStatic ? rayCastResult.HitInfo.Vertex.Position : STL::Geometry::AffineTransform(g_instanceData[rayCastResult.InstanceIndex].PreviousObjectToWorld, rayCastResult.HitInfo.ObjectVertexPosition);
-		motion.xy = STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV;
-		motion.z = STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - viewZ;
+		motion = CalculateMotion(UV, viewZ, rayCastResult.HitInfo.Vertex.Position, rayCastResult.HitInfo.ObjectVertexPosition, rayCastResult.InstanceIndex, rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics);
 
 		g_normalRoughness[raysIndex] = NRD_FrontEnd_PackNormalAndRoughness(rayCastResult.HitInfo.Vertex.Normal, rayCastResult.Material.Roughness);
 
@@ -66,6 +64,6 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
 	g_viewZ[raysIndex] = viewZ;
-	g_motion[raysIndex] = motion;
+	g_motions[raysIndex] = motion;
 	g_output[raysIndex] = float4(radiance, viewZ * NRD_FP16_VIEWZ_SCALE);
 }

@@ -18,7 +18,6 @@ struct Material {
 	float Metallic, Roughness, Opacity, RefractiveIndex;
 	AlphaMode AlphaMode;
 	float AlphaThreshold, AmbientOcclusion;
-	float _;
 
 	float EstimateDiffuseProbability(float3 N, float3 V, float3 albedo, float3 Rf0) {
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, abs(dot(N, V)), Roughness);

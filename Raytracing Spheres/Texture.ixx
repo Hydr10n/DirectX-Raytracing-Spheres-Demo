@@ -36,10 +36,12 @@ export {
 
 		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeap& descriptorHeap, bool* pIsCubeMap = nullptr) {
 			bool isCubeMap = false;
-			const auto ret = !lstrcmpiW(filePath.extension().c_str(), L".dds") ?
+			if (const auto ret = !lstrcmpiW(filePath.extension().c_str(), L".dds") ?
 				CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap) :
 				CreateWICTextureFromFileEx(pDevice, resourceUploadBatch, filePath.c_str(), 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &Resource);
-			if (FAILED(ret)) throw_std_system_error(ret, filePath.string());
+				FAILED(ret)) {
+				throw_std_system_error(ret, filePath.string());
+			}
 			CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
 			if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap;
 		}

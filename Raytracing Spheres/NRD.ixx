@@ -23,13 +23,11 @@ public:
 		uint32_t backBufferCount,
 		span<const Method> methods, SIZE outputSize
 	) : m_NRD(backBufferCount) {
-		const DeviceCreationD3D12Desc deviceCreationDesc{ .d3d12Device = pDevice, .d3d12GraphicsQueue = pCommandQueue };
-		const CommandBufferD3D12Desc commandBufferDesc{ .d3d12CommandList = pCommandList, .d3d12CommandAllocator = pCommandAllocator };
-		if (CreateDeviceFromD3D12Device(deviceCreationDesc, m_device) == nri::Result::SUCCESS
+		if (CreateDeviceFromD3D12Device(DeviceCreationD3D12Desc{ .d3d12Device = pDevice, .d3d12GraphicsQueue = pCommandQueue }, m_device) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::CoreInterface), static_cast<CoreInterface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::HelperInterface), static_cast<HelperInterface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
-			&& m_NRI.CreateCommandBufferD3D12(*m_device, commandBufferDesc, m_commandBuffer) == nri::Result::SUCCESS) {
+			&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList, .d3d12CommandAllocator = pCommandAllocator }, m_commandBuffer) == nri::Result::SUCCESS) {
 			vector<MethodDesc> methodDescs;
 			for (const auto& method : methods) methodDescs.emplace_back(method, static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy));
 			const DenoiserCreationDesc denoiserCreationDesc{ .requestedMethods = data(methodDescs), .requestedMethodsNum = static_cast<uint32_t>(size(methodDescs)) };
@@ -41,7 +39,7 @@ public:
 	~NRD() {
 		if (m_isAvailable) m_NRD.Destroy();
 
-		for (auto& textureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
+		for (const auto& textureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
 			if (textureTransitionBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureTransitionBarrierDesc.texture));
 		}
 

@@ -96,7 +96,7 @@ public:
 				struct Bloom {
 					bool IsEnabled = true;
 
-					float Threshold = 0.5f, BlurSize = 4;
+					float Threshold = 0.5f, BlurSize = 5;
 
 					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Bloom, IsEnabled, Threshold, BlurSize);
 				} Bloom;
@@ -122,9 +122,9 @@ public:
 
 			struct Camera {
 				struct Speed {
-					float Translation = 10, Rotation = 0.5f;
+					float Movement = 10, Rotation = 0.5f;
 
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Speed, Translation, Rotation);
+					NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Speed, Movement, Rotation);
 				} Speed;
 
 				NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT_ORDERED_F(Camera, Speed);

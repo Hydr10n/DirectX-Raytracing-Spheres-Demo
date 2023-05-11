@@ -143,6 +143,8 @@ struct App::Impl : IDeviceNotify {
 			ThrowIfFailed(m_windowModeHelper->Apply());
 			m_isWindowSettingChanged = false;
 		}
+
+		m_inputDevices.Mouse->EndOfInputFrame();
 	}
 
 	void OnWindowSizeChanged() { if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
@@ -226,7 +228,7 @@ private:
 	} m_inputDeviceStateTrackers;
 
 	struct RenderTextureNames {
-		MAKE_NAME(Motion);
+		MAKE_NAME(Motions);
 		MAKE_NAME(NormalRoughness);
 		MAKE_NAME(ViewZ);
 		MAKE_NAME(BaseColorMetalness);
@@ -248,7 +250,7 @@ private:
 			GlobalData,
 			InstanceData,
 			ObjectResourceDescriptorHeapIndices, ObjectData,
-			MotionSRV, MotionUAV,
+			MotionsSRV, MotionsUAV,
 			NormalRoughnessSRV, NormalRoughnessUAV,
 			ViewZSRV, ViewZUAV,
 			BaseColorMetalnessSRV, BaseColorMetalnessUAV,
@@ -262,7 +264,7 @@ private:
 			Blur1, Blur2,
 			Font,
 			Reserve,
-			Count = 0x400
+			Count = 1 << 16
 		};
 	};
 	unique_ptr<DescriptorHeapEx> m_resourceDescriptorHeap;
@@ -275,7 +277,7 @@ private:
 			Count
 		};
 	};
-	unique_ptr<DescriptorHeapEx> m_renderDescriptorHeap;
+	unique_ptr<DescriptorHeap> m_renderDescriptorHeap;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 
@@ -300,7 +302,7 @@ private:
 
 	unique_ptr<SpriteBatch> m_alphaBlending;
 
-	unordered_map<shared_ptr<ModelMesh>, shared_ptr<BottomLevelAccelerationStructure>> m_bottomLevelAccelerationStructures;
+	unordered_map<shared_ptr<Mesh>, shared_ptr<BottomLevelAccelerationStructure>> m_bottomLevelAccelerationStructures;
 	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
 
 	struct {
@@ -316,7 +318,7 @@ private:
 
 	static constexpr float
 		CameraMinVerticalFieldOfView = 30, CameraMaxVerticalFieldOfView = 120,
-		CameraMaxTranslationSpeed = 100, CameraMaxRotationSpeed = 2;
+		CameraMaxMovementSpeed = 100, CameraMaxRotationSpeed = 2;
 	CameraController m_cameraController;
 
 	shared_ptr<Scene> m_scene;
@@ -340,7 +342,7 @@ private:
 
 		LoadScene();
 
-		CreateAccelerationStructures();
+		CreateAccelerationStructures(false);
 
 		CreateGPUBuffers();
 	}
@@ -367,7 +369,7 @@ private:
 					m_NRD->SetResource(resourceType, texture->GetResource(), texture->GetCurrentState());
 				};
 
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Motion, ResourceType::IN_MV, ResourceDescriptorHeapIndex::MotionSRV, ResourceDescriptorHeapIndex::MotionUAV);
+				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Motions, ResourceType::IN_MV, ResourceDescriptorHeapIndex::MotionsSRV, ResourceDescriptorHeapIndex::MotionsUAV);
 
 				CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceType::IN_NORMAL_ROUGHNESS, ResourceDescriptorHeapIndex::NormalRoughnessSRV, ResourceDescriptorHeapIndex::NormalRoughnessUAV);
 
@@ -408,7 +410,7 @@ private:
 		m_haltonSamplePattern.Reset();
 
 		{
-			auto& IO = ImGui::GetIO();
+			const auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 			ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::Font), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::Font));
@@ -478,7 +480,7 @@ private:
 
 		DispatchRays();
 
-		PostProcess();
+		PostProcessGraphics();
 
 		if (m_UIStates.IsVisible) RenderUI();
 
@@ -523,7 +525,7 @@ private:
 
 		{
 			auto& speedSettings = ControlsSettings.Camera.Speed;
-			speedSettings.Translation = clamp(speedSettings.Translation, 0.0f, CameraMaxTranslationSpeed);
+			speedSettings.Movement = clamp(speedSettings.Movement, 0.0f, CameraMaxMovementSpeed);
 			speedSettings.Rotation = clamp(speedSettings.Rotation, 0.0f, CameraMaxRotationSpeed);
 		}
 	}
@@ -552,7 +554,7 @@ private:
 
 		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorHeapIndex::Count, ResourceDescriptorHeapIndex::Reserve);
 
-		m_renderDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorHeapIndex::Count);
+		m_renderDescriptorHeap = make_unique<DescriptorHeap>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorHeapIndex::Count);
 	}
 
 	void CreateRootSignatures() {
@@ -579,7 +581,7 @@ private:
 
 		{
 			m_denoisedComposition = make_unique<DenoisedComposition>(device);
-			m_denoisedComposition->TextureDescriptors = {
+			m_denoisedComposition->Descriptors = {
 				.NormalRoughnessSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::NormalRoughnessSRV),
 				.ViewZSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::ViewZSRV),
 				.BaseColorMetalnessSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::BaseColorMetalnessSRV),
@@ -591,17 +593,17 @@ private:
 
 		{
 			m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
-			m_temporalAntiAliasing->TextureDescriptors = {
-				.MotionSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionSRV),
+			m_temporalAntiAliasing->Descriptors = {
+				.MotionsSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionsSRV),
 				.HistoryOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::HistoryOutputSRV),
 				.CurrentOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputSRV),
 				.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::FinalOutputUAV)
 			};
 		}
 
-		const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
-
 		{
+			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
+
 			m_bloom = {
 				.Extraction = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::BloomExtract),
 				.Blur = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::BloomBlur),
@@ -614,6 +616,8 @@ private:
 		}
 
 		{
+			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), m_deviceResources->GetDepthBufferFormat());
+
 			ResourceUploadBatch resourceUploadBatch(device);
 			resourceUploadBatch.Begin();
 
@@ -623,31 +627,24 @@ private:
 		}
 	}
 
-	void CreateAccelerationStructures() {
+	void CreateAccelerationStructures(bool updateOnly) {
 		const auto device = m_deviceResources->GetD3DDevice();
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
 
-		for (const auto& Mesh : m_scene->Meshes | views::values) {
-			if (const auto ret = m_bottomLevelAccelerationStructures.try_emplace(Mesh); ret.second) {
-				auto& bottomLevelAccelerationStructure = ret.first->second;
-				bottomLevelAccelerationStructure = make_shared<BottomLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
-				bottomLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), initializer_list{ Mesh->TriangleMesh->GetGeometryDesc() }, false);
+		if (!updateOnly) {
+			m_bottomLevelAccelerationStructures.clear();
+
+			for (const auto& Mesh : m_scene->Meshes | views::values) {
+				if (const auto [first, second] = m_bottomLevelAccelerationStructures.try_emplace(Mesh); second) {
+					first->second = make_shared<BottomLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
+					first->second->Build(m_deviceResources->GetCommandList(), initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(Mesh->Vertices.Get(), Mesh->Indices.Get()) }, false);
+				}
 			}
+
+			m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 		}
-
-		m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
-		CreateTopLevelAccelerationStructure(false);
-
-		ThrowIfFailed(commandList->Close());
-
-		m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
-
-		m_deviceResources->WaitForGpu();
-	}
-
-	void CreateTopLevelAccelerationStructure(bool updateOnly) {
 		vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
 		instanceDescs.reserve(m_topLevelAccelerationStructure->GetDescCount()); UINT objectIndex = 0;
 		for (const auto& renderObject : m_scene->RenderObjects) {
@@ -657,11 +654,17 @@ private:
 			instanceDesc.InstanceMask = renderObject.IsVisible ? ~0u : 0;
 			instanceDesc.InstanceContributionToHitGroupIndex = 0;
 			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
-			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(renderObject.ModelMesh)->GetBuffer()->GetGPUVirtualAddress();
+			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(renderObject.Mesh)->GetBuffer()->GetGPUVirtualAddress();
 			instanceDescs.emplace_back(instanceDesc);
 			objectIndex++;
 		}
 		m_topLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), instanceDescs, updateOnly);
+
+		ThrowIfFailed(commandList->Close());
+
+		m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
+
+		m_deviceResources->WaitForGpu();
 	}
 
 	void CreateGPUBuffers() {
@@ -682,7 +685,7 @@ private:
 					.InstanceData = ResourceDescriptorHeapIndex::InstanceData,
 					.ObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::ObjectResourceDescriptorHeapIndices,
 					.ObjectData = ResourceDescriptorHeapIndex::ObjectData,
-					.Motion = ResourceDescriptorHeapIndex::MotionUAV,
+					.Motions = ResourceDescriptorHeapIndex::MotionsUAV,
 					.NormalRoughness = ResourceDescriptorHeapIndex::NormalRoughnessUAV,
 					.ViewZ = ResourceDescriptorHeapIndex::ViewZUAV,
 					.BaseColorMetalness = ResourceDescriptorHeapIndex::BaseColorMetalnessUAV,
@@ -740,9 +743,9 @@ private:
 
 				auto& objectResourceDescriptorHeapIndices = m_GPUBuffers.ObjectResourceDescriptorHeapIndices->GetData(objectIndex);
 				objectResourceDescriptorHeapIndices = {
-					.TriangleMesh{
-						.Vertices = renderObject.ModelMesh->DescriptorHeapIndices.Vertices,
-						.Indices = renderObject.ModelMesh->DescriptorHeapIndices.Indices
+					.Mesh{
+						.Vertices = renderObject.Mesh->DescriptorHeapIndices.Vertices,
+						.Indices = renderObject.Mesh->DescriptorHeapIndices.Indices
 					}
 				};
 
@@ -827,7 +830,7 @@ private:
 		const auto keyboardState = m_inputDeviceStateTrackers.Keyboard.GetLastState();
 		const auto mouseState = m_inputDeviceStateTrackers.Mouse.GetLastState();
 
-		Vector3 translation;
+		Vector3 displacement;
 		float yaw = 0, pitch = 0;
 
 		auto& speedSettings = ControlsSettings.Camera.Speed;
@@ -835,9 +838,18 @@ private:
 		if (gamepadState.IsConnected()) {
 			if (m_inputDeviceStateTrackers.Gamepad.view == GamepadButtonState::PRESSED) ResetCamera();
 
-			const auto translationSpeed = elapsedSeconds * speedSettings.Translation;
-			translation.x += gamepadState.thumbSticks.leftX * translationSpeed;
-			translation.z += gamepadState.thumbSticks.leftY * translationSpeed;
+			int movementSpeedIncrement = 0;
+			if (gamepadState.IsDPadUpPressed()) movementSpeedIncrement++;
+			if (gamepadState.IsDPadDownPressed()) movementSpeedIncrement--;
+			if (movementSpeedIncrement) {
+				speedSettings.Movement = clamp(speedSettings.Movement + elapsedSeconds * static_cast<float>(movementSpeedIncrement) * 12, 0.0f, CameraMaxMovementSpeed);
+
+				ignore = ControlsSettings.Save();
+			}
+
+			const auto movementSpeed = elapsedSeconds * speedSettings.Movement;
+			displacement.x += gamepadState.thumbSticks.leftX * movementSpeed;
+			displacement.z += gamepadState.thumbSticks.leftY * movementSpeed;
 
 			const auto rotationSpeed = elapsedSeconds * XM_2PI * speedSettings.Rotation;
 			yaw += gamepadState.thumbSticks.rightX * rotationSpeed;
@@ -848,18 +860,18 @@ private:
 			if (m_inputDeviceStateTrackers.Keyboard.IsKeyPressed(Key::Home)) ResetCamera();
 
 			if (mouseState.scrollWheelValue) {
-				speedSettings.Translation = clamp(speedSettings.Translation + elapsedSeconds * static_cast<float>(mouseState.scrollWheelValue) * 0.5f, 0.0f, CameraMaxTranslationSpeed);
+				speedSettings.Movement = clamp(speedSettings.Movement + static_cast<float>(mouseState.scrollWheelValue) * 0.008f, 0.0f, CameraMaxMovementSpeed);
 
 				ignore = ControlsSettings.Save();
 			}
 
-			const auto translationSpeed = elapsedSeconds * speedSettings.Translation;
-			if (keyboardState.A) translation.x -= translationSpeed;
-			if (keyboardState.D) translation.x += translationSpeed;
-			if (keyboardState.W) translation.z += translationSpeed;
-			if (keyboardState.S) translation.z -= translationSpeed;
+			const auto movementSpeed = elapsedSeconds * speedSettings.Movement;
+			if (keyboardState.A) displacement.x -= movementSpeed;
+			if (keyboardState.D) displacement.x += movementSpeed;
+			if (keyboardState.W) displacement.z += movementSpeed;
+			if (keyboardState.S) displacement.z -= movementSpeed;
 
-			const auto rotationSpeed = elapsedSeconds * XM_2PI * 0.022f * speedSettings.Rotation;
+			const auto rotationSpeed = XM_2PI * 0.0004f * speedSettings.Rotation;
 			yaw += static_cast<float>(mouseState.x) * rotationSpeed;
 			pitch += static_cast<float>(-mouseState.y) * rotationSpeed;
 		}
@@ -868,9 +880,9 @@ private:
 			angle > XM_PIDIV2) pitch = max(0.0f, -angle + XM_PIDIV2 - 0.1f);
 		else if (angle < -XM_PIDIV2) pitch = min(0.0f, -angle - XM_PIDIV2 + 0.1f);
 
-		if (translation.x == 0 && translation.y == 0 && translation.z == 0 && yaw == 0 && pitch == 0) return;
+		if (displacement == Vector3() && yaw == 0 && pitch == 0) return;
 
-		m_cameraController.Translate(m_cameraController.GetNormalizedRightDirection() * translation.x + m_cameraController.GetNormalizedUpDirection() * translation.y + m_cameraController.GetNormalizedForwardDirection() * translation.z);
+		m_cameraController.Move(m_cameraController.GetNormalizedRightDirection() * displacement.x + m_cameraController.GetNormalizedUpDirection() * displacement.y + m_cameraController.GetNormalizedForwardDirection() * displacement.z);
 		m_cameraController.Rotate(yaw, pitch);
 	}
 
@@ -882,6 +894,8 @@ private:
 		}
 
 		m_scene->Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
+
+		if (!m_scene->IsWorldStatic()) CreateAccelerationStructures(true);
 	}
 
 	void UpdateGlobalData() {
@@ -900,8 +914,6 @@ private:
 	}
 
 	void DispatchRays() {
-		if (!m_scene->IsWorldStatic()) CreateTopLevelAccelerationStructure(true);
-
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
@@ -914,7 +926,7 @@ private:
 		commandList->Dispatch(static_cast<UINT>((outputSize.cx + 16) / 16), static_cast<UINT>((outputSize.cy + 16) / 16), 1);
 	}
 
-	void PostProcess() {
+	void PostProcessGraphics() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto& postProcessingSettings = GraphicsSettings.PostProcessing;
@@ -935,7 +947,7 @@ private:
 			output = m_renderTextures.at(postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::Output : RenderTextureNames::FinalOutput).get();
 
 		if (postProcessingSettings.Bloom.IsEnabled) {
-			ProcessBloom(*input, *output);
+			ProcessBloom(*input, m_renderDescriptorHeap->GetCpuHandle(output->GetRtvDescriptorHeapIndex()));
 
 			swap(input, output);
 		}
@@ -1013,12 +1025,12 @@ private:
 		const auto& historyOutput = *m_renderTextures.at(RenderTextureNames::HistoryOutput);
 
 		{
-			const auto& motion = *m_renderTextures.at(RenderTextureNames::Motion), & output = *m_renderTextures.at(RenderTextureNames::Output);
+			const auto& motions = *m_renderTextures.at(RenderTextureNames::Motions), & output = *m_renderTextures.at(RenderTextureNames::Output);
 
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(motion.GetResource(), motion.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(motions.GetResource(), motions.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
 				}
@@ -1051,7 +1063,7 @@ private:
 		}
 	}
 
-	void ProcessBloom(RenderTexture& input, RenderTexture& output) {
+	void ProcessBloom(RenderTexture& input, D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto& bloomSettings = GraphicsSettings.PostProcessing.Bloom;
@@ -1112,7 +1124,7 @@ private:
 		Combination->SetSourceTexture2(blur1SRV);
 		Combination->SetBloomCombineParameters(1.25f, 1, 1, 1);
 
-		const auto outputRTV = m_renderDescriptorHeap->GetCpuHandle(output.GetRtvDescriptorHeapIndex());
+		const auto outputRTV = renderTargetView;
 		commandList->OMSetRenderTargets(1, &outputRTV, FALSE, nullptr);
 
 		commandList->RSSetViewports(1, &viewPort);
@@ -1123,7 +1135,7 @@ private:
 		blur1.TransitionTo(commandList, blur1State);
 		blur2.TransitionTo(commandList, blur2State);
 
-		const auto renderTargetView = m_deviceResources->GetRenderTargetView();;
+		renderTargetView = m_deviceResources->GetRenderTargetView();
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 	}
 
@@ -1348,7 +1360,7 @@ private:
 					if (ImGui::TreeNodeEx("Speed", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& speedSettings = cameraSettings.Speed;
 
-						isChanged |= ImGui::SliderFloat("Translation", &speedSettings.Translation, 0.0f, CameraMaxTranslationSpeed, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+						isChanged |= ImGui::SliderFloat("Movement", &speedSettings.Movement, 0.0f, CameraMaxMovementSpeed, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
 						isChanged |= ImGui::SliderFloat("Rotation", &speedSettings.Rotation, 0.0f, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
@@ -1423,6 +1435,7 @@ private:
 							{ "View", "Reset camera" },
 							{ "LS (rotate)", "Move" },
 							{ "RS (rotate)", "Look around" },
+							{ "D-Pad Up Down", "Change camera movement speed" },
 							{ "A", "Run/pause physics simulation" },
 							{ "B", "Toggle gravity of Earth" },
 							{ "Y", "Toggle gravity of the star" }

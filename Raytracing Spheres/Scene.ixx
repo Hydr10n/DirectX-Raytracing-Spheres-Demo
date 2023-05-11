@@ -49,13 +49,13 @@ export {
 	};
 
 	struct RenderObjectDesc : RenderObjectBase {
-		string ModelMeshURI;
+		string MeshURI;
 
 		map<TextureType, path> Textures;
 	};
 
 	struct RenderObject : RenderObjectBase {
-		shared_ptr<ModelMesh> ModelMesh;
+		shared_ptr<Mesh> Mesh;
 
 		map<TextureType, Texture> Textures;
 	};
@@ -81,7 +81,7 @@ export {
 			Matrix Transform;
 		} EnvironmentLightCubeMap, EnvironmentCubeMap;
 
-		unordered_map<string, pair<vector<VertexPositionNormalTexture>, vector<UINT16>>> ModelMeshes;
+		unordered_map<string, pair<vector<VertexPositionNormalTexture>, vector<UINT16>>> Meshes;
 
 		vector<RenderObjectDesc> RenderObjects;
 	};
@@ -92,7 +92,7 @@ export {
 			Matrix Transform;
 		} EnvironmentLightCubeMap, EnvironmentCubeMap;
 
-		unordered_map<string, shared_ptr<ModelMesh>> Meshes;
+		unordered_map<string, shared_ptr<Mesh>> Meshes;
 
 		vector<RenderObject> RenderObjects;
 
@@ -119,13 +119,15 @@ export {
 			}
 
 			{
-				for (const auto& [URI, ModelMesh] : sceneDesc.ModelMeshes) Meshes[URI] = ModelMesh::Create(ModelMesh.first, ModelMesh.second, pDevice, descriptorHeap, descriptorHeapIndex);
+				for (const auto& [URI, Mesh] : sceneDesc.Meshes) {
+					Meshes[URI] = Mesh::Create(Mesh.first, Mesh.second, pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+				}
 
 				for (const auto& renderObjectDesc : sceneDesc.RenderObjects) {
 					RenderObject renderObject;
 					reinterpret_cast<RenderObjectBase&>(renderObject) = renderObjectDesc;
 
-					renderObject.ModelMesh = Meshes.at(renderObjectDesc.ModelMeshURI);
+					renderObject.Mesh = Meshes.at(renderObjectDesc.MeshURI);
 
 					for (const auto& [TextureType, FilePath] : renderObjectDesc.Textures) {
 						Texture texture;

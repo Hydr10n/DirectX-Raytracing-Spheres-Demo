@@ -53,7 +53,7 @@ export {
 				GeometricPrimitive::VertexCollection vertices;
 				GeometricPrimitive::IndexCollection indices;
 				GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
-				ModelMeshes[ObjectNames::Sphere] = { vertices, indices };
+				Meshes[ObjectNames::Sphere] = { vertices, indices };
 			}
 
 			Camera.Position.z = -15;
@@ -65,7 +65,7 @@ export {
 			const auto& material = *PhysX->GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
 			const auto AddRenderObject = [&](RenderObjectDesc& renderObject, const auto& transform, const PxSphereGeometry& geometry) -> decltype(auto) {
-				renderObject.ModelMeshURI = ObjectNames::Sphere;
+				renderObject.MeshURI = ObjectNames::Sphere;
 
 				auto& rigidDynamic = *PhysX->GetPhysics().createRigidDynamic(PxTransform(transform));
 				PxRigidBodyExt::updateMassAndInertia(rigidDynamic, 1);

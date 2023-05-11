@@ -15,7 +15,7 @@ export {
 			GlobalData = ~0u,
 			InstanceData = ~0u,
 			ObjectResourceDescriptorHeapIndices = ~0u, ObjectData = ~0u,
-			Motion = ~0u,
+			Motions = ~0u,
 			NormalRoughness = ~0u,
 			ViewZ = ~0u,
 			BaseColorMetalness = ~0u,
@@ -37,15 +37,11 @@ export {
 
 	struct InstanceData {
 		BOOL IsStatic;
-		XMUINT3 _;
 		XMFLOAT4X4 PreviousObjectToWorld;
 	};
 
 	struct ObjectResourceDescriptorHeapIndices {
-		struct {
-			UINT Vertices = ~0u, Indices = ~0u;
-			XMUINT2 _;
-		} TriangleMesh;
+		struct { UINT Vertices = ~0u, Indices = ~0u, Motions = ~0u; } Mesh;
 		struct {
 			UINT BaseColorMap = ~0u, EmissiveColorMap = ~0u, MetallicMap = ~0u, RoughnessMap = ~0u, AmbientOcclusionMap = ~0u, TransmissionMap = ~0u, OpacityMap = ~0u, NormalMap = ~0u;
 		} Textures;

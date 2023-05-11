@@ -42,7 +42,7 @@ namespace ImGuiEx {
 	inline ImGuiInputEvent* FindLatestInputEvent(ImGuiContext* context, ImGuiInputEventType type, int arg = -1) {
 		auto& g = *context;
 		for (auto i = g.InputEventsQueue.Size - 1; i >= 0; i--) {
-			if (auto e = &g.InputEventsQueue[i];
+			if (const auto e = &g.InputEventsQueue[i];
 				e->Type == type && (type != ImGuiInputEventType_Key || e->Key.Key == arg) && (type != ImGuiInputEventType_MouseButton || e->MouseButton.Button == arg)) return e;
 		}
 		return nullptr;

@@ -49,8 +49,6 @@ struct PhysX {
 
 		m_defaultCpuDispatcher = PxDefaultCpuDispatcherCreate(threadCount);
 
-		m_cudaContextManager = PxCreateCudaContextManager(foundation, PxCudaContextManagerDesc());
-
 		PxTolerancesScale tolerancesScale;
 		tolerancesScale.speed = 3;
 
@@ -58,10 +56,7 @@ struct PhysX {
 
 		PxSceneDesc sceneDesc(tolerancesScale);
 		sceneDesc.cpuDispatcher = m_defaultCpuDispatcher;
-		sceneDesc.cudaContextManager = m_cudaContextManager;
 		sceneDesc.filterShader = PxDefaultSimulationFilterShader;
-		sceneDesc.flags |= PxSceneFlag::eENABLE_GPU_DYNAMICS | PxSceneFlag::eENABLE_PCM | PxSceneFlag::eENABLE_STABILIZATION;
-		sceneDesc.broadPhaseType = PxBroadPhaseType::eGPU;
 
 		m_scene = m_physics->createScene(sceneDesc);
 
@@ -72,8 +67,6 @@ struct PhysX {
 
 	~PhysX() {
 		m_physics->release();
-
-		if (m_cudaContextManager != nullptr) m_cudaContextManager->release();
 
 		m_defaultCpuDispatcher->release();
 	}
@@ -105,8 +98,6 @@ private:
 	} _;
 
 	physx::PxDefaultCpuDispatcher* m_defaultCpuDispatcher{};
-
-	physx::PxCudaContextManager* m_cudaContextManager{};
 
 	physx::PxPhysics* m_physics{};
 

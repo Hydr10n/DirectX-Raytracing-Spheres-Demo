@@ -122,7 +122,7 @@ int WINAPI wWinMain(
 	}
 	catch (...) {
 		ret = static_cast<int>(GetLastError());
-		if (ret != ERROR_SUCCESS) error = system_category().message(ret).c_str();
+		if (ret != ERROR_SUCCESS) error = system_category().message(ret);
 	}
 
 	g_app.reset();

@@ -31,7 +31,7 @@ export namespace DirectX::PostProcess {
 		};
 
 		SIZE TextureSize{};
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE NormalRoughnessSRV, ViewZSRV, BaseColorMetalnessSRV, DenoisedDiffuseSRV, DenoisedSpecularSRV, OutputUAV; } TextureDescriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE NormalRoughnessSRV, ViewZSRV, BaseColorMetalnessSRV, DenoisedDiffuseSRV, DenoisedSpecularSRV, OutputUAV; } Descriptors{};
 
 		DenoisedComposition(ID3D12Device* device) noexcept(false) : m_data(device) {
 			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pDenoisedComposition, size(g_pDenoisedComposition));
@@ -45,12 +45,12 @@ export namespace DirectX::PostProcess {
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, TextureDescriptors.NormalRoughnessSRV);
-			commandList->SetComputeRootDescriptorTable(1, TextureDescriptors.ViewZSRV);
-			commandList->SetComputeRootDescriptorTable(2, TextureDescriptors.BaseColorMetalnessSRV);
-			commandList->SetComputeRootDescriptorTable(3, TextureDescriptors.DenoisedDiffuseSRV);
-			commandList->SetComputeRootDescriptorTable(4, TextureDescriptors.DenoisedSpecularSRV);
-			commandList->SetComputeRootDescriptorTable(5, TextureDescriptors.OutputUAV);
+			commandList->SetComputeRootDescriptorTable(0, Descriptors.NormalRoughnessSRV);
+			commandList->SetComputeRootDescriptorTable(1, Descriptors.ViewZSRV);
+			commandList->SetComputeRootDescriptorTable(2, Descriptors.BaseColorMetalnessSRV);
+			commandList->SetComputeRootDescriptorTable(3, Descriptors.DenoisedDiffuseSRV);
+			commandList->SetComputeRootDescriptorTable(4, Descriptors.DenoisedSpecularSRV);
+			commandList->SetComputeRootDescriptorTable(5, Descriptors.OutputUAV);
 			commandList->SetComputeRootConstantBufferView(6, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 			commandList->Dispatch(static_cast<UINT>((TextureSize.cx + 16) / 16), static_cast<UINT>((TextureSize.cy + 16) / 16), 1);
@@ -61,4 +61,4 @@ export namespace DirectX::PostProcess {
 		ComPtr<ID3D12PipelineState> m_pipelineStateObject;
 		ConstantBuffer<Data> m_data;
 	};
-};
+}

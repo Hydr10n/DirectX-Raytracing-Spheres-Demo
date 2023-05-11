@@ -1,6 +1,6 @@
 #pragma once
 
-namespace TriangleMeshHelpers {
+namespace MeshHelpers {
 	inline uint3 Load3x16BitIndices(ByteAddressBuffer buffer, uint primitiveIndex) {
 		// ByteAddressBuffer::Load must be aligned at a 4-byte boundary.
 		// Since we need to read 3 16-bit indices: { 0, 1, 2 }

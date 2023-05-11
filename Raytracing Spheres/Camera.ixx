@@ -85,7 +85,7 @@ export {
 			m_forwardDirection = GetNormalizedForwardDirection() * m_forwardDirectionLength;
 		}
 
-		void Translate(const XMFLOAT3& value) { SetPosition(m_position + value); }
+		void Move(const XMFLOAT3& value) { SetPosition(m_position + value); }
 
 		void Rotate(float yaw, float pitch, float roll = 0) {
 			m_rotation *= Quaternion::CreateFromAxisAngle(m_rightDirection, -pitch);
