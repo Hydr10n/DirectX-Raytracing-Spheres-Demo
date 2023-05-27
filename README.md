@@ -22,7 +22,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 
 ### PBR Metallic/Roughness Workflow
 
-### Rigid-Body Simulation using NVIDIA PhysX
+### Rigid-Body Simulation Using NVIDIA PhysX
 
 ### Graphics Settings
 - Window Mode: Windowed | Borderless | Fullscreen

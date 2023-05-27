@@ -19,7 +19,7 @@ public:
 	NRD& operator=(const NRD&) = delete;
 
 	NRD(
-		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, ID3D12CommandAllocator* pCommandAllocator, ID3D12GraphicsCommandList* pCommandList,
+		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, ID3D12GraphicsCommandList* pCommandList,
 		uint32_t backBufferCount,
 		span<const Method> methods, SIZE outputSize
 	) : m_NRD(backBufferCount) {
@@ -27,7 +27,7 @@ public:
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::CoreInterface), static_cast<CoreInterface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::HelperInterface), static_cast<HelperInterface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
-			&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList, .d3d12CommandAllocator = pCommandAllocator }, m_commandBuffer) == nri::Result::SUCCESS) {
+			&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList }, m_commandBuffer) == nri::Result::SUCCESS) {
 			vector<MethodDesc> methodDescs;
 			for (const auto& method : methods) methodDescs.emplace_back(method, static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy));
 			const DenoiserCreationDesc denoiserCreationDesc{ .requestedMethods = data(methodDescs), .requestedMethodsNum = static_cast<uint32_t>(size(methodDescs)) };

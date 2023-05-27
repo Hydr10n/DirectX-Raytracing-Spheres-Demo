@@ -136,8 +136,7 @@ export {
 					AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
 				}
 
-				Random random;
-				for (const auto i : views::iota(-10, 11)) {
+				for (Random random; const auto i : views::iota(-10, 11)) {
 					for (const auto j : views::iota(-10, 11)) {
 						constexpr auto A = 0.5f;
 						const auto omega = PxTwoPi / Spring.Period;
@@ -267,70 +266,70 @@ export {
 				}
 			}
 		}
-};
+	};
 
-struct MyScene : Scene {
-	bool IsWorldStatic() const override { return !m_isSimulatingPhysics; }
+	struct MyScene : Scene {
+		bool IsWorldStatic() const override { return !m_isSimulatingPhysics; }
 
-	void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
-		if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {
-			if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
-			if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
+		void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
+			if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {
+				if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
+				if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
 
-			{
-				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Earth)->userData);
-				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
-				if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
+				{
+					auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Earth)->userData);
+					if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
+					if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
+				}
+
+				{
+					auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Star)->userData);
+					if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
+					if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
+				}
 			}
 
-			{
-				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Star)->userData);
-				if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
-				if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
+			if (!m_isSimulatingPhysics) return;
+
+			for (auto& renderObject : RenderObjects) {
+				const auto& shape = *renderObject.Shape;
+
+				const auto rigidBody = shape.getActor()->is<PxRigidBody>();
+				if (rigidBody == nullptr) continue;
+
+				const auto mass = rigidBody->getMass();
+				if (!mass) continue;
+
+				const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
+
+				if (const auto& [PositionY, Period] = Spring;
+					renderObject.Name == ObjectNames::HarmonicOscillator) {
+					const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Period);
+					const PxVec3 x(0, position.y - PositionY, 0);
+					rigidBody->addForce(-k * x);
+				}
+
+				if (const auto& earth = *RigidBodies.at(ObjectNames::Earth);
+					(reinterpret_cast<const bool&>(earth.userData) && renderObject.Name != ObjectNames::Earth)
+					|| renderObject.Name == ObjectNames::Moon) {
+					const auto x = earth.getGlobalPose().p - position;
+					const auto magnitude = x.magnitude();
+					const auto normalized = x / magnitude;
+					rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(earth.getMass(), magnitude) * normalized, PxForceMode::eACCELERATION);
+				}
+
+				if (const auto& star = *RigidBodies.at(ObjectNames::Star);
+					reinterpret_cast<const bool&>(star.userData) && renderObject.Name != ObjectNames::Star) {
+					const auto x = star.getGlobalPose().p - position;
+					const auto normalized = x.getNormalized();
+					rigidBody->addForce(10 * normalized, PxForceMode::eACCELERATION);
+				}
 			}
+
+			PhysX->Tick(static_cast<PxReal>(min(1.0 / 60, elapsedSeconds)));
 		}
 
-		if (!m_isSimulatingPhysics) return;
-
-		for (auto& renderObject : RenderObjects) {
-			const auto& shape = *renderObject.Shape;
-
-			const auto rigidBody = shape.getActor()->is<PxRigidBody>();
-			if (rigidBody == nullptr) continue;
-
-			const auto mass = rigidBody->getMass();
-			if (!mass) continue;
-
-			const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
-
-			if (const auto& [PositionY, Period] = Spring;
-				renderObject.Name == ObjectNames::HarmonicOscillator) {
-				const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Period);
-				const PxVec3 x(0, position.y - PositionY, 0);
-				rigidBody->addForce(-k * x);
-			}
-
-			if (const auto& earth = *RigidBodies.at(ObjectNames::Earth);
-				(reinterpret_cast<const bool&>(earth.userData) && renderObject.Name != ObjectNames::Earth)
-				|| renderObject.Name == ObjectNames::Moon) {
-				const auto x = earth.getGlobalPose().p - position;
-				const auto magnitude = x.magnitude();
-				const auto normalized = x / magnitude;
-				rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(earth.getMass(), magnitude) * normalized, PxForceMode::eACCELERATION);
-			}
-
-			if (const auto& star = *RigidBodies.at(ObjectNames::Star);
-				reinterpret_cast<const bool&>(star.userData) && renderObject.Name != ObjectNames::Star) {
-				const auto x = star.getGlobalPose().p - position;
-				const auto normalized = x.getNormalized();
-				rigidBody->addForce(10 * normalized, PxForceMode::eACCELERATION);
-			}
-		}
-
-		PhysX->Tick(static_cast<PxReal>(min(1.0 / 60, elapsedSeconds)));
-	}
-
-private:
-	bool m_isSimulatingPhysics = true;
-};
+	private:
+		bool m_isSimulatingPhysics = true;
+	};
 }

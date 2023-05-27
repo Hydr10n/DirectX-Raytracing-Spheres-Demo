@@ -6,8 +6,6 @@ module;
 
 #include "directxtk12/DescriptorHeap.h"
 
-#include "directxtk12/ResourceUploadBatch.h"
-
 #include "directxtk12/DDSTextureLoader.h"
 #include "directxtk12/WICTextureLoader.h"
 
@@ -34,7 +32,7 @@ export {
 
 		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
 
-		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeap& descriptorHeap, bool* pIsCubeMap = nullptr) {
+		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
 			bool isCubeMap = false;
 			if (const auto ret = !lstrcmpiW(filePath.extension().c_str(), L".dds") ?
 				CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap) :
@@ -42,14 +40,11 @@ export {
 				FAILED(ret)) {
 				throw_std_system_error(ret, filePath.string());
 			}
-			CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
 			if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap;
-		}
 
-		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
 			descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex);
 			DescriptorHeapIndices.SRV = descriptorHeapIndex - 1;
-			Load(filePath, pDevice, resourceUploadBatch, descriptorHeap, pIsCubeMap);
+			CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
 		}
 	};
 }
