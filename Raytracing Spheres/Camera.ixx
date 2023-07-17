@@ -111,8 +111,14 @@ export {
 		const auto& GetViewToProjection() const { return m_viewToProjection; }
 		auto GetProjectionToView() const { return m_viewToProjection.Invert(); }
 
+		auto GetVerticalFieldOfView() const { return m_verticalFieldOfView; }
+		auto GetAspectRatio() const { return m_aspectRatio; }
+
 		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ, float farZ) {
 			m_viewToProjection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
+
+			m_verticalFieldOfView = verticalFieldOfView;
+			m_aspectRatio = aspectRatio;
 
 			m_nearZ = nearZ;
 			m_farZ = farZ;
@@ -135,6 +141,7 @@ export {
 		Quaternion m_rotation;
 		mutable Matrix m_worldToView;
 
+		float m_verticalFieldOfView{}, m_aspectRatio{};
 		float m_nearZ = 1e-2f, m_farZ = 1e4f;
 		Matrix m_viewToProjection;
 	};

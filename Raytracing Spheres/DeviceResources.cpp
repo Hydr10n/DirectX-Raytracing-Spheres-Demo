@@ -681,6 +681,7 @@ void DeviceResources::CreateDevice()
         throw std::runtime_error("No Direct3D 12 device found");
     }
 
+    m_adapter = adapter;
     m_d3dDevice = device;
     m_raytracingTier = options5.RaytracingTier;
 }

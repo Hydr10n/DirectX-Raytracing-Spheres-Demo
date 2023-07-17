@@ -43,8 +43,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	g_output.GetDimensions(pixelDimensions.x, pixelDimensions.y);
 	if (pixelCoordinate.x >= pixelDimensions.x || pixelCoordinate.y >= pixelDimensions.y) return;
 
-	const float viewZ = g_viewZ[pixelCoordinate];
-	if (viewZ == 1.#INFf) return;
+	if (g_viewZ[pixelCoordinate] == 1.#INFf) return;
 
 	float3 albedo, Rf0;
 	const float4 baseColorMetalness = g_baseColorMetalness[pixelCoordinate];

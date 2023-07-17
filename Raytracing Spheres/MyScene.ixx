@@ -33,18 +33,16 @@ using Key = Keyboard::Keys;
 
 #define MAKE_NAME(name) static constexpr const char* name = #name;
 
-namespace {
-	struct ObjectNames {
-		MAKE_NAME(AlienMetal);
-		MAKE_NAME(Earth);
-		MAKE_NAME(HarmonicOscillator);
-		MAKE_NAME(Moon);
-		MAKE_NAME(Sphere);
-		MAKE_NAME(Star);
-	};
+struct ObjectNames {
+	MAKE_NAME(AlienMetal);
+	MAKE_NAME(Earth);
+	MAKE_NAME(HarmonicOscillator);
+	MAKE_NAME(Moon);
+	MAKE_NAME(Sphere);
+	MAKE_NAME(Star);
+};
 
-	constexpr struct { PxReal PositionY = 0.5f, Period = 3; } Spring;
-}
+struct Spring { static constexpr PxReal PositionY = 0.5f, Period = 3; };
 
 export {
 	struct MySceneDesc : SceneDesc {
@@ -61,6 +59,8 @@ export {
 			const path directoryPath = LR"(Assets\Textures)";
 
 			EnvironmentLightCubeMap = { directoryPath / L"Space.dds", Matrix::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0) };
+
+			PhysX = make_shared<::PhysX>();
 
 			const auto& material = *PhysX->GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 
@@ -136,14 +136,14 @@ export {
 					AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
 				}
 
-				for (Random random; const auto i : views::iota(-10, 11)) {
+				for (const Random random; const auto i : views::iota(-10, 11)) {
 					for (const auto j : views::iota(-10, 11)) {
 						constexpr auto A = 0.5f;
-						const auto omega = PxTwoPi / Spring.Period;
+						const auto omega = PxTwoPi / Spring::Period;
 
 						PxVec3 position;
 						position.x = static_cast<float>(i) + 0.7f * random.Float();
-						position.y = Spring.PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, omega, 0.0f, position.x);
+						position.y = Spring::PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, omega, 0.0f, position.x);
 						position.z = static_cast<float>(j) - 0.7f * random.Float();
 
 						bool isOverlapping = false;
@@ -159,7 +159,7 @@ export {
 
 						renderObject.Name = ObjectNames::HarmonicOscillator;
 
-						constexpr auto RandomVector4 = [&](float min) {
+						const auto RandomVector4 = [&](float min) {
 							const auto value = random.Float3();
 							return Vector4(value.x, value.y, value.z, 1);
 						};
@@ -266,70 +266,69 @@ export {
 				}
 			}
 		}
-	};
+};
 
-	struct MyScene : Scene {
-		bool IsWorldStatic() const override { return !m_isSimulatingPhysics; }
+struct MyScene : Scene {
+	bool IsWorldStatic() const override { return !m_isSimulatingPhysics; }
 
-		void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
-			if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {
-				if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
-				if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
+	void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
+		if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {
+			if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
+			if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
 
-				{
-					auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Earth)->userData);
-					if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
-					if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
-				}
-
-				{
-					auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Star)->userData);
-					if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
-					if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
-				}
+			{
+				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Earth)->userData);
+				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
+				if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
 			}
 
-			if (!m_isSimulatingPhysics) return;
-
-			for (auto& renderObject : RenderObjects) {
-				const auto& shape = *renderObject.Shape;
-
-				const auto rigidBody = shape.getActor()->is<PxRigidBody>();
-				if (rigidBody == nullptr) continue;
-
-				const auto mass = rigidBody->getMass();
-				if (!mass) continue;
-
-				const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
-
-				if (const auto& [PositionY, Period] = Spring;
-					renderObject.Name == ObjectNames::HarmonicOscillator) {
-					const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Period);
-					const PxVec3 x(0, position.y - PositionY, 0);
-					rigidBody->addForce(-k * x);
-				}
-
-				if (const auto& earth = *RigidBodies.at(ObjectNames::Earth);
-					(reinterpret_cast<const bool&>(earth.userData) && renderObject.Name != ObjectNames::Earth)
-					|| renderObject.Name == ObjectNames::Moon) {
-					const auto x = earth.getGlobalPose().p - position;
-					const auto magnitude = x.magnitude();
-					const auto normalized = x / magnitude;
-					rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(earth.getMass(), magnitude) * normalized, PxForceMode::eACCELERATION);
-				}
-
-				if (const auto& star = *RigidBodies.at(ObjectNames::Star);
-					reinterpret_cast<const bool&>(star.userData) && renderObject.Name != ObjectNames::Star) {
-					const auto x = star.getGlobalPose().p - position;
-					const auto normalized = x.getNormalized();
-					rigidBody->addForce(10 * normalized, PxForceMode::eACCELERATION);
-				}
+			{
+				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Star)->userData);
+				if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
+				if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
 			}
-
-			PhysX->Tick(static_cast<PxReal>(min(1.0 / 60, elapsedSeconds)));
 		}
 
-	private:
-		bool m_isSimulatingPhysics = true;
-	};
+		if (!m_isSimulatingPhysics) return;
+
+		for (auto& renderObject : RenderObjects) {
+			const auto& shape = *renderObject.Shape;
+
+			const auto rigidBody = shape.getActor()->is<PxRigidBody>();
+			if (rigidBody == nullptr) continue;
+
+			const auto mass = rigidBody->getMass();
+			if (!mass) continue;
+
+			const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
+
+			if (renderObject.Name == ObjectNames::HarmonicOscillator) {
+				const auto k = SimpleHarmonicMotion::Spring::CalculateConstant(mass, Spring::Period);
+				const PxVec3 x(0, position.y - Spring::PositionY, 0);
+				rigidBody->addForce(-k * x);
+			}
+
+			if (const auto& earth = *RigidBodies.at(ObjectNames::Earth);
+				(static_cast<bool>(earth.userData) && renderObject.Name != ObjectNames::Earth)
+				|| renderObject.Name == ObjectNames::Moon) {
+				const auto x = earth.getGlobalPose().p - position;
+				const auto magnitude = x.magnitude();
+				const auto normalized = x / magnitude;
+				rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(earth.getMass(), magnitude) * normalized, PxForceMode::eACCELERATION);
+			}
+
+			if (const auto& star = *RigidBodies.at(ObjectNames::Star);
+				static_cast<bool>(star.userData) && renderObject.Name != ObjectNames::Star) {
+				const auto x = star.getGlobalPose().p - position;
+				const auto normalized = x.getNormalized();
+				rigidBody->addForce(10.0f * normalized, PxForceMode::eACCELERATION);
+			}
+		}
+
+		PhysX->Tick(static_cast<PxReal>(min(1.0 / 60, elapsedSeconds)));
+	}
+
+private:
+	bool m_isSimulatingPhysics = true;
+};
 }

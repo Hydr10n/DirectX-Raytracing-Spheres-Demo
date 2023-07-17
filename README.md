@@ -72,14 +72,14 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 
 - [NVIDIA Render Interface](https://github.com/NVIDIAGameWorks/NRI)
 
+- [NVIDIA PhysX](https://github.com/NVIDIA-Omniverse/PhysX)
+	```cmd
+	> .\vcpkg install omniverse-physx-sdk:x64-windows
+	```
+
 - [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
 	```cmd
 	> .\vcpkg install directxtk12:x64-windows
-	```
-
-- [PhysX](https://github.com/NVIDIAGameWorks/PhysX)
-	```cmd
-	> .\vcpkg install physx:x64-windows
 	```
 
 - [Dear ImGui](https://github.com/ocornut/imgui)

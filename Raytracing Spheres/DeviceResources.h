@@ -57,6 +57,7 @@ namespace DX
         // Direct3D Accessors.
         auto                        GetD3DDevice() const noexcept            { return m_d3dDevice.Get(); }
         auto                        GetSwapChain() const noexcept            { return m_swapChain.Get(); }
+        auto                        GetAdapter() const noexcept              { return m_adapter.Get(); }
         auto                        GetDXGIFactory() const noexcept          { return m_dxgiFactory.Get(); }
         HWND                        GetWindow() const noexcept               { return m_window; }
         D3D_FEATURE_LEVEL           GetDeviceFeatureLevel() const noexcept   { return m_d3dFeatureLevel; }
@@ -103,6 +104,7 @@ namespace DX
 
         // Swap chain objects.
         Microsoft::WRL::ComPtr<IDXGIFactory4>               m_dxgiFactory;
+        Microsoft::WRL::ComPtr<IDXGIAdapter1>               m_adapter;
         Microsoft::WRL::ComPtr<IDXGISwapChain3>             m_swapChain;
         Microsoft::WRL::ComPtr<ID3D12Resource>              m_renderTargets[MAX_BACK_BUFFER_COUNT];
         Microsoft::WRL::ComPtr<ID3D12Resource>              m_depthStencil;

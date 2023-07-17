@@ -431,8 +431,8 @@ private:
 			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
 
-			reinterpret_cast<Matrix&>(m_NRDCommonSettings.worldToViewMatrixPrev) = m_cameraController.GetWorldToView();
-			reinterpret_cast<Matrix&>(m_NRDCommonSettings.viewToClipMatrixPrev) = m_cameraController.GetViewToProjection();
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = m_cameraController.GetWorldToView();
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = m_cameraController.GetViewToProjection();
 
 			ProcessInput();
 
@@ -441,8 +441,8 @@ private:
 			camera.UpDirection = m_cameraController.GetUpDirection();
 			camera.ForwardDirection = m_cameraController.GetForwardDirection();
 
-			reinterpret_cast<Matrix&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
-			reinterpret_cast<Matrix&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
 		}
 
 		UpdateScene();
@@ -532,8 +532,8 @@ private:
 
 	static auto Transform(const PxShape& shape) {
 		PxVec3 scaling;
-		switch (const auto geometry = shape.getGeometry(); shape.getGeometryType()) {
-			case PxGeometryType::eSPHERE: scaling = PxVec3(geometry.sphere().radius * 2); break;
+		switch (const PxGeometryHolder geometry = shape.getGeometry(); geometry.getType()) {
+			case PxGeometryType::eSPHERE: scaling = PxVec3(2 * geometry.sphere().radius); break;
 			default: throw;
 		}
 
@@ -646,8 +646,8 @@ private:
 			m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 		}
 		vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
-		instanceDescs.reserve(m_topLevelAccelerationStructure->GetDescCount()); UINT objectIndex = 0;
-		for (const auto& renderObject : m_scene->RenderObjects) {
+		instanceDescs.reserve(m_topLevelAccelerationStructure->GetDescCount());
+		for (UINT objectIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
 			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
 			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), Transform(*renderObject.Shape));
 			instanceDesc.InstanceID = objectIndex;
@@ -1255,8 +1255,7 @@ private:
 					isChanged |= ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled);
 
 					if (ImGui::SliderFloat("Vertical Field of View", &cameraSettings.VerticalFieldOfView, CameraMinVerticalFieldOfView, CameraMaxVerticalFieldOfView, "%.1f°", ImGuiSliderFlags_AlwaysClamp)) {
-						const auto outputSize = GetOutputSize();
-						m_cameraController.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+						m_cameraController.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), m_cameraController.GetAspectRatio());
 
 						isChanged = true;
 					}

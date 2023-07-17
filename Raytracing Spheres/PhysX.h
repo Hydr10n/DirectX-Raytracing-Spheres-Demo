@@ -3,7 +3,7 @@
 #pragma warning(push)
 #pragma warning(disable: 4996 26451 26495 26812 33010)
 
-#include "PxPhysicsAPI.h"
+#include "physx/PxPhysicsAPI.h"
 
 #include <stdexcept>
 
@@ -52,7 +52,7 @@ struct PhysX {
 		PxTolerancesScale tolerancesScale;
 		tolerancesScale.speed = 3;
 
-		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, foundation, tolerancesScale);
+		m_physics = PxCreatePhysics(PX_PHYSICS_VERSION, foundation, tolerancesScale, false, _.Pvd);
 
 		PxSceneDesc sceneDesc(tolerancesScale);
 		sceneDesc.cpuDispatcher = m_defaultCpuDispatcher;
@@ -66,6 +66,8 @@ struct PhysX {
 	}
 
 	~PhysX() {
+		m_scene->release();
+
 		m_physics->release();
 
 		m_defaultCpuDispatcher->release();
@@ -94,7 +96,21 @@ private:
 
 		physx::PxFoundation* Foundation = PxCreateFoundation(PX_PHYSICS_VERSION, AllocatorCallback, ErrorCallback);
 
-		~_() { Foundation->release(); }
+		physx::PxPvd* Pvd = PxCreatePvd(*Foundation);
+
+		_() {
+			using namespace physx;
+
+			Pvd->connect(*PxDefaultPvdSocketTransportCreate("localhost", 5425, 10), PxPvdInstrumentationFlag::eALL);
+		}
+
+		~_() {
+			Pvd->disconnect();
+			Pvd->getTransport()->release();
+			Pvd->release();
+
+			Foundation->release();
+		}
 	} _;
 
 	physx::PxDefaultCpuDispatcher* m_defaultCpuDispatcher{};

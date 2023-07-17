@@ -70,7 +70,7 @@ export {
 
 		Color EnvironmentLightColor{ 0, 0, 0, -1 }, EnvironmentColor{ 0, 0, 0, -1 };
 
-		shared_ptr<PhysX> PhysX = make_shared<::PhysX>();
+		shared_ptr<PhysX> PhysX;
 
 		unordered_map<string, PxRigidBody*> RigidBodies;
 	};
