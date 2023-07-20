@@ -123,6 +123,9 @@
     <ClCompile Include="DescriptorHeap.ixx">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="Math.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Direct3D 12 Win32 App.rc">

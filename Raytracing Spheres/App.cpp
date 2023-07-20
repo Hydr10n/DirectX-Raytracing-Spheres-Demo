@@ -712,9 +712,9 @@ private:
 				GlobalData{
 					.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters),
 					.EnvironmentLightColor = m_scene->EnvironmentLightColor,
-					.EnvironmentLightCubeMapTransform = m_scene->EnvironmentLightCubeMap.Transform,
+					.EnvironmentLightCubeMapTransform = m_scene->EnvironmentLightCubeMap.Transform(),
 					.EnvironmentColor = m_scene->EnvironmentColor,
-					.EnvironmentCubeMapTransform = m_scene->EnvironmentCubeMap.Transform
+					.EnvironmentCubeMapTransform = m_scene->EnvironmentCubeMap.Transform()
 				},
 				ResourceDescriptorHeapIndex::GlobalData
 			);

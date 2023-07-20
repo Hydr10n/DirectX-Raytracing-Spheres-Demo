@@ -128,6 +128,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClCompile Include="DenoisedComposition.ixx" />
     <ClCompile Include="DescriptorHeap.ixx" />
     <ClCompile Include="HaltonSamplePattern.ixx" />
+    <ClCompile Include="Math.ixx" />
     <ClCompile Include="Model.ixx" />
     <ClCompile Include="MyScene.ixx" />
     <ClCompile Include="NRD.ixx" />

@@ -21,15 +21,15 @@ module;
 export module Scene;
 
 import DirectX.DescriptorHeap;
-import DirectX.RaytracingHelpers;
 import Material;
+import Math;
 import Model;
 import ResourceHelpers;
 import Texture;
 
 using namespace DirectX;
-using namespace RaytracingHelpers;
 using namespace DirectX::SimpleMath;
+using namespace Math;
 using namespace physx;
 using namespace ResourceHelpers;
 using namespace std;
@@ -78,7 +78,7 @@ export {
 	struct SceneDesc : SceneBase {
 		struct {
 			path FilePath;
-			Matrix Transform;
+			Transform Transform;
 		} EnvironmentLightCubeMap, EnvironmentCubeMap;
 
 		unordered_map<string, pair<vector<VertexPositionNormalTexture>, vector<UINT16>>> Meshes;
@@ -89,7 +89,7 @@ export {
 	struct Scene : SceneBase {
 		struct {
 			Texture Texture;
-			Matrix Transform;
+			Transform Transform;
 		} EnvironmentLightCubeMap, EnvironmentCubeMap;
 
 		unordered_map<string, shared_ptr<Mesh>> Meshes;

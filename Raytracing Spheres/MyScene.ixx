@@ -58,7 +58,7 @@ export {
 
 			const path directoryPath = LR"(Assets\Textures)";
 
-			EnvironmentLightCubeMap = { directoryPath / L"Space.dds", Matrix::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0) };
+			EnvironmentLightCubeMap = { directoryPath / L"Space.dds", { .Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0) } };
 
 			PhysX = make_shared<::PhysX>();
 
