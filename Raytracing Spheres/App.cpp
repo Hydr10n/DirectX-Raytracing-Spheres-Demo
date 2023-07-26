@@ -42,6 +42,7 @@ module App;
 
 import Camera;
 import DirectX.BufferHelpers;
+import DirectX.CommandList;
 import DirectX.DescriptorHeap;
 import DirectX.PostProcess.DenoisedComposition;
 import DirectX.PostProcess.TemporalAntiAliasing;
@@ -54,6 +55,7 @@ import RaytracingShaderData;
 import Scene;
 import SharedData;
 import Texture;
+import ThreadHelpers;
 
 using namespace DirectX;
 using namespace DirectX::BufferHelpers;
@@ -64,16 +66,18 @@ using namespace DX;
 using namespace Microsoft::WRL;
 using namespace nrd;
 using namespace physx;
+using namespace SharedData;
 using namespace std;
+using namespace ThreadHelpers;
 using namespace WindowHelpers;
 
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 using Key = Keyboard::Keys;
 
 namespace {
-	constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
-	constexpr auto& UISettings = MyAppData::Settings::UI;
-	constexpr auto& ControlsSettings = MyAppData::Settings::Controls;
+	constexpr auto& g_graphicsSettings = MyAppData::Settings::Graphics;
+	constexpr auto& g_UISettings = MyAppData::Settings::UI;
+	constexpr auto& g_controlsSettings = MyAppData::Settings::Controls;
 }
 
 #define MAKE_NAME(name) static constexpr LPCSTR name = #name;
@@ -96,7 +100,7 @@ struct App::Impl : IDeviceNotify {
 
 			ImGui_ImplWin32_Init(m_windowModeHelper->hWnd);
 
-			m_UIStates.IsVisible = UISettings.ShowOnStartup;
+			m_UIStates.IsVisible = g_UISettings.ShowOnStartup;
 		}
 
 		{
@@ -104,7 +108,7 @@ struct App::Impl : IDeviceNotify {
 
 			m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->GetResolution());
 
-			m_deviceResources->EnableVSync(GraphicsSettings.IsVSyncEnabled);
+			m_deviceResources->EnableVSync(g_graphicsSettings.IsVSyncEnabled);
 
 			m_deviceResources->CreateDeviceResources();
 			CreateDeviceDependentResources();
@@ -116,13 +120,9 @@ struct App::Impl : IDeviceNotify {
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
 
 		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
-
-		ResetCamera();
 	}
 
 	~Impl() {
-		m_deviceResources->WaitForGpu();
-
 		{
 			if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
@@ -130,21 +130,37 @@ struct App::Impl : IDeviceNotify {
 
 			ImGui::DestroyContext();
 		}
+
+		m_deviceResources->WaitForGpu();
 	}
 
 	SIZE GetOutputSize() const noexcept { return m_deviceResources->GetOutputSize(); }
 
 	void Tick() {
-		m_stepTimer.Tick([&] { Update(); });
+		{
+			const scoped_lock lock(m_exceptionMutex);
+
+			if (m_exception) rethrow_exception(m_exception);
+		}
+
+		if (const auto pFuture = m_futures.find(FutureNames::Scene); pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) m_futures.erase(pFuture);
+
+		m_stepTimer.Tick([&] { if (!m_futures.contains(FutureNames::Scene) && m_scene) Update(); });
 
 		Render();
 
-		if (m_isWindowSettingChanged) {
-			ThrowIfFailed(m_windowModeHelper->Apply());
-			m_isWindowSettingChanged = false;
-		}
-
 		m_inputDevices.Mouse->EndOfInputFrame();
+
+		erase_if(
+			m_futures,
+			[&](auto& future) {
+				{
+					const auto ret = future.second.wait_for(0s) == future_status::deferred;
+					if (ret) future.second.get();
+					return ret;
+				}
+			}
+		);
 	}
 
 	void OnWindowSizeChanged() { if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
@@ -195,6 +211,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_rootSignature.Reset();
 
+		m_renderDescriptorHeap.reset();
 		m_resourceDescriptorHeap.reset();
 
 		m_graphicsMemory.reset();
@@ -227,27 +244,19 @@ private:
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
 
-	struct RenderTextureNames {
-		MAKE_NAME(Motions);
-		MAKE_NAME(NormalRoughness);
-		MAKE_NAME(ViewZ);
-		MAKE_NAME(BaseColorMetalness);
-		MAKE_NAME(NoisyDiffuse);
-		MAKE_NAME(NoisySpecular);
-		MAKE_NAME(DenoisedDiffuse);
-		MAKE_NAME(DenoisedSpecular);
-		MAKE_NAME(Validation);
-		MAKE_NAME(HistoryOutput);
-		MAKE_NAME(Output);
-		MAKE_NAME(FinalOutput);
-		MAKE_NAME(Blur1);
-		MAKE_NAME(Blur2);
+	struct FutureNames {
+		MAKE_NAME(Scene);
 	};
+	map<string, future<void>, less<>> m_futures;
+
+	mutex m_exceptionMutex;
+	exception_ptr m_exception;
 
 	struct ResourceDescriptorHeapIndex {
 		enum {
+			GraphicsSettings,
 			Camera,
-			GlobalData,
+			SceneData,
 			InstanceData,
 			ObjectResourceDescriptorHeapIndices, ObjectData,
 			MotionsSRV, MotionsUAV,
@@ -307,13 +316,30 @@ private:
 
 	struct {
 		unique_ptr<ConstantBuffer<GlobalResourceDescriptorHeapIndices>> GlobalResourceDescriptorHeapIndices;
+		unique_ptr<ConstantBuffer<GraphicsSettings>> GraphicsSettings;
 		unique_ptr<ConstantBuffer<Camera>> Camera;
-		unique_ptr<ConstantBuffer<GlobalData>> GlobalData;
+		unique_ptr<ConstantBuffer<SceneData>> SceneData;
 		unique_ptr<StructuredBuffer<InstanceData>> InstanceData;
 		unique_ptr<StructuredBuffer<ObjectResourceDescriptorHeapIndices>> ObjectResourceDescriptorHeapIndices;
 		unique_ptr<StructuredBuffer<ObjectData>> ObjectData;
 	} m_GPUBuffers;
 
+	struct RenderTextureNames {
+		MAKE_NAME(Motions);
+		MAKE_NAME(NormalRoughness);
+		MAKE_NAME(ViewZ);
+		MAKE_NAME(BaseColorMetalness);
+		MAKE_NAME(NoisyDiffuse);
+		MAKE_NAME(NoisySpecular);
+		MAKE_NAME(DenoisedDiffuse);
+		MAKE_NAME(DenoisedSpecular);
+		MAKE_NAME(Validation);
+		MAKE_NAME(HistoryOutput);
+		MAKE_NAME(Output);
+		MAKE_NAME(FinalOutput);
+		MAKE_NAME(Blur1);
+		MAKE_NAME(Blur2);
+	};
 	map<string, shared_ptr<RenderTexture>, less<>> m_renderTextures;
 
 	static constexpr float
@@ -327,8 +353,6 @@ private:
 
 	struct { bool IsVisible, HasFocus = true, IsSettingsVisible; } m_UIStates{};
 
-	bool m_isWindowSettingChanged{};
-
 	void CreateDeviceDependentResources() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
@@ -340,11 +364,9 @@ private:
 
 		CreatePipelineStates();
 
+		CreateConstantBuffers();
+
 		LoadScene();
-
-		CreateAccelerationStructures(false);
-
-		CreateGPUBuffers();
 	}
 
 	void CreateWindowSizeDependentResources() {
@@ -360,7 +382,7 @@ private:
 				texture->CreateResource(size.cx, size.cy);
 			};
 
-			if (m_NRD = make_unique<NRD>(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(), m_deviceResources->GetBackBufferCount(), initializer_list{ Method::REBLUR_DIFFUSE_SPECULAR }, m_deviceResources->GetOutputSize());
+			if (m_NRD = make_unique<NRD>(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(), m_deviceResources->GetBackBufferCount(), initializer_list{ Method::REBLUR_DIFFUSE_SPECULAR }, outputSize);
 				m_NRD->IsAvailable()) {
 				const auto CreateTexture1 = [&](DXGI_FORMAT format, LPCSTR textureName, ResourceType resourceType, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
 					CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex);
@@ -405,7 +427,7 @@ private:
 			m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		}
 
-		m_cameraController.SetLens(XMConvertToRadians(GraphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
 
 		m_haltonSamplePattern.Reset();
 
@@ -426,7 +448,7 @@ private:
 		{
 			auto& camera = m_GPUBuffers.Camera->GetData();
 
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter = GraphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 
 			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
@@ -440,14 +462,16 @@ private:
 			camera.RightDirection = m_cameraController.GetRightDirection();
 			camera.UpDirection = m_cameraController.GetUpDirection();
 			camera.ForwardDirection = m_cameraController.GetForwardDirection();
+			camera.NearZ = m_cameraController.GetNearZ();
+			camera.FarZ = m_cameraController.GetFarZ();
 
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
 		}
 
-		UpdateScene();
+		UpdateGraphicsSettings();
 
-		UpdateGlobalData();
+		UpdateScene();
 
 		PIXEndEvent();
 	}
@@ -478,9 +502,12 @@ private:
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-		DispatchRays();
+		if (!m_futures.contains(FutureNames::Scene) && m_scene) {
+			if (!m_scene->IsWorldStatic()) CreateAccelerationStructures(commandList, true);
+			DispatchRays();
 
-		PostProcessGraphics();
+			PostProcessGraphics();
+		}
 
 		if (m_UIStates.IsVisible) RenderUI();
 
@@ -499,18 +526,18 @@ private:
 
 	void CheckSettings() {
 		{
-			auto& cameraSettings = GraphicsSettings.Camera;
+			auto& cameraSettings = g_graphicsSettings.Camera;
 			cameraSettings.VerticalFieldOfView = clamp(cameraSettings.VerticalFieldOfView, CameraMinVerticalFieldOfView, CameraMaxVerticalFieldOfView);
 		}
 
 		{
-			auto& raytracingSettings = GraphicsSettings.Raytracing;
+			auto& raytracingSettings = g_graphicsSettings.Raytracing;
 			raytracingSettings.MaxTraceRecursionDepth = clamp(raytracingSettings.MaxTraceRecursionDepth, 1u, MaxTraceRecursionDepth);
 			raytracingSettings.SamplesPerPixel = clamp(raytracingSettings.SamplesPerPixel, 1u, MaxSamplesPerPixel);
 		}
 
 		{
-			auto& postProcessingSettings = GraphicsSettings.PostProcessing;
+			auto& postProcessingSettings = g_graphicsSettings.PostProcessing;
 
 			postProcessingSettings.RaytracingDenoising.SplitScreen = clamp(postProcessingSettings.RaytracingDenoising.SplitScreen, 0.0f, 1.0f);
 
@@ -521,10 +548,10 @@ private:
 			}
 		}
 
-		UISettings.WindowOpacity = clamp(UISettings.WindowOpacity, 0.0f, 1.0f);
+		g_UISettings.WindowOpacity = clamp(g_UISettings.WindowOpacity, 0.0f, 1.0f);
 
 		{
-			auto& speedSettings = ControlsSettings.Camera.Speed;
+			auto& speedSettings = g_controlsSettings.Camera.Speed;
 			speedSettings.Movement = clamp(speedSettings.Movement, 0.0f, CameraMaxMovementSpeed);
 			speedSettings.Rotation = clamp(speedSettings.Rotation, 0.0f, CameraMaxRotationSpeed);
 		}
@@ -544,9 +571,44 @@ private:
 	}
 
 	void LoadScene() {
-		UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-		m_scene = make_shared<MyScene>();
-		m_scene->Load(MySceneDesc(), m_deviceResources->GetD3DDevice(), m_deviceResources->GetCommandQueue(), *m_resourceDescriptorHeap, descriptorHeapIndex);
+		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
+			{
+				try {
+					const auto device = m_deviceResources->GetD3DDevice();
+					const auto commandQueue = m_deviceResources->GetCommandQueue();
+
+					{
+						UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
+						m_scene = make_shared<MyScene>();
+						m_scene->Load(MySceneDesc(), device, commandQueue, *m_resourceDescriptorHeap, descriptorHeapIndex);
+					}
+
+					ResetCamera();
+
+					{
+						CommandList<ID3D12GraphicsCommandList4> commandList(device);
+						commandList.Begin();
+
+						CreateAccelerationStructures(commandList.GetPointer(), false);
+
+						commandList.End(commandQueue).get();
+					}
+
+					{
+						auto& globalResourceDescriptorHeapIndices = m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetData();
+						globalResourceDescriptorHeapIndices.EnvironmentLightCubeMap = m_scene->EnvironmentLightCubeMap.Texture.DescriptorHeapIndices.SRV;
+						globalResourceDescriptorHeapIndices.EnvironmentCubeMap = m_scene->EnvironmentCubeMap.Texture.DescriptorHeapIndices.SRV;
+					}
+
+					CreateStructuredBuffers();
+				}
+				catch (...) {
+					const scoped_lock lock(m_exceptionMutex);
+
+					if (!m_exception) m_exception = current_exception();
+				}
+			}
+			});
 	}
 
 	void CreateDescriptorHeaps() {
@@ -623,15 +685,12 @@ private:
 
 			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
 
-			resourceUploadBatch.End(commandQueue).wait();
+			resourceUploadBatch.End(commandQueue).get();
 		}
 	}
 
-	void CreateAccelerationStructures(bool updateOnly) {
+	void CreateAccelerationStructures(ID3D12GraphicsCommandList4* pCommandList, bool updateOnly) {
 		const auto device = m_deviceResources->GetD3DDevice();
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		ThrowIfFailed(commandList->Reset(m_deviceResources->GetCommandAllocator(), nullptr));
 
 		if (!updateOnly) {
 			m_bottomLevelAccelerationStructures.clear();
@@ -639,7 +698,7 @@ private:
 			for (const auto& Mesh : m_scene->Meshes | views::values) {
 				if (const auto [first, second] = m_bottomLevelAccelerationStructures.try_emplace(Mesh); second) {
 					first->second = make_shared<BottomLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
-					first->second->Build(m_deviceResources->GetCommandList(), initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(Mesh->Vertices.Get(), Mesh->Indices.Get()) }, false);
+					first->second->Build(pCommandList, initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(Mesh->Vertices.Get(), Mesh->Indices.Get()) }, false);
 				}
 			}
 
@@ -658,71 +717,46 @@ private:
 			instanceDescs.emplace_back(instanceDesc);
 			objectIndex++;
 		}
-		m_topLevelAccelerationStructure->Build(m_deviceResources->GetCommandList(), instanceDescs, updateOnly);
-
-		ThrowIfFailed(commandList->Close());
-
-		m_deviceResources->GetCommandQueue()->ExecuteCommandLists(1, CommandListCast(&commandList));
-
-		m_deviceResources->WaitForGpu();
+		m_topLevelAccelerationStructure->Build(pCommandList, instanceDescs, updateOnly);
 	}
 
-	void CreateGPUBuffers() {
-		const auto device = m_deviceResources->GetD3DDevice();
+	void CreateConstantBuffers() {
+		const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, const auto & data, UINT descriptorHeapIndex = ~0u) {
+			uploadBuffer = make_unique<T>(m_deviceResources->GetD3DDevice());
+			uploadBuffer->GetData() = data;
+			if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+		};
 
-		{
-			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, const auto & data, UINT descriptorHeapIndex = ~0u) {
-				uploadBuffer = make_unique<T>(device);
-				uploadBuffer->GetData() = data;
-				if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
-			};
+		CreateBuffer(
+			m_GPUBuffers.GlobalResourceDescriptorHeapIndices,
+			GlobalResourceDescriptorHeapIndices{
+				.GraphicsSettings = ResourceDescriptorHeapIndex::GraphicsSettings,
+				.Camera = ResourceDescriptorHeapIndex::Camera,
+				.SceneData = ResourceDescriptorHeapIndex::SceneData,
+				.InstanceData = ResourceDescriptorHeapIndex::InstanceData,
+				.ObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::ObjectResourceDescriptorHeapIndices,
+				.ObjectData = ResourceDescriptorHeapIndex::ObjectData,
+				.Motions = ResourceDescriptorHeapIndex::MotionsUAV,
+				.NormalRoughness = ResourceDescriptorHeapIndex::NormalRoughnessUAV,
+				.ViewZ = ResourceDescriptorHeapIndex::ViewZUAV,
+				.BaseColorMetalness = ResourceDescriptorHeapIndex::BaseColorMetalnessUAV,
+				.NoisyDiffuse = ResourceDescriptorHeapIndex::NoisyDiffuse,
+				.NoisySpecular = ResourceDescriptorHeapIndex::NoisySpecular,
+				.Output = ResourceDescriptorHeapIndex::OutputUAV
+			}
+		);
 
-			CreateBuffer(
-				m_GPUBuffers.GlobalResourceDescriptorHeapIndices,
-				GlobalResourceDescriptorHeapIndices{
-					.Camera = ResourceDescriptorHeapIndex::Camera,
-					.GlobalData = ResourceDescriptorHeapIndex::GlobalData,
-					.InstanceData = ResourceDescriptorHeapIndex::InstanceData,
-					.ObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::ObjectResourceDescriptorHeapIndices,
-					.ObjectData = ResourceDescriptorHeapIndex::ObjectData,
-					.Motions = ResourceDescriptorHeapIndex::MotionsUAV,
-					.NormalRoughness = ResourceDescriptorHeapIndex::NormalRoughnessUAV,
-					.ViewZ = ResourceDescriptorHeapIndex::ViewZUAV,
-					.BaseColorMetalness = ResourceDescriptorHeapIndex::BaseColorMetalnessUAV,
-					.NoisyDiffuse = ResourceDescriptorHeapIndex::NoisyDiffuse,
-					.NoisySpecular = ResourceDescriptorHeapIndex::NoisySpecular,
-					.Output = ResourceDescriptorHeapIndex::OutputUAV,
-					.EnvironmentLightCubeMap = m_scene->EnvironmentLightCubeMap.Texture.DescriptorHeapIndices.SRV,
-					.EnvironmentCubeMap = m_scene->EnvironmentCubeMap.Texture.DescriptorHeapIndices.SRV
-				}
-			);
+		CreateBuffer(m_GPUBuffers.GraphicsSettings, GraphicsSettings(), ResourceDescriptorHeapIndex::GraphicsSettings);
 
-			CreateBuffer(
-				m_GPUBuffers.Camera,
-				Camera{
-					.Position = m_cameraController.GetPosition(),
-					.NearZ = m_cameraController.GetNearZ(),
-					.FarZ = m_cameraController.GetFarZ()
-				},
-				ResourceDescriptorHeapIndex::Camera
-			);
+		CreateBuffer(m_GPUBuffers.Camera, Camera(), ResourceDescriptorHeapIndex::Camera);
 
-			CreateBuffer(
-				m_GPUBuffers.GlobalData,
-				GlobalData{
-					.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters),
-					.EnvironmentLightColor = m_scene->EnvironmentLightColor,
-					.EnvironmentLightCubeMapTransform = m_scene->EnvironmentLightCubeMap.Transform(),
-					.EnvironmentColor = m_scene->EnvironmentColor,
-					.EnvironmentCubeMapTransform = m_scene->EnvironmentCubeMap.Transform()
-				},
-				ResourceDescriptorHeapIndex::GlobalData
-			);
-		}
+		CreateBuffer(m_GPUBuffers.SceneData, SceneData(), ResourceDescriptorHeapIndex::SceneData);
+	}
 
+	void CreateStructuredBuffers() {
 		if (const UINT objectCount = static_cast<UINT>(size(m_scene->RenderObjects))) {
 			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, UINT count, UINT descriptorHeapIndex) {
-				uploadBuffer = make_unique<T>(device, count);
+				uploadBuffer = make_unique<T>(m_deviceResources->GetD3DDevice(), count);
 				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 
@@ -833,7 +867,7 @@ private:
 		Vector3 displacement;
 		float yaw = 0, pitch = 0;
 
-		auto& speedSettings = ControlsSettings.Camera.Speed;
+		auto& speedSettings = g_controlsSettings.Camera.Speed;
 
 		if (gamepadState.IsConnected()) {
 			if (m_inputDeviceStateTrackers.Gamepad.view == GamepadButtonState::PRESSED) ResetCamera();
@@ -844,7 +878,7 @@ private:
 			if (movementSpeedIncrement) {
 				speedSettings.Movement = clamp(speedSettings.Movement + elapsedSeconds * static_cast<float>(movementSpeedIncrement) * 12, 0.0f, CameraMaxMovementSpeed);
 
-				ignore = ControlsSettings.Save();
+				ignore = g_controlsSettings.Save();
 			}
 
 			const auto movementSpeed = elapsedSeconds * speedSettings.Movement;
@@ -862,7 +896,7 @@ private:
 			if (mouseState.scrollWheelValue) {
 				speedSettings.Movement = clamp(speedSettings.Movement + static_cast<float>(mouseState.scrollWheelValue) * 0.008f, 0.0f, CameraMaxMovementSpeed);
 
-				ignore = ControlsSettings.Save();
+				ignore = g_controlsSettings.Save();
 			}
 
 			const auto movementSpeed = elapsedSeconds * speedSettings.Movement;
@@ -886,6 +920,17 @@ private:
 		m_cameraController.Rotate(yaw, pitch);
 	}
 
+	void UpdateGraphicsSettings() {
+		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
+		m_GPUBuffers.GraphicsSettings->GetData() = {
+			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+			.MaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth,
+			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+			.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
+		};
+	}
+
 	void UpdateScene() {
 		if (!m_scene->IsWorldStatic()) {
 			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
@@ -895,22 +940,13 @@ private:
 
 		m_scene->Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
 
-		if (!m_scene->IsWorldStatic()) CreateAccelerationStructures(true);
-	}
-
-	void UpdateGlobalData() {
-		auto& globalData = m_GPUBuffers.GlobalData->GetData();
-
-		globalData.FrameIndex = m_stepTimer.GetFrameCount() - 1;
-
-		{
-			const auto& raytracingSettings = GraphicsSettings.Raytracing;
-			globalData.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled;
-			globalData.MaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth;
-			globalData.SamplesPerPixel = raytracingSettings.SamplesPerPixel;
-		}
-
-		globalData.IsWorldStatic = m_scene->IsWorldStatic();
+		m_GPUBuffers.SceneData->GetData() = {
+			.IsStatic = m_scene->IsWorldStatic(),
+			.EnvironmentLightColor = m_scene->EnvironmentLightColor,
+			.EnvironmentLightCubeMapTransform = m_scene->EnvironmentLightCubeMap.Transform(),
+			.EnvironmentColor = m_scene->EnvironmentColor,
+			.EnvironmentCubeMapTransform = m_scene->EnvironmentCubeMap.Transform()
+		};
 	}
 
 	void DispatchRays() {
@@ -929,7 +965,7 @@ private:
 	void PostProcessGraphics() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& postProcessingSettings = GraphicsSettings.PostProcessing;
+		const auto& postProcessingSettings = g_graphicsSettings.PostProcessing;
 
 		const auto isNRDEnabled = postProcessingSettings.RaytracingDenoising.IsEnabled && postProcessingSettings.RaytracingDenoising.SplitScreen != 1 && m_NRD->IsAvailable();
 
@@ -975,10 +1011,8 @@ private:
 	}
 
 	void Denoise() {
-		const auto& raytracingDenoisingSettings = GraphicsSettings.PostProcessing.RaytracingDenoising;
-
+		const auto& raytracingDenoisingSettings = g_graphicsSettings.PostProcessing.RaytracingDenoising;
 		m_NRDCommonSettings.splitScreen = raytracingDenoisingSettings.SplitScreen;
-
 		m_NRDCommonSettings.enableValidation = raytracingDenoisingSettings.IsValidationLayerEnabled;
 
 		m_NRD->Denoise(m_stepTimer.GetFrameCount() - 1, m_NRDCommonSettings);
@@ -1066,7 +1100,7 @@ private:
 	void ProcessBloom(RenderTexture& input, D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& bloomSettings = GraphicsSettings.PostProcessing.Bloom;
+		const auto& bloomSettings = g_graphicsSettings.PostProcessing.Bloom;
 
 		const auto& [Extraction, Blur, Combination] = m_bloom;
 
@@ -1152,7 +1186,9 @@ private:
 
 		if (m_UIStates.IsSettingsVisible) RenderSettingsWindow();
 
-		RenderPopupModalWindow(openPopupModalName);
+		if (openPopupModalName != nullptr) RenderPopupModalWindow(openPopupModalName);
+
+		if (m_futures.contains(FutureNames::Scene)) RenderLoadingSceneWindow();
 
 		ImGui::Render();
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_deviceResources->GetCommandList());
@@ -1195,7 +1231,7 @@ private:
 	}
 
 	void RenderSettingsWindow() {
-		ImGui::SetNextWindowBgAlpha(UISettings.WindowOpacity);
+		ImGui::SetNextWindowBgAlpha(g_UISettings.WindowOpacity);
 
 		const auto& viewport = *ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos({ viewport.WorkPos.x, viewport.WorkPos.y });
@@ -1203,7 +1239,7 @@ private:
 
 		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsVisible, ImGuiWindowFlags_HorizontalScrollbar)) {
 			if (ImGui::TreeNode("Graphics")) {
-				auto isChanged = false;
+				auto isChanged = false, isWindowSettingChanged = false;
 
 				{
 					const auto WindowModes = { "Windowed", "Borderless", "Fullscreen" };
@@ -1211,9 +1247,9 @@ private:
 						ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), data(WindowModes), static_cast<int>(size(WindowModes)))) {
 						m_windowModeHelper->SetMode(windowMode);
 
-						GraphicsSettings.WindowMode = windowMode;
+						g_graphicsSettings.WindowMode = windowMode;
 
-						m_isWindowSettingChanged = isChanged = true;
+						isChanged = isWindowSettingChanged = true;
 					}
 				}
 
@@ -1221,15 +1257,15 @@ private:
 					const auto ToString = [](SIZE value) { return format("{} × {}", value.cx, value.cy); };
 					if (const auto resolution = m_windowModeHelper->GetResolution();
 						ImGui::BeginCombo("Resolution", ToString(resolution).c_str())) {
-						for (const auto& displayResolution : SharedData::DisplayResolutions) {
+						for (const auto& displayResolution : g_displayResolutions) {
 							const auto isSelected = resolution == displayResolution;
 
 							if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
 								m_windowModeHelper->SetResolution(displayResolution);
 
-								GraphicsSettings.Resolution = displayResolution;
+								g_graphicsSettings.Resolution = displayResolution;
 
-								m_isWindowSettingChanged = isChanged = true;
+								isChanged = isWindowSettingChanged = true;
 							}
 
 							if (isSelected) ImGui::SetItemDefaultFocus();
@@ -1243,14 +1279,14 @@ private:
 					const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->GetDeviceOptions() & DeviceResources::c_AllowTearing);
 
 					if (auto isEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) {
-						GraphicsSettings.IsVSyncEnabled = isEnabled;
+						g_graphicsSettings.IsVSyncEnabled = isEnabled;
 
 						isChanged = true;
 					}
 				}
 
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& cameraSettings = GraphicsSettings.Camera;
+					auto& cameraSettings = g_graphicsSettings.Camera;
 
 					isChanged |= ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled);
 
@@ -1264,7 +1300,7 @@ private:
 				}
 
 				if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& raytracingSettings = GraphicsSettings.Raytracing;
+					auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
 					isChanged |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
 
@@ -1276,7 +1312,7 @@ private:
 				}
 
 				if (ImGui::TreeNodeEx("Post-Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& postProcessingSetttings = GraphicsSettings.PostProcessing;
+					auto& postProcessingSetttings = g_graphicsSettings.PostProcessing;
 
 					{
 						const auto isAvailable = m_NRD->IsAvailable();
@@ -1335,26 +1371,28 @@ private:
 
 				ImGui::TreePop();
 
-				if (isChanged) ignore = GraphicsSettings.Save();
+				if (isChanged) ignore = g_graphicsSettings.Save();
+
+				if (isWindowSettingChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper->Apply()); });
 			}
 
 			if (ImGui::TreeNode("UI")) {
 				auto isChanged = false;
 
-				isChanged |= ImGui::Checkbox("Show on Startup", &UISettings.ShowOnStartup);
+				isChanged |= ImGui::Checkbox("Show on Startup", &g_UISettings.ShowOnStartup);
 
-				isChanged |= ImGui::SliderFloat("Window Opacity", &UISettings.WindowOpacity, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+				isChanged |= ImGui::SliderFloat("Window Opacity", &g_UISettings.WindowOpacity, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 				ImGui::TreePop();
 
-				if (isChanged) ignore = UISettings.Save();
+				if (isChanged) ignore = g_UISettings.Save();
 			}
 
 			if (ImGui::TreeNode("Controls")) {
 				auto isChanged = false;
 
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& cameraSettings = ControlsSettings.Camera;
+					auto& cameraSettings = g_controlsSettings.Camera;
 
 					if (ImGui::TreeNodeEx("Speed", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& speedSettings = cameraSettings.Speed;
@@ -1371,7 +1409,7 @@ private:
 
 				ImGui::TreePop();
 
-				if (isChanged) ignore = ControlsSettings.Save();
+				if (isChanged) ignore = g_controlsSettings.Save();
 			}
 		}
 
@@ -1481,6 +1519,24 @@ private:
 				}
 			}
 		);
+	}
+
+	void RenderLoadingSceneWindow() {
+		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
+		ImGui::SetNextWindowSize({});
+
+		if (const auto label = "Loading Scene"; ImGui::Begin(label, nullptr, ImGuiWindowFlags_NoTitleBar)) {
+			{
+				const auto radius = static_cast<float>(GetOutputSize().cy) * 0.01f;
+				ImGuiEx::Spinner(label, ImGui::GetColorU32(ImGuiCol_Button), radius, radius * 0.4f);
+			}
+
+			ImGui::SameLine();
+
+			ImGui::Text(label);
+		}
+
+		ImGui::End();
 	}
 };
 

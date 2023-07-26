@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nlohmann/json.hpp"
+#include "JsonHelpers.h"
 
 #include <Windows.h>
 
@@ -9,14 +9,7 @@
 import DisplayHelpers;
 import WindowHelpers;
 
-using ordered_json_f = nlohmann::basic_json<nlohmann::ordered_map, std::vector, std::string, bool, int64_t, uint64_t, float>;
-
-#define NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Type, ...) \
-	friend void to_json(ordered_json_f& nlohmann_json_j, const Type& nlohmann_json_t) { NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, __VA_ARGS__)) } \
-	friend void from_json(const ordered_json_f& nlohmann_json_j, Type& nlohmann_json_t) { NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, __VA_ARGS__)) }
-
-inline void to_json(ordered_json_f& json, SIZE data) { json = { { "Width", data.cx }, { "Height", data.cy } }; }
-inline void from_json(const ordered_json_f& json, SIZE& data) { data = { json.value("Width", 0), json.value("Height", 0) }; }
+JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
 
 namespace WindowHelpers {
 	NLOHMANN_JSON_SERIALIZE_ENUM(
@@ -70,7 +63,7 @@ public:
 
 				float VerticalFieldOfView = 45;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Camera, IsJitterEnabled, VerticalFieldOfView);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Camera, IsJitterEnabled, VerticalFieldOfView);
 			} Camera;
 
 			struct Raytracing {
@@ -78,7 +71,7 @@ public:
 
 				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 1;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Raytracing, IsRussianRouletteEnabled, MaxTraceRecursionDepth, SamplesPerPixel);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, MaxTraceRecursionDepth, SamplesPerPixel);
 			} Raytracing;
 
 			struct PostProcessing {
@@ -87,7 +80,7 @@ public:
 
 					float SplitScreen{};
 
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(RaytracingDenoising, IsEnabled, IsValidationLayerEnabled, SplitScreen);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(RaytracingDenoising, IsEnabled, IsValidationLayerEnabled, SplitScreen);
 				} RaytracingDenoising;
 
 				bool IsTemporalAntiAliasingEnabled = true;
@@ -97,13 +90,13 @@ public:
 
 					float Threshold = 0.5f, BlurSize = 5;
 
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Bloom, IsEnabled, Threshold, BlurSize);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(Bloom, IsEnabled, Threshold, BlurSize);
 				} Bloom;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(PostProcessing, RaytracingDenoising, IsTemporalAntiAliasingEnabled, Bloom);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, RaytracingDenoising, IsTemporalAntiAliasingEnabled, Bloom);
 			} PostProcessing;
 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
+			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
 		} Graphics;
 
 		inline static struct UI : Data<UI> {
@@ -113,7 +106,7 @@ public:
 
 			float WindowOpacity = 0.5f;
 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(UI, ShowOnStartup, WindowOpacity);
+			FRIEND_JSON_CONVERSION_FUNCTIONS(UI, ShowOnStartup, WindowOpacity);
 		} UI;
 
 		inline static struct Controls : Data<Controls> {
@@ -123,13 +116,13 @@ public:
 				struct Speed {
 					float Movement = 10, Rotation = 0.5f;
 
-					NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Speed, Movement, Rotation);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(Speed, Movement, Rotation);
 				} Speed;
 
-				NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Camera, Speed);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Camera, Speed);
 			} Camera;
 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE_ORDERED_F(Controls, Camera);
+			FRIEND_JSON_CONVERSION_FUNCTIONS(Controls, Camera);
 		} Controls;
 
 	private:

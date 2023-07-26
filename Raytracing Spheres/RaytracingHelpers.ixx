@@ -65,7 +65,7 @@ export namespace DirectX::RaytracingHelpers {
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
 				m_device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
 
-				m_buffers = AccelerationStructureBuffers(m_device, AlignUp(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), AlignUp(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), IsBottom ? 0 : AlignUp(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * desc.Inputs.NumDescs, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT));
+				m_buffers = AccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, IsBottom ? 0 : sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * desc.Inputs.NumDescs);
 
 				desc.SourceAccelerationStructureData = NULL;
 			}
@@ -74,7 +74,7 @@ export namespace DirectX::RaytracingHelpers {
 				if (m_buffers.InstanceDescs != nullptr) {
 					D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
 					ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
-					copy(cbegin(descs), cend(descs), pInstanceDescs);
+					ranges::copy(descs, pInstanceDescs);
 					m_buffers.InstanceDescs->Unmap(0, nullptr);
 
 					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();

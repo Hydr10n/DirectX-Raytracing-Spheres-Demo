@@ -20,8 +20,9 @@ RaytracingAccelerationStructure g_scene : register(t0);
 
 struct GlobalResourceDescriptorHeapIndices {
 	uint
+		GraphicsSettings,
 		Camera,
-		GlobalData,
+		SceneData,
 		InstanceData,
 		ObjectResourceDescriptorHeapIndices, ObjectData,
 		Motions,
@@ -31,22 +32,28 @@ struct GlobalResourceDescriptorHeapIndices {
 		NoisyDiffuse, NoisySpecular,
 		Output,
 		EnvironmentLightCubeMap, EnvironmentCubeMap;
-	uint2 _;
+	uint _;
 };
 ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b0);
 
+struct GraphicsSettings {
+	uint FrameIndex, MaxTraceRecursionDepth, SamplesPerPixel;
+	bool IsRussianRouletteEnabled;
+	float4 NRDHitDistanceParameters;
+};
+static const GraphicsSettings g_graphicsSettings = (ConstantBuffer<GraphicsSettings>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.GraphicsSettings];
+
 static const Camera g_camera = (ConstantBuffer<Camera>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Camera];
 
-struct GlobalData {
-	uint FrameIndex, MaxTraceRecursionDepth, SamplesPerPixel;
-	bool IsRussianRouletteEnabled, IsWorldStatic;
+struct SceneData {
+	bool IsStatic;
 	uint3 _;
-	float4 NRDHitDistanceParameters, EnvironmentLightColor;
+	float4 EnvironmentLightColor;
 	float4x4 EnvironmentLightCubeMapTransform;
 	float4 EnvironmentColor;
 	float4x4 EnvironmentCubeMapTransform;
 };
-static const GlobalData g_globalData = (ConstantBuffer<GlobalData>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.GlobalData];
+static const SceneData g_sceneData = (ConstantBuffer<SceneData>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.SceneData];
 
 struct InstanceData {
 	bool IsStatic;
@@ -81,18 +88,18 @@ static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResou
 
 inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
 	if (g_globalResourceDescriptorHeapIndices.EnvironmentLightCubeMap != ~0u) {
-		return g_environmentLightCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_globalData.EnvironmentLightCubeMapTransform, worldRayDirection)), 0);
+		return g_environmentLightCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentLightCubeMapTransform, worldRayDirection)), 0);
 	}
-	if (g_globalData.EnvironmentLightColor.a >= 0) return g_globalData.EnvironmentLightColor.rgb;
+	if (g_sceneData.EnvironmentLightColor.a >= 0) return g_sceneData.EnvironmentLightColor.rgb;
 	return lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f);
 }
 
 inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 	bool ret;
 	if ((ret = g_globalResourceDescriptorHeapIndices.EnvironmentCubeMap != ~0u)) {
-		color = g_environmentCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_globalData.EnvironmentCubeMapTransform, worldRayDirection)), 0);
+		color = g_environmentCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentCubeMapTransform, worldRayDirection)), 0);
 	}
-	else if ((ret = g_globalData.EnvironmentColor.a >= 0)) color = g_globalData.EnvironmentColor.rgb;
+	else if ((ret = g_sceneData.EnvironmentColor.a >= 0)) color = g_sceneData.EnvironmentColor.rgb;
 	return ret;
 }
 
@@ -180,7 +187,7 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 	material.Opacity = GetOpacity(objectIndex, textureCoordinate, false);
 	if (g_objectData[objectIndex].Material.AlphaMode != AlphaMode::Opaque) material.Opacity = min(material.Opacity, material.BaseColor.a);
 
-	material.RefractiveIndex = max(1, g_objectData[objectIndex].Material.RefractiveIndex);
+	material.RefractiveIndex = max(g_objectData[objectIndex].Material.RefractiveIndex, 1);
 
 	material.AlphaMode = g_objectData[objectIndex].Material.AlphaMode;
 	material.AlphaThreshold = g_objectData[objectIndex].Material.AlphaThreshold;
@@ -250,7 +257,7 @@ inline bool CastRay(RayDesc rayDesc, out RayCastResult rayCastResult) {
 
 inline float3 CalculateMotion(float2 UV, float viewZ, float3 worldVertexPosition, float3 objectVertexPosition, uint instanceIndex, uint objectIndex, uint primitiveIndex, float2 barycentrics) {
 	float3 previousPosition;
-	if (g_globalData.IsWorldStatic || g_instanceData[instanceIndex].IsStatic) previousPosition = worldVertexPosition;
+	if (g_sceneData.IsStatic || g_instanceData[instanceIndex].IsStatic) previousPosition = worldVertexPosition;
 	else {
 		previousPosition = objectVertexPosition;
 		if (g_objectResourceDescriptorHeapIndices[objectIndex].Mesh.Motions != ~0u) {

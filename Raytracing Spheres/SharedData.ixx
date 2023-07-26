@@ -10,5 +10,5 @@ using namespace DisplayHelpers;
 using namespace std;
 
 export namespace SharedData {
-	set<Resolution> DisplayResolutions;
+	set<Resolution> g_displayResolutions;
 }

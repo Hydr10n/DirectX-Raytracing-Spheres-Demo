@@ -49,6 +49,9 @@
     <ClInclude Include="RenderTexture.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="JsonHelpers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DeviceResources.cpp">
@@ -125,6 +128,12 @@
     </ClCompile>
     <ClCompile Include="Math.ixx">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CommandList.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="ThreadHelpers.ixx">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

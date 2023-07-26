@@ -17,7 +17,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	g_output.GetDimensions(raysDimensions.x, raysDimensions.y);
 	if (raysIndex.x >= raysDimensions.x || raysIndex.y >= raysDimensions.y) return;
 
-	STL::Rng::Hash::Initialize(raysIndex, g_globalData.FrameIndex);
+	STL::Rng::Hash::Initialize(raysIndex, g_graphicsSettings.FrameIndex);
 
 	float viewZ = 1.#INFf;
 	float3 motion = 0, radiance = 0;
@@ -36,7 +36,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 
 		ScatterResult scatterResult;
 		float hitDistance;
-		for (uint i = 0; i < g_globalData.SamplesPerPixel; i++) {
+		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++) {
 			const ScatterResult scatterResultTemp = rayCastResult.Material.Scatter(rayCastResult.HitInfo, rayDesc.Direction);
 			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(rayCastResult.HitInfo.Vertex.Position, scatterResultTemp.Direction);
 			if (!i) {
@@ -46,12 +46,12 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 			radiance += traceResult.Radiance;
 		}
 
-		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_globalData.SamplesPerPixel : 0;
-		radiance = rayCastResult.Material.EmissiveColor.rgb + (g_globalData.MaxTraceRecursionDepth > 1 ? radiance * scatterResult.Attenuation : rayCastResult.Material.BaseColor.rgb);
+		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
+		radiance = rayCastResult.Material.EmissiveColor.rgb + (g_graphicsSettings.MaxTraceRecursionDepth > 1 ? radiance * scatterResult.Attenuation : rayCastResult.Material.BaseColor.rgb);
 
 		const bool isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 
-		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, viewZ, g_globalData.NRDHitDistanceParameters, isDiffuse ? 1 : rayCastResult.Material.Roughness);
+		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, viewZ, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : rayCastResult.Material.Roughness);
 
 		float3 albedo, Rf0;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic, albedo, Rf0);

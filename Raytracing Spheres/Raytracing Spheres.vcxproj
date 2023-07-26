@@ -115,6 +115,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
   <ItemGroup>
     <ClInclude Include="ImGuiEx.h" />
     <ClInclude Include="DeviceResources.h" />
+    <ClInclude Include="JsonHelpers.h" />
     <ClInclude Include="MyAppData.h" />
     <ClInclude Include="PhysX.h" />
     <ClInclude Include="pch.h" />
@@ -125,6 +126,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
   <ItemGroup>
     <ClCompile Include="App.cppm" />
     <ClCompile Include="Camera.ixx" />
+    <ClCompile Include="CommandList.ixx" />
     <ClCompile Include="DenoisedComposition.ixx" />
     <ClCompile Include="DescriptorHeap.ixx" />
     <ClCompile Include="HaltonSamplePattern.ixx" />
@@ -147,6 +149,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClCompile Include="TemporalAntiAliasing.ixx" />
     <ClCompile Include="Texture.ixx" />
     <ClCompile Include="BufferHelpers.ixx" />
+    <ClCompile Include="ThreadHelpers.ixx" />
     <ClCompile Include="WindowHelpers.ixx" />
   </ItemGroup>
   <ItemGroup>

@@ -114,6 +114,7 @@ export {
 		auto GetVerticalFieldOfView() const { return m_verticalFieldOfView; }
 		auto GetAspectRatio() const { return m_aspectRatio; }
 
+		void SetLens(float verticalFieldOfView, float aspectRatio) { SetLens(verticalFieldOfView, aspectRatio, m_nearZ, m_farZ); }
 		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ, float farZ) {
 			m_viewToProjection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
 
@@ -128,8 +129,6 @@ export {
 			m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 		}
-
-		void SetLens(float verticalFieldOfView, float aspectRatio) { SetLens(verticalFieldOfView, aspectRatio, m_nearZ, m_farZ); }
 
 		auto GetWorldToProjection() const { return GetWorldToView() * GetViewToProjection(); }
 		auto GetProjectionToWorld() const { return GetWorldToProjection().Invert(); }

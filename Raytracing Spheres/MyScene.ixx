@@ -60,7 +60,7 @@ export {
 
 			EnvironmentLightCubeMap = { directoryPath / L"Space.dds", { .Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0) } };
 
-			PhysX = make_shared<::PhysX>();
+			PhysX = make_shared<::PhysX>(8);
 
 			const auto& material = *PhysX->GetPhysics().createMaterial(0.5f, 0.5f, 0.6f);
 

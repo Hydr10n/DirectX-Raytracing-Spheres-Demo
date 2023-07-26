@@ -40,11 +40,41 @@ namespace ImGuiEx {
 	}
 
 	inline ImGuiInputEvent* FindLatestInputEvent(ImGuiContext* context, ImGuiInputEventType type, int arg = -1) {
-		auto& g = *context;
-		for (auto i = g.InputEventsQueue.Size - 1; i >= 0; i--) {
-			if (const auto e = &g.InputEventsQueue[i];
-				e->Type == type && (type != ImGuiInputEventType_Key || e->Key.Key == arg) && (type != ImGuiInputEventType_MouseButton || e->MouseButton.Button == arg)) return e;
+		for (auto i = context->InputEventsQueue.Size - 1; i >= 0; i--) {
+			if (auto& e = context->InputEventsQueue[i];
+				e.Type == type && (type != ImGuiInputEventType_Key || e.Key.Key == arg) && (type != ImGuiInputEventType_MouseButton || e.MouseButton.Button == arg)) return &e;
 		}
 		return nullptr;
+	}
+
+	inline void Spinner(const char* label, ImU32 color, float radius, float thickness = 1) {
+		auto& window = *ImGui::GetCurrentWindow();
+		if (window.SkipItems) return;
+
+		const auto ID = window.GetID(label);
+		const auto& context = *ImGui::GetCurrentContext();
+		const auto& style = context.Style;
+
+		const auto pos = window.DC.CursorPos;
+
+		const ImRect rect(pos, ImVec2(pos.x + 2 * radius, pos.y + 2 * (radius + style.FramePadding.y)));
+		ImGui::ItemSize(rect, style.FramePadding.y);
+		if (!ImGui::ItemAdd(rect, ID)) return;
+
+		window.DrawList->PathClear();
+
+		constexpr auto SegmentCount = 30;
+		const auto
+			time = static_cast<float>(context.Time),
+			start = ImAbs(ImSin(time * 1.8f) * (SegmentCount - 5)),
+			min = 2 * IM_PI * start / static_cast<float>(SegmentCount - 3), max = 2 * IM_PI * static_cast<float>(SegmentCount) / static_cast<float>(SegmentCount);
+
+		const ImVec2 center(pos.x + radius, pos.y + radius + style.FramePadding.y);
+		for (int i = 0; i < SegmentCount; i++) {
+			const auto value = min + static_cast<float>(i) / static_cast<float>(SegmentCount) * (max - min);
+			window.DrawList->PathLineTo(ImVec2(center.x + ImCos(value + time * 8) * radius, center.y + ImSin(value + time * 8) * radius));
+		}
+
+		window.DrawList->PathStroke(color, ImDrawFlags_None, thickness);
 	}
 }

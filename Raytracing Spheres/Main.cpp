@@ -18,11 +18,12 @@ using namespace DirectX;
 using namespace DisplayHelpers;
 using namespace DX;
 using namespace Microsoft::WRL::Wrappers;
+using namespace SharedData;
 using namespace std;
 using namespace WindowHelpers;
 
 namespace {
-	constexpr auto& GraphicsSettings = MyAppData::Settings::Graphics;
+	constexpr auto& g_graphicsSettings = MyAppData::Settings::Graphics;
 }
 
 namespace {
@@ -78,8 +79,8 @@ int WINAPI wWinMain(
 		g_windowModeHelper = make_shared<WindowModeHelper>(window);
 
 		RECT clientRect;
-		if (GraphicsSettings.Resolution >= *cbegin(SharedData::DisplayResolutions) && GraphicsSettings.Resolution <= *--cend(SharedData::DisplayResolutions)) {
-			clientRect = { 0, 0, GraphicsSettings.Resolution.cx, GraphicsSettings.Resolution.cy };
+		if (g_graphicsSettings.Resolution >= *cbegin(g_displayResolutions) && g_graphicsSettings.Resolution <= *--cend(g_displayResolutions)) {
+			clientRect = { 0, 0, g_graphicsSettings.Resolution.cx, g_graphicsSettings.Resolution.cy };
 		}
 		else ThrowIfFailed(GetClientRect(window, &clientRect));
 
@@ -95,8 +96,8 @@ int WINAPI wWinMain(
 
 		// HACK: Fix missing icon on title bar when initial WindowMode != Windowed
 		ThrowIfFailed(g_windowModeHelper->Apply());
-		if (GraphicsSettings.WindowMode != WindowMode::Windowed) {
-			g_windowModeHelper->SetMode(GraphicsSettings.WindowMode);
+		if (g_graphicsSettings.WindowMode != WindowMode::Windowed) {
+			g_windowModeHelper->SetMode(g_graphicsSettings.WindowMode);
 			ThrowIfFailed(g_windowModeHelper->Apply());
 		}
 
@@ -157,11 +158,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			ThrowIfFailed(monitor != nullptr);
 
 			if (monitor != s_hMonitor || forceUpdate) {
-				ThrowIfFailed(::GetDisplayResolutions(SharedData::DisplayResolutions, monitor));
+				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
 
-				if (const auto resolution = cbegin(SharedData::DisplayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
-					*--cend(SharedData::DisplayResolutions) > resolution) {
-					erase_if(SharedData::DisplayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
+				if (const auto resolution = cbegin(g_displayResolutions)->IsPortrait() ? Resolution{ 600, 800 } : Resolution{ 800, 600 };
+					*--cend(g_displayResolutions) > resolution) {
+					erase_if(g_displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
 				}
 
 				ThrowIfFailed(GetDisplayResolution(s_displayResolution, monitor));
@@ -188,7 +189,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					};
 
 					auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
-					AdjustSize(*cbegin(SharedData::DisplayResolutions), minMaxInfo.ptMinTrackSize);
+					AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);
 					AdjustSize(s_displayResolution, minMaxInfo.ptMaxTrackSize);
 				}
 			}
@@ -214,9 +215,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 							g_windowModeHelper->SetResolution(resolution);
 
-							if (GraphicsSettings.Resolution != resolution) {
-								GraphicsSettings.Resolution = resolution;
-								ignore = GraphicsSettings.Save();
+							if (g_graphicsSettings.Resolution != resolution) {
+								g_graphicsSettings.Resolution = resolution;
+								ignore = g_graphicsSettings.Save();
 							}
 						}
 
@@ -265,8 +266,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					g_windowModeHelper->ToggleMode();
 					ThrowIfFailed(g_windowModeHelper->Apply());
 
-					GraphicsSettings.WindowMode = g_windowModeHelper->GetMode();
-					ignore = GraphicsSettings.Save();
+					g_graphicsSettings.WindowMode = g_windowModeHelper->GetMode();
+					ignore = g_graphicsSettings.Save();
 				}
 			}
 			[[fallthrough]];

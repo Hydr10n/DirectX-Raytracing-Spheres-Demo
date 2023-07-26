@@ -42,7 +42,7 @@ struct PhysX {
 	PhysX(const PhysX&) = delete;
 	PhysX& operator=(const PhysX&) = delete;
 
-	PhysX(physx::PxU32 threadCount = 8) noexcept(false) {
+	PhysX(physx::PxU32 threadCount) noexcept(false) {
 		using namespace physx;
 
 		auto& foundation = *_.Foundation;

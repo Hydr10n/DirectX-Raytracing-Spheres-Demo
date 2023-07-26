@@ -11,8 +11,9 @@ using namespace DirectX;
 export {
 	struct GlobalResourceDescriptorHeapIndices {
 		UINT
+			GraphicsSettings = ~0u,
 			Camera = ~0u,
-			GlobalData = ~0u,
+			SceneData = ~0u,
 			InstanceData = ~0u,
 			ObjectResourceDescriptorHeapIndices = ~0u, ObjectData = ~0u,
 			Motions = ~0u,
@@ -22,14 +23,19 @@ export {
 			NoisyDiffuse = ~0u, NoisySpecular = ~0u,
 			Output = ~0u,
 			EnvironmentLightCubeMap = ~0u, EnvironmentCubeMap = ~0u;
-		XMUINT2 _;
+		UINT _;
 	};
 
-	struct GlobalData {
+	struct GraphicsSettings {
 		UINT FrameIndex, MaxTraceRecursionDepth, SamplesPerPixel;
-		BOOL IsRussianRouletteEnabled, IsWorldStatic;
+		BOOL IsRussianRouletteEnabled;
+		XMFLOAT4 NRDHitDistanceParameters;
+	};
+
+	struct SceneData {
+		BOOL IsStatic;
 		XMUINT3 _;
-		XMFLOAT4 NRDHitDistanceParameters, EnvironmentLightColor;
+		XMFLOAT4 EnvironmentLightColor;
 		XMFLOAT4X4 EnvironmentLightCubeMapTransform;
 		XMFLOAT4 EnvironmentColor;
 		XMFLOAT4X4 EnvironmentCubeMapTransform;

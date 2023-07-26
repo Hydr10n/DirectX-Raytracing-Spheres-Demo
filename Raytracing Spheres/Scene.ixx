@@ -139,7 +139,7 @@ export {
 				}
 			}
 
-			resourceUploadBatch.End(pCommandQueue).wait();
+			resourceUploadBatch.End(pCommandQueue).get();
 		}
 	};
 }

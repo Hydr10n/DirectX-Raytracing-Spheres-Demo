@@ -20,7 +20,7 @@ struct IndirectRay {
 		rayDesc.TMin = 1e-4f;
 		rayDesc.TMax = 1.#INFf;
 
-		for (uint depth = 1; depth < g_globalData.MaxTraceRecursionDepth; depth++) {
+		for (uint depth = 1; depth < g_graphicsSettings.MaxTraceRecursionDepth; depth++) {
 			RayCastResult rayCastResult;
 			if (CastRay(rayDesc, rayCastResult)) {
 				const ScatterResult scatterResult = rayCastResult.Material.Scatter(rayCastResult.HitInfo, rayDesc.Direction);
@@ -29,7 +29,7 @@ struct IndirectRay {
 				attenuation *= scatterResult.Attenuation;
 
 				if (depth == 1) traceResult.HitDistance = rayCastResult.HitDistance;
-				else if (g_globalData.IsRussianRouletteEnabled && depth > 3) {
+				else if (g_graphicsSettings.IsRussianRouletteEnabled && depth > 3) {
 					const float probability = max(attenuation.r, max(attenuation.g, attenuation.b));
 					if (STL::Rng::Hash::GetFloat() >= probability) break;
 					attenuation /= probability;
