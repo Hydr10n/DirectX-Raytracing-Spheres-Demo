@@ -255,7 +255,7 @@ inline bool CastRay(RayDesc rayDesc, out RayCastResult rayCastResult) {
 	return ret;
 }
 
-inline float3 CalculateMotion(float2 UV, float viewZ, float3 worldVertexPosition, float3 objectVertexPosition, uint instanceIndex, uint objectIndex, uint primitiveIndex, float2 barycentrics) {
+inline float3 CalculateMotion(float2 UV, uint2 pixelDimensions, float viewZ, float3 worldVertexPosition, float3 objectVertexPosition, uint instanceIndex, uint objectIndex, uint primitiveIndex, float2 barycentrics) {
 	float3 previousPosition;
 	if (g_sceneData.IsStatic || g_instanceData[instanceIndex].IsStatic) previousPosition = worldVertexPosition;
 	else {
@@ -269,5 +269,5 @@ inline float3 CalculateMotion(float2 UV, float viewZ, float3 worldVertexPosition
 		}
 		previousPosition = STL::Geometry::AffineTransform(g_instanceData[instanceIndex].PreviousObjectToWorld, previousPosition);
 	}
-	return float3(STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - viewZ);
+	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - viewZ);
 }

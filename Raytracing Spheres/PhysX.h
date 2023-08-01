@@ -57,7 +57,6 @@ struct PhysX {
 		PxSceneDesc sceneDesc(tolerancesScale);
 		sceneDesc.cpuDispatcher = m_defaultCpuDispatcher;
 		sceneDesc.filterShader = PxDefaultSimulationFilterShader;
-
 		m_scene = m_physics->createScene(sceneDesc);
 
 		if (const auto scenePvdClient = m_scene->getScenePvdClient()) {

@@ -28,7 +28,7 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 	if (CastRay(rayDesc, rayCastResult)) {
 		viewZ = dot(rayCastResult.HitInfo.Vertex.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 
-		motion = CalculateMotion(UV, viewZ, rayCastResult.HitInfo.Vertex.Position, rayCastResult.HitInfo.ObjectVertexPosition, rayCastResult.InstanceIndex, rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics);
+		motion = CalculateMotion(UV, raysDimensions, viewZ, rayCastResult.HitInfo.Vertex.Position, rayCastResult.HitInfo.ObjectVertexPosition, rayCastResult.InstanceIndex, rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics);
 
 		g_normalRoughness[raysIndex] = NRD_FrontEnd_PackNormalAndRoughness(rayCastResult.HitInfo.Vertex.Normal, rayCastResult.Material.Roughness);
 

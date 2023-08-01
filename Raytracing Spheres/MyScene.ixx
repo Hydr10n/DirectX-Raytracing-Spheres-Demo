@@ -58,7 +58,12 @@ export {
 
 			const path directoryPath = LR"(Assets\Textures)";
 
-			EnvironmentLightCubeMap = { directoryPath / L"Space.dds", { .Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0) } };
+			EnvironmentLightCubeMap = {
+				.FilePath = directoryPath / L"Space.dds",
+				.Transform {
+					.Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0)
+				}
+			};
 
 			PhysX = make_shared<::PhysX>(8);
 
@@ -262,7 +267,7 @@ export {
 					}
 					else if (renderObject.Name == ObjectNames::Star) rigidDynamic.setMass(0);
 
-					RigidBodies[Name] = &rigidDynamic;
+					RigidActors[Name] = &rigidDynamic;
 				}
 			}
 		}
@@ -277,13 +282,13 @@ struct MyScene : Scene {
 			if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
 
 			{
-				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Earth)->userData);
+				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidActors.at(ObjectNames::Earth)->userData);
 				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
 				if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
 			}
 
 			{
-				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidBodies.at(ObjectNames::Star)->userData);
+				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidActors.at(ObjectNames::Star)->userData);
 				if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
 				if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
 			}
@@ -308,7 +313,7 @@ struct MyScene : Scene {
 				rigidBody->addForce(-k * x);
 			}
 
-			if (const auto& earth = *RigidBodies.at(ObjectNames::Earth);
+			if (const auto& earth = *RigidActors.at(ObjectNames::Earth)->is<PxRigidDynamic>();
 				(static_cast<bool>(earth.userData) && renderObject.Name != ObjectNames::Earth)
 				|| renderObject.Name == ObjectNames::Moon) {
 				const auto x = earth.getGlobalPose().p - position;
@@ -317,7 +322,7 @@ struct MyScene : Scene {
 				rigidBody->addForce(UniversalGravitation::CalculateAccelerationMagnitude(earth.getMass(), magnitude) * normalized, PxForceMode::eACCELERATION);
 			}
 
-			if (const auto& star = *RigidBodies.at(ObjectNames::Star);
+			if (const auto& star = *RigidActors.at(ObjectNames::Star);
 				static_cast<bool>(star.userData) && renderObject.Name != ObjectNames::Star) {
 				const auto x = star.getGlobalPose().p - position;
 				const auto normalized = x.getNormalized();

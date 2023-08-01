@@ -72,7 +72,7 @@ export {
 
 		shared_ptr<PhysX> PhysX;
 
-		unordered_map<string, PxRigidBody*> RigidBodies;
+		unordered_map<string, PxRigidActor*> RigidActors;
 	};
 
 	struct SceneDesc : SceneBase {

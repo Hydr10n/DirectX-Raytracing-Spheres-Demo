@@ -294,7 +294,7 @@ private:
 
 	static constexpr UINT MaxTraceRecursionDepth = 32, MaxSamplesPerPixel = 16;
 
-	CommonSettings m_NRDCommonSettings{ .motionVectorScale{ 1, 1, 1 }, .isBaseColorMetalnessAvailable = true };
+	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
 	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_5X5, .enableAntiFirefly = true };
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
@@ -347,7 +347,7 @@ private:
 		CameraMaxMovementSpeed = 100, CameraMaxRotationSpeed = 2;
 	CameraController m_cameraController;
 
-	shared_ptr<Scene> m_scene;
+	unique_ptr<Scene> m_scene;
 
 	HaltonSamplePattern m_haltonSamplePattern;
 
@@ -407,6 +407,8 @@ private:
 
 				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceType::OUT_VALIDATION, ResourceDescriptorHeapIndex::ValidationSRV, ResourceDescriptorHeapIndex::ValidationUAV);
 
+				reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(outputSize.cx), 1 / static_cast<float>(outputSize.cy), 1 };
+
 				m_NRD->SetMethodSettings(Method::REBLUR_DIFFUSE_SPECULAR, &m_NRDReblurSettings);
 			}
 
@@ -448,7 +450,7 @@ private:
 		{
 			auto& camera = m_GPUBuffers.Camera->GetData();
 
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
+			camera.PixelJitter = reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 
 			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
@@ -579,7 +581,7 @@ private:
 
 					{
 						UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-						m_scene = make_shared<MyScene>();
+						m_scene = make_unique<MyScene>();
 						m_scene->Load(MySceneDesc(), device, commandQueue, *m_resourceDescriptorHeap, descriptorHeapIndex);
 					}
 
@@ -983,21 +985,12 @@ private:
 			output = m_renderTextures.at(postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::Output : RenderTextureNames::FinalOutput).get();
 
 		if (postProcessingSettings.Bloom.IsEnabled) {
-			ProcessBloom(*input, m_renderDescriptorHeap->GetCpuHandle(output->GetRtvDescriptorHeapIndex()));
+			ProcessBloom(*input, *output);
 
 			swap(input, output);
 		}
 
-		{
-			const ScopedBarrier scopedBarrier(
-				commandList,
-				{ CD3DX12_RESOURCE_BARRIER::Transition(input->GetResource(), input->GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) }
-			);
-
-			auto& toneMapping = *m_toneMapping[ToneMapPostProcess::None];
-			toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(input->GetSrvDescriptorHeapIndex()));
-			toneMapping.Process(commandList);
-		}
+		ProcessToneMapping(*input);
 
 		if (isNRDEnabled && postProcessingSettings.RaytracingDenoising.IsValidationLayerEnabled) {
 			const auto& validation = *m_renderTextures.at(RenderTextureNames::Validation);
@@ -1097,7 +1090,7 @@ private:
 		}
 	}
 
-	void ProcessBloom(RenderTexture& input, D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView) {
+	void ProcessBloom(RenderTexture& input, RenderTexture& output) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto& bloomSettings = g_graphicsSettings.PostProcessing.Bloom;
@@ -1158,8 +1151,9 @@ private:
 		Combination->SetSourceTexture2(blur1SRV);
 		Combination->SetBloomCombineParameters(1.25f, 1, 1, 1);
 
-		const auto outputRTV = renderTargetView;
-		commandList->OMSetRenderTargets(1, &outputRTV, FALSE, nullptr);
+		auto renderTargetView = m_renderDescriptorHeap->GetCpuHandle(output.GetRtvDescriptorHeapIndex());
+
+		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 
 		commandList->RSSetViewports(1, &viewPort);
 
@@ -1171,6 +1165,16 @@ private:
 
 		renderTargetView = m_deviceResources->GetRenderTargetView();
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
+	}
+
+	void ProcessToneMapping(RenderTexture& input) {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+
+		auto& toneMapping = *m_toneMapping[ToneMapPostProcess::None];
+		toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()));
+		toneMapping.Process(commandList);
 	}
 
 	void RenderUI() {
