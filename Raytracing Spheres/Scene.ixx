@@ -43,7 +43,7 @@ export {
 
 		Material Material;
 
-		Matrix TextureTransform;
+		Transform TextureTransform;
 
 		bool IsVisible = true;
 	};

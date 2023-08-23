@@ -151,8 +151,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 		static HMONITOR s_hMonitor;
 
-		static Resolution s_displayResolution;
-
 		const auto GetDisplayResolutions = [&](bool forceUpdate = false) {
 			const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 			ThrowIfFailed(monitor != nullptr);
@@ -165,11 +163,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					erase_if(g_displayResolutions, [&](const auto& displayResolution) { return displayResolution < resolution; });
 				}
 
-				ThrowIfFailed(GetDisplayResolution(s_displayResolution, monitor));
+				ThrowIfFailed(GetDisplayResolution(g_displayResolution, monitor));
 
 				s_hMonitor = monitor;
 			}
-		};
+			};
 
 		if (s_hMonitor == nullptr) GetDisplayResolutions();
 
@@ -186,11 +184,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
 							newSize = { rect.right - rect.left, rect.bottom - rect.top };
 						}
-					};
+						};
 
 					auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
 					AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);
-					AdjustSize(s_displayResolution, minMaxInfo.ptMaxTrackSize);
+					AdjustSize(g_displayResolution, minMaxInfo.ptMaxTrackSize);
 				}
 			}
 			break;

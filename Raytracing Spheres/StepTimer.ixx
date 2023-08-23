@@ -1,15 +1,18 @@
 //
-// StepTimer.h - A simple timer that provides elapsed time information
+// StepTimer.ixx - A simple timer that provides elapsed time information
 //
 
-#pragma once
+module;
 
-#include <cmath>
-#include <cstdint>
 #include <exception>
 
+#include <Windows.h>
 
-namespace DX
+export module StepTimer;
+
+using namespace std;
+
+export namespace DX
 {
     // Helper class for animation and simulation timing.
     class StepTimer
@@ -28,12 +31,12 @@ namespace DX
         {
             if (!QueryPerformanceFrequency(&m_qpcFrequency))
             {
-                throw std::exception();
+                throw exception();
             }
 
             if (!QueryPerformanceCounter(&m_qpcLastTime))
             {
-                throw std::exception();
+                throw exception();
             }
 
             // Initialize max delta to 1/10 of a second.
@@ -75,7 +78,7 @@ namespace DX
         {
             if (!QueryPerformanceCounter(&m_qpcLastTime))
             {
-                throw std::exception();
+                throw exception();
             }
 
             m_leftOverTicks = 0;
@@ -93,7 +96,7 @@ namespace DX
 
             if (!QueryPerformanceCounter(&currentTime))
             {
-                throw std::exception();
+                throw exception();
             }
 
             uint64_t timeDelta = static_cast<uint64_t>(currentTime.QuadPart - m_qpcLastTime.QuadPart);
@@ -124,7 +127,7 @@ namespace DX
                 // accumulate enough tiny errors that it would drop a frame. It is better to just round
                 // small deviations down to zero to leave things running smoothly.
 
-                if (static_cast<uint64_t>(std::abs(static_cast<int64_t>(timeDelta - m_targetElapsedTicks))) < TicksPerSecond / 4000)
+                if (static_cast<uint64_t>(abs(static_cast<int64_t>(timeDelta - m_targetElapsedTicks))) < TicksPerSecond / 4000)
                 {
                     timeDelta = m_targetElapsedTicks;
                 }

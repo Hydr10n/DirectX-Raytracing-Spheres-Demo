@@ -2,12 +2,6 @@ module;
 
 #include "pch.h"
 
-#include "DeviceResources.h"
-
-#include "StepTimer.h"
-
-#include "RenderTexture.h"
-
 #include "directxtk12/GraphicsMemory.h"
 
 #include "directxtk12/GamePad.h"
@@ -41,6 +35,7 @@ module;
 module App;
 
 import Camera;
+import DeviceResources;
 import DirectX.BufferHelpers;
 import DirectX.CommandList;
 import DirectX.DescriptorHeap;
@@ -52,8 +47,10 @@ import Model;
 import MyScene;
 import NRD;
 import RaytracingShaderData;
+import RenderTexture;
 import Scene;
 import SharedData;
+import StepTimer;
 import Texture;
 import ThreadHelpers;
 
@@ -351,7 +348,7 @@ private:
 
 	HaltonSamplePattern m_haltonSamplePattern;
 
-	struct { bool IsVisible, HasFocus = true, IsSettingsVisible; } m_UIStates{};
+	struct { bool IsVisible, HasFocus = true, IsSettingsWindowVisible; } m_UIStates{};
 
 	void CreateDeviceDependentResources() {
 		const auto device = m_deviceResources->GetD3DDevice();
@@ -380,7 +377,7 @@ private:
 				texture = make_shared<RenderTexture>(format);
 				texture->SetDevice(device, m_resourceDescriptorHeap.get(), srvDescriptorHeapIndex, uavDescriptorHeapIndex, m_renderDescriptorHeap.get(), rtvDescriptorHeapIndex);
 				texture->CreateResource(size.cx, size.cy);
-			};
+				};
 
 			if (m_NRD = make_unique<NRD>(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(), m_deviceResources->GetBackBufferCount(), initializer_list{ Method::REBLUR_DIFFUSE_SPECULAR }, outputSize);
 				m_NRD->IsAvailable()) {
@@ -389,7 +386,7 @@ private:
 
 					const auto& texture = m_renderTextures.at(textureName);
 					m_NRD->SetResource(resourceType, texture->GetResource(), texture->GetCurrentState());
-				};
+					};
 
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Motions, ResourceType::IN_MV, ResourceDescriptorHeapIndex::MotionsSRV, ResourceDescriptorHeapIndex::MotionsUAV);
 
@@ -562,8 +559,8 @@ private:
 	static auto Transform(const PxShape& shape) {
 		PxVec3 scaling;
 		switch (const PxGeometryHolder geometry = shape.getGeometry(); geometry.getType()) {
-			case PxGeometryType::eSPHERE: scaling = PxVec3(2 * geometry.sphere().radius); break;
-			default: throw;
+		case PxGeometryType::eSPHERE: scaling = PxVec3(2 * geometry.sphere().radius); break;
+		default: throw;
 		}
 
 		PxMat44 world(PxVec4(1, 1, -1, 1));
@@ -591,7 +588,7 @@ private:
 						CommandList<ID3D12GraphicsCommandList4> commandList(device);
 						commandList.Begin();
 
-						CreateAccelerationStructures(commandList.GetPointer(), false);
+						CreateAccelerationStructures(commandList.GetNative(), false);
 
 						commandList.End(commandQueue).get();
 					}
@@ -775,7 +772,7 @@ private:
 
 				objectData.Material = renderObject.Material;
 
-				objectData.TextureTransform = renderObject.TextureTransform;
+				objectData.TextureTransform = renderObject.TextureTransform();
 
 				auto& objectResourceDescriptorHeapIndices = m_GPUBuffers.ObjectResourceDescriptorHeapIndices->GetData(objectIndex);
 				objectResourceDescriptorHeapIndices = {
@@ -789,15 +786,15 @@ private:
 					UINT* pTexture;
 					auto& textures = objectResourceDescriptorHeapIndices.Textures;
 					switch (TextureType) {
-						case TextureType::BaseColorMap: pTexture = &textures.BaseColorMap; break;
-						case TextureType::EmissiveColorMap: pTexture = &textures.EmissiveColorMap; break;
-						case TextureType::MetallicMap: pTexture = &textures.MetallicMap; break;
-						case TextureType::RoughnessMap: pTexture = &textures.RoughnessMap; break;
-						case TextureType::AmbientOcclusionMap: pTexture = &textures.AmbientOcclusionMap; break;
-						case TextureType::TransmissionMap: pTexture = &textures.TransmissionMap; break;
-						case TextureType::OpacityMap: pTexture = &textures.OpacityMap; break;
-						case TextureType::NormalMap: pTexture = &textures.NormalMap; break;
-						default: pTexture = nullptr; break;
+					case TextureType::BaseColorMap: pTexture = &textures.BaseColorMap; break;
+					case TextureType::EmissiveColorMap: pTexture = &textures.EmissiveColorMap; break;
+					case TextureType::MetallicMap: pTexture = &textures.MetallicMap; break;
+					case TextureType::RoughnessMap: pTexture = &textures.RoughnessMap; break;
+					case TextureType::AmbientOcclusionMap: pTexture = &textures.AmbientOcclusionMap; break;
+					case TextureType::TransmissionMap: pTexture = &textures.TransmissionMap; break;
+					case TextureType::OpacityMap: pTexture = &textures.OpacityMap; break;
+					case TextureType::NormalMap: pTexture = &textures.NormalMap; break;
+					default: pTexture = nullptr; break;
 					}
 					if (pTexture != nullptr) *pTexture = Texture.DescriptorHeapIndices.SRV;
 				}
@@ -826,19 +823,21 @@ private:
 			if (keyboardStateTracker.IsKeyPressed(Key::Escape)) m_UIStates.IsVisible = !m_UIStates.IsVisible;
 		}
 
-		if (isUIVisible != m_UIStates.IsVisible && !isUIVisible) {
-			if (const auto e = ImGuiEx::FindLatestInputEvent(ImGui::GetCurrentContext(), ImGuiInputEventType_MousePos)) {
-				auto& queue = ImGui::GetCurrentContext()->InputEventsQueue;
-				queue[0] = *e;
-				queue.shrink(1);
-			}
-		}
+		if (m_UIStates.IsVisible) {
+			if (!isUIVisible) {
+				m_UIStates.HasFocus = true;
 
-		if (auto& IO = ImGui::GetIO(); m_UIStates.IsVisible) {
+				if (const auto e = ImGuiEx::FindLatestInputEvent(ImGui::GetCurrentContext(), ImGuiInputEventType_MousePos)) {
+					auto& queue = ImGui::GetCurrentContext()->InputEventsQueue;
+					queue[0] = *e;
+					queue.shrink(1);
+				}
+			}
+
+			auto& IO = ImGui::GetIO();
 			if (IO.WantCaptureKeyboard) m_UIStates.HasFocus = true;
 			if (IO.WantCaptureMouse && !(IO.ConfigFlags & ImGuiConfigFlags_NoMouse)) m_UIStates.HasFocus = true;
 			else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) m_UIStates.HasFocus = false;
-
 			if (m_UIStates.HasFocus) {
 				IO.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
 
@@ -935,9 +934,7 @@ private:
 
 	void UpdateScene() {
 		if (!m_scene->IsWorldStatic()) {
-			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
-				m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Transform(*renderObject.Shape);
-			}
+			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Transform(*renderObject.Shape);
 		}
 
 		m_scene->Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
@@ -1188,9 +1185,9 @@ private:
 
 		const auto openPopupModalName = RenderMenuBar();
 
-		if (m_UIStates.IsSettingsVisible) RenderSettingsWindow();
+		if (m_UIStates.IsSettingsWindowVisible) RenderSettingsWindow();
 
-		if (openPopupModalName != nullptr) RenderPopupModalWindow(openPopupModalName);
+		RenderPopupModalWindow(openPopupModalName);
 
 		if (m_futures.contains(FutureNames::Scene)) RenderLoadingSceneWindow();
 
@@ -1198,8 +1195,8 @@ private:
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_deviceResources->GetCommandList());
 	}
 
-	LPCSTR RenderMenuBar() {
-		LPCSTR openPopupModalName = nullptr;
+	string RenderMenuBar() {
+		string openPopupModalName;
 
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::GetFrameCount() == 1) ImGui::SetKeyboardFocusHere();
@@ -1213,7 +1210,7 @@ private:
 			}
 
 			if (ImGui::BeginMenu("View")) {
-				m_UIStates.IsSettingsVisible |= ImGui::MenuItem("Settings");
+				m_UIStates.IsSettingsWindowVisible |= ImGui::MenuItem("Settings");
 
 				ImGui::EndMenu();
 			}
@@ -1241,7 +1238,7 @@ private:
 		ImGui::SetNextWindowPos({ viewport.WorkPos.x, viewport.WorkPos.y });
 		ImGui::SetNextWindowSize({});
 
-		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsVisible, ImGuiWindowFlags_HorizontalScrollbar)) {
+		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsWindowVisible, ImGuiWindowFlags_HorizontalScrollbar)) {
 			if (ImGui::TreeNode("Graphics")) {
 				auto isChanged = false, isWindowSettingChanged = false;
 
@@ -1420,7 +1417,7 @@ private:
 		ImGui::End();
 	}
 
-	void RenderPopupModalWindow(LPCSTR openPopupModalName) {
+	void RenderPopupModalWindow(const string& openPopupModalName) {
 		const auto PopupModal = [&](LPCSTR name, const auto& lambda) {
 			if (name == openPopupModalName) ImGui::OpenPopup(name);
 
@@ -1441,7 +1438,7 @@ private:
 
 				ImGui::EndPopup();
 			}
-		};
+			};
 
 		PopupModal(
 			"Controls",
@@ -1465,7 +1462,7 @@ private:
 
 							ImGui::TreePop();
 						}
-					};
+						};
 
 					AddContents(
 						"Xbox Controller",

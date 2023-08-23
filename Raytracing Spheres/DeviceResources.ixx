@@ -1,10 +1,14 @@
 //
-// DeviceResources.h - A wrapper for the Direct3D 12 device and swapchain
+// DeviceResources.ixx - A wrapper for the Direct3D 12 device and swapchain
 //
 
-#pragma once
+module;
 
-namespace DX
+#include "pch.h"
+
+export module DeviceResources;
+
+export namespace DX
 {
     // Provides an interface for an application that owns DeviceResources to be notified of the device being lost or created.
     interface IDeviceNotify

@@ -29,7 +29,7 @@ export namespace DirectX {
 			if (!m_fenceEvent.IsValid()) throw_std_system_error(static_cast<int>(GetLastError()));
 		}
 
-		T* GetPointer() const noexcept { return m_commandList.Get(); }
+		T* GetNative() const noexcept { return m_commandList.Get(); }
 		T* operator->() const noexcept { return m_commandList.Get(); }
 
 		void Begin() { ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr)); }

@@ -28,16 +28,7 @@
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DeviceResources.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="StepTimer.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="PhysX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ImGuiEx.h">
@@ -46,10 +37,10 @@
     <ClInclude Include="MyAppData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="RenderTexture.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="JsonHelpers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PhysX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -99,9 +90,6 @@
     <ClCompile Include="RaytracingShaderData.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="RenderTexture.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
     <ClCompile Include="HaltonSamplePattern.ixx">
       <Filter>Common</Filter>
     </ClCompile>
@@ -133,6 +121,15 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="ThreadHelpers.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="StepTimer.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="RenderTexture.ixx">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="DeviceResources.ixx">
       <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
