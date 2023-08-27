@@ -1,0 +1,6 @@
+[submodule "External/NVIDIA/MathLib"]
+	path = External/NVIDIA/MathLib
+	url = https://github.com/NVIDIAGameWorks/MathLib
+[submodule "External/NVIDIA/Streamline"]
+	path = External/NVIDIA/Streamline
+	url = https://github.com/NVIDIAGameWorks/Streamline
