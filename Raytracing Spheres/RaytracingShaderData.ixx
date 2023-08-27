@@ -11,18 +11,18 @@ using namespace DirectX;
 export {
 	struct GlobalResourceDescriptorHeapIndices {
 		UINT
-			GraphicsSettings = ~0u,
-			Camera = ~0u,
-			SceneData = ~0u,
-			InstanceData = ~0u,
-			ObjectResourceDescriptorHeapIndices = ~0u, ObjectData = ~0u,
-			Motions = ~0u,
-			NormalRoughness = ~0u,
-			ViewZ = ~0u,
-			BaseColorMetalness = ~0u,
-			NoisyDiffuse = ~0u, NoisySpecular = ~0u,
+			InGraphicsSettings = ~0u,
+			InCamera = ~0u,
+			InSceneData = ~0u,
+			InInstanceData = ~0u,
+			InObjectResourceDescriptorHeapIndices = ~0u, InObjectData = ~0u,
+			InEnvironmentLightCubeMap = ~0u, InEnvironmentCubeMap = ~0u,
 			Output = ~0u,
-			EnvironmentLightCubeMap = ~0u, EnvironmentCubeMap = ~0u;
+			OutDepth = ~0u,
+			OutMotionVectors3D = ~0u,
+			OutBaseColorMetalness = ~0u,
+			OutNormalRoughness = ~0u,
+			OutNoisyDiffuse = ~0u, OutNoisySpecular = ~0u;
 		UINT _;
 	};
 
@@ -47,7 +47,7 @@ export {
 	};
 
 	struct ObjectResourceDescriptorHeapIndices {
-		struct { UINT Vertices = ~0u, Indices = ~0u, Motions = ~0u; } Mesh;
+		struct { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u; } Mesh;
 		struct {
 			UINT BaseColorMap = ~0u, EmissiveColorMap = ~0u, MetallicMap = ~0u, RoughnessMap = ~0u, AmbientOcclusionMap = ~0u, TransmissionMap = ~0u, OpacityMap = ~0u, NormalMap = ~0u;
 		} Textures;

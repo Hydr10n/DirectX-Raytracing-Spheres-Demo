@@ -25,7 +25,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ### Rigid-Body Simulation Using NVIDIA PhysX
 
 ### Graphics Settings
-- Window Mode: Windowed | Borderless | Fullscreen
+- Window Mode
 - Resolution
 - V-Sync
 - Camera
@@ -36,10 +36,14 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Max Trace Recursion Depth
 	- Samples Per Pixel
 - Post-Processing
-	- Raytracing Denoising
+	- NVIDIA Real-Time Denoisers
 		- Validation Layer
 		- Split Screen
 	- Temporal Anti-Aliasing
+	- NVIDIA DLSS
+		- Super Resolution
+	- NVIDIA Image Scaling
+		- Sharpness
 	- Bloom
 		- Threshold
 		- Blur Size
@@ -67,6 +71,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - Windows 11 SDK (10.0.22621.0)
 
 - [MathLib](https://github.com/NVIDIAGameWorks/MathLib)
+
+- [NVIDIA Streamline](https://github.com/NVIDIAGameWorks/Streamline)
 
 - [NVIDIA Real-Time Denoisers](https://github.com/NVIDIAGameWorks/RayTracingDenoiser)
 

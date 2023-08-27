@@ -18,23 +18,25 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 SamplerState gLinearSampler : register( s0 );
 
-Texture2D<float3> gIn_Motions : register( t0 );
-Texture2D<float3> gIn_HistoryOutput : register( t1 );
-Texture2D<float4> gIn_CurrentOutput : register( t2 );
+Texture2D<float3> gIn_HistoryOutput : register( t0 );
+Texture2D<float4> gIn_CurrentOutput : register( t1 );
+Texture2D<float3> gIn_MotionVectors3D : register( t2 );
 
 RWTexture2D<float3> gOut_FinalOutput : register( u0 );
 
-cbuffer Data : register( b0 )
+cbuffer _ : register(b0) { uint2 gRectSize; }
+
+cbuffer Data : register( b1 )
 {
+    bool gReset;
     float3 gCameraPosition;
-    float _1;
     float3 gCameraRightDirection;
-    float _2;
+    float _;
     float3 gCameraUpDirection;
-    float _3;
+    float _1;
     float3 gCameraForwardDirection;
-    float gCameraNearZ;
-    float4x4 gWorldToClipPrev;
+    float _2;
+    float4x4 gCameraWorldToClipPrev;
 }
 
 #define ROOT_SIGNATURE \
@@ -43,7 +45,8 @@ cbuffer Data : register( b0 )
     "DescriptorTable( SRV( t1 ) )," \
     "DescriptorTable( SRV( t2 ) )," \
     "DescriptorTable( UAV( u0 ) )," \
-    "CBV( b0 )"
+	"RootConstants( num32BitConstants=2, b0 )," \
+    "CBV( b1 )"
 
 #define BORDER          1
 #define GROUP_X         16
@@ -58,7 +61,7 @@ void Preload( uint2 sharedPos, int2 globalPos, uint2 rectSize )
     globalPos = clamp( globalPos, 0, rectSize - 1.0 );
 
     float4 color_viewZ = gIn_CurrentOutput[ globalPos ];
-    color_viewZ.w = abs( color_viewZ.w ) * STL::Math::Sign( gCameraNearZ ) / NRD_FP16_VIEWZ_SCALE;
+    color_viewZ.w = color_viewZ.w / NRD_FP16_VIEWZ_SCALE;
 
     s_Data[ sharedPos.y ][ sharedPos.x ] = color_viewZ;
 }
@@ -112,9 +115,6 @@ float3 BicubicFilterNoCorners( Texture2D<float3> tex, SamplerState samp, float2 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    uint2 rectSize;
-    gOut_FinalOutput.GetDimensions( rectSize.x, rectSize.y );
-
     int2 groupBase = pixelPos - threadPos - BORDER;
     uint stageNum = ( BUFFER_X * BUFFER_Y + GROUP_X * GROUP_Y - 1 ) / ( GROUP_X * GROUP_Y );
     [unroll]
@@ -123,12 +123,12 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
         uint virtualIndex = threadIndex + stage * GROUP_X * GROUP_Y; \
         uint2 newId = uint2( virtualIndex % BUFFER_X, virtualIndex / BUFFER_X );
         if( stage == 0 || virtualIndex < BUFFER_X * BUFFER_Y )
-            Preload( newId, groupBase + newId, rectSize );
+            Preload( newId, groupBase + newId, gRectSize );
     }
     GroupMemoryBarrierWithGroupSync( );
 
     // Do not generate NANs for unused threads
-    if( pixelPos.x >= rectSize.x || pixelPos.y >= rectSize.y )
+    if( pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     // Neighborhood
@@ -173,21 +173,20 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
 
     float3 sigma = sqrt( abs( m2 - m1 * m1 ) );
 
-    float2 invRectSize = 1.0 / rectSize;
+    float2 invRectSize = 1.0 / gRectSize;
 
     // Previous pixel position
     offseti -= BORDER;
     float2 offset = float2( offseti ) * invRectSize;
-    float2 pixelUv = Math::CalculateUV( pixelPos, rectSize ), NDC = Math::CalculateNDC( pixelUv + offset );
-    float3 worldRayDirection = normalize( NDC.x * gCameraRightDirection + NDC.y * gCameraUpDirection + gCameraForwardDirection );
-    float3 Xnearest = gCameraPosition + worldRayDirection * viewZnearest / dot( worldRayDirection, normalize( gCameraForwardDirection ) );
-    float3 mvNearest = gIn_Motions[ pixelPos + offseti ] * invRectSize.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, STL_SCREEN_MOTION );
+    float2 pixelUv = Math::CalculateUV( pixelPos, gRectSize ), NDC = Math::CalculateNDC( pixelUv + offset );
+    float3 Xnearest = Math::CalculateWorldPosition( NDC, viewZnearest, gCameraPosition, gCameraRightDirection, gCameraUpDirection, gCameraForwardDirection );
+    float3 mvNearest = gIn_MotionVectors3D[ pixelPos + offseti ] * invRectSize.xyy;
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gCameraWorldToClipPrev, mvNearest, STL_SCREEN_MOTION );
     pixelUvPrev -= offset;
 
     // History clamping
-    float2 pixelPosPrev = saturate( pixelUvPrev ) * rectSize;
-    float3 history = BicubicFilterNoCorners( gIn_HistoryOutput, gLinearSampler, pixelPosPrev, invRectSize, TAA_HISTORY_SHARPNESS ).xyz;
+    float2 pixelPosPrev = saturate( pixelUvPrev ) * gRectSize;
+    float3 history = gReset ? 0 : BicubicFilterNoCorners( gIn_HistoryOutput, gLinearSampler, pixelPosPrev, invRectSize, TAA_HISTORY_SHARPNESS ).xyz;
     float3 historyClamped = STL::Color::ClampAabb( m1, sigma, history );
 
     // History weight

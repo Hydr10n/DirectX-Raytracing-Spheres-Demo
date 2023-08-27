@@ -17,21 +17,20 @@ using namespace std;
 
 export namespace DirectX::PostProcess {
 	struct DenoisedComposition : IPostProcess {
-		struct Data {
-			XMFLOAT3 CameraPosition;
-			float _;
-			XMFLOAT3 CameraRightDirection;
-			float _1;
-			XMFLOAT3 CameraUpDirection;
-			float _2;
-			XMFLOAT3 CameraForwardDirection;
-			float _3;
-			XMFLOAT2 CameraPixelJitter;
-			XMFLOAT2 _4;
-		};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InDepth, InBaseColorMetalness, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, Output; } Descriptors{};
 
-		SIZE TextureSize{};
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE NormalRoughnessSRV, ViewZSRV, BaseColorMetalnessSRV, DenoisedDiffuseSRV, DenoisedSpecularSRV, OutputUAV; } Descriptors{};
+		XMUINT2 RenderSize{};
+
+		struct Data {
+			XMFLOAT3 CameraRightDirection;
+			float _;
+			XMFLOAT3 CameraUpDirection;
+			float _1;
+			XMFLOAT3 CameraForwardDirection;
+			float _2;
+			XMFLOAT2 CameraPixelJitter;
+			XMFLOAT2 _3;
+		};
 
 		DenoisedComposition(ID3D12Device* device) noexcept(false) : m_data(device) {
 			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pDenoisedComposition, size(g_pDenoisedComposition));
@@ -45,15 +44,16 @@ export namespace DirectX::PostProcess {
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, Descriptors.NormalRoughnessSRV);
-			commandList->SetComputeRootDescriptorTable(1, Descriptors.ViewZSRV);
-			commandList->SetComputeRootDescriptorTable(2, Descriptors.BaseColorMetalnessSRV);
-			commandList->SetComputeRootDescriptorTable(3, Descriptors.DenoisedDiffuseSRV);
-			commandList->SetComputeRootDescriptorTable(4, Descriptors.DenoisedSpecularSRV);
-			commandList->SetComputeRootDescriptorTable(5, Descriptors.OutputUAV);
-			commandList->SetComputeRootConstantBufferView(6, m_data.GetResource()->GetGPUVirtualAddress());
+			commandList->SetComputeRootDescriptorTable(0, Descriptors.InDepth);
+			commandList->SetComputeRootDescriptorTable(1, Descriptors.InBaseColorMetalness);
+			commandList->SetComputeRootDescriptorTable(2, Descriptors.InNormalRoughness);
+			commandList->SetComputeRootDescriptorTable(3, Descriptors.InDenoisedDiffuse);
+			commandList->SetComputeRootDescriptorTable(4, Descriptors.InDenoisedSpecular);
+			commandList->SetComputeRootDescriptorTable(5, Descriptors.Output);
+			commandList->SetComputeRoot32BitConstants(6, 2, &RenderSize, 0);
+			commandList->SetComputeRootConstantBufferView(7, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
-			commandList->Dispatch(static_cast<UINT>((TextureSize.cx + 16) / 16), static_cast<UINT>((TextureSize.cy + 16) / 16), 1);
+			commandList->Dispatch((RenderSize.x + 16) / 16, (RenderSize.y + 16) / 16, 1);
 		}
 
 	private:

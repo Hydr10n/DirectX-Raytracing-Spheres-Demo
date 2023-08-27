@@ -14,7 +14,6 @@
     <ProjectCapability Include="SourceItemsFromImports" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)NVIDIA\MathLib\STL.hlsli" />
     <None Include="$(MSBuildThisFileDirectory)NVIDIA\NRD\Lib\Debug\NRD.dll" />
     <None Include="$(MSBuildThisFileDirectory)NVIDIA\NRD\Lib\Release\NRD.dll" />
     <None Include="$(MSBuildThisFileDirectory)NVIDIA\NRD\Shaders\Include\NRD.hlsli" />

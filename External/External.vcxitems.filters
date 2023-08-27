@@ -10,9 +10,6 @@
     <Filter Include="NVIDIA\NRI">
       <UniqueIdentifier>{1a1ac78d-8758-468f-b28f-480cfb22ed1a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="NVIDIA\MathLib">
-      <UniqueIdentifier>{bd45e7bf-72b7-4bec-9a3d-61bb9204dd63}</UniqueIdentifier>
-    </Filter>
     <Filter Include="NVIDIA\NRI\Include">
       <UniqueIdentifier>{ea3c5418-5ae7-4708-a363-612a2ffe7115}</UniqueIdentifier>
     </Filter>
@@ -51,9 +48,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)NVIDIA\MathLib\STL.hlsli">
-      <Filter>NVIDIA\MathLib</Filter>
-    </None>
     <None Include="$(MSBuildThisFileDirectory)NVIDIA\NRI\Lib\Debug\NRI.dll">
       <Filter>NVIDIA\NRI\Lib\Debug</Filter>
     </None>

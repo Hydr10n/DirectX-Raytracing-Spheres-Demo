@@ -8,31 +8,29 @@
 	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED)," \
 	"StaticSampler(s0)," \
 	"SRV(t0)," \
-	"CBV(b0)"
+	"RootConstants(num32BitConstants=2, b0)," \
+	"CBV(b1)"
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
-void main(uint2 raysIndex : SV_DispatchThreadID) {
-	uint2 raysDimensions;
-	g_output.GetDimensions(raysDimensions.x, raysDimensions.y);
-	if (raysIndex.x >= raysDimensions.x || raysIndex.y >= raysDimensions.y) return;
+void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
+	if (pixelCoordinate.x >= g_renderSize.x || pixelCoordinate.y >= g_renderSize.y) return;
 
-	STL::Rng::Hash::Initialize(raysIndex, g_graphicsSettings.FrameIndex);
+	STL::Rng::Hash::Initialize(pixelCoordinate, g_graphicsSettings.FrameIndex);
 
-	float viewZ = 1.#INFf;
-	float3 motion = 0, radiance = 0;
+	float depth = 1.#INFf;
+	float3 motionVector = 0, radiance = 0;
 
 	RayCastResult rayCastResult;
-	const float2 UV = Math::CalculateUV(raysIndex, raysDimensions, g_camera.PixelJitter);
+	const float2 UV = Math::CalculateUV(pixelCoordinate, g_renderSize, g_camera.PixelJitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	if (CastRay(rayDesc, rayCastResult)) {
-		viewZ = dot(rayCastResult.HitInfo.Vertex.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
+		depth = dot(rayCastResult.HitInfo.Vertex.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 
-		motion = CalculateMotion(UV, raysDimensions, viewZ, rayCastResult.HitInfo.Vertex.Position, rayCastResult.HitInfo.ObjectVertexPosition, rayCastResult.InstanceIndex, rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics);
+		motionVector = CalculateMotionVector(UV, depth, rayCastResult.HitInfo.Vertex.Position, rayCastResult.HitInfo.ObjectVertexPosition, rayCastResult.InstanceIndex, rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics);
 
-		g_normalRoughness[raysIndex] = NRD_FrontEnd_PackNormalAndRoughness(rayCastResult.HitInfo.Vertex.Normal, rayCastResult.Material.Roughness);
-
-		g_baseColorMetalness[raysIndex] = float4(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic);
+		g_baseColorMetalness[pixelCoordinate] = float4(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic);
+		g_normalRoughness[pixelCoordinate] = NRD_FrontEnd_PackNormalAndRoughness(rayCastResult.HitInfo.Vertex.Normal, rayCastResult.Material.Roughness);
 
 		ScatterResult scatterResult;
 		float hitDistance;
@@ -51,19 +49,19 @@ void main(uint2 raysIndex : SV_DispatchThreadID) {
 
 		const bool isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 
-		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, viewZ, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : rayCastResult.Material.Roughness);
+		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, depth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : rayCastResult.Material.Roughness);
 
 		float3 albedo, Rf0;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic, albedo, Rf0);
 
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(rayCastResult.HitInfo.Vertex.Normal, -rayDesc.Direction)), rayCastResult.Material.Roughness);
 		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
-		g_noisyDiffuse[raysIndex] = isDiffuse ? radianceHitDistance : 0;
-		g_noisySpecular[raysIndex] = isDiffuse ? 0 : radianceHitDistance;
+		g_noisyDiffuse[pixelCoordinate] = isDiffuse ? radianceHitDistance : 0;
+		g_noisySpecular[pixelCoordinate] = isDiffuse ? 0 : radianceHitDistance;
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
-
-	g_viewZ[raysIndex] = viewZ;
-	g_motions[raysIndex] = motion;
-	g_output[raysIndex] = float4(radiance, viewZ * NRD_FP16_VIEWZ_SCALE);
+	
+	g_output[pixelCoordinate] = float4(radiance, depth * NRD_FP16_VIEWZ_SCALE);
+	g_depth[pixelCoordinate] = depth;
+	g_motionVectors3D[pixelCoordinate] = motionVector;
 }

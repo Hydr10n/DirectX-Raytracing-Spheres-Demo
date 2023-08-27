@@ -6,25 +6,25 @@
 
 #include "Math.hlsli"
 
-Texture2D<float4> g_normalRoughness : register(t0);
-Texture2D<float> g_viewZ : register(t1);
-Texture2D<float4> g_baseColorMetalness : register(t2);
+Texture2D<float> g_depth : register(t0);
+Texture2D<float4> g_baseColorMetalness : register(t1);
+Texture2D<float4> g_normalRoughness : register(t2);
 Texture2D<float4> g_denoisedDiffuse : register(t3);
 Texture2D<float4> g_denoisedSpecular : register(t4);
 
 RWTexture2D<float3> g_output : register(u0);
 
-cbuffer Data : register(b0) {
-	float3 g_cameraPosition;
-	float _;
+cbuffer _ : register(b0) { uint2 g_renderSize; }
+
+cbuffer Data : register(b1) {
 	float3 g_cameraRightDirection;
-	float _1;
+	float _;
 	float3 g_cameraUpDirection;
-	float _2;
+	float _1;
 	float3 g_cameraForwardDirection;
-	float _3;
+	float _2;
 	float2 g_cameraPixelJitter;
-	float2 _4;
+	float2 _3;
 }
 
 #define ROOT_SIGNATURE \
@@ -34,22 +34,21 @@ cbuffer Data : register(b0) {
 	"DescriptorTable(SRV(t3))," \
 	"DescriptorTable(SRV(t4))," \
 	"DescriptorTable(UAV(u0))," \
-	"CBV(b0)"
+	"RootConstants(num32BitConstants=2, b0)," \
+	"CBV(b1)"
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
-	uint2 pixelDimensions;
-	g_output.GetDimensions(pixelDimensions.x, pixelDimensions.y);
-	if (pixelCoordinate.x >= pixelDimensions.x || pixelCoordinate.y >= pixelDimensions.y) return;
+	if (pixelCoordinate.x >= g_renderSize.x || pixelCoordinate.y >= g_renderSize.y) return;
 
-	if (g_viewZ[pixelCoordinate] == 1.#INFf) return;
+	if (g_depth[pixelCoordinate] == 1.#INFf) return;
 
 	float3 albedo, Rf0;
 	const float4 baseColorMetalness = g_baseColorMetalness[pixelCoordinate];
 	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, albedo, Rf0);
 
-	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelCoordinate, pixelDimensions, g_cameraPixelJitter));
+	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelCoordinate, g_renderSize, g_cameraPixelJitter));
 	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelCoordinate]);
 	const float3
 		V = -normalize(NDC.x * g_cameraRightDirection + NDC.y * g_cameraUpDirection + g_cameraForwardDirection),

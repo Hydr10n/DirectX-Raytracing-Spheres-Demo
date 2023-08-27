@@ -18,6 +18,8 @@ module;
 
 #include "directxtk12/PostProcess.h"
 
+#include "sl_helpers.h"
+
 #include "NRD.h"
 
 #include "PhysX.h"
@@ -40,6 +42,7 @@ import DirectX.BufferHelpers;
 import DirectX.CommandList;
 import DirectX.DescriptorHeap;
 import DirectX.PostProcess.DenoisedComposition;
+import DirectX.PostProcess.PreDLSS;
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import HaltonSamplePattern;
@@ -64,6 +67,7 @@ using namespace Microsoft::WRL;
 using namespace nrd;
 using namespace physx;
 using namespace SharedData;
+using namespace sl;
 using namespace std;
 using namespace ThreadHelpers;
 using namespace WindowHelpers;
@@ -199,10 +203,14 @@ struct App::Impl : IDeviceNotify {
 
 		for (auto& toneMapping : m_toneMapping) toneMapping.reset();
 
+		m_preDLSS.reset();
+
 		m_temporalAntiAliasing.reset();
 
 		m_denoisedComposition.reset();
 		m_NRD.reset();
+
+		m_streamline.reset();
 
 		m_pipelineState.Reset();
 
@@ -241,6 +249,8 @@ private:
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
 
+	XMUINT2 m_renderSize{};
+
 	struct FutureNames {
 		MAKE_NAME(Scene);
 	};
@@ -251,24 +261,25 @@ private:
 
 	struct ResourceDescriptorHeapIndex {
 		enum {
-			GraphicsSettings,
-			Camera,
-			SceneData,
-			InstanceData,
-			ObjectResourceDescriptorHeapIndices, ObjectData,
-			MotionsSRV, MotionsUAV,
-			NormalRoughnessSRV, NormalRoughnessUAV,
-			ViewZSRV, ViewZUAV,
-			BaseColorMetalnessSRV, BaseColorMetalnessUAV,
-			NoisyDiffuse, NoisySpecular,
-			DenoisedDiffuseSRV, DenoisedDiffuseUAV,
-			DenoisedSpecularSRV, DenoisedSpecularUAV,
-			ValidationSRV, ValidationUAV,
-			HistoryOutputSRV, HistoryOutputUAV,
-			OutputSRV, OutputUAV,
-			FinalOutputSRV, FinalOutputUAV,
-			Blur1, Blur2,
-			Font,
+			InGraphicsSettings,
+			InCamera,
+			InSceneData,
+			InInstanceData,
+			InObjectResourceDescriptorHeapIndices, InObjectData,
+			InHistoryOutput, OutHistoryOutput,
+			InOutput, Output,
+			InFinalOutput, OutFinalOutput,
+			InDepth, OutDepth,
+			InMotionVectors2D, OutMotionVectors2D,
+			InMotionVectors3D, OutMotionVectors3D,
+			InBaseColorMetalness, OutBaseColorMetalness,
+			InNormalRoughness, OutNormalRoughness,
+			OutNoisyDiffuse, OutNoisySpecular,
+			InDenoisedDiffuse, OutDenoisedDiffuse,
+			InDenoisedSpecular, OutDenoisedSpecular,
+			InValidation, OutValidation,
+			InBlur1, InBlur2,
+			InFont,
 			Reserve,
 			Count = 1 << 16
 		};
@@ -291,12 +302,31 @@ private:
 
 	static constexpr UINT MaxTraceRecursionDepth = 32, MaxSamplesPerPixel = 16;
 
+	Constants m_slConstants = [] {
+		Constants constants;
+		constants.cameraPinholeOffset = { 0, 0 };
+		constants.depthInverted = Boolean::eFalse;
+		constants.cameraMotionIncluded = Boolean::eTrue;
+		constants.motionVectors3D = Boolean::eFalse;
+		constants.reset = Boolean::eFalse;
+		return constants;
+	}();
+	unique_ptr<Streamline> m_streamline;
+
 	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
 	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_5X5, .enableAntiFirefly = true };
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
 	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
+
+	DLSSOptimalSettings m_DLSSOptimalSettings;
+	DLSSOptions m_DLSSOptions = [] {
+		DLSSOptions DLSSOptions;
+		DLSSOptions.colorBuffersHDR = Boolean::eFalse;
+		return DLSSOptions;
+	}();
+	unique_ptr<PreDLSS> m_preDLSS;
 
 	static constexpr float BloomMaxBlurSize = 5;
 	struct {
@@ -322,18 +352,19 @@ private:
 	} m_GPUBuffers;
 
 	struct RenderTextureNames {
-		MAKE_NAME(Motions);
-		MAKE_NAME(NormalRoughness);
-		MAKE_NAME(ViewZ);
+		MAKE_NAME(HistoryOutput);
+		MAKE_NAME(Output);
+		MAKE_NAME(FinalOutput);
+		MAKE_NAME(Depth);
+		MAKE_NAME(MotionVectors2D);
+		MAKE_NAME(MotionVectors3D);
 		MAKE_NAME(BaseColorMetalness);
+		MAKE_NAME(NormalRoughness);
 		MAKE_NAME(NoisyDiffuse);
 		MAKE_NAME(NoisySpecular);
 		MAKE_NAME(DenoisedDiffuse);
 		MAKE_NAME(DenoisedSpecular);
 		MAKE_NAME(Validation);
-		MAKE_NAME(HistoryOutput);
-		MAKE_NAME(Output);
-		MAKE_NAME(FinalOutput);
 		MAKE_NAME(Blur1);
 		MAKE_NAME(Blur2);
 	};
@@ -377,53 +408,42 @@ private:
 				texture = make_shared<RenderTexture>(format);
 				texture->SetDevice(device, m_resourceDescriptorHeap.get(), srvDescriptorHeapIndex, uavDescriptorHeapIndex, m_renderDescriptorHeap.get(), rtvDescriptorHeapIndex);
 				texture->CreateResource(size.cx, size.cy);
-				};
+			};
+			const auto CreateTexture1 = [&](DXGI_FORMAT format, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u, UINT rtvDescriptorHeapIndex = ~0u) {
+				return CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex, rtvDescriptorHeapIndex);
+			};
+
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::HistoryOutput, ResourceDescriptorHeapIndex::InHistoryOutput, ResourceDescriptorHeapIndex::OutHistoryOutput);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Output, ResourceDescriptorHeapIndex::InOutput, ResourceDescriptorHeapIndex::Output, RenderDescriptorHeapIndex::Output);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalOutput, ResourceDescriptorHeapIndex::InFinalOutput, ResourceDescriptorHeapIndex::OutFinalOutput, RenderDescriptorHeapIndex::FinalOutput);
+
+			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::Depth, ResourceDescriptorHeapIndex::InDepth, ResourceDescriptorHeapIndex::OutDepth, ~0u);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors3D, ResourceDescriptorHeapIndex::InMotionVectors3D, ResourceDescriptorHeapIndex::OutMotionVectors3D);
 
 			if (m_NRD = make_unique<NRD>(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(), m_deviceResources->GetBackBufferCount(), initializer_list{ Method::REBLUR_DIFFUSE_SPECULAR }, outputSize);
 				m_NRD->IsAvailable()) {
-				const auto CreateTexture1 = [&](DXGI_FORMAT format, LPCSTR textureName, ResourceType resourceType, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u) {
-					CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex);
-
-					const auto& texture = m_renderTextures.at(textureName);
-					m_NRD->SetResource(resourceType, texture->GetResource(), texture->GetCurrentState());
-					};
-
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Motions, ResourceType::IN_MV, ResourceDescriptorHeapIndex::MotionsSRV, ResourceDescriptorHeapIndex::MotionsUAV);
-
-				CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceType::IN_NORMAL_ROUGHNESS, ResourceDescriptorHeapIndex::NormalRoughnessSRV, ResourceDescriptorHeapIndex::NormalRoughnessUAV);
-
-				CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::ViewZ, ResourceType::IN_VIEWZ, ResourceDescriptorHeapIndex::ViewZSRV, ResourceDescriptorHeapIndex::ViewZUAV);
-
-				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceType::IN_BASECOLOR_METALNESS, ResourceDescriptorHeapIndex::BaseColorMetalnessSRV, ResourceDescriptorHeapIndex::BaseColorMetalnessUAV);
-
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisyDiffuse, ResourceType::IN_DIFF_RADIANCE_HITDIST, ~0u, ResourceDescriptorHeapIndex::NoisyDiffuse);
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisySpecular, ResourceType::IN_SPEC_RADIANCE_HITDIST, ~0u, ResourceDescriptorHeapIndex::NoisySpecular);
-
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedDiffuse, ResourceType::OUT_DIFF_RADIANCE_HITDIST, ResourceDescriptorHeapIndex::DenoisedDiffuseSRV, ResourceDescriptorHeapIndex::DenoisedDiffuseUAV);
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedSpecular, ResourceType::OUT_SPEC_RADIANCE_HITDIST, ResourceDescriptorHeapIndex::DenoisedSpecularSRV, ResourceDescriptorHeapIndex::DenoisedSpecularUAV);
-
-				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceType::OUT_VALIDATION, ResourceDescriptorHeapIndex::ValidationSRV, ResourceDescriptorHeapIndex::ValidationUAV);
-
-				reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(outputSize.cx), 1 / static_cast<float>(outputSize.cy), 1 };
-
-				m_NRD->SetMethodSettings(Method::REBLUR_DIFFUSE_SPECULAR, &m_NRDReblurSettings);
+				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
+				CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
+				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisyDiffuse, ~0u, ResourceDescriptorHeapIndex::OutNoisyDiffuse);
+				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisySpecular, ~0u, ResourceDescriptorHeapIndex::OutNoisySpecular);
+				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedDiffuse, ResourceDescriptorHeapIndex::InDenoisedDiffuse, ResourceDescriptorHeapIndex::OutDenoisedDiffuse);
+				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedSpecular, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
+				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
 			}
 
-			{
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, outputSize, RenderTextureNames::HistoryOutput, ResourceDescriptorHeapIndex::HistoryOutputSRV, ResourceDescriptorHeapIndex::HistoryOutputUAV);
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, outputSize, RenderTextureNames::Output, ResourceDescriptorHeapIndex::OutputSRV, ResourceDescriptorHeapIndex::OutputUAV, RenderDescriptorHeapIndex::Output);
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, outputSize, RenderTextureNames::FinalOutput, ResourceDescriptorHeapIndex::FinalOutputSRV, ResourceDescriptorHeapIndex::FinalOutputUAV, RenderDescriptorHeapIndex::FinalOutput);
+			if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
+				CreateTexture1(DXGI_FORMAT_R16G16_FLOAT, RenderTextureNames::MotionVectors2D, ResourceDescriptorHeapIndex::InMotionVectors2D, ResourceDescriptorHeapIndex::OutMotionVectors2D);
+
+				m_DLSSOptions.outputWidth = outputSize.cx;
+				m_DLSSOptions.outputHeight = outputSize.cy;
+				SetDLSSOptimalSettings();
 			}
 
 			{
 				const SIZE size{ outputSize.cx / 2, outputSize.cy / 2 };
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur1, ResourceDescriptorHeapIndex::Blur1, ~0u, RenderDescriptorHeapIndex::Blur1);
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur2, ResourceDescriptorHeapIndex::Blur2, ~0u, RenderDescriptorHeapIndex::Blur2);
+				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur1, ResourceDescriptorHeapIndex::InBlur1, ~0u, RenderDescriptorHeapIndex::Blur1);
+				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur2, ResourceDescriptorHeapIndex::InBlur2, ~0u, RenderDescriptorHeapIndex::Blur2);
 			}
-
-			m_denoisedComposition->TextureSize = m_temporalAntiAliasing->TextureSize = outputSize;
-
-			m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		}
 
 		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
@@ -434,7 +454,7 @@ private:
 			const auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-			ImGui_ImplDX12_Init(device, static_cast<int>(m_deviceResources->GetBackBufferCount()), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::Font), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::Font));
+			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::InFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::InFont));
 
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\segoeui.ttf)", static_cast<float>(outputSize.cy) * 0.022f);
@@ -447,13 +467,10 @@ private:
 		{
 			auto& camera = m_GPUBuffers.Camera->GetData();
 
-			camera.PixelJitter = reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
-
 			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
+			camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
 			camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
-
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = m_cameraController.GetWorldToView();
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = m_cameraController.GetViewToProjection();
+			camera.PreviousViewToWorld = m_cameraController.GetViewToWorld();
 
 			ProcessInput();
 
@@ -463,9 +480,7 @@ private:
 			camera.ForwardDirection = m_cameraController.GetForwardDirection();
 			camera.NearZ = m_cameraController.GetNearZ();
 			camera.FarZ = m_cameraController.GetFarZ();
-
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
+			camera.PixelJitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 		}
 
 		UpdateGraphicsSettings();
@@ -497,6 +512,9 @@ private:
 		PIXEndEvent(commandList);
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
+
+		const auto outputSize = m_deviceResources->GetOutputSize();
+		m_renderSize = IsDLSSSuperResolutionEnabled() ? XMUINT2(m_DLSSOptimalSettings.optimalRenderWidth, m_DLSSOptimalSettings.optimalRenderHeight) : XMUINT2(outputSize.cx, outputSize.cy);
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -538,7 +556,9 @@ private:
 		{
 			auto& postProcessingSettings = g_graphicsSettings.PostProcessing;
 
-			postProcessingSettings.RaytracingDenoising.SplitScreen = clamp(postProcessingSettings.RaytracingDenoising.SplitScreen, 0.0f, 1.0f);
+			postProcessingSettings.NRD.SplitScreen = clamp(postProcessingSettings.NRD.SplitScreen, 0.0f, 1.0f);
+
+			postProcessingSettings.NIS.Sharpness = clamp(postProcessingSettings.NIS.Sharpness, 0.0f, 1.0f);
 
 			{
 				auto& bloomSettings = postProcessingSettings.Bloom;
@@ -559,8 +579,8 @@ private:
 	static auto Transform(const PxShape& shape) {
 		PxVec3 scaling;
 		switch (const PxGeometryHolder geometry = shape.getGeometry(); geometry.getType()) {
-		case PxGeometryType::eSPHERE: scaling = PxVec3(2 * geometry.sphere().radius); break;
-		default: throw;
+			case PxGeometryType::eSPHERE: scaling = PxVec3(2 * geometry.sphere().radius); break;
+			default: throw;
 		}
 
 		PxMat44 world(PxVec4(1, 1, -1, 1));
@@ -571,42 +591,40 @@ private:
 
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
+			try {
+			const auto device = m_deviceResources->GetD3DDevice();
+			const auto commandQueue = m_deviceResources->GetCommandQueue();
+
 			{
-				try {
-					const auto device = m_deviceResources->GetD3DDevice();
-					const auto commandQueue = m_deviceResources->GetCommandQueue();
-
-					{
-						UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-						m_scene = make_unique<MyScene>();
-						m_scene->Load(MySceneDesc(), device, commandQueue, *m_resourceDescriptorHeap, descriptorHeapIndex);
-					}
-
-					ResetCamera();
-
-					{
-						CommandList<ID3D12GraphicsCommandList4> commandList(device);
-						commandList.Begin();
-
-						CreateAccelerationStructures(commandList.GetNative(), false);
-
-						commandList.End(commandQueue).get();
-					}
-
-					{
-						auto& globalResourceDescriptorHeapIndices = m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetData();
-						globalResourceDescriptorHeapIndices.EnvironmentLightCubeMap = m_scene->EnvironmentLightCubeMap.Texture.DescriptorHeapIndices.SRV;
-						globalResourceDescriptorHeapIndices.EnvironmentCubeMap = m_scene->EnvironmentCubeMap.Texture.DescriptorHeapIndices.SRV;
-					}
-
-					CreateStructuredBuffers();
-				}
-				catch (...) {
-					const scoped_lock lock(m_exceptionMutex);
-
-					if (!m_exception) m_exception = current_exception();
-				}
+				UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
+				m_scene = make_unique<MyScene>();
+				m_scene->Load(MySceneDesc(), device, commandQueue, *m_resourceDescriptorHeap, descriptorHeapIndex);
 			}
+
+			ResetCamera();
+
+			{
+				CommandList<ID3D12GraphicsCommandList4> commandList(device);
+				commandList.Begin();
+
+				CreateAccelerationStructures(commandList.GetNative(), false);
+
+				commandList.End(commandQueue).get();
+			}
+
+			{
+				auto& globalResourceDescriptorHeapIndices = m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetData();
+				globalResourceDescriptorHeapIndices.InEnvironmentLightCubeMap = m_scene->EnvironmentLightCubeMap.Texture.DescriptorHeapIndices.SRV;
+				globalResourceDescriptorHeapIndices.InEnvironmentCubeMap = m_scene->EnvironmentCubeMap.Texture.DescriptorHeapIndices.SRV;
+			}
+
+			CreateStructuredBuffers();
+		}
+		catch (...) {
+			const scoped_lock lock(m_exceptionMutex);
+
+			if (!m_exception) m_exception = current_exception();
+		}
 			});
 	}
 
@@ -639,28 +657,21 @@ private:
 	void CreatePostProcess() {
 		const auto device = m_deviceResources->GetD3DDevice();
 		const auto commandQueue = m_deviceResources->GetCommandQueue();
+		const auto commandList = m_deviceResources->GetCommandList();
 
 		{
-			m_denoisedComposition = make_unique<DenoisedComposition>(device);
-			m_denoisedComposition->Descriptors = {
-				.NormalRoughnessSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::NormalRoughnessSRV),
-				.ViewZSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::ViewZSRV),
-				.BaseColorMetalnessSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::BaseColorMetalnessSRV),
-				.DenoisedDiffuseSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::DenoisedDiffuseSRV),
-				.DenoisedSpecularSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::DenoisedSpecularSRV),
-				.OutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputUAV)
-			};
+			slSetD3DDevice(device);
+
+			DXGI_ADAPTER_DESC adapterDesc;
+			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
+			m_streamline = make_unique<Streamline>(0, adapterDesc.AdapterLuid, commandList);
 		}
 
-		{
-			m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
-			m_temporalAntiAliasing->Descriptors = {
-				.MotionsSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::MotionsSRV),
-				.HistoryOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::HistoryOutputSRV),
-				.CurrentOutputSRV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::OutputSRV),
-				.FinalOutputUAV = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::FinalOutputUAV)
-			};
-		}
+		m_denoisedComposition = make_unique<DenoisedComposition>(device);
+
+		m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
+
+		m_preDLSS = make_unique<PreDLSS>(device);
 
 		{
 			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
@@ -670,6 +681,9 @@ private:
 				.Blur = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::BloomBlur),
 				.Combination = make_unique<DualPostProcess>(device, renderTargetState, DualPostProcess::BloomCombine),
 			};
+		}
+
+		{
 
 			for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
 				m_toneMapping[toneMappingOperator] = make_unique<ToneMapPostProcess>(device, RenderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN), toneMappingOperator, toneMappingOperator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB);
@@ -677,12 +691,10 @@ private:
 		}
 
 		{
-			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), m_deviceResources->GetDepthBufferFormat());
-
 			ResourceUploadBatch resourceUploadBatch(device);
 			resourceUploadBatch.Begin();
 
-			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
+			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(RenderTargetState(m_deviceResources->GetBackBufferFormat(), m_deviceResources->GetDepthBufferFormat()), &CommonStates::NonPremultiplied));
 
 			resourceUploadBatch.End(commandQueue).get();
 		}
@@ -725,31 +737,27 @@ private:
 			uploadBuffer->GetData() = data;
 			if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 		};
-
 		CreateBuffer(
 			m_GPUBuffers.GlobalResourceDescriptorHeapIndices,
 			GlobalResourceDescriptorHeapIndices{
-				.GraphicsSettings = ResourceDescriptorHeapIndex::GraphicsSettings,
-				.Camera = ResourceDescriptorHeapIndex::Camera,
-				.SceneData = ResourceDescriptorHeapIndex::SceneData,
-				.InstanceData = ResourceDescriptorHeapIndex::InstanceData,
-				.ObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::ObjectResourceDescriptorHeapIndices,
-				.ObjectData = ResourceDescriptorHeapIndex::ObjectData,
-				.Motions = ResourceDescriptorHeapIndex::MotionsUAV,
-				.NormalRoughness = ResourceDescriptorHeapIndex::NormalRoughnessUAV,
-				.ViewZ = ResourceDescriptorHeapIndex::ViewZUAV,
-				.BaseColorMetalness = ResourceDescriptorHeapIndex::BaseColorMetalnessUAV,
-				.NoisyDiffuse = ResourceDescriptorHeapIndex::NoisyDiffuse,
-				.NoisySpecular = ResourceDescriptorHeapIndex::NoisySpecular,
-				.Output = ResourceDescriptorHeapIndex::OutputUAV
+				.InGraphicsSettings = ResourceDescriptorHeapIndex::InGraphicsSettings,
+				.InCamera = ResourceDescriptorHeapIndex::InCamera,
+				.InSceneData = ResourceDescriptorHeapIndex::InSceneData,
+				.InInstanceData = ResourceDescriptorHeapIndex::InInstanceData,
+				.InObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices,
+				.InObjectData = ResourceDescriptorHeapIndex::InObjectData,
+				.Output = ResourceDescriptorHeapIndex::Output,
+				.OutDepth = ResourceDescriptorHeapIndex::OutDepth,
+				.OutMotionVectors3D = ResourceDescriptorHeapIndex::OutMotionVectors3D,
+				.OutBaseColorMetalness = ResourceDescriptorHeapIndex::OutBaseColorMetalness,
+				.OutNormalRoughness = ResourceDescriptorHeapIndex::OutNormalRoughness,
+				.OutNoisyDiffuse = ResourceDescriptorHeapIndex::OutNoisyDiffuse,
+				.OutNoisySpecular = ResourceDescriptorHeapIndex::OutNoisySpecular
 			}
 		);
-
-		CreateBuffer(m_GPUBuffers.GraphicsSettings, GraphicsSettings(), ResourceDescriptorHeapIndex::GraphicsSettings);
-
-		CreateBuffer(m_GPUBuffers.Camera, Camera(), ResourceDescriptorHeapIndex::Camera);
-
-		CreateBuffer(m_GPUBuffers.SceneData, SceneData(), ResourceDescriptorHeapIndex::SceneData);
+		CreateBuffer(m_GPUBuffers.GraphicsSettings, GraphicsSettings(), ResourceDescriptorHeapIndex::InGraphicsSettings);
+		CreateBuffer(m_GPUBuffers.Camera, Camera(), ResourceDescriptorHeapIndex::InCamera);
+		CreateBuffer(m_GPUBuffers.SceneData, SceneData(), ResourceDescriptorHeapIndex::InSceneData);
 	}
 
 	void CreateStructuredBuffers() {
@@ -758,12 +766,9 @@ private:
 				uploadBuffer = make_unique<T>(m_deviceResources->GetD3DDevice(), count);
 				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
-
-			CreateBuffer(m_GPUBuffers.InstanceData, m_topLevelAccelerationStructure->GetDescCount(), ResourceDescriptorHeapIndex::InstanceData);
-
-			CreateBuffer(m_GPUBuffers.ObjectResourceDescriptorHeapIndices, objectCount, ResourceDescriptorHeapIndex::ObjectResourceDescriptorHeapIndices);
-
-			CreateBuffer(m_GPUBuffers.ObjectData, objectCount, ResourceDescriptorHeapIndex::ObjectData);
+			CreateBuffer(m_GPUBuffers.InstanceData, m_topLevelAccelerationStructure->GetDescCount(), ResourceDescriptorHeapIndex::InInstanceData);
+			CreateBuffer(m_GPUBuffers.ObjectResourceDescriptorHeapIndices, objectCount, ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices);
+			CreateBuffer(m_GPUBuffers.ObjectData, objectCount, ResourceDescriptorHeapIndex::InObjectData);
 
 			for (UINT instanceIndex = 0, objectIndex = 0, textureTransformIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
 				m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Transform(*renderObject.Shape);
@@ -786,15 +791,15 @@ private:
 					UINT* pTexture;
 					auto& textures = objectResourceDescriptorHeapIndices.Textures;
 					switch (TextureType) {
-					case TextureType::BaseColorMap: pTexture = &textures.BaseColorMap; break;
-					case TextureType::EmissiveColorMap: pTexture = &textures.EmissiveColorMap; break;
-					case TextureType::MetallicMap: pTexture = &textures.MetallicMap; break;
-					case TextureType::RoughnessMap: pTexture = &textures.RoughnessMap; break;
-					case TextureType::AmbientOcclusionMap: pTexture = &textures.AmbientOcclusionMap; break;
-					case TextureType::TransmissionMap: pTexture = &textures.TransmissionMap; break;
-					case TextureType::OpacityMap: pTexture = &textures.OpacityMap; break;
-					case TextureType::NormalMap: pTexture = &textures.NormalMap; break;
-					default: pTexture = nullptr; break;
+						case TextureType::BaseColorMap: pTexture = &textures.BaseColorMap; break;
+						case TextureType::EmissiveColorMap: pTexture = &textures.EmissiveColorMap; break;
+						case TextureType::MetallicMap: pTexture = &textures.MetallicMap; break;
+						case TextureType::RoughnessMap: pTexture = &textures.RoughnessMap; break;
+						case TextureType::AmbientOcclusionMap: pTexture = &textures.AmbientOcclusionMap; break;
+						case TextureType::TransmissionMap: pTexture = &textures.TransmissionMap; break;
+						case TextureType::OpacityMap: pTexture = &textures.OpacityMap; break;
+						case TextureType::NormalMap: pTexture = &textures.NormalMap; break;
+						default: pTexture = nullptr; break;
 					}
 					if (pTexture != nullptr) *pTexture = Texture.DescriptorHeapIndices.SRV;
 				}
@@ -950,15 +955,64 @@ private:
 
 	void DispatchRays() {
 		const auto commandList = m_deviceResources->GetCommandList();
-
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
 		commandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructure->GetBuffer()->GetGPUVirtualAddress());
-		commandList->SetComputeRootConstantBufferView(1, m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetResource()->GetGPUVirtualAddress());
-
+		commandList->SetComputeRoot32BitConstants(1, 2, &m_renderSize, 0);
+		commandList->SetComputeRootConstantBufferView(2, m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetResource()->GetGPUVirtualAddress());
 		commandList->SetPipelineState(m_pipelineState.Get());
+		commandList->Dispatch((m_renderSize.x + 16) / 16, (m_renderSize.y + 16) / 16, 1);
+	}
 
-		const auto outputSize = GetOutputSize();
-		commandList->Dispatch(static_cast<UINT>((outputSize.cx + 16) / 16), static_cast<UINT>((outputSize.cy + 16) / 16), 1);
+	auto CreateResourceTagInfo(BufferType type, const RenderTexture& renderTexture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
+		ResourceTagInfo resourceTagInfo{
+			.Type = type,
+			.Resource = Resource(sl::ResourceType::eTex2d, renderTexture.GetResource(), renderTexture.GetCurrentState()),
+			.Lifecycle = lifecycle
+		};
+		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
+		return resourceTagInfo;
+	}
+
+	auto CreateResourceTagInfo(BufferType type, LPCSTR textureName, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
+		const auto& texture = *m_renderTextures.at(textureName);
+		ResourceTagInfo resourceTagInfo{
+			.Type = type,
+			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetCurrentState()),
+			.Lifecycle = lifecycle
+		};
+		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
+		return resourceTagInfo;
+	}
+
+	bool IsDLSSEnabled() const { return g_graphicsSettings.PostProcessing.DLSS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
+	bool IsDLSSSuperResolutionEnabled() const { return IsDLSSEnabled() && g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode != DLSSSuperResolutionMode::Off; }
+
+	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
+
+	void SetDLSSOptimalSettings() {
+		switch (auto& mode = m_DLSSOptions.mode; g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode) {
+			case DLSSSuperResolutionMode::Auto:
+			{
+				const auto outputSize = m_deviceResources->GetOutputSize();
+				if (const auto minValue = min(outputSize.cx, outputSize.cy);
+					minValue <= 720) mode = DLSSMode::eDLAA;
+				else if (minValue <= 1080) mode = DLSSMode::eMaxQuality;
+				else if (minValue <= 1440) mode = DLSSMode::eBalanced;
+				else if (minValue <= 2160) mode = DLSSMode::eMaxPerformance;
+				else mode = DLSSMode::eUltraPerformance;
+			}
+			break;
+
+			case DLSSSuperResolutionMode::DLAA: mode = DLSSMode::eDLAA; break;
+			case DLSSSuperResolutionMode::Quality: mode = DLSSMode::eMaxQuality; break;
+			case DLSSSuperResolutionMode::Balanced: mode = DLSSMode::eBalanced; break;
+			case DLSSSuperResolutionMode::Performance: mode = DLSSMode::eMaxPerformance; break;
+			case DLSSSuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
+			default: mode = DLSSMode::eOff; break;
+		}
+		slDLSSGetOptimalSettings(m_DLSSOptions, m_DLSSOptimalSettings);
+		m_DLSSOptions.sharpness = m_DLSSOptimalSettings.optimalSharpness;
+		ignore = m_streamline->SetConstants(m_DLSSOptions);
 	}
 
 	void PostProcessGraphics() {
@@ -966,20 +1020,44 @@ private:
 
 		const auto& postProcessingSettings = g_graphicsSettings.PostProcessing;
 
-		const auto isNRDEnabled = postProcessingSettings.RaytracingDenoising.IsEnabled && postProcessingSettings.RaytracingDenoising.SplitScreen != 1 && m_NRD->IsAvailable();
+		PrepareStreamline();
+
+		const auto isNRDEnabled = postProcessingSettings.NRD.IsEnabled && postProcessingSettings.NRD.SplitScreen != 1 && m_NRD->IsAvailable();
 
 		if (isNRDEnabled) {
-			Denoise();
+			ProcessNRD();
 
 			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
 		}
 		else m_NRDCommonSettings.accumulationMode = AccumulationMode::RESTART;
 
-		if (postProcessingSettings.IsTemporalAntiAliasingEnabled) ProcessTemporalAntiAliasing();
+		auto input = m_renderTextures.at(RenderTextureNames::Output).get(), output = m_renderTextures.at(RenderTextureNames::FinalOutput).get();
 
-		auto
-			input = m_renderTextures.at(postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::FinalOutput : RenderTextureNames::Output).get(),
-			output = m_renderTextures.at(postProcessingSettings.IsTemporalAntiAliasingEnabled ? RenderTextureNames::Output : RenderTextureNames::FinalOutput).get();
+		if (IsDLSSSuperResolutionEnabled()) {
+			ProcessDLSS();
+
+			m_slConstants.reset = Boolean::eFalse;
+
+			swap(input, output);
+		}
+		else {
+			m_slConstants.reset = Boolean::eTrue;
+
+			if (auto& reset = m_temporalAntiAliasing->GetData().Reset; postProcessingSettings.IsTemporalAntiAliasingEnabled) {
+				ProcessTemporalAntiAliasing();
+
+				reset = false;
+
+				swap(input, output);
+			}
+			else reset = true;
+		}
+
+		if (IsNISEnabled()) {
+			ProcessNIS(*input, *output);
+
+			swap(input, output);
+		}
 
 		if (postProcessingSettings.Bloom.IsEnabled) {
 			ProcessBloom(*input, *output);
@@ -989,50 +1067,108 @@ private:
 
 		ProcessToneMapping(*input);
 
-		if (isNRDEnabled && postProcessingSettings.RaytracingDenoising.IsValidationLayerEnabled) {
+		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationLayerEnabled) {
 			const auto& validation = *m_renderTextures.at(RenderTextureNames::Validation);
 
 			const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(validation.GetResource(), validation.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
+			m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 			m_alphaBlending->Begin(commandList);
 			m_alphaBlending->Draw(m_resourceDescriptorHeap->GetGpuHandle(validation.GetSrvDescriptorHeapIndex()), GetTextureSize(validation.GetResource()), XMFLOAT2());
 			m_alphaBlending->End();
 		}
 	}
 
-	void Denoise() {
-		const auto& raytracingDenoisingSettings = g_graphicsSettings.PostProcessing.RaytracingDenoising;
-		m_NRDCommonSettings.splitScreen = raytracingDenoisingSettings.SplitScreen;
-		m_NRDCommonSettings.enableValidation = raytracingDenoisingSettings.IsValidationLayerEnabled;
+	void PrepareStreamline() {
+		ignore = m_streamline->NewFrame();
 
-		m_NRD->Denoise(m_stepTimer.GetFrameCount() - 1, m_NRDCommonSettings);
+		const auto& camera = m_GPUBuffers.Camera->GetData();
+		m_slConstants.jitterOffset = { -camera.PixelJitter.x, -camera.PixelJitter.y };
+		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraPos) = m_cameraController.GetPosition();
+		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraUp) = m_cameraController.GetUpDirection();
+		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraRight) = m_cameraController.GetRightDirection();
+		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraFwd) = m_cameraController.GetForwardDirection();
+		m_slConstants.cameraNear = m_cameraController.GetNearZ();
+		m_slConstants.cameraFar = m_cameraController.GetFarZ();
+		m_slConstants.cameraFOV = m_cameraController.GetVerticalFieldOfView();
+		m_slConstants.cameraAspectRatio = m_cameraController.GetAspectRatio();
+		reinterpret_cast<XMFLOAT4X4&>(m_slConstants.cameraViewToClip) = m_cameraController.GetViewToProjection();
+		recalculateCameraMatrices(m_slConstants, reinterpret_cast<const float4x4&>(camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(camera.PreviousViewToProjection));
 
+		m_slConstants.mvecScale = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y) };
+
+		ignore = m_streamline->SetConstants(m_slConstants);
+	}
+
+	void ProcessNRD() {
 		const auto commandList = m_deviceResources->GetCommandList();
+
+		const auto
+			& depth = *m_renderTextures.at(RenderTextureNames::Depth),
+			& baseColorMetalness = *m_renderTextures.at(RenderTextureNames::BaseColorMetalness),
+			& normalRoughness = *m_renderTextures.at(RenderTextureNames::NormalRoughness),
+			& denoisedDiffuse = *m_renderTextures.at(RenderTextureNames::DenoisedDiffuse),
+			& denoisedSpecular = *m_renderTextures.at(RenderTextureNames::DenoisedSpecular);
+
+		{
+			const auto SetResource = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->SetResource(resourceType, texture.GetResource(), texture.GetCurrentState()); };
+			SetResource(nrd::ResourceType::IN_VIEWZ, depth);
+			SetResource(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors3D));
+			SetResource(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
+			SetResource(nrd::ResourceType::IN_NORMAL_ROUGHNESS, normalRoughness);
+			SetResource(nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, *m_renderTextures.at(RenderTextureNames::NoisyDiffuse));
+			SetResource(nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST, *m_renderTextures.at(RenderTextureNames::NoisySpecular));
+			SetResource(nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, denoisedDiffuse);
+			SetResource(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
+			SetResource(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
+
+			const auto& camera = m_GPUBuffers.Camera->GetData();
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = camera.PreviousWorldToView;
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = camera.PreviousViewToProjection;
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter;
+
+			const auto outputSize = m_deviceResources->GetOutputSize();
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
+			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
+
+			const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
+			m_NRDCommonSettings.splitScreen = NRDSettings.SplitScreen;
+			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationLayerEnabled;
+
+			m_NRD->SetMethodSettings(Method::REBLUR_DIFFUSE_SPECULAR, &m_NRDReblurSettings);
+
+			m_NRD->Denoise(m_stepTimer.GetFrameCount() - 1, m_NRDCommonSettings);
+		}
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		{
-			const auto
-				& normalRoughness = *m_renderTextures.at(RenderTextureNames::NormalRoughness),
-				& viewZ = *m_renderTextures.at(RenderTextureNames::ViewZ),
-				& baseColorMetalness = *m_renderTextures.at(RenderTextureNames::BaseColorMetalness),
-				& denoisedDiffuse = *m_renderTextures.at(RenderTextureNames::DenoisedDiffuse),
-				& denoisedSpecular = *m_renderTextures.at(RenderTextureNames::DenoisedSpecular);
-
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(normalRoughness.GetResource(), normalRoughness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(viewZ.GetResource(), viewZ.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(depth.GetResource(), depth.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(baseColorMetalness.GetResource(), baseColorMetalness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(normalRoughness.GetResource(), normalRoughness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(denoisedDiffuse.GetResource(), denoisedDiffuse.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(denoisedSpecular.GetResource(), denoisedSpecular.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
 				}
 			);
 
+			m_denoisedComposition->Descriptors = {
+				.InDepth = m_resourceDescriptorHeap->GetGpuHandle(depth.GetSrvDescriptorHeapIndex()),
+				.InBaseColorMetalness = m_resourceDescriptorHeap->GetGpuHandle(baseColorMetalness.GetSrvDescriptorHeapIndex()),
+				.InNormalRoughness = m_resourceDescriptorHeap->GetGpuHandle(normalRoughness.GetSrvDescriptorHeapIndex()),
+				.InDenoisedDiffuse = m_resourceDescriptorHeap->GetGpuHandle(denoisedDiffuse.GetSrvDescriptorHeapIndex()),
+				.InDenoisedSpecular = m_resourceDescriptorHeap->GetGpuHandle(denoisedSpecular.GetSrvDescriptorHeapIndex()),
+				.Output = m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(RenderTextureNames::Output)->GetUavDescriptorHeapIndex())
+			};
+
+			m_denoisedComposition->RenderSize = m_renderSize;
+
 			m_denoisedComposition->GetData() = {
-				.CameraPosition = m_cameraController.GetPosition(),
 				.CameraRightDirection = m_cameraController.GetRightDirection(),
 				.CameraUpDirection = m_cameraController.GetUpDirection(),
 				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
@@ -1046,35 +1182,41 @@ private:
 	void ProcessTemporalAntiAliasing() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& historyOutput = *m_renderTextures.at(RenderTextureNames::HistoryOutput);
+		const auto& historyOutput = *m_renderTextures.at(RenderTextureNames::HistoryOutput), & finalOutput = *m_renderTextures.at(RenderTextureNames::FinalOutput);
 
 		{
-			const auto& motions = *m_renderTextures.at(RenderTextureNames::Motions), & output = *m_renderTextures.at(RenderTextureNames::Output);
+			const auto& output = *m_renderTextures.at(RenderTextureNames::Output), & motionVectors3D = *m_renderTextures.at(RenderTextureNames::MotionVectors3D);
 
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(motions.GetResource(), motions.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+					CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(motionVectors3D.GetResource(), motionVectors3D.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
 				}
 			);
+
+			m_temporalAntiAliasing->Descriptors = {
+				.InHistoryOutput = m_resourceDescriptorHeap->GetGpuHandle(historyOutput.GetSrvDescriptorHeapIndex()),
+				.InCurrentOutput = m_resourceDescriptorHeap->GetGpuHandle(output.GetSrvDescriptorHeapIndex()),
+				.InMotionVectors3D = m_resourceDescriptorHeap->GetGpuHandle(motionVectors3D.GetSrvDescriptorHeapIndex()),
+				.OutFinalOutput = m_resourceDescriptorHeap->GetGpuHandle(finalOutput.GetUavDescriptorHeapIndex())
+			};
+
+			m_temporalAntiAliasing->RenderSize = m_renderSize;
 
 			m_temporalAntiAliasing->GetData() = {
 				.CameraPosition = m_cameraController.GetPosition(),
 				.CameraRightDirection = m_cameraController.GetRightDirection(),
 				.CameraUpDirection = m_cameraController.GetUpDirection(),
 				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-				.CameraNearZ = m_cameraController.GetNearZ(),
-				.PreviousWorldToProjection = m_GPUBuffers.Camera->GetData().PreviousWorldToProjection
+				.CameraPreviousWorldToProjection = m_GPUBuffers.Camera->GetData().PreviousWorldToProjection
 			};
 
 			m_temporalAntiAliasing->Process(commandList);
 		}
 
 		{
-			const auto& finalOutput = *m_renderTextures.at(RenderTextureNames::FinalOutput);
-
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
@@ -1085,6 +1227,68 @@ private:
 
 			commandList->CopyResource(historyOutput.GetResource(), finalOutput.GetResource());
 		}
+	}
+
+	void ProcessDLSS() {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		const auto
+			& depth = *m_renderTextures.at(RenderTextureNames::Depth),
+			& motionVectors2D = *m_renderTextures.at(RenderTextureNames::MotionVectors2D),
+			& motionVectors3D = *m_renderTextures.at(RenderTextureNames::MotionVectors3D);
+
+		{
+			const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(motionVectors3D.GetResource(), motionVectors3D.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+
+			m_preDLSS->Descriptors = {
+				.InMotionVectors3D = m_resourceDescriptorHeap->GetGpuHandle(motionVectors3D.GetSrvDescriptorHeapIndex()),
+				.InOutDepth = m_resourceDescriptorHeap->GetGpuHandle(depth.GetUavDescriptorHeapIndex()),
+				.OutMotionVectors2D = m_resourceDescriptorHeap->GetGpuHandle(motionVectors2D.GetUavDescriptorHeapIndex())
+			};
+
+			m_preDLSS->RenderSize = m_renderSize;
+
+			m_preDLSS->GetData() = {
+				.CameraPosition = m_cameraController.GetPosition(),
+				.CameraRightDirection = m_cameraController.GetRightDirection(),
+				.CameraUpDirection = m_cameraController.GetUpDirection(),
+				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
+				.CameraWorldToProjection = m_cameraController.GetWorldToProjection()
+			};
+
+			m_preDLSS->Process(commandList);
+		}
+
+		{
+			ResourceTagInfo resourceTagInfos[]{
+				CreateResourceTagInfo(kBufferTypeDepth, depth),
+				CreateResourceTagInfo(kBufferTypeMotionVectors, motionVectors2D),
+				CreateResourceTagInfo(kBufferTypeScalingInputColor, RenderTextureNames::Output),
+				CreateResourceTagInfo(kBufferTypeScalingOutputColor, RenderTextureNames::FinalOutput, false)
+			};
+			ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
+		}
+
+		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+	}
+
+	void ProcessNIS(RenderTexture& input, RenderTexture& output) {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		NISOptions NISOptions;
+		NISOptions.mode = NISMode::eSharpen;
+		NISOptions.sharpness = g_graphicsSettings.PostProcessing.NIS.Sharpness;
+		ignore = m_streamline->SetConstants(NISOptions);
+
+		ResourceTagInfo resourceTagInfos[]{
+			CreateResourceTagInfo(kBufferTypeScalingInputColor, input, false),
+			CreateResourceTagInfo(kBufferTypeScalingOutputColor, output, false)
+		};
+		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagInfos));
+
+		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ProcessBloom(RenderTexture& input, RenderTexture& output) {
@@ -1240,31 +1444,20 @@ private:
 
 		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsWindowVisible, ImGuiWindowFlags_HorizontalScrollbar)) {
 			if (ImGui::TreeNode("Graphics")) {
-				auto isChanged = false, isWindowSettingChanged = false;
+				auto isChanged = false;
 
 				{
-					const auto WindowModes = { "Windowed", "Borderless", "Fullscreen" };
-					if (auto windowMode = m_windowModeHelper->GetMode();
-						ImGui::Combo("Window Mode", reinterpret_cast<int*>(&windowMode), data(WindowModes), static_cast<int>(size(WindowModes)))) {
-						m_windowModeHelper->SetMode(windowMode);
+					auto isWindowSettingChanged = false;
 
-						g_graphicsSettings.WindowMode = windowMode;
+					if (const auto mode = m_windowModeHelper->GetMode();
+						ImGui::BeginCombo("Window Mode", ToString(mode))) {
+						for (const auto windowMode : { WindowMode::Windowed, WindowMode::Borderless, WindowMode::Fullscreen }) {
+							const auto isSelected = mode == windowMode;
 
-						isChanged = isWindowSettingChanged = true;
-					}
-				}
+							if (ImGui::Selectable(ToString(windowMode), isSelected)) {
+								g_graphicsSettings.WindowMode = windowMode;
 
-				{
-					const auto ToString = [](SIZE value) { return format("{} × {}", value.cx, value.cy); };
-					if (const auto resolution = m_windowModeHelper->GetResolution();
-						ImGui::BeginCombo("Resolution", ToString(resolution).c_str())) {
-						for (const auto& displayResolution : g_displayResolutions) {
-							const auto isSelected = resolution == displayResolution;
-
-							if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
-								m_windowModeHelper->SetResolution(displayResolution);
-
-								g_graphicsSettings.Resolution = displayResolution;
+								m_windowModeHelper->SetMode(windowMode);
 
 								isChanged = isWindowSettingChanged = true;
 							}
@@ -1274,6 +1467,30 @@ private:
 
 						ImGui::EndCombo();
 					}
+
+					{
+						const auto ToString = [](SIZE value) { return format("{} × {}", value.cx, value.cy); };
+						if (const auto resolution = m_windowModeHelper->GetResolution();
+							ImGui::BeginCombo("Resolution", ToString(resolution).c_str())) {
+							for (const auto& displayResolution : g_displayResolutions) {
+								const auto isSelected = resolution == displayResolution;
+
+								if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
+									g_graphicsSettings.Resolution = displayResolution;
+
+									m_windowModeHelper->SetResolution(displayResolution);
+
+									isChanged = isWindowSettingChanged = true;
+								}
+
+								if (isSelected) ImGui::SetItemDefaultFocus();
+							}
+
+							ImGui::EndCombo();
+						}
+					}
+
+					if (isWindowSettingChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper->Apply()); });
 				}
 
 				{
@@ -1307,7 +1524,7 @@ private:
 
 					isChanged |= ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, MaxTraceRecursionDepth, "%d", ImGuiSliderFlags_AlwaysClamp);
 
-					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, static_cast<int>(MaxSamplesPerPixel), "%d", ImGuiSliderFlags_AlwaysClamp);
+					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					ImGui::TreePop();
 				}
@@ -1320,16 +1537,16 @@ private:
 
 						const ImGuiEx::ScopedEnablement scopedEnablement(isAvailable);
 
-						if (ImGui::TreeNodeEx("Raytracing Denoising", ImGuiTreeNodeFlags_DefaultOpen)) {
-							auto& raytracingDenoisingSettings = postProcessingSetttings.RaytracingDenoising;
+						if (ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& NRDSettings = postProcessingSetttings.NRD;
 
-							auto isEnabled = isAvailable && raytracingDenoisingSettings.IsEnabled;
+							auto isEnabled = NRDSettings.IsEnabled && isAvailable;
 
 							{
-								ImGui::PushID("Enable Raytracing Denoising");
+								ImGui::PushID("Enable NVIDIA Real-Time Denoisers");
 
 								if (ImGui::Checkbox("Enable", &isEnabled)) {
-									raytracingDenoisingSettings.IsEnabled = isEnabled;
+									NRDSettings.IsEnabled = isEnabled;
 
 									isChanged = true;
 								}
@@ -1337,15 +1554,88 @@ private:
 								ImGui::PopID();
 							}
 
-							isChanged |= isEnabled && ImGui::Checkbox("Validation Layer", &raytracingDenoisingSettings.IsValidationLayerEnabled);
+							isChanged |= isEnabled && ImGui::Checkbox("Validation Layer", &NRDSettings.IsValidationLayerEnabled);
 
-							isChanged |= isEnabled && ImGui::SliderFloat("Split Screen", &raytracingDenoisingSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							isChanged |= isEnabled && ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 							ImGui::TreePop();
 						}
 					}
 
-					isChanged |= ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled);
+					if (!IsDLSSSuperResolutionEnabled()) isChanged |= ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled);
+
+					{
+						const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureDLSS));
+
+						if (ImGui::TreeNodeEx("NVIDIA DLSS", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& DLSSSettings = postProcessingSetttings.DLSS;
+
+							auto isEnabled = IsDLSSEnabled();
+
+							{
+								ImGui::PushID("Enable NVIDIA DLSS");
+
+								if (ImGui::Checkbox("Enable", &isEnabled)) {
+									DLSSSettings.IsEnabled = isEnabled;
+
+									isChanged = true;
+								}
+
+								ImGui::PopID();
+							}
+
+							if (isEnabled) {
+								if (ImGui::BeginCombo("Super Resolution", ToString(DLSSSettings.SuperResolutionMode))) {
+									auto isDLSSSuperResolutionModeSettingChanged = false;
+									for (const auto DLSSSuperResolutionMode : { DLSSSuperResolutionMode::Off, DLSSSuperResolutionMode::Auto, DLSSSuperResolutionMode::DLAA, DLSSSuperResolutionMode::Quality, DLSSSuperResolutionMode::Balanced, DLSSSuperResolutionMode::Performance, DLSSSuperResolutionMode::UltraPerformance }) {
+										const auto isSelected = DLSSSettings.SuperResolutionMode == DLSSSuperResolutionMode;
+
+										if (ImGui::Selectable(ToString(DLSSSuperResolutionMode), isSelected)) {
+											DLSSSettings.SuperResolutionMode = DLSSSuperResolutionMode;
+
+											isDLSSSuperResolutionModeSettingChanged = true;
+
+											isChanged = true;
+										}
+
+										if (isSelected) ImGui::SetItemDefaultFocus();
+									}
+
+									ImGui::EndCombo();
+
+									if (isDLSSSuperResolutionModeSettingChanged) m_futures["DLSSSuperResolutionModeSetting"] = async(launch::deferred, [&] { SetDLSSOptimalSettings(); });
+								}
+							}
+
+							ImGui::TreePop();
+						}
+					}
+
+					{
+						const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureNIS));
+
+						if (ImGui::TreeNodeEx("NVIDIA Image Scaling", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& NISSettings = postProcessingSetttings.NIS;
+
+							auto isEnabled = IsNISEnabled();
+
+							{
+								ImGui::PushID("Enable NVIDIA Image Scaling");
+
+								if (ImGui::Checkbox("Enable", &isEnabled)) {
+									NISSettings.IsEnabled = isEnabled;
+
+									isChanged = true;
+								}
+
+								ImGui::PopID();
+							}
+
+							isChanged |= isEnabled && ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+							ImGui::TreePop();
+						}
+					}
 
 					if (ImGui::TreeNodeEx("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& bloomSettings = postProcessingSetttings.Bloom;
@@ -1373,8 +1663,6 @@ private:
 				ImGui::TreePop();
 
 				if (isChanged) ignore = g_graphicsSettings.Save();
-
-				if (isWindowSettingChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper->Apply()); });
 			}
 
 			if (ImGui::TreeNode("UI")) {
@@ -1438,86 +1726,82 @@ private:
 
 				ImGui::EndPopup();
 			}
-			};
+		};
 
 		PopupModal(
 			"Controls",
 			[] {
-				{
-					const auto AddContents = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& list) {
-						if (ImGui::TreeNodeEx(treeLabel, ImGuiTreeNodeFlags_DefaultOpen)) {
-							if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_Borders)) {
-								for (const auto& [first, second] : list) {
-									ImGui::TableNextRow();
+				const auto AddContents = [](LPCSTR treeLabel, LPCSTR tableID, const initializer_list<pair<LPCSTR, LPCSTR>>& list) {
+				if (ImGui::TreeNodeEx(treeLabel, ImGuiTreeNodeFlags_DefaultOpen)) {
+					if (ImGui::BeginTable(tableID, 2, ImGuiTableFlags_Borders)) {
+						for (const auto& [first, second] : list) {
+							ImGui::TableNextRow();
 
-									ImGui::TableSetColumnIndex(0);
-									ImGui::Text(first);
+							ImGui::TableSetColumnIndex(0);
+							ImGui::Text(first);
 
-									ImGui::TableSetColumnIndex(1);
-									ImGui::Text(second);
-								}
-
-								ImGui::EndTable();
-							}
-
-							ImGui::TreePop();
+							ImGui::TableSetColumnIndex(1);
+							ImGui::Text(second);
 						}
-						};
 
-					AddContents(
-						"Xbox Controller",
-						"##XboxController",
-						{
-							{ "Menu", "Show/hide UI" },
-							{ "X (hold)", "Show window switcher if UI visible" },
-							{ "View", "Reset camera" },
-							{ "LS (rotate)", "Move" },
-							{ "RS (rotate)", "Look around" },
-							{ "D-Pad Up Down", "Change camera movement speed" },
-							{ "A", "Run/pause physics simulation" },
-							{ "B", "Toggle gravity of Earth" },
-							{ "Y", "Toggle gravity of the star" }
-						}
-					);
+						ImGui::EndTable();
+					}
 
-					AddContents(
-						"Keyboard",
-						"##Keyboard",
-						{
-							{ "Alt + Enter", "Toggle between windowed/borderless & fullscreen modes" },
-							{ "Esc", "Show/hide UI" },
-							{ "Ctrl + Tab (hold)", "Show window switcher if UI visible" },
-							{ "Home", "Reset camera" },
-							{ "W A S D", "Move" },
-							{ "Space", "Run/pause physics simulation" },
-							{ "G", "Toggle gravity of Earth" },
-							{ "H", "Toggle gravity of the star" }
-						}
-					);
-
-					AddContents(
-						"Mouse",
-						"##Mouse",
-						{
-							{ "(Move)", "Look around" },
-							{ "Scroll Wheel", "Change camera movement speed" }
-						}
-					);
+					ImGui::TreePop();
 				}
+			};
+
+		AddContents(
+			"Xbox Controller",
+			"##XboxController",
+			{
+				{ "Menu", "Show/hide UI" },
+				{ "X (hold)", "Show window switcher if UI visible" },
+				{ "View", "Reset camera" },
+				{ "LS (rotate)", "Move" },
+				{ "RS (rotate)", "Look around" },
+				{ "D-Pad Up Down", "Change camera movement speed" },
+				{ "A", "Run/pause physics simulation" },
+				{ "B", "Toggle gravity of Earth" },
+				{ "Y", "Toggle gravity of the star" }
+			}
+		);
+
+		AddContents(
+			"Keyboard",
+			"##Keyboard",
+			{
+				{ "Alt + Enter", "Toggle between windowed/borderless & fullscreen modes" },
+				{ "Esc", "Show/hide UI" },
+				{ "Ctrl + Tab (hold)", "Show window switcher if UI visible" },
+				{ "Home", "Reset camera" },
+				{ "W A S D", "Move" },
+				{ "Space", "Run/pause physics simulation" },
+				{ "G", "Toggle gravity of Earth" },
+				{ "H", "Toggle gravity of the star" }
+			}
+		);
+
+		AddContents(
+			"Mouse",
+			"##Mouse",
+			{
+				{ "(Move)", "Look around" },
+				{ "Scroll Wheel", "Change camera movement speed" }
+			}
+		);
 			}
 		);
 
 		PopupModal(
 			"About",
 			[] {
-				{
-					ImGui::Text("© Hydr10n. All rights reserved.");
+				ImGui::Text("© Hydr10n. All rights reserved.");
 
-					if (constexpr auto URL = "https://github.com/Hydr10n/DirectX-Physically-Based-Raytracer";
-						ImGuiEx::Hyperlink("GitHub repository", URL)) {
-						ShellExecuteA(nullptr, "open", URL, nullptr, nullptr, SW_SHOW);
-					}
-				}
+		if (constexpr auto URL = "https://github.com/Hydr10n/DirectX-Raytracing-Spheres-Demo";
+			ImGuiEx::Hyperlink("GitHub repository", URL)) {
+			ShellExecuteA(nullptr, "open", URL, nullptr, nullptr, SW_SHOW);
+		}
 			}
 		);
 	}

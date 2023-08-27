@@ -6,6 +6,7 @@ export module Camera;
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
+using namespace std;
 
 export {
 	struct Camera {
@@ -17,9 +18,9 @@ export {
 		float _2;
 		XMFLOAT3 ForwardDirection;
 		float ApertureRadius;
-		XMFLOAT2 PixelJitter;
 		float NearZ, FarZ;
-		XMFLOAT4X4 PreviousWorldToView, PreviousWorldToProjection;
+		XMFLOAT2 PixelJitter;
+		XMFLOAT4X4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld;
 	};
 
 	struct CameraController {
@@ -103,21 +104,31 @@ export {
 			return m_worldToView;
 		}
 
-		auto GetViewToWorld() const { return GetWorldToView().Transpose(); }
-
-		auto GetNearZ() const { return m_nearZ; }
-		auto GetFarZ() const { return m_farZ; }
-
-		const auto& GetViewToProjection() const { return m_viewToProjection; }
-		auto GetProjectionToView() const { return m_viewToProjection.Invert(); }
+		auto GetViewToWorld() const {
+			Matrix viewToWorld(GetNormalizedRightDirection(), GetNormalizedUpDirection(), GetNormalizedForwardDirection());
+			reinterpret_cast<Vector3&>(viewToWorld.m[3]) = m_position;
+			return viewToWorld;
+		}
 
 		auto GetVerticalFieldOfView() const { return m_verticalFieldOfView; }
 		auto GetAspectRatio() const { return m_aspectRatio; }
 
+		auto GetNearZ() const { return m_nearZ; }
+		auto GetFarZ() const { return m_farZ; }
+
+		const auto& GetViewToProjection() const {
+			if (m_isProjectionChanged) {
+				m_viewToProjection = XMMatrixPerspectiveFovLH(m_verticalFieldOfView, m_aspectRatio, m_nearZ, m_farZ);
+
+				m_isProjectionChanged = false;
+			}
+			return m_viewToProjection;
+		}
+
+		auto GetProjectionToView() const { return GetViewToProjection().Invert(); }
+
 		void SetLens(float verticalFieldOfView, float aspectRatio) { SetLens(verticalFieldOfView, aspectRatio, m_nearZ, m_farZ); }
 		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ, float farZ) {
-			m_viewToProjection = XMMatrixPerspectiveFovLH(verticalFieldOfView, aspectRatio, nearZ, farZ);
-
 			m_verticalFieldOfView = verticalFieldOfView;
 			m_aspectRatio = aspectRatio;
 
@@ -128,10 +139,12 @@ export {
 			m_rightDirectionLength = m_upDirectionLength * aspectRatio;
 			m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
+
+			m_isProjectionChanged = true;
 		}
 
 		auto GetWorldToProjection() const { return GetWorldToView() * GetViewToProjection(); }
-		auto GetProjectionToWorld() const { return GetWorldToProjection().Invert(); }
+		auto GetProjectionToWorld() const { return GetProjectionToView() * GetViewToWorld(); }
 
 	private:
 		mutable bool m_isViewChanged = true;
@@ -140,8 +153,8 @@ export {
 		Quaternion m_rotation;
 		mutable Matrix m_worldToView;
 
-		float m_verticalFieldOfView{}, m_aspectRatio{};
-		float m_nearZ = 1e-2f, m_farZ = 1e4f;
-		Matrix m_viewToProjection;
+		mutable bool m_isProjectionChanged = true;
+		float m_verticalFieldOfView{}, m_aspectRatio{}, m_nearZ = 1e-2f, m_farZ = 1e4f;
+		mutable Matrix m_viewToProjection;
 	};
 }

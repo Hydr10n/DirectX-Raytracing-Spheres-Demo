@@ -167,7 +167,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 				s_hMonitor = monitor;
 			}
-			};
+		};
 
 		if (s_hMonitor == nullptr) GetDisplayResolutions();
 
@@ -184,7 +184,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						if (AdjustWindowRectExForDpi(&rect, style, hasMenu, exStyle, DPI)) {
 							newSize = { rect.right - rect.left, rect.bottom - rect.top };
 						}
-						};
+					};
 
 					auto& minMaxInfo = *reinterpret_cast<PMINMAXINFO>(lParam);
 					AdjustSize(*cbegin(g_displayResolutions), minMaxInfo.ptMinTrackSize);

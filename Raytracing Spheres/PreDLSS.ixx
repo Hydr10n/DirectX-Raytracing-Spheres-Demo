@@ -4,9 +4,9 @@ module;
 
 #include "directxtk12/PostProcess.h"
 
-#include "Shaders/TemporalAntiAliasing.hlsl.h"
+#include "Shaders/PreDLSS.hlsl.h"
 
-export module DirectX.PostProcess.TemporalAntiAliasing;
+export module DirectX.PostProcess.PreDLSS;
 
 import DirectX.BufferHelpers;
 
@@ -16,25 +16,25 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX::PostProcess {
-	struct TemporalAntiAliasing : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InHistoryOutput, InCurrentOutput, InMotionVectors3D, OutFinalOutput; } Descriptors{};
+	struct PreDLSS : IPostProcess {
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InMotionVectors3D, InOutDepth, OutMotionVectors2D; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
 		struct Data {
-			BOOL Reset;
 			XMFLOAT3 CameraPosition;
-			XMFLOAT3 CameraRightDirection;
 			float _;
-			XMFLOAT3 CameraUpDirection;
+			XMFLOAT3 CameraRightDirection;
 			float _1;
-			XMFLOAT3 CameraForwardDirection;
+			XMFLOAT3 CameraUpDirection;
 			float _2;
-			XMFLOAT4X4 CameraPreviousWorldToProjection;
+			XMFLOAT3 CameraForwardDirection;
+			float _3;
+			XMFLOAT4X4 CameraWorldToProjection;
 		};
 
-		TemporalAntiAliasing(ID3D12Device* device) noexcept(false) : m_data(device) {
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pTemporalAntiAliasing, size(g_pTemporalAntiAliasing));
+		PreDLSS(ID3D12Device* device) noexcept(false) : m_data(device) {
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pPreDLSS, size(g_pPreDLSS));
 			ThrowIfFailed(device->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
@@ -45,12 +45,11 @@ export namespace DirectX::PostProcess {
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, Descriptors.InHistoryOutput);
-			commandList->SetComputeRootDescriptorTable(1, Descriptors.InCurrentOutput);
-			commandList->SetComputeRootDescriptorTable(2, Descriptors.InMotionVectors3D);
-			commandList->SetComputeRootDescriptorTable(3, Descriptors.OutFinalOutput);
-			commandList->SetComputeRoot32BitConstants(4, 2, &RenderSize, 0);
-			commandList->SetComputeRootConstantBufferView(5, m_data.GetResource()->GetGPUVirtualAddress());
+			commandList->SetComputeRootDescriptorTable(0, Descriptors.InMotionVectors3D);
+			commandList->SetComputeRootDescriptorTable(1, Descriptors.InOutDepth);
+			commandList->SetComputeRootDescriptorTable(2, Descriptors.OutMotionVectors2D);
+			commandList->SetComputeRoot32BitConstants(3, 2, &RenderSize, 0);
+			commandList->SetComputeRootConstantBufferView(4, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 			commandList->Dispatch((RenderSize.x + 16) / 16, (RenderSize.y + 16) / 16, 1);
 		}

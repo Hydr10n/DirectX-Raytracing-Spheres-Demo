@@ -7,20 +7,60 @@
 #include <fstream>
 
 import DisplayHelpers;
+import Streamline;
 import WindowHelpers;
 
 JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
+
+constexpr auto ToString(WindowHelpers::WindowMode value) {
+	using namespace WindowHelpers;
+
+	switch (value) {
+		case WindowMode::Windowed: return "Windowed";
+		case WindowMode::Borderless: return "Borderless";
+		case WindowMode::Fullscreen: return "Fullscreen";
+		default: throw;
+	}
+}
 
 namespace WindowHelpers {
 	NLOHMANN_JSON_SERIALIZE_ENUM(
 		WindowMode,
 		{
-			{ WindowMode::Windowed, "Windowed" },
-			{ WindowMode::Borderless, "Borderless" },
-			{ WindowMode::Fullscreen, "Fullscreen" }
+			{ WindowMode::Windowed, ToString(WindowMode::Windowed) },
+			{ WindowMode::Borderless, ToString(WindowMode::Borderless) },
+			{ WindowMode::Fullscreen, ToString(WindowMode::Fullscreen) }
 		}
 	);
 }
+
+enum class DLSSSuperResolutionMode { Off, Auto, DLAA, Quality, Balanced, Performance, UltraPerformance };
+
+constexpr auto ToString(DLSSSuperResolutionMode value) {
+	switch (value) {
+		case DLSSSuperResolutionMode::Off: return "Off";
+		case DLSSSuperResolutionMode::Auto: return "Auto";
+		case DLSSSuperResolutionMode::DLAA: return "DLAA";
+		case DLSSSuperResolutionMode::Quality: return "Quality";
+		case DLSSSuperResolutionMode::Balanced: return "Balanced";
+		case DLSSSuperResolutionMode::Performance: return "Performance";
+		case DLSSSuperResolutionMode::UltraPerformance: return "Ultra Performance";
+		default: throw;
+	}
+}
+
+NLOHMANN_JSON_SERIALIZE_ENUM(
+	DLSSSuperResolutionMode,
+	{
+		{ DLSSSuperResolutionMode::Off, ToString(DLSSSuperResolutionMode::Off) },
+		{ DLSSSuperResolutionMode::Auto, ToString(DLSSSuperResolutionMode::Auto) },
+		{ DLSSSuperResolutionMode::DLAA, ToString(DLSSSuperResolutionMode::DLAA) },
+		{ DLSSSuperResolutionMode::Quality, ToString(DLSSSuperResolutionMode::Quality) },
+		{ DLSSSuperResolutionMode::Balanced, ToString(DLSSSuperResolutionMode::Balanced) },
+		{ DLSSSuperResolutionMode::Performance, ToString(DLSSSuperResolutionMode::Performance) },
+		{ DLSSSuperResolutionMode::UltraPerformance, ToString(DLSSSuperResolutionMode::UltraPerformance) }
+	}
+);
 
 class MyAppData {
 	template <typename T>
@@ -75,15 +115,31 @@ public:
 			} Raytracing;
 
 			struct PostProcessing {
-				struct RaytracingDenoising {
+				struct NRD {
 					bool IsEnabled = true, IsValidationLayerEnabled{};
 
 					float SplitScreen{};
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(RaytracingDenoising, IsEnabled, IsValidationLayerEnabled, SplitScreen);
-				} RaytracingDenoising;
+					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, IsEnabled, IsValidationLayerEnabled, SplitScreen);
+				} NRD;
 
 				bool IsTemporalAntiAliasingEnabled = true;
+
+				struct DLSS {
+					bool IsEnabled = true;
+
+					DLSSSuperResolutionMode SuperResolutionMode = DLSSSuperResolutionMode::Auto;
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(DLSS, IsEnabled, SuperResolutionMode);
+				} DLSS;
+
+				struct NIS {
+					bool IsEnabled{};
+
+					float Sharpness{};
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(NIS, IsEnabled, Sharpness);
+				} NIS;
 
 				struct Bloom {
 					bool IsEnabled = true;
@@ -93,7 +149,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(Bloom, IsEnabled, Threshold, BlurSize);
 				} Bloom;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, RaytracingDenoising, IsTemporalAntiAliasingEnabled, Bloom);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, IsTemporalAntiAliasingEnabled, DLSS, NIS, Bloom);
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);

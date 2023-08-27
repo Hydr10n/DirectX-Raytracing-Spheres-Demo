@@ -84,7 +84,6 @@ public:
 		m_NRD.Denoise(consecutiveFrameIndex, *m_commandBuffer, commonSettings, m_userPool, true);
 
 		vector<TextureTransitionBarrierDesc> textureTransitionBarrierDescs;
-		textureTransitionBarrierDescs.reserve(size(m_textureTransitionBarrierDescs));
 		for (auto& TextureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
 			if (TextureTransitionBarrierDesc.texture != nullptr
 				&& TextureTransitionBarrierDesc.nextAccess != TextureTransitionBarrierDesc.initialAccess
