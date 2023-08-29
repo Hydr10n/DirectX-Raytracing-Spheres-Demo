@@ -69,7 +69,7 @@
     <ClCompile Include="SharedData.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="App.cppm">
+    <ClCompile Include="App.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Material.ixx">

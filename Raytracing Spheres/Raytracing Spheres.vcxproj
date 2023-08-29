@@ -131,7 +131,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="App.cppm" />
+    <ClCompile Include="App.ixx" />
     <ClCompile Include="Camera.ixx" />
     <ClCompile Include="CommandList.ixx" />
     <ClCompile Include="DenoisedComposition.ixx" />

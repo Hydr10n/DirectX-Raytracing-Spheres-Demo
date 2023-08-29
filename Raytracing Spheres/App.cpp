@@ -54,6 +54,7 @@ import RenderTexture;
 import Scene;
 import SharedData;
 import StepTimer;
+import Streamline;
 import Texture;
 import ThreadHelpers;
 
@@ -251,6 +252,8 @@ private:
 
 	XMUINT2 m_renderSize{};
 
+	HaltonSamplePattern m_haltonSamplePattern;
+
 	struct FutureNames {
 		MAKE_NAME(Scene);
 	};
@@ -377,8 +380,6 @@ private:
 
 	unique_ptr<Scene> m_scene;
 
-	HaltonSamplePattern m_haltonSamplePattern;
-
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowVisible; } m_UIStates{};
 
 	void CreateDeviceDependentResources() {
@@ -410,13 +411,12 @@ private:
 				texture->CreateResource(size.cx, size.cy);
 			};
 			const auto CreateTexture1 = [&](DXGI_FORMAT format, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u, UINT rtvDescriptorHeapIndex = ~0u) {
-				return CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex, rtvDescriptorHeapIndex);
+				CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex, rtvDescriptorHeapIndex);
 			};
 
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::HistoryOutput, ResourceDescriptorHeapIndex::InHistoryOutput, ResourceDescriptorHeapIndex::OutHistoryOutput);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Output, ResourceDescriptorHeapIndex::InOutput, ResourceDescriptorHeapIndex::Output, RenderDescriptorHeapIndex::Output);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalOutput, ResourceDescriptorHeapIndex::InFinalOutput, ResourceDescriptorHeapIndex::OutFinalOutput, RenderDescriptorHeapIndex::FinalOutput);
-
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::Depth, ResourceDescriptorHeapIndex::InDepth, ResourceDescriptorHeapIndex::OutDepth, ~0u);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors3D, ResourceDescriptorHeapIndex::InMotionVectors3D, ResourceDescriptorHeapIndex::OutMotionVectors3D);
 
@@ -446,9 +446,9 @@ private:
 			}
 		}
 
-		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+		OnRenderSizeChanged();
 
-		m_haltonSamplePattern.Reset();
+		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
 
 		{
 			const auto& IO = ImGui::GetIO();
@@ -512,9 +512,6 @@ private:
 		PIXEndEvent(commandList);
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
-
-		const auto outputSize = m_deviceResources->GetOutputSize();
-		m_renderSize = IsDLSSSuperResolutionEnabled() ? XMUINT2(m_DLSSOptimalSettings.optimalRenderWidth, m_DLSSOptimalSettings.optimalRenderHeight) : XMUINT2(outputSize.cx, outputSize.cy);
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -683,11 +680,8 @@ private:
 			};
 		}
 
-		{
-
-			for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
-				m_toneMapping[toneMappingOperator] = make_unique<ToneMapPostProcess>(device, RenderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN), toneMappingOperator, toneMappingOperator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB);
-			}
+		for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+			m_toneMapping[toneMappingOperator] = make_unique<ToneMapPostProcess>(device, RenderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN), toneMappingOperator, toneMappingOperator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB);
 		}
 
 		{
@@ -969,24 +963,15 @@ private:
 			.Resource = Resource(sl::ResourceType::eTex2d, renderTexture.GetResource(), renderTexture.GetCurrentState()),
 			.Lifecycle = lifecycle
 		};
-		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
+		if (isRenderSize) {
+			resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
+		}
 		return resourceTagInfo;
 	}
 
-	auto CreateResourceTagInfo(BufferType type, LPCSTR textureName, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
-		const auto& texture = *m_renderTextures.at(textureName);
-		ResourceTagInfo resourceTagInfo{
-			.Type = type,
-			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetCurrentState()),
-			.Lifecycle = lifecycle
-		};
-		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
-		return resourceTagInfo;
-	}
-
+	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.IsEnabled && m_NRD->IsAvailable(); }
 	bool IsDLSSEnabled() const { return g_graphicsSettings.PostProcessing.DLSS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
 	bool IsDLSSSuperResolutionEnabled() const { return IsDLSSEnabled() && g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode != DLSSSuperResolutionMode::Off; }
-
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 
 	void SetDLSSOptimalSettings() {
@@ -1015,42 +1000,45 @@ private:
 		ignore = m_streamline->SetConstants(m_DLSSOptions);
 	}
 
-	void PostProcessGraphics() {
-		const auto commandList = m_deviceResources->GetCommandList();
+	void ResetTemporalAccumulation() {
+		m_slConstants.reset = Boolean::eTrue;
 
+		m_NRDCommonSettings.accumulationMode = AccumulationMode::RESTART;
+
+		m_temporalAntiAliasing->GetData().Reset = true;
+	}
+
+	void OnRenderSizeChanged() {
+		const auto outputSize = m_deviceResources->GetOutputSize();
+
+		m_renderSize = IsDLSSSuperResolutionEnabled() ? XMUINT2(m_DLSSOptimalSettings.optimalRenderWidth, m_DLSSOptimalSettings.optimalRenderHeight) : XMUINT2(outputSize.cx, outputSize.cy);
+
+		const auto scale = static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x);
+		m_haltonSamplePattern = static_cast<UINT>(8 * scale * scale);
+
+		ResetTemporalAccumulation();
+	}
+
+	void PostProcessGraphics() {
 		const auto& postProcessingSettings = g_graphicsSettings.PostProcessing;
 
 		PrepareStreamline();
 
 		const auto isNRDEnabled = postProcessingSettings.NRD.IsEnabled && postProcessingSettings.NRD.SplitScreen != 1 && m_NRD->IsAvailable();
 
-		if (isNRDEnabled) {
-			ProcessNRD();
-
-			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
-		}
-		else m_NRDCommonSettings.accumulationMode = AccumulationMode::RESTART;
+		if (isNRDEnabled) ProcessNRD();
 
 		auto input = m_renderTextures.at(RenderTextureNames::Output).get(), output = m_renderTextures.at(RenderTextureNames::FinalOutput).get();
 
 		if (IsDLSSSuperResolutionEnabled()) {
 			ProcessDLSS();
 
-			m_slConstants.reset = Boolean::eFalse;
-
 			swap(input, output);
 		}
-		else {
-			m_slConstants.reset = Boolean::eTrue;
+		else if (postProcessingSettings.IsTemporalAntiAliasingEnabled) {
+			ProcessTemporalAntiAliasing();
 
-			if (auto& reset = m_temporalAntiAliasing->GetData().Reset; postProcessingSettings.IsTemporalAntiAliasingEnabled) {
-				ProcessTemporalAntiAliasing();
-
-				reset = false;
-
-				swap(input, output);
-			}
-			else reset = true;
+			swap(input, output);
 		}
 
 		if (IsNISEnabled()) {
@@ -1067,16 +1055,7 @@ private:
 
 		ProcessToneMapping(*input);
 
-		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationLayerEnabled) {
-			const auto& validation = *m_renderTextures.at(RenderTextureNames::Validation);
-
-			const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(validation.GetResource(), validation.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
-
-			m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
-			m_alphaBlending->Begin(commandList);
-			m_alphaBlending->Draw(m_resourceDescriptorHeap->GetGpuHandle(validation.GetSrvDescriptorHeapIndex()), GetTextureSize(validation.GetResource()), XMFLOAT2());
-			m_alphaBlending->End();
-		}
+		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationLayerEnabled) ProcessAlphaBlending(*m_renderTextures.at(RenderTextureNames::Validation));
 	}
 
 	void PrepareStreamline() {
@@ -1098,6 +1077,8 @@ private:
 		m_slConstants.mvecScale = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y) };
 
 		ignore = m_streamline->SetConstants(m_slConstants);
+
+		m_slConstants.reset = Boolean::eFalse;
 	}
 
 	void ProcessNRD() {
@@ -1140,6 +1121,8 @@ private:
 			m_NRD->SetMethodSettings(Method::REBLUR_DIFFUSE_SPECULAR, &m_NRDReblurSettings);
 
 			m_NRD->Denoise(m_stepTimer.GetFrameCount() - 1, m_NRDCommonSettings);
+
+			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
 		}
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
@@ -1205,7 +1188,9 @@ private:
 
 			m_temporalAntiAliasing->RenderSize = m_renderSize;
 
-			m_temporalAntiAliasing->GetData() = {
+			auto& data = m_temporalAntiAliasing->GetData();
+
+			data = {
 				.CameraPosition = m_cameraController.GetPosition(),
 				.CameraRightDirection = m_cameraController.GetRightDirection(),
 				.CameraUpDirection = m_cameraController.GetUpDirection(),
@@ -1214,6 +1199,8 @@ private:
 			};
 
 			m_temporalAntiAliasing->Process(commandList);
+
+			data.Reset = false;
 		}
 
 		{
@@ -1263,8 +1250,8 @@ private:
 			ResourceTagInfo resourceTagInfos[]{
 				CreateResourceTagInfo(kBufferTypeDepth, depth),
 				CreateResourceTagInfo(kBufferTypeMotionVectors, motionVectors2D),
-				CreateResourceTagInfo(kBufferTypeScalingInputColor, RenderTextureNames::Output),
-				CreateResourceTagInfo(kBufferTypeScalingOutputColor, RenderTextureNames::FinalOutput, false)
+				CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Output)),
+				CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalOutput), false)
 			};
 			ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
 		}
@@ -1376,6 +1363,17 @@ private:
 		auto& toneMapping = *m_toneMapping[ToneMapPostProcess::None];
 		toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()));
 		toneMapping.Process(commandList);
+	}
+
+	void ProcessAlphaBlending(RenderTexture& input) {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+
+		m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
+		m_alphaBlending->Begin(commandList);
+		m_alphaBlending->Draw(m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()), GetTextureSize(input.GetResource()), XMFLOAT2());
+		m_alphaBlending->End();
 	}
 
 	void RenderUI() {
@@ -1533,20 +1531,20 @@ private:
 					auto& postProcessingSetttings = g_graphicsSettings.PostProcessing;
 
 					{
-						const auto isAvailable = m_NRD->IsAvailable();
-
-						const ImGuiEx::ScopedEnablement scopedEnablement(isAvailable);
+						const ImGuiEx::ScopedEnablement scopedEnablement(m_NRD->IsAvailable());
 
 						if (ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& NRDSettings = postProcessingSetttings.NRD;
 
-							auto isEnabled = NRDSettings.IsEnabled && isAvailable;
+							auto isEnabled = IsNRDEnabled();
 
 							{
 								ImGui::PushID("Enable NVIDIA Real-Time Denoisers");
 
 								if (ImGui::Checkbox("Enable", &isEnabled)) {
 									NRDSettings.IsEnabled = isEnabled;
+
+									ResetTemporalAccumulation();
 
 									isChanged = true;
 								}
@@ -1562,7 +1560,11 @@ private:
 						}
 					}
 
-					if (!IsDLSSSuperResolutionEnabled()) isChanged |= ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled);
+					if (!IsDLSSSuperResolutionEnabled() && ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled)) {
+						ResetTemporalAccumulation();
+
+						isChanged = true;
+					}
 
 					{
 						const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureDLSS));
@@ -1570,7 +1572,7 @@ private:
 						if (ImGui::TreeNodeEx("NVIDIA DLSS", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& DLSSSettings = postProcessingSetttings.DLSS;
 
-							auto isEnabled = IsDLSSEnabled();
+							auto isSuperResolutionSettingChanged = false, isEnabled = IsDLSSEnabled();
 
 							{
 								ImGui::PushID("Enable NVIDIA DLSS");
@@ -1578,7 +1580,7 @@ private:
 								if (ImGui::Checkbox("Enable", &isEnabled)) {
 									DLSSSettings.IsEnabled = isEnabled;
 
-									isChanged = true;
+									isChanged = isSuperResolutionSettingChanged = true;
 								}
 
 								ImGui::PopID();
@@ -1586,28 +1588,29 @@ private:
 
 							if (isEnabled) {
 								if (ImGui::BeginCombo("Super Resolution", ToString(DLSSSettings.SuperResolutionMode))) {
-									auto isDLSSSuperResolutionModeSettingChanged = false;
 									for (const auto DLSSSuperResolutionMode : { DLSSSuperResolutionMode::Off, DLSSSuperResolutionMode::Auto, DLSSSuperResolutionMode::DLAA, DLSSSuperResolutionMode::Quality, DLSSSuperResolutionMode::Balanced, DLSSSuperResolutionMode::Performance, DLSSSuperResolutionMode::UltraPerformance }) {
 										const auto isSelected = DLSSSettings.SuperResolutionMode == DLSSSuperResolutionMode;
 
 										if (ImGui::Selectable(ToString(DLSSSuperResolutionMode), isSelected)) {
 											DLSSSettings.SuperResolutionMode = DLSSSuperResolutionMode;
 
-											isDLSSSuperResolutionModeSettingChanged = true;
-
-											isChanged = true;
+											isChanged = isSuperResolutionSettingChanged = true;
 										}
 
 										if (isSelected) ImGui::SetItemDefaultFocus();
 									}
 
 									ImGui::EndCombo();
-
-									if (isDLSSSuperResolutionModeSettingChanged) m_futures["DLSSSuperResolutionModeSetting"] = async(launch::deferred, [&] { SetDLSSOptimalSettings(); });
 								}
 							}
 
 							ImGui::TreePop();
+
+							if (isSuperResolutionSettingChanged) {
+								SetDLSSOptimalSettings();
+
+								OnRenderSizeChanged();
+							}
 						}
 					}
 

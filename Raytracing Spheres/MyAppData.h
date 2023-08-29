@@ -7,7 +7,6 @@
 #include <fstream>
 
 import DisplayHelpers;
-import Streamline;
 import WindowHelpers;
 
 JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
