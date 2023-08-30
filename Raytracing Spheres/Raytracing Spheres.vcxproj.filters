@@ -132,10 +132,10 @@
     <ClCompile Include="DeviceResources.ixx">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="Streamline.ixx">
-      <Filter>Common</Filter>
-    </ClCompile>
     <ClCompile Include="PreDLSS.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Streamline.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

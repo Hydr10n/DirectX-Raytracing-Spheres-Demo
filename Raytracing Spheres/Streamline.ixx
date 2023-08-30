@@ -16,8 +16,7 @@ using namespace sl;
 using namespace std;
 
 export {
-	class Streamline {
-	public:
+	struct Streamline {
 		static constexpr Feature Features[]{ kFeatureDLSS, kFeatureNIS };
 
 		Streamline(const Streamline&) = delete;

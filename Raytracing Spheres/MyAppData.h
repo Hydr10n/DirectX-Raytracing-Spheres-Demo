@@ -187,6 +187,12 @@ public:
 				std::ignore = UI.Load();
 				std::ignore = Controls.Load();
 			}
+
+			~_() {
+				std::ignore = Graphics.Save();
+				std::ignore = UI.Save();
+				std::ignore = Controls.Save();
+			}
 		} _;
 	};
 };

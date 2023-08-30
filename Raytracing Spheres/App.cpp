@@ -855,6 +855,8 @@ private:
 	void ResetCamera() {
 		m_cameraController.SetPosition(m_scene->Camera.Position);
 		m_cameraController.SetRotation(m_scene->Camera.Rotation);
+
+		ResetTemporalAccumulation();
 	}
 
 	void UpdateCamera() {
@@ -875,11 +877,7 @@ private:
 			int movementSpeedIncrement = 0;
 			if (gamepadState.IsDPadUpPressed()) movementSpeedIncrement++;
 			if (gamepadState.IsDPadDownPressed()) movementSpeedIncrement--;
-			if (movementSpeedIncrement) {
-				speedSettings.Movement = clamp(speedSettings.Movement + elapsedSeconds * static_cast<float>(movementSpeedIncrement) * 12, 0.0f, CameraMaxMovementSpeed);
-
-				ignore = g_controlsSettings.Save();
-			}
+			if (movementSpeedIncrement) speedSettings.Movement = clamp(speedSettings.Movement + elapsedSeconds * static_cast<float>(movementSpeedIncrement) * 12, 0.0f, CameraMaxMovementSpeed);
 
 			const auto movementSpeed = elapsedSeconds * speedSettings.Movement;
 			displacement.x += gamepadState.thumbSticks.leftX * movementSpeed;
@@ -893,11 +891,7 @@ private:
 		if (mouseState.positionMode == Mouse::MODE_RELATIVE) {
 			if (m_inputDeviceStateTrackers.Keyboard.IsKeyPressed(Key::Home)) ResetCamera();
 
-			if (mouseState.scrollWheelValue) {
-				speedSettings.Movement = clamp(speedSettings.Movement + static_cast<float>(mouseState.scrollWheelValue) * 0.008f, 0.0f, CameraMaxMovementSpeed);
-
-				ignore = g_controlsSettings.Save();
-			}
+			if (mouseState.scrollWheelValue) speedSettings.Movement = clamp(speedSettings.Movement + static_cast<float>(mouseState.scrollWheelValue) * 0.008f, 0.0f, CameraMaxMovementSpeed);
 
 			const auto movementSpeed = elapsedSeconds * speedSettings.Movement;
 			if (keyboardState.A) displacement.x -= movementSpeed;
@@ -1442,10 +1436,8 @@ private:
 
 		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsWindowVisible, ImGuiWindowFlags_HorizontalScrollbar)) {
 			if (ImGui::TreeNode("Graphics")) {
-				auto isChanged = false;
-
 				{
-					auto isWindowSettingChanged = false;
+					auto isChanged = false;
 
 					if (const auto mode = m_windowModeHelper->GetMode();
 						ImGui::BeginCombo("Window Mode", ToString(mode))) {
@@ -1457,7 +1449,7 @@ private:
 
 								m_windowModeHelper->SetMode(windowMode);
 
-								isChanged = isWindowSettingChanged = true;
+								isChanged = true;
 							}
 
 							if (isSelected) ImGui::SetItemDefaultFocus();
@@ -1478,7 +1470,7 @@ private:
 
 									m_windowModeHelper->SetResolution(displayResolution);
 
-									isChanged = isWindowSettingChanged = true;
+									isChanged = true;
 								}
 
 								if (isSelected) ImGui::SetItemDefaultFocus();
@@ -1488,28 +1480,22 @@ private:
 						}
 					}
 
-					if (isWindowSettingChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper->Apply()); });
+					if (isChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper->Apply()); });
 				}
 
 				{
 					const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->GetDeviceOptions() & DeviceResources::c_AllowTearing);
 
-					if (auto isEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) {
-						g_graphicsSettings.IsVSyncEnabled = isEnabled;
-
-						isChanged = true;
-					}
+					if (auto isEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) g_graphicsSettings.IsVSyncEnabled = isEnabled;
 				}
 
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& cameraSettings = g_graphicsSettings.Camera;
 
-					isChanged |= ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled);
+					if (ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled)) ResetTemporalAccumulation();
 
 					if (ImGui::SliderFloat("Vertical Field of View", &cameraSettings.VerticalFieldOfView, CameraMinVerticalFieldOfView, CameraMaxVerticalFieldOfView, "%.1f°", ImGuiSliderFlags_AlwaysClamp)) {
 						m_cameraController.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), m_cameraController.GetAspectRatio());
-
-						isChanged = true;
 					}
 
 					ImGui::TreePop();
@@ -1518,11 +1504,15 @@ private:
 				if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
+					auto isChanged = false;
+
 					isChanged |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
 
 					isChanged |= ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, MaxTraceRecursionDepth, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+					if (isChanged) ResetTemporalAccumulation();
 
 					ImGui::TreePop();
 				}
@@ -1545,26 +1535,22 @@ private:
 									NRDSettings.IsEnabled = isEnabled;
 
 									ResetTemporalAccumulation();
-
-									isChanged = true;
 								}
 
 								ImGui::PopID();
 							}
 
-							isChanged |= isEnabled && ImGui::Checkbox("Validation Layer", &NRDSettings.IsValidationLayerEnabled);
+							if (isEnabled) {
+								ImGui::Checkbox("Validation Layer", &NRDSettings.IsValidationLayerEnabled);
 
-							isChanged |= isEnabled && ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+								ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							}
 
 							ImGui::TreePop();
 						}
 					}
 
-					if (!IsDLSSSuperResolutionEnabled() && ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled)) {
-						ResetTemporalAccumulation();
-
-						isChanged = true;
-					}
+					if (!IsDLSSSuperResolutionEnabled() && ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled)) ResetTemporalAccumulation();
 
 					{
 						const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureDLSS));
@@ -1572,7 +1558,7 @@ private:
 						if (ImGui::TreeNodeEx("NVIDIA DLSS", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& DLSSSettings = postProcessingSetttings.DLSS;
 
-							auto isSuperResolutionSettingChanged = false, isEnabled = IsDLSSEnabled();
+							auto isChanged = false, isEnabled = IsDLSSEnabled();
 
 							{
 								ImGui::PushID("Enable NVIDIA DLSS");
@@ -1580,7 +1566,7 @@ private:
 								if (ImGui::Checkbox("Enable", &isEnabled)) {
 									DLSSSettings.IsEnabled = isEnabled;
 
-									isChanged = isSuperResolutionSettingChanged = true;
+									isChanged = true;
 								}
 
 								ImGui::PopID();
@@ -1594,7 +1580,7 @@ private:
 										if (ImGui::Selectable(ToString(DLSSSuperResolutionMode), isSelected)) {
 											DLSSSettings.SuperResolutionMode = DLSSSuperResolutionMode;
 
-											isChanged = isSuperResolutionSettingChanged = true;
+											isChanged = true;
 										}
 
 										if (isSelected) ImGui::SetItemDefaultFocus();
@@ -1604,13 +1590,13 @@ private:
 								}
 							}
 
-							ImGui::TreePop();
-
-							if (isSuperResolutionSettingChanged) {
+							if (isChanged) {
 								SetDLSSOptimalSettings();
 
 								OnRenderSizeChanged();
 							}
+
+							ImGui::TreePop();
 						}
 					}
 
@@ -1625,16 +1611,12 @@ private:
 							{
 								ImGui::PushID("Enable NVIDIA Image Scaling");
 
-								if (ImGui::Checkbox("Enable", &isEnabled)) {
-									NISSettings.IsEnabled = isEnabled;
-
-									isChanged = true;
-								}
+								if (ImGui::Checkbox("Enable", &isEnabled)) NISSettings.IsEnabled = isEnabled;
 
 								ImGui::PopID();
 							}
 
-							isChanged |= isEnabled && ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							if (isEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 							ImGui::TreePop();
 						}
@@ -1646,15 +1628,15 @@ private:
 						{
 							ImGui::PushID("Enable Bloom");
 
-							isChanged |= ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
+							ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
 
 							ImGui::PopID();
 						}
 
 						if (bloomSettings.IsEnabled) {
-							isChanged |= ImGui::SliderFloat("Threshold", &bloomSettings.Threshold, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							ImGui::SliderFloat("Threshold", &bloomSettings.Threshold, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-							isChanged |= ImGui::SliderFloat("Blur size", &bloomSettings.BlurSize, 1, BloomMaxBlurSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							ImGui::SliderFloat("Blur size", &bloomSettings.BlurSize, 1, BloomMaxBlurSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 						}
 
 						ImGui::TreePop();
@@ -1664,34 +1646,26 @@ private:
 				}
 
 				ImGui::TreePop();
-
-				if (isChanged) ignore = g_graphicsSettings.Save();
 			}
 
 			if (ImGui::TreeNode("UI")) {
-				auto isChanged = false;
+				ImGui::Checkbox("Show on Startup", &g_UISettings.ShowOnStartup);
 
-				isChanged |= ImGui::Checkbox("Show on Startup", &g_UISettings.ShowOnStartup);
-
-				isChanged |= ImGui::SliderFloat("Window Opacity", &g_UISettings.WindowOpacity, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+				ImGui::SliderFloat("Window Opacity", &g_UISettings.WindowOpacity, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 				ImGui::TreePop();
-
-				if (isChanged) ignore = g_UISettings.Save();
 			}
 
 			if (ImGui::TreeNode("Controls")) {
-				auto isChanged = false;
-
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& cameraSettings = g_controlsSettings.Camera;
 
 					if (ImGui::TreeNodeEx("Speed", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& speedSettings = cameraSettings.Speed;
 
-						isChanged |= ImGui::SliderFloat("Movement", &speedSettings.Movement, 0.0f, CameraMaxMovementSpeed, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::SliderFloat("Movement", &speedSettings.Movement, 0.0f, CameraMaxMovementSpeed, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
-						isChanged |= ImGui::SliderFloat("Rotation", &speedSettings.Rotation, 0.0f, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::SliderFloat("Rotation", &speedSettings.Rotation, 0.0f, CameraMaxRotationSpeed, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 						ImGui::TreePop();
 					}
@@ -1700,8 +1674,6 @@ private:
 				}
 
 				ImGui::TreePop();
-
-				if (isChanged) ignore = g_controlsSettings.Save();
 			}
 		}
 

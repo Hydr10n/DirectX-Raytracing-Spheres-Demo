@@ -213,10 +213,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 							g_windowModeHelper->SetResolution(resolution);
 
-							if (g_graphicsSettings.Resolution != resolution) {
-								g_graphicsSettings.Resolution = resolution;
-								ignore = g_graphicsSettings.Save();
-							}
+							g_graphicsSettings.Resolution = resolution;
 						}
 
 						g_app->OnWindowSizeChanged();
@@ -265,7 +262,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					ThrowIfFailed(g_windowModeHelper->Apply());
 
 					g_graphicsSettings.WindowMode = g_windowModeHelper->GetMode();
-					ignore = g_graphicsSettings.Save();
 				}
 			}
 			[[fallthrough]];
