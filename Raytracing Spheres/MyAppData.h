@@ -82,6 +82,8 @@ class MyAppData {
 			}
 			catch (...) { return false; }
 		}
+
+		virtual void Check() = 0;
 	};
 
 public:
@@ -98,6 +100,8 @@ public:
 			bool IsVSyncEnabled = true;
 
 			struct Camera {
+				static constexpr float MinVerticalFieldOfView = 30, MaxVerticalFieldOfView = 120;
+
 				bool IsJitterEnabled = true;
 
 				float VerticalFieldOfView = 45;
@@ -106,6 +110,8 @@ public:
 			} Camera;
 
 			struct Raytracing {
+				static constexpr UINT MaxMaxTraceRecursionDepth = 32, MaxSamplesPerPixel = 16;
+
 				bool IsRussianRouletteEnabled = true;
 
 				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 1;
@@ -141,6 +147,8 @@ public:
 				} NIS;
 
 				struct Bloom {
+					static constexpr float MaxBlurSize = 5;
+
 					bool IsEnabled = true;
 
 					float Threshold = 0.5f, BlurSize = 5;
@@ -152,6 +160,28 @@ public:
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
+
+			void Check() override {
+				using namespace std;
+
+				Camera.VerticalFieldOfView = clamp(Camera.VerticalFieldOfView, Camera.MinVerticalFieldOfView, Camera.MaxVerticalFieldOfView);
+
+				{
+					Raytracing.MaxTraceRecursionDepth = clamp(Raytracing.MaxTraceRecursionDepth, 1u, Raytracing.MaxMaxTraceRecursionDepth);
+					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
+				}
+
+				{
+					PostProcessing.NRD.SplitScreen = clamp(PostProcessing.NRD.SplitScreen, 0.0f, 1.0f);
+
+					PostProcessing.NIS.Sharpness = clamp(PostProcessing.NIS.Sharpness, 0.0f, 1.0f);
+
+					{
+						PostProcessing.Bloom.Threshold = clamp(PostProcessing.Bloom.Threshold, 0.0f, 1.0f);
+						PostProcessing.Bloom.BlurSize = clamp(PostProcessing.Bloom.BlurSize, 1.0f, PostProcessing.Bloom.MaxBlurSize);
+					}
+				}
+			}
 		} Graphics;
 
 		inline static struct UI : Data<UI> {
@@ -162,6 +192,12 @@ public:
 			float WindowOpacity = 0.5f;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(UI, ShowOnStartup, WindowOpacity);
+
+			void Check() override {
+				using namespace std;
+
+				WindowOpacity = clamp(WindowOpacity, 0.0f, 1.0f);
+			}
 		} UI;
 
 		inline static struct Controls : Data<Controls> {
@@ -169,6 +205,8 @@ public:
 
 			struct Camera {
 				struct Speed {
+					static constexpr float MaxMovement = 100, MaxRotation = 2;
+
 					float Movement = 10, Rotation = 0.5f;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(Speed, Movement, Rotation);
@@ -178,14 +216,26 @@ public:
 			} Camera;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Controls, Camera);
+
+			void Check() override {
+				using namespace std;
+
+				Camera.Speed.Movement = clamp(Camera.Speed.Movement, 0.0f, Camera.Speed.MaxMovement);
+				Camera.Speed.Rotation = clamp(Camera.Speed.Rotation, 0.0f, Camera.Speed.MaxRotation);
+			}
 		} Controls;
 
 	private:
 		inline static const struct _ {
 			_() {
 				std::ignore = Graphics.Load();
+				Graphics.Check();
+
 				std::ignore = UI.Load();
+				UI.Check();
+
 				std::ignore = Controls.Load();
+				Controls.Check();
 			}
 
 			~_() {

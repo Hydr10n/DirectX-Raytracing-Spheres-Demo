@@ -78,7 +78,8 @@ public:
 		return true;
 	}
 
-	bool SetMethodSettings(Method method, const void* methodSettings) { return m_NRD.SetMethodSettings(method, methodSettings); }
+	template <typename T>
+	bool SetMethodSettings(Method method, const T& methodSettings) { return m_NRD.SetMethodSettings(method, &methodSettings); }
 
 	void Denoise(uint32_t consecutiveFrameIndex, const CommonSettings& commonSettings) {
 		m_NRD.Denoise(consecutiveFrameIndex, *m_commandBuffer, commonSettings, m_userPool, true);

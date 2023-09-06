@@ -2,10 +2,7 @@
 
 #include "Math.hlsli"
 
-Texture2D<float3> g_motionVectors3D : register(t0);
-
 RWTexture2D<float> g_depth : register(u0);
-RWTexture2D<float2> g_motionVectors2D : register(u1);
 
 cbuffer _ : register(b0) { uint2 g_renderSize; }
 
@@ -22,9 +19,7 @@ cbuffer Data : register(b1) {
 }
 
 #define ROOT_SIGNATURE \
-	"DescriptorTable(SRV(t0))," \
 	"DescriptorTable(UAV(u0))," \
-	"DescriptorTable(UAV(u1))," \
 	"RootConstants(num32BitConstants=2, b0)," \
 	"CBV(b1)"
 
@@ -37,6 +32,4 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	const float3 position = Math::CalculateWorldPosition(NDC, g_depth[pixelCoordinate], g_cameraPosition, g_cameraRightDirection, g_cameraUpDirection, g_cameraForwardDirection);
 	const float4 projection = STL::Geometry::ProjectiveTransform(g_cameraWorldToProjection, position);
 	g_depth[pixelCoordinate] = projection.z / projection.w;
-
-	g_motionVectors2D[pixelCoordinate] = g_motionVectors3D[pixelCoordinate].xy;
 }

@@ -20,7 +20,7 @@ SamplerState gLinearSampler : register( s0 );
 
 Texture2D<float3> gIn_HistoryOutput : register( t0 );
 Texture2D<float4> gIn_CurrentOutput : register( t1 );
-Texture2D<float3> gIn_MotionVectors3D : register( t2 );
+Texture2D<float3> gIn_MotionVectors : register( t2 );
 
 RWTexture2D<float3> gOut_FinalOutput : register( u0 );
 
@@ -180,7 +180,7 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
     float2 offset = float2( offseti ) * invRectSize;
     float2 pixelUv = Math::CalculateUV( pixelPos, gRectSize ), NDC = Math::CalculateNDC( pixelUv + offset );
     float3 Xnearest = Math::CalculateWorldPosition( NDC, viewZnearest, gCameraPosition, gCameraRightDirection, gCameraUpDirection, gCameraForwardDirection );
-    float3 mvNearest = gIn_MotionVectors3D[ pixelPos + offseti ] * invRectSize.xyy;
+    float3 mvNearest = gIn_MotionVectors[ pixelPos + offseti ] * invRectSize.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gCameraWorldToClipPrev, mvNearest, STL_SCREEN_MOTION );
     pixelUvPrev -= offset;
 

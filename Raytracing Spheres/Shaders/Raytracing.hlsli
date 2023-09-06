@@ -30,11 +30,11 @@ struct GlobalResourceDescriptorHeapIndices {
 		InEnvironmentLightCubeMap, InEnvironmentCubeMap,
 		Output,
 		OutDepth,
-		OutMotionVectors3D,
+		OutMotionVectors,
 		OutBaseColorMetalness,
+		OutEmissiveColor,
 		OutNormalRoughness,
 		OutNoisyDiffuse, OutNoisySpecular;
-	uint _;
 };
 ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b1);
 
@@ -82,8 +82,9 @@ static const TextureCube<float3> g_environmentCubeMap = ResourceDescriptorHeap[g
 
 static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
 static const RWTexture2D<float> g_depth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutDepth];
-static const RWTexture2D<float3> g_motionVectors3D = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutMotionVectors3D];
+static const RWTexture2D<float3> g_motionVectors = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutMotionVectors];
 static const RWTexture2D<float4> g_baseColorMetalness = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutBaseColorMetalness];
+static const RWTexture2D<float3> g_emissiveColor = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutEmissiveColor];
 static const RWTexture2D<float4> g_normalRoughness = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNormalRoughness];
 static const RWTexture2D<float4> g_noisyDiffuse = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNoisyDiffuse];
 static const RWTexture2D<float4> g_noisySpecular = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNoisySpecular];
@@ -208,8 +209,8 @@ inline HitInfo GetHitInfo(uint objectIndex, uint primitiveIndex, float2 barycent
 	const float3 position = Vertex::Interpolate(positions, barycentrics), normal = normalize(Vertex::Interpolate(normals, barycentrics));
 
 	HitInfo hitInfo;
-	hitInfo.Vertex.Position = STL::Geometry::AffineTransform(objectToWorld, RaytracingHelpers::OffsetRay(position, isFrontFace ? normal : -normal));
-	hitInfo.ObjectVertexPosition = position;
+	hitInfo.ObjectVertexPosition = RaytracingHelpers::OffsetRay(position, isFrontFace ? normal : -normal);
+	hitInfo.Vertex.Position = STL::Geometry::AffineTransform(objectToWorld, hitInfo.ObjectVertexPosition);
 	hitInfo.Vertex.Normal = hitInfo.UnmappedVertexNormal = normalize(STL::Geometry::RotateVector((float3x3)objectToWorld, normal));
 	HitInfo::SetFaceNormal(worldRayDirection, hitInfo.UnmappedVertexNormal);
 	hitInfo.Vertex.TextureCoordinate = STL::Geometry::AffineTransform(g_objectData[objectIndex].TextureTransform, float3(Vertex::Interpolate(textureCoordinates, barycentrics), 0)).xy;

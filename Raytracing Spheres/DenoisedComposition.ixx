@@ -17,7 +17,7 @@ using namespace std;
 
 export namespace DirectX::PostProcess {
 	struct DenoisedComposition : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InDepth, InBaseColorMetalness, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, Output; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, Output; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
@@ -46,12 +46,13 @@ export namespace DirectX::PostProcess {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(0, Descriptors.InDepth);
 			commandList->SetComputeRootDescriptorTable(1, Descriptors.InBaseColorMetalness);
-			commandList->SetComputeRootDescriptorTable(2, Descriptors.InNormalRoughness);
-			commandList->SetComputeRootDescriptorTable(3, Descriptors.InDenoisedDiffuse);
-			commandList->SetComputeRootDescriptorTable(4, Descriptors.InDenoisedSpecular);
-			commandList->SetComputeRootDescriptorTable(5, Descriptors.Output);
-			commandList->SetComputeRoot32BitConstants(6, 2, &RenderSize, 0);
-			commandList->SetComputeRootConstantBufferView(7, m_data.GetResource()->GetGPUVirtualAddress());
+			commandList->SetComputeRootDescriptorTable(2, Descriptors.InEmissiveColor);
+			commandList->SetComputeRootDescriptorTable(3, Descriptors.InNormalRoughness);
+			commandList->SetComputeRootDescriptorTable(4, Descriptors.InDenoisedDiffuse);
+			commandList->SetComputeRootDescriptorTable(5, Descriptors.InDenoisedSpecular);
+			commandList->SetComputeRootDescriptorTable(6, Descriptors.Output);
+			commandList->SetComputeRoot32BitConstants(7, 2, &RenderSize, 0);
+			commandList->SetComputeRootConstantBufferView(8, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 			commandList->Dispatch((RenderSize.x + 16) / 16, (RenderSize.y + 16) / 16, 1);
 		}

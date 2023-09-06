@@ -76,15 +76,19 @@ int WINAPI wWinMain(
 		);
 		ThrowIfFailed(window != nullptr);
 
-		g_windowModeHelper = make_shared<WindowModeHelper>(window);
-
 		RECT clientRect;
 		if (g_graphicsSettings.Resolution >= *cbegin(g_displayResolutions) && g_graphicsSettings.Resolution <= *--cend(g_displayResolutions)) {
 			clientRect = { 0, 0, g_graphicsSettings.Resolution.cx, g_graphicsSettings.Resolution.cy };
 		}
-		else ThrowIfFailed(GetClientRect(window, &clientRect));
+		else {
+			ThrowIfFailed(GetClientRect(window, &clientRect));
 
-		g_windowModeHelper->SetResolution({ clientRect.right - clientRect.left, clientRect.bottom - clientRect.top });
+			g_graphicsSettings.Resolution = { clientRect.right - clientRect.left, clientRect.bottom - clientRect.top };
+		}
+
+		g_windowModeHelper = make_shared<WindowModeHelper>(window);
+
+		g_windowModeHelper->SetResolution(g_graphicsSettings.Resolution);
 
 		RECT displayRect;
 		ThrowIfFailed(GetDisplayRect(displayRect, window));

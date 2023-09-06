@@ -30,6 +30,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		motionVector = CalculateMotionVector(UV, depth, rayCastResult.HitInfo.Vertex.Position, rayCastResult.HitInfo.ObjectVertexPosition, rayCastResult.InstanceIndex, rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics);
 
 		g_baseColorMetalness[pixelCoordinate] = float4(rayCastResult.Material.BaseColor.rgb, rayCastResult.Material.Metallic);
+		g_emissiveColor[pixelCoordinate] = rayCastResult.Material.EmissiveColor.rgb;
 		g_normalRoughness[pixelCoordinate] = NRD_FrontEnd_PackNormalAndRoughness(rayCastResult.HitInfo.Vertex.Normal, rayCastResult.Material.Roughness);
 
 		ScatterResult scatterResult;
@@ -44,8 +45,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 			radiance += traceResult.Radiance;
 		}
 
-		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
-		radiance = rayCastResult.Material.EmissiveColor.rgb + (g_graphicsSettings.MaxTraceRecursionDepth > 1 ? radiance * scatterResult.Attenuation : rayCastResult.Material.BaseColor.rgb);
+		radiance = NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel * radiance * scatterResult.Attenuation : 0;
 
 		const bool isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 
@@ -58,10 +58,12 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
 		g_noisyDiffuse[pixelCoordinate] = isDiffuse ? radianceHitDistance : 0;
 		g_noisySpecular[pixelCoordinate] = isDiffuse ? 0 : radianceHitDistance;
+
+		radiance += rayCastResult.Material.EmissiveColor.rgb;
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
-	
+
 	g_output[pixelCoordinate] = float4(radiance, depth * NRD_FP16_VIEWZ_SCALE);
 	g_depth[pixelCoordinate] = depth;
-	g_motionVectors3D[pixelCoordinate] = motionVector;
+	g_motionVectors[pixelCoordinate] = motionVector;
 }

@@ -17,7 +17,7 @@ using namespace std;
 
 export namespace DirectX::PostProcess {
 	struct TemporalAntiAliasing : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InHistoryOutput, InCurrentOutput, InMotionVectors3D, OutFinalOutput; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InHistoryOutput, InCurrentOutput, InMotionVectors, OutFinalOutput; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
@@ -47,7 +47,7 @@ export namespace DirectX::PostProcess {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(0, Descriptors.InHistoryOutput);
 			commandList->SetComputeRootDescriptorTable(1, Descriptors.InCurrentOutput);
-			commandList->SetComputeRootDescriptorTable(2, Descriptors.InMotionVectors3D);
+			commandList->SetComputeRootDescriptorTable(2, Descriptors.InMotionVectors);
 			commandList->SetComputeRootDescriptorTable(3, Descriptors.OutFinalOutput);
 			commandList->SetComputeRoot32BitConstants(4, 2, &RenderSize, 0);
 			commandList->SetComputeRootConstantBufferView(5, m_data.GetResource()->GetGPUVirtualAddress());

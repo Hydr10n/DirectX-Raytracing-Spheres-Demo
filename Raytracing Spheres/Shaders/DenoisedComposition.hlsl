@@ -8,9 +8,10 @@
 
 Texture2D<float> g_depth : register(t0);
 Texture2D<float4> g_baseColorMetalness : register(t1);
-Texture2D<float4> g_normalRoughness : register(t2);
-Texture2D<float4> g_denoisedDiffuse : register(t3);
-Texture2D<float4> g_denoisedSpecular : register(t4);
+Texture2D<float3> g_emissiveColor : register(t2);
+Texture2D<float4> g_normalRoughness : register(t3);
+Texture2D<float4> g_denoisedDiffuse : register(t4);
+Texture2D<float4> g_denoisedSpecular : register(t5);
 
 RWTexture2D<float3> g_output : register(u0);
 
@@ -33,6 +34,7 @@ cbuffer Data : register(b1) {
 	"DescriptorTable(SRV(t2))," \
 	"DescriptorTable(SRV(t3))," \
 	"DescriptorTable(SRV(t4))," \
+	"DescriptorTable(SRV(t5))," \
 	"DescriptorTable(UAV(u0))," \
 	"RootConstants(num32BitConstants=2, b0)," \
 	"CBV(b1)"
@@ -55,5 +57,5 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(normalRoughness.xyz, V)), normalRoughness.w),
 		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelCoordinate]).rgb * lerp((1 - Fenvironment) * albedo, 1, 0.01f),
 		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelCoordinate]).rgb * lerp(Fenvironment, 1, 0.01f);
-	g_output[pixelCoordinate] = diffuse + specular;
+	g_output[pixelCoordinate] = diffuse + specular + g_emissiveColor[pixelCoordinate];
 }

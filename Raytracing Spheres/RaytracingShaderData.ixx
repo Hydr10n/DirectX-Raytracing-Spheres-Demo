@@ -19,11 +19,11 @@ export {
 			InEnvironmentLightCubeMap = ~0u, InEnvironmentCubeMap = ~0u,
 			Output = ~0u,
 			OutDepth = ~0u,
-			OutMotionVectors3D = ~0u,
+			OutMotionVectors = ~0u,
 			OutBaseColorMetalness = ~0u,
+			OutEmissiveColor = ~0u,
 			OutNormalRoughness = ~0u,
 			OutNoisyDiffuse = ~0u, OutNoisySpecular = ~0u;
-		UINT _;
 	};
 
 	struct GraphicsSettings {

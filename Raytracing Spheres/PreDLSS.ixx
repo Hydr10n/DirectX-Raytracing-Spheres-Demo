@@ -17,7 +17,7 @@ using namespace std;
 
 export namespace DirectX::PostProcess {
 	struct PreDLSS : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InMotionVectors3D, InOutDepth, OutMotionVectors2D; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InOutDepth; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
@@ -45,11 +45,9 @@ export namespace DirectX::PostProcess {
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, Descriptors.InMotionVectors3D);
-			commandList->SetComputeRootDescriptorTable(1, Descriptors.InOutDepth);
-			commandList->SetComputeRootDescriptorTable(2, Descriptors.OutMotionVectors2D);
-			commandList->SetComputeRoot32BitConstants(3, 2, &RenderSize, 0);
-			commandList->SetComputeRootConstantBufferView(4, m_data.GetResource()->GetGPUVirtualAddress());
+			commandList->SetComputeRootDescriptorTable(0, Descriptors.InOutDepth);
+			commandList->SetComputeRoot32BitConstants(1, 2, &RenderSize, 0);
+			commandList->SetComputeRootConstantBufferView(2, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 			commandList->Dispatch((RenderSize.x + 16) / 16, (RenderSize.y + 16) / 16, 1);
 		}
