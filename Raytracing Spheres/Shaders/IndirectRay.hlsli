@@ -12,7 +12,7 @@ struct IndirectRay {
 		TraceResult traceResult;
 		traceResult.HitDistance = 1.#INFf;
 
-		float3 emissiveColor = 0, incidentColor = 0, attenuation = 1;
+		float3 emissiveColor = 0, incidentColor = 0, throughput = 1;
 
 		RayDesc rayDesc;
 		rayDesc.Origin = worldRayOrigin;
@@ -25,15 +25,19 @@ struct IndirectRay {
 			if (CastRay(rayDesc, rayCastResult)) {
 				const ScatterResult scatterResult = rayCastResult.Material.Scatter(rayCastResult.HitInfo, rayDesc.Direction);
 
-				emissiveColor += attenuation * rayCastResult.Material.EmissiveColor.rgb;
-				attenuation *= scatterResult.Attenuation;
+				emissiveColor += throughput * rayCastResult.Material.EmissiveColor.rgb;
+				throughput *= scatterResult.Throughput;
 
 				if (depth == 1) traceResult.HitDistance = rayCastResult.HitDistance;
-				else if (g_graphicsSettings.IsRussianRouletteEnabled && depth > 3) {
-					const float probability = max(attenuation.r, max(attenuation.g, attenuation.b));
-					if (STL::Rng::Hash::GetFloat() >= probability) break;
-					attenuation /= probability;
+
+				if (g_graphicsSettings.IsRussianRouletteEnabled) {
+					if (depth > 3) {
+						const float probability = max(throughput.r, max(throughput.g, throughput.b));
+						if (STL::Rng::Hash::GetFloat() >= probability) break;
+						throughput /= probability;
+					}
 				}
+				else if (STL::Color::Luminance(throughput) < 1e-3f) break;
 
 				rayDesc.Origin = rayCastResult.HitInfo.Vertex.Position;
 				rayDesc.Direction = scatterResult.Direction;
@@ -44,7 +48,7 @@ struct IndirectRay {
 			}
 		}
 
-		traceResult.Radiance = emissiveColor + incidentColor * attenuation;
+		traceResult.Radiance = emissiveColor + incidentColor * throughput;
 
 		return traceResult;
 	}

@@ -11,24 +11,28 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 4
-#define NRD_DESCS_VERSION_MINOR 0
+#define NRD_DESCS_VERSION_MINOR 2
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
 namespace nrd
 {
-    struct Denoiser;
+    typedef uint32_t Identifier;
+
+    struct Instance;
 
     enum class Result : uint32_t
     {
         SUCCESS,
         FAILURE,
         INVALID_ARGUMENT,
+        UNSUPPORTED,
+        NON_UNIQUE_IDENTIFIER,
 
         MAX_NUM
     };
 
-    enum class Method : uint32_t
+    enum class Denoiser : uint32_t
     {
         // =============================================================================================================================
         // REBLUR
@@ -98,16 +102,34 @@ namespace nrd
         // =============================================================================================================================
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
         RELAX_DIFFUSE,
 
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_SH0, IN_DIFF_SH1
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
+        // OUTPUTS - OUT_DIFF_SH0, OUT_DIFF_SH1
+        RELAX_DIFFUSE_SH,
+
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_RADIANCE_HITDIST
+        // OPTIONAL INPUTS - IN_SPEC_CONFIDENCE
         // OUTPUTS - OUT_SPEC_RADIANCE_HITDIST
         RELAX_SPECULAR,
 
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_SH0, IN_SPEC_SH1
+        // OPTIONAL INPUTS - IN_SPEC_CONFIDENCE
+        // OUTPUTS - OUT_SPEC_SH0, OUT_SPEC_SH1
+        RELAX_SPECULAR_SH,
+
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         RELAX_DIFFUSE_SPECULAR,
+
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_SH0, IN_DIFF_SH1, IN_SPEC_SH0, IN_SPEC_SH1
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // OUTPUTS - OUT_DIFF_SH0, OUT_DIFF_SH1, OUT_SPEC_SH0, OUT_SPEC_SH1
+        RELAX_DIFFUSE_SPECULAR_SH,
 
         // =============================================================================================================================
         // REFERENCE
@@ -169,6 +191,7 @@ namespace nrd
 
         // Noisy SH data (2x RGBA16f+)
         //      REBLUR: use "REBLUR_FrontEnd_PackSh" for encoding
+        //      RELAX: use "RELAX_FrontEnd_PackSh" for encoding
         IN_DIFF_SH0,
         IN_DIFF_SH1,
         IN_SPEC_SH0,
@@ -205,6 +228,7 @@ namespace nrd
         //=============================================================================================================================
 
         // IMPORTANT: These textures can be potentially used as history buffers!
+        // IMPORTANT: Most of denoisers do not write into output pixels outside of "CommonSettings::denoisingRange"!
 
         // Denoised radiance and hit distance
         //      REBLUR: use "REBLUR_BackEnd_UnpackRadianceAndNormHitDist" for decoding (RGBA16f+)
@@ -214,6 +238,7 @@ namespace nrd
 
         // Denoised SH data
         //      REBLUR: use "REBLUR_BackEnd_UnpackSh" for decoding (2x RGBA16f+)
+        //      RELAX: use "RELAX_BackEnd_UnpackSh" for decoding (2x RGBA16f+)
         OUT_DIFF_SH0,
         OUT_DIFF_SH1,
         OUT_SPEC_SH0,
@@ -241,7 +266,7 @@ namespace nrd
         OUT_DELTA_MV,
 
         // (Optional) Debug output (RGBA8+), .w = transparency
-        // Written to if "DenoiserCreationDesc::allowValidation = true" and "CommonSettings::enableValidation = true"
+        // Used if "CommonSettings::enableValidation = true"
         OUT_VALIDATION,
 
         //=============================================================================================================================
@@ -389,8 +414,8 @@ namespace nrd
     struct LibraryDesc
     {
         SPIRVBindingOffsets spirvBindingOffsets;
-        const Method* supportedMethods;
-        uint32_t supportedMethodsNum;
+        const Denoiser* supportedDenoisers;
+        uint32_t supportedDenoisersNum;
         uint8_t versionMajor;
         uint8_t versionMinor;
         uint8_t versionBuild;
@@ -398,18 +423,19 @@ namespace nrd
         RoughnessEncoding roughnessEncoding;
     };
 
-    struct MethodDesc
+    struct DenoiserDesc
     {
-        Method method;
-        uint16_t fullResolutionWidth;
-        uint16_t fullResolutionHeight;
+        Identifier identifier;
+        Denoiser denoiser;
+        uint16_t renderWidth;
+        uint16_t renderHeight;
     };
 
-    struct DenoiserCreationDesc
+    struct InstanceCreationDesc
     {
         MemoryAllocatorInterface memoryAllocatorInterface;
-        const MethodDesc* requestedMethods;
-        uint32_t requestedMethodsNum;
+        const DenoiserDesc* denoisers;
+        uint32_t denoisersNum;
     };
 
     struct TextureDesc
@@ -463,7 +489,7 @@ namespace nrd
         uint32_t storageTexturesMaxNum;
     };
 
-    struct DenoiserDesc
+    struct InstanceDesc
     {
         // Constant buffer (shared)
         uint32_t constantBufferMaxDataSize;

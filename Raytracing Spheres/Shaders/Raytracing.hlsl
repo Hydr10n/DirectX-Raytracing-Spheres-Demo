@@ -36,7 +36,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		ScatterResult scatterResult;
 		float hitDistance;
 		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++) {
-			const ScatterResult scatterResultTemp = rayCastResult.Material.Scatter(rayCastResult.HitInfo, rayDesc.Direction);
+			const ScatterResult scatterResultTemp = rayCastResult.Material.Scatter(rayCastResult.HitInfo, rayDesc.Direction, STL::Sequence::Bayer4x4(pixelCoordinate, g_graphicsSettings.FrameIndex) + STL::Rng::Hash::GetFloat() / 16);
 			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(rayCastResult.HitInfo.Vertex.Position, scatterResultTemp.Direction);
 			if (!i) {
 				scatterResult = scatterResultTemp;
@@ -45,7 +45,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 			radiance += traceResult.Radiance;
 		}
 
-		radiance = NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel * radiance * scatterResult.Attenuation : 0;
+		radiance = NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel * radiance * scatterResult.Throughput : 0;
 
 		const bool isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 

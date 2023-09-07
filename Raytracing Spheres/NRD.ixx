@@ -21,16 +21,14 @@ public:
 	NRD(
 		ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, ID3D12GraphicsCommandList* pCommandList,
 		uint32_t backBufferCount,
-		span<const Method> methods, SIZE outputSize
+		span<const DenoiserDesc> denoiserDescs
 	) : m_NRD(backBufferCount) {
 		if (CreateDeviceFromD3D12Device(DeviceCreationD3D12Desc{ .d3d12Device = pDevice, .d3d12GraphicsQueue = pCommandQueue }, m_device) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::CoreInterface), static_cast<CoreInterface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::HelperInterface), static_cast<HelperInterface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& GetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
 			&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList }, m_commandBuffer) == nri::Result::SUCCESS) {
-			vector<MethodDesc> methodDescs;
-			for (const auto& method : methods) methodDescs.emplace_back(method, static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy));
-			const DenoiserCreationDesc denoiserCreationDesc{ .requestedMethods = data(methodDescs), .requestedMethodsNum = static_cast<uint32_t>(size(methodDescs)) };
+			const InstanceCreationDesc denoiserCreationDesc{ .denoisers = data(denoiserDescs), .denoisersNum = static_cast<uint32_t>(size(denoiserDescs)) };
 			m_isAvailable = m_NRD.Initialize(denoiserCreationDesc, *m_device, m_NRI, m_NRI);
 			if (m_isAvailable) m_textureTransitionBarrierDescs.resize(NrdUserPool().max_size());
 		}
@@ -49,6 +47,8 @@ public:
 	}
 
 	bool IsAvailable() const { return m_isAvailable; }
+
+	void NewFrame(uint32_t frameIndex) { m_NRD.NewFrame(frameIndex); }
 
 	bool SetResource(ResourceType type, ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
 		if (!m_isAvailable || pResource == nullptr) return false;
@@ -78,11 +78,13 @@ public:
 		return true;
 	}
 
-	template <typename T>
-	bool SetMethodSettings(Method method, const T& methodSettings) { return m_NRD.SetMethodSettings(method, &methodSettings); }
+	bool SetCommonSettings(const CommonSettings& commonSettings) { return m_NRD.SetCommonSettings(commonSettings); }
 
-	void Denoise(uint32_t consecutiveFrameIndex, const CommonSettings& commonSettings) {
-		m_NRD.Denoise(consecutiveFrameIndex, *m_commandBuffer, commonSettings, m_userPool, true);
+	template <typename T>
+	bool SetDenoiserSettings(Identifier denoiser, const T& denoiserSettings) { return m_NRD.SetDenoiserSettings(denoiser, &denoiserSettings); }
+
+	void Denoise(span<const Identifier> denoisers) {
+		m_NRD.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool, true);
 
 		vector<TextureTransitionBarrierDesc> textureTransitionBarrierDescs;
 		for (auto& TextureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {

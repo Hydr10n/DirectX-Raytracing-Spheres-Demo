@@ -313,7 +313,7 @@ private:
 	unique_ptr<Streamline> m_streamline;
 
 	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
-	ReblurSettings m_NRDReblurSettings{ .enableAntiFirefly = true };
+	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
@@ -412,7 +412,11 @@ private:
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::Depth, ResourceDescriptorHeapIndex::InDepth, ResourceDescriptorHeapIndex::OutDepth, ~0u);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
 
-			if (m_NRD = make_unique<NRD>(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(), m_deviceResources->GetBackBufferCount(), initializer_list{ Method::REBLUR_DIFFUSE_SPECULAR }, outputSize);
+			if (m_NRD = make_unique<NRD>(
+				device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(),
+				m_deviceResources->GetBackBufferCount(),
+				initializer_list<DenoiserDesc>{ { 0, Denoiser::REBLUR_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) } }
+			);
 				m_NRD->IsAvailable()) {
 				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
 				CreateTexture1(DXGI_FORMAT_R11G11B10_FLOAT, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
@@ -613,7 +617,7 @@ private:
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		{
-			slSetD3DDevice(device);
+			ignore = slSetD3DDevice(device);
 
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
@@ -905,7 +909,7 @@ private:
 		commandList->SetComputeRoot32BitConstants(1, 2, &m_renderSize, 0);
 		commandList->SetComputeRootConstantBufferView(2, m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetResource()->GetGPUVirtualAddress());
 		commandList->SetPipelineState(m_pipelineState.Get());
-		commandList->Dispatch((m_renderSize.x + 16) / 16, (m_renderSize.y + 16) / 16, 1);
+		commandList->Dispatch((m_renderSize.x + 15) / 16, (m_renderSize.y + 15) / 16, 1);
 	}
 
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& renderTexture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
@@ -1043,6 +1047,8 @@ private:
 			& denoisedSpecular = *m_renderTextures.at(RenderTextureNames::DenoisedSpecular);
 
 		{
+			m_NRD->NewFrame(m_stepTimer.GetFrameCount() - 1);
+
 			const auto SetResource = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->SetResource(resourceType, texture.GetResource(), texture.GetCurrentState()); };
 			SetResource(nrd::ResourceType::IN_VIEWZ, depth);
 			SetResource(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors));
@@ -1062,16 +1068,17 @@ private:
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter;
 
 			const auto outputSize = m_deviceResources->GetOutputSize();
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScalePrev) = reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
 			const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
 			m_NRDCommonSettings.splitScreen = NRDSettings.SplitScreen;
 			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationLayerEnabled;
 
-			m_NRD->SetMethodSettings(Method::REBLUR_DIFFUSE_SPECULAR, m_NRDReblurSettings);
+			ignore = m_NRD->SetCommonSettings(m_NRDCommonSettings);
+			ignore = m_NRD->SetDenoiserSettings(0, m_NRDReblurSettings);
 
-			m_NRD->Denoise(m_stepTimer.GetFrameCount() - 1, m_NRDCommonSettings);
+			m_NRD->Denoise(initializer_list<Identifier>{ 0 });
 
 			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
 		}

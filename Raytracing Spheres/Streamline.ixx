@@ -43,12 +43,10 @@ export {
 
 		template <typename T>
 		auto SetConstants(const T& constants) const {
-			Result ret;
-			if constexpr (is_same_v<T, Constants>) ret = slSetConstants(constants, *m_currentFrame, m_viewport);
-			else if constexpr (is_same_v<T, DLSSOptions>) ret = slDLSSSetOptions(m_viewport, constants);
-			else if constexpr (is_same_v<T, NISOptions>) ret = slNISSetOptions(m_viewport, constants);
-			else throw;
-			return ret;
+			if constexpr (is_same_v<T, Constants>) return slSetConstants(constants, *m_currentFrame, m_viewport);
+			if constexpr (is_same_v<T, DLSSOptions>) return slDLSSSetOptions(m_viewport, constants);
+			if constexpr (is_same_v<T, NISOptions>) return slNISSetOptions(m_viewport, constants);
+			throw;
 		}
 
 		auto EvaluateFeature(Feature feature, span<const ResourceTag> resourceTags = {}) const {

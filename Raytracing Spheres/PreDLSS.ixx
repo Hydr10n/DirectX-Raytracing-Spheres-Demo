@@ -49,7 +49,7 @@ export namespace DirectX::PostProcess {
 			commandList->SetComputeRoot32BitConstants(1, 2, &RenderSize, 0);
 			commandList->SetComputeRootConstantBufferView(2, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
-			commandList->Dispatch((RenderSize.x + 16) / 16, (RenderSize.y + 16) / 16, 1);
+			commandList->Dispatch((RenderSize.x + 15) / 16, (RenderSize.y + 15) / 16, 1);
 		}
 
 	private:
