@@ -2,45 +2,43 @@
 
 #include "Raytracing.hlsli"
 
+#include "RaytracingHelpers.hlsli"
+
 struct IndirectRay {
 	struct TraceResult {
 		float3 Radiance;
 		float HitDistance;
 	};
 
-	static TraceResult Trace(float3 worldRayOrigin, float3 worldRayDirection) {
+	static TraceResult Trace(HitInfo hitInfo, float3 worldRayDirection) {
 		TraceResult traceResult;
 		traceResult.HitDistance = 1.#INFf;
 
 		float3 emissiveColor = 0, incidentColor = 0, throughput = 1;
 
-		RayDesc rayDesc;
-		rayDesc.Origin = worldRayOrigin;
-		rayDesc.Direction = worldRayDirection;
-		rayDesc.TMin = 1e-4f;
-		rayDesc.TMax = 1.#INFf;
+		ScatterResult scatterResult;
+		scatterResult.Direction = worldRayDirection;
 
-		for (uint depth = 1; depth < g_graphicsSettings.MaxTraceRecursionDepth; depth++) {
-			RayCastResult rayCastResult;
-			if (CastRay(rayDesc, rayCastResult)) {
-				const ScatterResult scatterResult = rayCastResult.Material.Scatter(rayCastResult.HitInfo, rayDesc.Direction);
+		for (uint bounce = 0; bounce < g_graphicsSettings.MaxNumberOfBounces; bounce++) {
+			const RayDesc rayDesc = { RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal * STL::Math::Sign(dot(scatterResult.Direction, hitInfo.Normal))), 0,scatterResult.Direction, 1.#INFf };
+			if (CastRay(rayDesc, hitInfo)) {
+				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 
-				emissiveColor += throughput * rayCastResult.Material.EmissiveColor.rgb;
+				scatterResult = material.Scatter(hitInfo, rayDesc.Direction);
+
+				emissiveColor += throughput * material.EmissiveColor.rgb;
 				throughput *= scatterResult.Throughput;
 
-				if (depth == 1) traceResult.HitDistance = rayCastResult.HitDistance;
+				if (!bounce) traceResult.HitDistance = hitInfo.Distance;
 
 				if (g_graphicsSettings.IsRussianRouletteEnabled) {
-					if (depth > 3) {
+					if (bounce > 2) {
 						const float probability = max(throughput.r, max(throughput.g, throughput.b));
 						if (STL::Rng::Hash::GetFloat() >= probability) break;
 						throughput /= probability;
 					}
 				}
 				else if (STL::Color::Luminance(throughput) < 1e-3f) break;
-
-				rayDesc.Origin = rayCastResult.HitInfo.Vertex.Position;
-				rayDesc.Direction = scatterResult.Direction;
 			}
 			else {
 				incidentColor = GetEnvironmentLightColor(rayDesc.Direction);

@@ -879,7 +879,7 @@ private:
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 		m_GPUBuffers.GraphicsSettings->GetData() = {
 			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-			.MaxTraceRecursionDepth = raytracingSettings.MaxTraceRecursionDepth,
+			.MaxNumberOfBounces = raytracingSettings.MaxNumberOfBounces,
 			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
 			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
 			.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
@@ -1049,16 +1049,16 @@ private:
 		{
 			m_NRD->NewFrame(m_stepTimer.GetFrameCount() - 1);
 
-			const auto SetResource = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->SetResource(resourceType, texture.GetResource(), texture.GetCurrentState()); };
-			SetResource(nrd::ResourceType::IN_VIEWZ, depth);
-			SetResource(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors));
-			SetResource(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
-			SetResource(nrd::ResourceType::IN_NORMAL_ROUGHNESS, normalRoughness);
-			SetResource(nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, *m_renderTextures.at(RenderTextureNames::NoisyDiffuse));
-			SetResource(nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST, *m_renderTextures.at(RenderTextureNames::NoisySpecular));
-			SetResource(nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, denoisedDiffuse);
-			SetResource(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
-			SetResource(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
+			const auto Tag = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->Tag(resourceType, texture.GetResource(), texture.GetCurrentState()); };
+			Tag(nrd::ResourceType::IN_VIEWZ, depth);
+			Tag(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors));
+			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
+			Tag(nrd::ResourceType::IN_NORMAL_ROUGHNESS, normalRoughness);
+			Tag(nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, *m_renderTextures.at(RenderTextureNames::NoisyDiffuse));
+			Tag(nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST, *m_renderTextures.at(RenderTextureNames::NoisySpecular));
+			Tag(nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, denoisedDiffuse);
+			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
+			Tag(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
 
 			const auto& camera = m_GPUBuffers.Camera->GetData();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = camera.PreviousWorldToView;
@@ -1459,15 +1459,11 @@ private:
 				if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
-					auto isChanged = false;
+					ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
 
-					isChanged |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
+					ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 1, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
 
-					isChanged |= ImGui::SliderInt("Max Trace Recursion Depth", reinterpret_cast<int*>(&raytracingSettings.MaxTraceRecursionDepth), 1, raytracingSettings.MaxMaxTraceRecursionDepth, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-					if (isChanged) ResetTemporalAccumulation();
+					ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					ImGui::TreePop();
 				}

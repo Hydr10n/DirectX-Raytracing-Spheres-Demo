@@ -27,7 +27,7 @@ export {
 	};
 
 	struct GraphicsSettings {
-		UINT FrameIndex, MaxTraceRecursionDepth, SamplesPerPixel;
+		UINT FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 		BOOL IsRussianRouletteEnabled;
 		XMFLOAT4 NRDHitDistanceParameters;
 	};

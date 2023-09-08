@@ -110,13 +110,13 @@ public:
 			} Camera;
 
 			struct Raytracing {
-				static constexpr UINT MaxMaxTraceRecursionDepth = 32, MaxSamplesPerPixel = 16;
+				static constexpr UINT MaxMaxNumberOfBounces = 50, MaxSamplesPerPixel = 16;
 
 				bool IsRussianRouletteEnabled = true;
 
-				UINT MaxTraceRecursionDepth = 8, SamplesPerPixel = 1;
+				UINT MaxNumberOfBounces = 8, SamplesPerPixel = 1;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, MaxTraceRecursionDepth, SamplesPerPixel);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, MaxNumberOfBounces, SamplesPerPixel);
 			} Raytracing;
 
 			struct PostProcessing {
@@ -167,7 +167,7 @@ public:
 				Camera.VerticalFieldOfView = clamp(Camera.VerticalFieldOfView, Camera.MinVerticalFieldOfView, Camera.MaxVerticalFieldOfView);
 
 				{
-					Raytracing.MaxTraceRecursionDepth = clamp(Raytracing.MaxTraceRecursionDepth, 1u, Raytracing.MaxMaxTraceRecursionDepth);
+					Raytracing.MaxNumberOfBounces = clamp(Raytracing.MaxNumberOfBounces, 1u, Raytracing.MaxMaxNumberOfBounces);
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
 				}
 

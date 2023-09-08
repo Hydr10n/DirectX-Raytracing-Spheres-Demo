@@ -50,30 +50,40 @@ public:
 
 	void NewFrame(uint32_t frameIndex) { m_NRD.NewFrame(frameIndex); }
 
-	bool SetResource(ResourceType type, ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
+	bool Tag(ResourceType type, ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
 		if (!m_isAvailable || pResource == nullptr) return false;
 
-		TextureTransitionBarrierDescEx temp{};
-		if (m_NRI.CreateTextureD3D12(*m_device, { pResource }, const_cast<Texture*&>(temp.texture)) != nri::Result::SUCCESS) return false;
-
+		AccessBits accessBits;
+		TextureLayout textureLayout;
 		if (state & D3D12_RESOURCE_STATE_RENDER_TARGET) {
-			temp.initialAccess = AccessBits::COLOR_ATTACHMENT;
-			temp.initialLayout = TextureLayout::COLOR_ATTACHMENT;
+			accessBits = AccessBits::COLOR_ATTACHMENT;
+			textureLayout = TextureLayout::COLOR_ATTACHMENT;
 		}
-		else if (state & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) temp.initialAccess = AccessBits::SHADER_RESOURCE_STORAGE;
+		else if (state & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+			accessBits = AccessBits::SHADER_RESOURCE_STORAGE;
+			textureLayout = TextureLayout::GENERAL;
+		}
 		else if (state & D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) {
-			temp.initialAccess = AccessBits::SHADER_RESOURCE;
-			temp.initialLayout = TextureLayout::SHADER_RESOURCE;
+			accessBits = AccessBits::SHADER_RESOURCE;
+			textureLayout = TextureLayout::SHADER_RESOURCE;
 		}
 		else return false;
-		temp.nextAccess = temp.initialAccess;
-		temp.nextLayout = temp.initialLayout;
 
 		auto& textureTransitionBarrierDesc = m_textureTransitionBarrierDescs[static_cast<size_t>(type)];
+
+		textureTransitionBarrierDesc.initialAccess = textureTransitionBarrierDesc.nextAccess = accessBits;
+		textureTransitionBarrierDesc.initialLayout = textureTransitionBarrierDesc.nextLayout = textureLayout;
+
+		if (textureTransitionBarrierDesc.resource == pResource) return true;
+
+		Texture* texture;
+		if (m_NRI.CreateTextureD3D12(*m_device, { pResource }, texture) != nri::Result::SUCCESS) return false;
 		if (textureTransitionBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureTransitionBarrierDesc.texture));
-		textureTransitionBarrierDesc = temp;
+		textureTransitionBarrierDesc.texture = texture;
 
 		NrdIntegration_SetResource(m_userPool, type, { &textureTransitionBarrierDesc, ConvertDXGIFormatToNRI(pResource->GetDesc().Format) });
+
+		textureTransitionBarrierDesc.resource = pResource;
 
 		return true;
 	}
@@ -127,6 +137,7 @@ private:
 	struct NriInterface : CoreInterface, HelperInterface, WrapperD3D12Interface {} m_NRI{};
 
 	struct TextureTransitionBarrierDescEx : TextureTransitionBarrierDesc {
+		ID3D12Resource* resource;
 		AccessBits initialAccess;
 		TextureLayout initialLayout;
 	};

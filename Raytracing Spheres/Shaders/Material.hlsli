@@ -19,7 +19,9 @@ struct Material {
 	AlphaMode AlphaMode;
 	float AlphaThreshold, AmbientOcclusion;
 
-	float EstimateDiffuseProbability(float3 N, float3 V, float3 albedo, float3 Rf0) {
+	float EstimateDiffuseProbability(float3 N, float3 V) {
+		float3 albedo, Rf0;
+		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, abs(dot(N, V)), Roughness);
 		const float
 			diffuse = STL::Color::Luminance(albedo * (1 - Fenvironment)), specular = STL::Color::Luminance(Fenvironment),
@@ -41,7 +43,7 @@ struct Material {
 
 		const float2 random = STL::Rng::Hash::GetFloat2();
 
-		const float3 N = hitInfo.Vertex.Normal, V = -worldRayDirection;
+		const float3 N = hitInfo.Normal, V = -worldRayDirection;
 		const float3x3 basis = STL::Geometry::GetBasis(N);
 
 		float3 H, L;
@@ -68,8 +70,7 @@ struct Material {
 			return scatterResult;
 		}
 
-		const float diffuseProbability = EstimateDiffuseProbability(N, V, albedo, Rf0);
-
+		const float diffuseProbability = EstimateDiffuseProbability(N, V);
 		if (splitProbability < diffuseProbability) {
 			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(random));
 			H = normalize(V + L);
@@ -87,7 +88,7 @@ struct Material {
 
 		scatterResult.Direction = L;
 
-		if (dot(hitInfo.UnmappedVertexNormal, L) < 0) scatterResult.Throughput = 0;
+		if (dot(hitInfo.UnmappedNormal, L) < 0) scatterResult.Throughput = 0;
 
 		return scatterResult;
 	}

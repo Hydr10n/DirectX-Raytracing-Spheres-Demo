@@ -10,8 +10,6 @@
 
 #include "HitInfo.hlsli"
 
-#include "RaytracingHelpers.hlsli"
-
 #include "MeshHelpers.hlsli"
 
 SamplerState g_anisotropicSampler : register(s0);
@@ -39,7 +37,7 @@ struct GlobalResourceDescriptorHeapIndices {
 ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b1);
 
 struct GraphicsSettings {
-	uint FrameIndex, MaxTraceRecursionDepth, SamplesPerPixel;
+	uint FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 	bool IsRussianRouletteEnabled;
 	float4 NRDHitDistanceParameters;
 };
@@ -198,41 +196,7 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 	return material;
 }
 
-inline HitInfo GetHitInfo(uint objectIndex, uint primitiveIndex, float2 barycentrics, float3x4 objectToWorld, bool isFrontFace, float3 worldRayDirection) {
-	const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[objectIndex];
-	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Vertices];
-	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], primitiveIndex);
-	const float3
-		positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position },
-		normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
-	const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
-	const float3 position = Vertex::Interpolate(positions, barycentrics), normal = normalize(Vertex::Interpolate(normals, barycentrics));
-
-	HitInfo hitInfo;
-	hitInfo.ObjectVertexPosition = RaytracingHelpers::OffsetRay(position, isFrontFace ? normal : -normal);
-	hitInfo.Vertex.Position = STL::Geometry::AffineTransform(objectToWorld, hitInfo.ObjectVertexPosition);
-	hitInfo.Vertex.Normal = hitInfo.UnmappedVertexNormal = normalize(STL::Geometry::RotateVector((float3x3)objectToWorld, normal));
-	HitInfo::SetFaceNormal(worldRayDirection, hitInfo.UnmappedVertexNormal);
-	hitInfo.Vertex.TextureCoordinate = STL::Geometry::AffineTransform(g_objectData[objectIndex].TextureTransform, float3(Vertex::Interpolate(textureCoordinates, barycentrics), 0)).xy;
-	if (objectResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
-		const Texture2D<float3> texture = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Textures.NormalMap];
-		const float3 T = Math::CalculateTangent(positions, textureCoordinates);
-		const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Vertex.Normal, T)), hitInfo.Vertex.Normal);
-		hitInfo.Vertex.Normal = normalize(STL::Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.Vertex.TextureCoordinate, 0) * 2 - 1));
-	}
-	hitInfo.SetFaceNormal(worldRayDirection);
-	return hitInfo;
-}
-
-struct RayCastResult {
-	uint InstanceIndex, ObjectIndex, PrimitiveIndex;
-	float2 Barycentrics;
-	float HitDistance;
-	HitInfo HitInfo;
-	Material Material;
-};
-
-inline bool CastRay(RayDesc rayDesc, out RayCastResult rayCastResult) {
+inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
 	q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0u, rayDesc);
 
@@ -247,13 +211,32 @@ inline bool CastRay(RayDesc rayDesc, out RayCastResult rayCastResult) {
 
 	const bool ret = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (ret) {
-		rayCastResult.InstanceIndex = q.CommittedInstanceIndex();
-		rayCastResult.ObjectIndex = q.CommittedGeometryIndex() + q.CommittedInstanceID();
-		rayCastResult.PrimitiveIndex = q.CommittedPrimitiveIndex();
-		rayCastResult.Barycentrics = q.CommittedTriangleBarycentrics();
-		rayCastResult.HitDistance = q.CommittedRayT();
-		rayCastResult.HitInfo = GetHitInfo(rayCastResult.ObjectIndex, rayCastResult.PrimitiveIndex, rayCastResult.Barycentrics, q.CommittedObjectToWorld3x4(), q.CommittedTriangleFrontFace(), rayDesc.Direction);
-		rayCastResult.Material = GetMaterial(rayCastResult.ObjectIndex, rayCastResult.HitInfo.Vertex.TextureCoordinate);
+		hitInfo.Barycentrics = q.CommittedTriangleBarycentrics();
+		hitInfo.Distance = q.CommittedRayT();
+		hitInfo.InstanceIndex = q.CommittedInstanceIndex();
+		hitInfo.ObjectIndex = q.CommittedGeometryIndex() + q.CommittedInstanceID();
+		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
+
+		const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[hitInfo.ObjectIndex];
+		const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Vertices];
+		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
+		const float3
+			positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position },
+			normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
+		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
+		const float3 position = Vertex::Interpolate(positions, hitInfo.Barycentrics), normal = normalize(Vertex::Interpolate(normals, hitInfo.Barycentrics));
+
+		hitInfo.ObjectPosition = position;
+		hitInfo.Position = rayDesc.Origin + rayDesc.Direction * hitInfo.Distance;
+		hitInfo.Normal = hitInfo.UnmappedNormal = normalize(STL::Geometry::RotateVector((float3x3)q.CommittedObjectToWorld3x4(), normal));
+		hitInfo.TextureCoordinate = STL::Geometry::AffineTransform(g_objectData[hitInfo.ObjectIndex].TextureTransform, float3(Vertex::Interpolate(textureCoordinates, hitInfo.Barycentrics), 0)).xy;
+		if (objectResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
+			const Texture2D<float3> texture = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Textures.NormalMap];
+			const float3 T = Math::CalculateTangent(positions, textureCoordinates);
+			const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
+			hitInfo.Normal = normalize(STL::Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
+		}
+		hitInfo.SetFaceNormal(rayDesc.Direction);
 	}
 	return ret;
 }
