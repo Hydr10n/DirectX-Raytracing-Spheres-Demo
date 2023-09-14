@@ -164,24 +164,24 @@ export {
 
 						renderObject.Name = ObjectNames::HarmonicOscillator;
 
-						const auto RandomVector4 = [&](float min) {
-							const auto value = random.Float3();
+						const auto RandomFloat4 = [&](float min) {
+							const auto value = random.Float3(min);
 							return Vector4(value.x, value.y, value.z, 1);
 						};
 						if (const auto randomValue = random.Float();
 							randomValue < 0.3f) {
-							renderObject.Material = { .BaseColor = RandomVector4(0.1f) };
+							renderObject.Material = { .BaseColor = RandomFloat4(0.1f) };
 						}
 						else if (randomValue < 0.6f) {
 							renderObject.Material = {
-								.BaseColor = RandomVector4(0.1f),
+								.BaseColor = RandomFloat4(0.1f),
 								.Metallic = 1,
 								.Roughness = random.Float(0, 0.5f)
 							};
 						}
 						else if (randomValue < 0.8f) {
 							renderObject.Material = {
-								.BaseColor = RandomVector4(0.1f),
+								.BaseColor = RandomFloat4(0.1f),
 								.Roughness = random.Float(0, 0.5f),
 								.Opacity = 0,
 								.RefractiveIndex = 1.5f
@@ -189,8 +189,8 @@ export {
 						}
 						else {
 							renderObject.Material = {
-								.BaseColor = RandomVector4(0.1f),
-								.EmissiveColor = RandomVector4(0.2f),
+								.BaseColor = RandomFloat4(0.1f),
+								.EmissiveColor = random.Float3(0.2f),
 								.Metallic = random.Float(0.4f),
 								.Roughness = random.Float(0.3f)
 							};

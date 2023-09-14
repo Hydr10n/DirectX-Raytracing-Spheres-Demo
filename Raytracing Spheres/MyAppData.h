@@ -110,7 +110,7 @@ public:
 			} Camera;
 
 			struct Raytracing {
-				static constexpr UINT MaxMaxNumberOfBounces = 50, MaxSamplesPerPixel = 16;
+				static constexpr UINT MaxMaxNumberOfBounces = 64, MaxSamplesPerPixel = 16;
 
 				bool IsRussianRouletteEnabled = true;
 

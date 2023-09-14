@@ -22,11 +22,8 @@ export namespace DirectX::RaytracingHelpers {
 				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, flags);
 				ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&buffer)));
 			};
-
 			CreateBuffer(Scratch, scratchSize, D3D12_RESOURCE_STATE_COMMON);
-
 			CreateBuffer(Result, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-
 			if (instanceDescsSize) CreateBuffer(InstanceDescs, instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
 		}
 	};

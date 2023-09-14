@@ -123,6 +123,8 @@ struct App::Impl : IDeviceNotify {
 	}
 
 	~Impl() {
+		m_deviceResources->WaitForGpu();
+
 		{
 			if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
@@ -130,8 +132,6 @@ struct App::Impl : IDeviceNotify {
 
 			ImGui::DestroyContext();
 		}
-
-		m_deviceResources->WaitForGpu();
 	}
 
 	SIZE GetOutputSize() const noexcept { return m_deviceResources->GetOutputSize(); }

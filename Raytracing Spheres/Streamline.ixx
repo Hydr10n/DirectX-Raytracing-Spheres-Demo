@@ -104,16 +104,18 @@ export {
 			vectorNormalize(values.cameraFwd);
 			vectorCrossProduct(values.cameraUp, values.cameraFwd, values.cameraRight);
 			vectorNormalize(values.cameraUp);
-			float4x4 cameraViewToWorld = {
-				float4(values.cameraRight.x, values.cameraRight.y, values.cameraRight.z, 0.f),
-				float4(values.cameraUp.x,    values.cameraUp.y,    values.cameraUp.z,    0.f),
-				float4(values.cameraFwd.x,   values.cameraFwd.y,   values.cameraFwd.z,   0.f),
-				float4(values.cameraPos.x,   values.cameraPos.y,   values.cameraPos.z, 1.f)
+
+			const float4x4 cameraViewToWorld{
+				float4(values.cameraRight.x, values.cameraRight.y, values.cameraRight.z, 0),
+				float4(values.cameraUp.x, values.cameraUp.y, values.cameraUp.z, 0),
+				float4(values.cameraFwd.x, values.cameraFwd.y, values.cameraFwd.z, 0),
+				float4(values.cameraPos.x, values.cameraPos.y, values.cameraPos.z, 1)
 			};
-			matrixFullInvert(values.clipToCameraView, values.cameraViewToClip);
 
 			float4x4 cameraViewToPrevCameraView;
 			calcCameraToPrevCamera(cameraViewToPrevCameraView, cameraViewToWorld, cameraViewToWorldPrev);
+
+			matrixFullInvert(values.clipToCameraView, values.cameraViewToClip);
 
 			float4x4 clipToPrevCameraView;
 			matrixMul(clipToPrevCameraView, values.clipToCameraView, cameraViewToPrevCameraView);

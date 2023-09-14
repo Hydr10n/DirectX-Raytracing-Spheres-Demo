@@ -34,10 +34,10 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 
 		depth = dot(hitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
-		motionVector = CalculateMotionVector(UV, depth, hitInfo.Position, hitInfo.ObjectPosition, hitInfo.InstanceIndex, hitInfo.ObjectIndex, hitInfo.PrimitiveIndex, hitInfo.Barycentrics);
+		motionVector = CalculateMotionVector(UV, depth, hitInfo);
 		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
-		emissiveColor = material.EmissiveColor.rgb;
-		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.EstimateDiffuseProbability(hitInfo.Normal, V) != 0);
+		emissiveColor = material.EmissiveColor;
+		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.EstimateDiffuseProbability(hitInfo.Normal, V) == 0);
 	}
 
 	g_depth[pixelCoordinate] = depth;
@@ -47,28 +47,27 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	g_normalRoughness[pixelCoordinate] = normalRoughness;
 
 	float3 radiance = 0;
+	float4 noisyDiffuse = 0, noisySpecular = 0;
 
 	if (hit) {
 		const float NoV = abs(dot(hitInfo.Normal, V));
 
 		hitInfo.Position = RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal) + (V + hitInfo.Normal * STL::BRDF::Pow5(NoV)) * (3e-4f + depth * 5e-5f);
 
-		ScatterResult scatterResult;
-		float hitDistance;
+		bool isDiffuse = true;
+		float hitDistance = 1.#INFf;
 		const float bayer4x4 = STL::Sequence::Bayer4x4(pixelCoordinate, g_graphicsSettings.FrameIndex);
 		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++) {
-			const ScatterResult scatterResultTemp = material.Scatter(hitInfo, rayDesc.Direction, bayer4x4 + STL::Rng::Hash::GetFloat() / 16);
-			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(hitInfo, scatterResultTemp.Direction);
+			const ScatterResult scatterResult = material.Scatter(hitInfo, rayDesc.Direction, bayer4x4 + STL::Rng::Hash::GetFloat() / 16);
+			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(hitInfo, scatterResult.Direction);
 			if (!i) {
-				scatterResult = scatterResultTemp;
+				isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 				hitDistance = traceResult.HitDistance;
 			}
-			radiance += traceResult.Radiance * scatterResultTemp.Throughput;
+			radiance += traceResult.Radiance * scatterResult.Throughput;
 		}
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
-
-		const bool isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 
 		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, depth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : material.Roughness);
 
@@ -76,12 +75,14 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
 		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
-		g_noisyDiffuse[pixelCoordinate] = isDiffuse ? radianceHitDistance : 0;
-		g_noisySpecular[pixelCoordinate] = isDiffuse ? 0 : radianceHitDistance;
+		if (isDiffuse) noisyDiffuse = radianceHitDistance;
+		else noisySpecular = radianceHitDistance;
 
-		radiance += material.EmissiveColor.rgb;
+		radiance += material.EmissiveColor;
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
 	g_output[pixelCoordinate] = float4(radiance, depth * NRD_FP16_VIEWZ_SCALE);
+	g_noisyDiffuse[pixelCoordinate] = noisyDiffuse;
+	g_noisySpecular[pixelCoordinate] = noisySpecular;
 }

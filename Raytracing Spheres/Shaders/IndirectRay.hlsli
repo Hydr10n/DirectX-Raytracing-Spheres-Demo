@@ -19,20 +19,20 @@ struct IndirectRay {
 		ScatterResult scatterResult;
 		scatterResult.Direction = worldRayDirection;
 
-		for (uint bounce = 0; bounce < g_graphicsSettings.MaxNumberOfBounces; bounce++) {
+		for (uint bounce = 1; bounce <= g_graphicsSettings.MaxNumberOfBounces; bounce++) {
 			const RayDesc rayDesc = { RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal * STL::Math::Sign(dot(scatterResult.Direction, hitInfo.Normal))), 0,scatterResult.Direction, 1.#INFf };
 			if (CastRay(rayDesc, hitInfo)) {
 				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 
 				scatterResult = material.Scatter(hitInfo, rayDesc.Direction);
 
-				emissiveColor += throughput * material.EmissiveColor.rgb;
+				emissiveColor += throughput * material.EmissiveColor;
 				throughput *= scatterResult.Throughput;
 
-				if (!bounce) traceResult.HitDistance = hitInfo.Distance;
+				if (bounce == 1) traceResult.HitDistance = hitInfo.Distance;
 
 				if (g_graphicsSettings.IsRussianRouletteEnabled) {
-					if (bounce > 2) {
+					if (bounce > 3) {
 						const float probability = max(throughput.r, max(throughput.g, throughput.b));
 						if (STL::Rng::Hash::GetFloat() >= probability) break;
 						throughput /= probability;

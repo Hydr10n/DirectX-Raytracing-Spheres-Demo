@@ -148,7 +148,7 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 	else material.BaseColor = g_objectData[objectIndex].Material.BaseColor;
 
 	if ((index = objectResourceDescriptorHeapIndices.Textures.EmissiveColorMap) != ~0u) {
-		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
+		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
 		material.EmissiveColor = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
 	else material.EmissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
@@ -201,11 +201,14 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0u, rayDesc);
 
 	while (q.Proceed()) {
-		//TODO: Alpha Blending
 		const uint objectIndex = q.CandidateGeometryIndex() + q.CandidateInstanceID();
-		const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
-		if (g_objectData[objectIndex].Material.AlphaMode == AlphaMode::Opaque || GetOpacity(objectIndex, textureCoordinate) >= g_objectData[objectIndex].Material.AlphaThreshold) {
-			q.CommitNonOpaqueTriangleHit();
+		const AlphaMode alphaMode = g_objectData[objectIndex].Material.AlphaMode;
+		if (alphaMode == AlphaMode::Opaque) q.CommitNonOpaqueTriangleHit();
+		else {
+			//TODO: Alpha Blending
+			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
+			const float opacity = GetOpacity(objectIndex, textureCoordinate);
+			if (opacity >= g_objectData[objectIndex].Material.AlphaThreshold) q.CommitNonOpaqueTriangleHit();
 		}
 	}
 
@@ -241,19 +244,19 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	return ret;
 }
 
-inline float3 CalculateMotionVector(float2 UV, float depth, float3 worldVertexPosition, float3 objectVertexPosition, uint instanceIndex, uint objectIndex, uint primitiveIndex, float2 barycentrics) {
+inline float3 CalculateMotionVector(float2 UV, float depth, HitInfo hitInfo) {
 	float3 previousPosition;
-	if (g_sceneData.IsStatic || g_instanceData[instanceIndex].IsStatic) previousPosition = worldVertexPosition;
+	if (g_sceneData.IsStatic || g_instanceData[hitInfo.InstanceIndex].IsStatic) previousPosition = hitInfo.Position;
 	else {
-		previousPosition = objectVertexPosition;
-		if (g_objectResourceDescriptorHeapIndices[objectIndex].Mesh.MotionVectors != ~0u) {
-			const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[objectIndex];
+		previousPosition = hitInfo.ObjectPosition;
+		if (g_objectResourceDescriptorHeapIndices[hitInfo.ObjectIndex].Mesh.MotionVectors != ~0u) {
+			const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[hitInfo.ObjectIndex];
 			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.MotionVectors];
-			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], primitiveIndex);
+			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
 			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
-			previousPosition += Vertex::Interpolate(motionVectors, barycentrics);
+			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
 		}
-		previousPosition = STL::Geometry::AffineTransform(g_instanceData[instanceIndex].PreviousObjectToWorld, previousPosition);
+		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
 	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_renderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - depth);
 }

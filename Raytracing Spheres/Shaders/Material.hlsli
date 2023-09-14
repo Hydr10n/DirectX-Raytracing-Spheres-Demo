@@ -14,7 +14,8 @@ struct ScatterResult {
 enum class AlphaMode { Opaque, Blend, Mask };
 
 struct Material {
-	float4 BaseColor, EmissiveColor;
+	float4 BaseColor;
+	float3 EmissiveColor;
 	float Metallic, Roughness, Opacity, RefractiveIndex;
 	AlphaMode AlphaMode;
 	float AlphaThreshold, AmbientOcclusion;
