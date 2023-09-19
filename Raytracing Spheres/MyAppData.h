@@ -121,11 +121,11 @@ public:
 
 			struct PostProcessing {
 				struct NRD {
-					bool IsEnabled = true, IsValidationLayerEnabled{};
+					bool IsEnabled = true, IsValidationOverlayEnabled{};
 
 					float SplitScreen{};
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, IsEnabled, IsValidationLayerEnabled, SplitScreen);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, IsEnabled, IsValidationOverlayEnabled, SplitScreen);
 				} NRD;
 
 				bool IsTemporalAntiAliasingEnabled = true;

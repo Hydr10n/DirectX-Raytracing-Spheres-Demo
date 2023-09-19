@@ -279,6 +279,7 @@ private:
 			InDenoisedDiffuse, OutDenoisedDiffuse,
 			InDenoisedSpecular, OutDenoisedSpecular,
 			InValidation, OutValidation,
+			InExposure,
 			InBlur1, InBlur2,
 			InFont,
 			Reserve,
@@ -291,6 +292,7 @@ private:
 		enum {
 			Output,
 			FinalOutput,
+			Exposure,
 			Blur1, Blur2,
 			Count
 		};
@@ -320,11 +322,7 @@ private:
 	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
 
 	DLSSOptimalSettings m_DLSSOptimalSettings;
-	DLSSOptions m_DLSSOptions = [] {
-		DLSSOptions DLSSOptions;
-		DLSSOptions.colorBuffersHDR = Boolean::eFalse;
-		return DLSSOptions;
-	}();
+	DLSSOptions m_DLSSOptions;
 	unique_ptr<PreDLSS> m_preDLSS;
 
 	struct {
@@ -363,6 +361,7 @@ private:
 		MAKE_NAME(DenoisedDiffuse);
 		MAKE_NAME(DenoisedSpecular);
 		MAKE_NAME(Validation);
+		MAKE_NAME(Exposure);
 		MAKE_NAME(Blur1);
 		MAKE_NAME(Blur2);
 	};
@@ -411,6 +410,8 @@ private:
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalOutput, ResourceDescriptorHeapIndex::InFinalOutput, ResourceDescriptorHeapIndex::OutFinalOutput, RenderDescriptorHeapIndex::FinalOutput);
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::Depth, ResourceDescriptorHeapIndex::InDepth, ResourceDescriptorHeapIndex::OutDepth, ~0u);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
+			CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
+			CreateTexture1(DXGI_FORMAT_R10G10B10A2_UNORM, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(),
@@ -418,8 +419,6 @@ private:
 				initializer_list<DenoiserDesc>{ { 0, Denoiser::REBLUR_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) } }
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
-				CreateTexture1(DXGI_FORMAT_R11G11B10_FLOAT, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
 				CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisyDiffuse, ~0u, ResourceDescriptorHeapIndex::OutNoisyDiffuse);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisySpecular, ~0u, ResourceDescriptorHeapIndex::OutNoisySpecular);
@@ -427,8 +426,13 @@ private:
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedSpecular, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
 				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
 			}
+			else {
+				CreateTexture1(DXGI_FORMAT_R16G16B16A16_SNORM, RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
+			}
 
 			if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
+				CreateTexture(DXGI_FORMAT_R32_FLOAT, { 1, 1 }, RenderTextureNames::Exposure, ResourceDescriptorHeapIndex::InExposure, ~0u, RenderDescriptorHeapIndex::Exposure);
+
 				m_DLSSOptions.outputWidth = outputSize.cx;
 				m_DLSSOptions.outputHeight = outputSize.cy;
 				SetDLSSOptimalSettings();
@@ -596,14 +600,14 @@ private:
 	void CreateRootSignatures() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		ThrowIfFailed(device->CreateRootSignature(0, g_pRaytracing, size(g_pRaytracing), IID_PPV_ARGS(&m_rootSignature)));
+		ThrowIfFailed(device->CreateRootSignature(0, g_Raytracing, size(g_Raytracing), IID_PPV_ARGS(&m_rootSignature)));
 	}
 
 	void CreatePipelineStates() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		{
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_pRaytracing, size(g_pRaytracing));
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_Raytracing, size(g_Raytracing));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 		}
@@ -933,7 +937,7 @@ private:
 		switch (auto& mode = m_DLSSOptions.mode; g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode) {
 			case DLSSSuperResolutionMode::Auto:
 			{
-				const auto outputSize = m_deviceResources->GetOutputSize();
+				const auto outputSize = GetOutputSize();
 				if (const auto minValue = min(outputSize.cx, outputSize.cy);
 					minValue <= 720) mode = DLSSMode::eDLAA;
 				else if (minValue <= 1080) mode = DLSSMode::eMaxQuality;
@@ -964,7 +968,7 @@ private:
 	}
 
 	void OnRenderSizeChanged() {
-		const auto outputSize = m_deviceResources->GetOutputSize();
+		const auto outputSize = GetOutputSize();
 
 		m_renderSize = IsDLSSSuperResolutionEnabled() ? XMUINT2(m_DLSSOptimalSettings.optimalRenderWidth, m_DLSSOptimalSettings.optimalRenderHeight) : XMUINT2(outputSize.cx, outputSize.cy);
 
@@ -1010,7 +1014,7 @@ private:
 
 		ProcessToneMapping(*input);
 
-		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationLayerEnabled) ProcessAlphaBlending(*m_renderTextures.at(RenderTextureNames::Validation));
+		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationOverlayEnabled) ProcessAlphaBlending(*m_renderTextures.at(RenderTextureNames::Validation));
 	}
 
 	void PrepareStreamline() {
@@ -1046,6 +1050,8 @@ private:
 			& denoisedDiffuse = *m_renderTextures.at(RenderTextureNames::DenoisedDiffuse),
 			& denoisedSpecular = *m_renderTextures.at(RenderTextureNames::DenoisedSpecular);
 
+		const auto& camera = m_GPUBuffers.Camera->GetData();
+
 		{
 			m_NRD->NewFrame(m_stepTimer.GetFrameCount() - 1);
 
@@ -1060,20 +1066,19 @@ private:
 			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
 			Tag(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
 
-			const auto& camera = m_GPUBuffers.Camera->GetData();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = camera.PreviousWorldToView;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = camera.PreviousViewToProjection;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter;
 
-			const auto outputSize = m_deviceResources->GetOutputSize();
+			const auto outputSize = GetOutputSize();
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScalePrev) = reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
 			const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
 			m_NRDCommonSettings.splitScreen = NRDSettings.SplitScreen;
-			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationLayerEnabled;
+			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationOverlayEnabled;
 
 			ignore = m_NRD->SetCommonSettings(m_NRDCommonSettings);
 			ignore = m_NRD->SetDenoiserSettings(0, m_NRDReblurSettings);
@@ -1117,7 +1122,7 @@ private:
 				.CameraRightDirection = m_cameraController.GetRightDirection(),
 				.CameraUpDirection = m_cameraController.GetUpDirection(),
 				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-				.CameraPixelJitter = m_GPUBuffers.Camera->GetData().PixelJitter
+				.CameraPixelJitter = camera.PixelJitter
 			};
 
 			m_denoisedComposition->Process(commandList);
@@ -1200,10 +1205,15 @@ private:
 		}
 
 		{
+			auto& exposure = *m_renderTextures.at(RenderTextureNames::Exposure);
+			exposure.SetClearColor({ 1 });
+			exposure.Clear(commandList);
+
 			ResourceTagInfo resourceTagInfos[]{
 				CreateResourceTagInfo(kBufferTypeDepth, depth),
 				CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
 				CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Output)),
+				CreateResourceTagInfo(kBufferTypeExposure, exposure, false),
 				CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalOutput), false)
 			};
 			ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
@@ -1492,7 +1502,7 @@ private:
 							}
 
 							if (isEnabled) {
-								ImGui::Checkbox("Validation Layer", &NRDSettings.IsValidationLayerEnabled);
+								ImGui::Checkbox("Validation Layer", &NRDSettings.IsValidationOverlayEnabled);
 
 								ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 							}
