@@ -79,7 +79,7 @@ export {
 		struct {
 			path FilePath;
 			Transform Transform;
-		} EnvironmentLightCubeMap, EnvironmentCubeMap;
+		} EnvironmentLightTexture, EnvironmentTexture;
 
 		unordered_map<string, pair<vector<VertexPositionNormalTexture>, vector<UINT16>>> Meshes;
 
@@ -87,10 +87,7 @@ export {
 	};
 
 	struct Scene : SceneBase {
-		struct {
-			Texture Texture;
-			Transform Transform;
-		} EnvironmentLightCubeMap, EnvironmentCubeMap;
+		struct : Texture { Transform Transform; } EnvironmentLightTexture, EnvironmentTexture;
 
 		unordered_map<string, shared_ptr<Mesh>> Meshes;
 
@@ -107,14 +104,14 @@ export {
 			resourceUploadBatch.Begin();
 
 			{
-				if (!sceneDesc.EnvironmentLightCubeMap.FilePath.empty()) {
-					EnvironmentLightCubeMap.Texture.Load(ResolveResourcePath(sceneDesc.EnvironmentLightCubeMap.FilePath), pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
-					EnvironmentLightCubeMap.Transform = sceneDesc.EnvironmentLightCubeMap.Transform;
+				if (!sceneDesc.EnvironmentLightTexture.FilePath.empty()) {
+					EnvironmentLightTexture.Load(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+					EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
 				}
 
-				if (!sceneDesc.EnvironmentCubeMap.FilePath.empty()) {
-					EnvironmentCubeMap.Texture.Load(ResolveResourcePath(sceneDesc.EnvironmentCubeMap.FilePath), pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
-					EnvironmentCubeMap.Transform = sceneDesc.EnvironmentCubeMap.Transform;
+				if (!sceneDesc.EnvironmentTexture.FilePath.empty()) {
+					EnvironmentTexture.Load(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+					EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 				}
 			}
 

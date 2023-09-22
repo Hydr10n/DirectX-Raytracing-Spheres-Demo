@@ -14,6 +14,7 @@ module;
 export module Texture;
 
 import DirectX.DescriptorHeap;
+import TextureHelpers;
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
@@ -21,6 +22,7 @@ using namespace DX;
 using namespace Microsoft::WRL;
 using namespace std;
 using namespace std::filesystem;
+using namespace TextureHelpers;
 
 export {
 	enum class TextureType { Unknown, BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, TransmissionMap, OpacityMap, NormalMap, CubeMap };
@@ -34,9 +36,16 @@ export {
 
 		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
 			bool isCubeMap = false;
+			const auto extension = filePath.extension().c_str() + 1;
 			ThrowIfFailed(
-				!lstrcmpiW(filePath.extension().c_str(), L".dds") ?
+				!lstrcmpiW(extension, L"dds") ?
 				CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap) :
+				!lstrcmpW(extension, L"hdr") ?
+				LoadFromHDRFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource) :
+				!lstrcmpW(extension, L"exr") ?
+				LoadFromEXRFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource) :
+				!lstrcmpW(extension, L"tga") ?
+				LoadFromTGAFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource) :
 				CreateWICTextureFromFileEx(pDevice, resourceUploadBatch, filePath.c_str(), 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &Resource),
 				filePath.string()
 			);

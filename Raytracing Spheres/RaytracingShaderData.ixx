@@ -16,14 +16,15 @@ export {
 			InSceneData = ~0u,
 			InInstanceData = ~0u,
 			InObjectResourceDescriptorHeapIndices = ~0u, InObjectData = ~0u,
-			InEnvironmentLightCubeMap = ~0u, InEnvironmentCubeMap = ~0u,
+			InEnvironmentLightTexture = ~0u, InEnvironmentTexture = ~0u,
 			Output = ~0u,
-			OutDepth = ~0u,
+			OutLinearDepth = ~0u, OutNormalizedDepth = ~0u,
 			OutMotionVectors = ~0u,
 			OutBaseColorMetalness = ~0u,
 			OutEmissiveColor = ~0u,
 			OutNormalRoughness = ~0u,
 			OutNoisyDiffuse = ~0u, OutNoisySpecular = ~0u;
+		XMUINT3 _;
 	};
 
 	struct GraphicsSettings {
@@ -33,12 +34,12 @@ export {
 	};
 
 	struct SceneData {
-		BOOL IsStatic;
-		XMUINT3 _;
+		BOOL IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
+		BOOL _;
 		XMFLOAT4 EnvironmentLightColor;
-		XMFLOAT4X4 EnvironmentLightCubeMapTransform;
+		XMFLOAT4X4 EnvironmentLightTextureTransform;
 		XMFLOAT4 EnvironmentColor;
-		XMFLOAT4X4 EnvironmentCubeMapTransform;
+		XMFLOAT4X4 EnvironmentTextureTransform;
 	};
 
 	struct InstanceData {

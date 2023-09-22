@@ -17,7 +17,7 @@ using namespace std;
 
 export namespace DirectX::PostProcess {
 	struct DenoisedComposition : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, Output; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InLinearDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, Output; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
@@ -44,7 +44,7 @@ export namespace DirectX::PostProcess {
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, Descriptors.InDepth);
+			commandList->SetComputeRootDescriptorTable(0, Descriptors.InLinearDepth);
 			commandList->SetComputeRootDescriptorTable(1, Descriptors.InBaseColorMetalness);
 			commandList->SetComputeRootDescriptorTable(2, Descriptors.InEmissiveColor);
 			commandList->SetComputeRootDescriptorTable(3, Descriptors.InNormalRoughness);

@@ -132,11 +132,11 @@
     <ClCompile Include="DeviceResources.ixx">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="PreDLSS.ixx">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Streamline.ixx">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TextureHelpers.ixx">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -186,9 +186,6 @@
       <Filter>Shader Files</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\DenoisedComposition.hlsl">
-      <Filter>Shader Files</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\PreDLSS.hlsl">
       <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>

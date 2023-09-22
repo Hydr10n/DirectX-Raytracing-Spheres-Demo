@@ -1,7 +1,5 @@
 #pragma once
 
-#include "STL.hlsli"
-
 #include "Math.hlsli"
 
 #include "Camera.hlsli"
@@ -25,14 +23,15 @@ struct GlobalResourceDescriptorHeapIndices {
 		InSceneData,
 		InInstanceData,
 		InObjectResourceDescriptorHeapIndices, InObjectData,
-		InEnvironmentLightCubeMap, InEnvironmentCubeMap,
+		InEnvironmentLightTexture, InEnvironmentTexture,
 		Output,
-		OutDepth,
+		OutLinearDepth, OutNormalizedDepth,
 		OutMotionVectors,
 		OutBaseColorMetalness,
 		OutEmissiveColor,
 		OutNormalRoughness,
 		OutNoisyDiffuse, OutNoisySpecular;
+	uint3 _;
 };
 ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b1);
 
@@ -46,12 +45,12 @@ static const GraphicsSettings g_graphicsSettings = (ConstantBuffer<GraphicsSetti
 static const Camera g_camera = (ConstantBuffer<Camera>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InCamera];
 
 struct SceneData {
-	bool IsStatic;
-	uint3 _;
+	bool IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
+	bool _;
 	float4 EnvironmentLightColor;
-	float4x4 EnvironmentLightCubeMapTransform;
+	float4x4 EnvironmentLightTextureTransform;
 	float4 EnvironmentColor;
-	float4x4 EnvironmentCubeMapTransform;
+	float4x4 EnvironmentTextureTransform;
 };
 static const SceneData g_sceneData = (ConstantBuffer<SceneData>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InSceneData];
 
@@ -75,11 +74,9 @@ struct ObjectData {
 };
 static const StructuredBuffer<ObjectData> g_objectData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InObjectData];
 
-static const TextureCube<float3> g_environmentLightCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentLightCubeMap];
-static const TextureCube<float3> g_environmentCubeMap = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentCubeMap];
-
 static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
-static const RWTexture2D<float> g_depth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutDepth];
+static const RWTexture2D<float> g_linearDepth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutLinearDepth];
+static const RWTexture2D<float> g_normalizedDepth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNormalizedDepth];
 static const RWTexture2D<float3> g_motionVectors = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutMotionVectors];
 static const RWTexture2D<float4> g_baseColorMetalness = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutBaseColorMetalness];
 static const RWTexture2D<float3> g_emissiveColor = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutEmissiveColor];
@@ -88,8 +85,14 @@ static const RWTexture2D<float4> g_noisyDiffuse = ResourceDescriptorHeap[g_globa
 static const RWTexture2D<float4> g_noisySpecular = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNoisySpecular];
 
 inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
-	if (g_globalResourceDescriptorHeapIndices.InEnvironmentLightCubeMap != ~0u) {
-		return g_environmentLightCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentLightCubeMapTransform, worldRayDirection)), 0);
+	if (g_globalResourceDescriptorHeapIndices.InEnvironmentLightTexture != ~0u) {
+		worldRayDirection = normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
+		if (g_sceneData.IsEnvironmentLightTextureCubeMap) {
+			const TextureCube<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentLightTexture];
+			return texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
+		}
+		const Texture2D<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentLightTexture];
+		return texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 	}
 	if (g_sceneData.EnvironmentLightColor.a >= 0) return g_sceneData.EnvironmentLightColor.rgb;
 	return lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f);
@@ -97,8 +100,16 @@ inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
 
 inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 	bool ret;
-	if ((ret = g_globalResourceDescriptorHeapIndices.InEnvironmentCubeMap != ~0u)) {
-		color = g_environmentCubeMap.SampleLevel(g_anisotropicSampler, normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentCubeMapTransform, worldRayDirection)), 0);
+	if ((ret = g_globalResourceDescriptorHeapIndices.InEnvironmentTexture != ~0u)) {
+		worldRayDirection = normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentTextureTransform, worldRayDirection));
+		if (g_sceneData.IsEnvironmentTextureCubeMap) {
+			const TextureCube<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentTexture];
+			color = texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
+		}
+		else {
+			const Texture2D<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentTexture];
+			color = texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
+		}
 	}
 	else if ((ret = g_sceneData.EnvironmentColor.a >= 0)) color = g_sceneData.EnvironmentColor.rgb;
 	return ret;
@@ -244,7 +255,7 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	return ret;
 }
 
-inline float3 CalculateMotionVector(float2 UV, float depth, HitInfo hitInfo) {
+inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
 	float3 previousPosition;
 	if (g_sceneData.IsStatic || g_instanceData[hitInfo.InstanceIndex].IsStatic) previousPosition = hitInfo.Position;
 	else {
@@ -258,5 +269,5 @@ inline float3 CalculateMotionVector(float2 UV, float depth, HitInfo hitInfo) {
 		}
 		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
-	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_renderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - depth);
+	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_renderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
 }

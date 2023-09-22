@@ -33,7 +33,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Vertical Field of View
 - Raytracing
 	- Russian Roulette
-	- Max Trace Recursion Depth
+	- Max Number of Bounces
 	- Samples Per Pixel
 - Post-Processing
 	- NVIDIA Real-Time Denoisers
@@ -60,7 +60,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - Microsoft Visual Studio 2022 (17.4)
 
 - vcpkg
-	```cmd
+	```powershell
 	> git clone https://github.com/Microsoft/vcpkg
 	> cd vcpkg
 	> .\bootstrap-vcpkg.bat
@@ -79,22 +79,27 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - [NVIDIA Render Interface](https://github.com/NVIDIAGameWorks/NRI)
 
 - [NVIDIA PhysX](https://github.com/NVIDIA-Omniverse/PhysX)
-	```cmd
+	```powershell
 	> .\vcpkg install omniverse-physx-sdk:x64-windows
 	```
 
 - [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
-	```cmd
+	```powershell
 	> .\vcpkg install directxtk12:x64-windows
 	```
 
+- [DirectXTex Texture Processing Library](https://github.com/Microsoft/DirectXTK12)
+	```powershell
+	> .\vcpkg install directxtex[dx12,openexr]:x64-windows
+	```
+
 - [Dear ImGui](https://github.com/ocornut/imgui)
-	```cmd
-	> .\vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows
+	```powershell
+	> .\vcpkg install imgui[dx12-binding,win32-binding]:x64-windows
 	```
 
 - [JSON for Modern C++](https://github.com/nlohmann/json)
-	```cmd
+	```powershell
 	> .\vcpkg install nlohmann-json:x64-windows
 	```
 

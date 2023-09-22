@@ -2,11 +2,9 @@
 #include "NRDEncoding.hlsli"
 #include "NRD.hlsli"
 
-#include "STL.hlsli"
-
 #include "Math.hlsli"
 
-Texture2D<float> g_depth : register(t0);
+Texture2D<float> g_linearDepth : register(t0);
 Texture2D<float4> g_baseColorMetalness : register(t1);
 Texture2D<float3> g_emissiveColor : register(t2);
 Texture2D<float4> g_normalRoughness : register(t3);
@@ -44,7 +42,7 @@ cbuffer Data : register(b1) {
 void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	if (pixelCoordinate.x >= g_renderSize.x || pixelCoordinate.y >= g_renderSize.y) return;
 
-	if (g_depth[pixelCoordinate] == 1.#INFf) return;
+	if (g_linearDepth[pixelCoordinate] == 1.#INFf) return;
 
 	float3 albedo, Rf0;
 	const float4 baseColorMetalness = g_baseColorMetalness[pixelCoordinate];

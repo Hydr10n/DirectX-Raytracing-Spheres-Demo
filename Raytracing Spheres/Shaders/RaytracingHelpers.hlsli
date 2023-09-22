@@ -8,11 +8,7 @@ namespace RaytracingHelpers {
 	inline float3 OffsetRay(float3 position, float3 normal) {
 		const float Origin = 1.0f / 32, FloatScale = 1.0f / 65536, IntScale = 256;
 		const int3 n = IntScale * normal;
-		const float3 p = float3(
-			asfloat(asint(position.x) + (position.x < 0 ? -n.x : n.x)),
-			asfloat(asint(position.y) + (position.y < 0 ? -n.y : n.y)),
-			asfloat(asint(position.z) + (position.z < 0 ? -n.z : n.z))
-			);
+		const float3 p = asfloat(asint(position) + int3(position.x < 0 ? -n.x : n.x, position.y < 0 ? -n.y : n.y, position.z < 0 ? -n.z : n.z));
 		return float3(
 			abs(position.x) < Origin ? position.x + FloatScale * normal.x : p.x,
 			abs(position.y) < Origin ? position.y + FloatScale * normal.y : p.y,

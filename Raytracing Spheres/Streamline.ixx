@@ -89,12 +89,12 @@ export {
 		Extent Extent;
 		ResourceLifecycle Lifecycle;
 
-		auto ToResourceTag() { return ResourceTag(&Resource, Type, Lifecycle, &Extent); }
+		operator ResourceTag() { return ResourceTag(&Resource, Type, Lifecycle, &Extent); }
 	};
 
 	auto CreateResourceTags(span<ResourceTagInfo> resourceTagInfos) {
 		vector<ResourceTag> resourceTags;
-		for (auto& resourceTagInfo : resourceTagInfos) resourceTags.emplace_back(resourceTagInfo.ToResourceTag());
+		for (auto& resourceTagInfo : resourceTagInfos) resourceTags.emplace_back(resourceTagInfo);
 		return resourceTags;
 	}
 

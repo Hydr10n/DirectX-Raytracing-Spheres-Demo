@@ -12,8 +12,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRDEncoding.hlsli"
 #include "NRD.hlsli"
 
-#include "STL.hlsli"
-
 #include "Math.hlsli"
 
 SamplerState gLinearSampler : register( s0 );

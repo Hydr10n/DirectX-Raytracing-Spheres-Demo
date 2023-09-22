@@ -142,7 +142,6 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClCompile Include="Model.ixx" />
     <ClCompile Include="MyScene.ixx" />
     <ClCompile Include="NRD.ixx" />
-    <ClCompile Include="PreDLSS.ixx" />
     <ClCompile Include="RaytracingHelpers.ixx" />
     <ClCompile Include="DisplayHelpers.ixx" />
     <ClCompile Include="Main.cpp" />
@@ -158,6 +157,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <ClCompile Include="StepTimer.ixx" />
     <ClCompile Include="Streamline.ixx" />
     <ClCompile Include="TemporalAntiAliasing.ixx" />
+    <ClCompile Include="TextureHelpers.ixx" />
     <ClCompile Include="Texture.ixx" />
     <ClCompile Include="BufferHelpers.ixx" />
     <ClCompile Include="ThreadHelpers.ixx" />
@@ -186,12 +186,6 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_%(Filename)</VariableName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-    </FxCompile>
-    <FxCompile Include="Shaders\PreDLSS.hlsl">
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
-      <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_%(Filename)</VariableName>
-      <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_%(Filename)</VariableName>
     </FxCompile>
     <FxCompile Include="Shaders\Raytracing.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>

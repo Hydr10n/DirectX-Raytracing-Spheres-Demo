@@ -42,7 +42,6 @@ import DirectX.BufferHelpers;
 import DirectX.CommandList;
 import DirectX.DescriptorHeap;
 import DirectX.PostProcess.DenoisedComposition;
-import DirectX.PostProcess.PreDLSS;
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import HaltonSamplePattern;
@@ -202,8 +201,6 @@ struct App::Impl : IDeviceNotify {
 
 		for (auto& toneMapping : m_toneMapping) toneMapping.reset();
 
-		m_preDLSS.reset();
-
 		m_temporalAntiAliasing.reset();
 
 		m_denoisedComposition.reset();
@@ -270,7 +267,8 @@ private:
 			InHistoryOutput, OutHistoryOutput,
 			InOutput, Output,
 			InFinalOutput, OutFinalOutput,
-			InDepth, OutDepth,
+			InLinearDepth, OutLinearDepth,
+			InNormalizedDepth, OutNormalizedDepth,
 			InMotionVectors, OutMotionVectors,
 			InBaseColorMetalness, OutBaseColorMetalness,
 			InEmissiveColor, OutEmissiveColor,
@@ -323,7 +321,6 @@ private:
 
 	DLSSOptimalSettings m_DLSSOptimalSettings;
 	DLSSOptions m_DLSSOptions;
-	unique_ptr<PreDLSS> m_preDLSS;
 
 	struct {
 		unique_ptr<BasicPostProcess> Extraction, Blur;
@@ -351,7 +348,8 @@ private:
 		MAKE_NAME(HistoryOutput);
 		MAKE_NAME(Output);
 		MAKE_NAME(FinalOutput);
-		MAKE_NAME(Depth);
+		MAKE_NAME(LinearDepth);
+		MAKE_NAME(NormalizedDepth);
 		MAKE_NAME(MotionVectors);
 		MAKE_NAME(BaseColorMetalness);
 		MAKE_NAME(EmissiveColor);
@@ -408,7 +406,8 @@ private:
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::HistoryOutput, ResourceDescriptorHeapIndex::InHistoryOutput, ResourceDescriptorHeapIndex::OutHistoryOutput);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Output, ResourceDescriptorHeapIndex::InOutput, ResourceDescriptorHeapIndex::Output, RenderDescriptorHeapIndex::Output);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalOutput, ResourceDescriptorHeapIndex::InFinalOutput, ResourceDescriptorHeapIndex::OutFinalOutput, RenderDescriptorHeapIndex::FinalOutput);
-			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::Depth, ResourceDescriptorHeapIndex::InDepth, ResourceDescriptorHeapIndex::OutDepth, ~0u);
+			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth, ~0u);
+			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::NormalizedDepth, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth, ~0u);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
 			CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
 			CreateTexture1(DXGI_FORMAT_R10G10B10A2_UNORM, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
@@ -480,6 +479,7 @@ private:
 			camera.NearZ = m_cameraController.GetNearZ();
 			camera.FarZ = m_cameraController.GetFarZ();
 			camera.PixelJitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
+			camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 		}
 
 		UpdateGraphicsSettings();
@@ -575,8 +575,21 @@ private:
 
 			{
 				auto& globalResourceDescriptorHeapIndices = m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetData();
-				globalResourceDescriptorHeapIndices.InEnvironmentLightCubeMap = m_scene->EnvironmentLightCubeMap.Texture.DescriptorHeapIndices.SRV;
-				globalResourceDescriptorHeapIndices.InEnvironmentCubeMap = m_scene->EnvironmentCubeMap.Texture.DescriptorHeapIndices.SRV;
+				globalResourceDescriptorHeapIndices.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV;
+				globalResourceDescriptorHeapIndices.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV;
+			}
+
+			{
+				const auto IsCubeMap = [](ID3D12Resource* pResource) {
+					if (pResource != nullptr) {
+						const auto desc = pResource->GetDesc();
+						return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
+					}
+					return false;
+				};
+				auto& globalData = m_GPUBuffers.SceneData->GetData();
+				globalData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
+				globalData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
 			}
 
 			CreateStructuredBuffers();
@@ -631,8 +644,6 @@ private:
 		m_denoisedComposition = make_unique<DenoisedComposition>(device);
 
 		m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
-
-		m_preDLSS = make_unique<PreDLSS>(device);
 
 		{
 			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
@@ -705,7 +716,8 @@ private:
 				.InObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices,
 				.InObjectData = ResourceDescriptorHeapIndex::InObjectData,
 				.Output = ResourceDescriptorHeapIndex::Output,
-				.OutDepth = ResourceDescriptorHeapIndex::OutDepth,
+				.OutLinearDepth = ResourceDescriptorHeapIndex::OutLinearDepth,
+				.OutNormalizedDepth = ResourceDescriptorHeapIndex::OutNormalizedDepth,
 				.OutMotionVectors = ResourceDescriptorHeapIndex::OutMotionVectors,
 				.OutBaseColorMetalness = ResourceDescriptorHeapIndex::OutBaseColorMetalness,
 				.OutEmissiveColor = ResourceDescriptorHeapIndex::OutEmissiveColor,
@@ -869,11 +881,10 @@ private:
 			pitch += static_cast<float>(-mouseState.y) * rotationSpeed;
 		}
 
-		if (const auto angle = asin(m_cameraController.GetNormalizedForwardDirection().y) + pitch;
-			angle > XM_PIDIV2) pitch = max(0.0f, -angle + XM_PIDIV2 - 0.1f);
-		else if (angle < -XM_PIDIV2) pitch = min(0.0f, -angle - XM_PIDIV2 + 0.1f);
-
-		if (displacement == Vector3() && yaw == 0 && pitch == 0) return;
+		if (pitch == 0) {
+			if (displacement == Vector3() && yaw == 0) return;
+		}
+		else if (const auto angle = XM_PIDIV2 - abs(asin(m_cameraController.GetNormalizedForwardDirection().y) + pitch); angle <= 0) pitch = copysign(max(0.0f, angle - 0.1f), pitch);
 
 		m_cameraController.Move(m_cameraController.GetNormalizedRightDirection() * displacement.x + m_cameraController.GetNormalizedUpDirection() * displacement.y + m_cameraController.GetNormalizedForwardDirection() * displacement.z);
 		m_cameraController.Rotate(yaw, pitch);
@@ -897,13 +908,14 @@ private:
 
 		m_scene->Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
 
-		m_GPUBuffers.SceneData->GetData() = {
-			.IsStatic = m_scene->IsWorldStatic(),
-			.EnvironmentLightColor = m_scene->EnvironmentLightColor,
-			.EnvironmentLightCubeMapTransform = m_scene->EnvironmentLightCubeMap.Transform(),
-			.EnvironmentColor = m_scene->EnvironmentColor,
-			.EnvironmentCubeMapTransform = m_scene->EnvironmentCubeMap.Transform()
-		};
+		{
+			auto& sceneData = m_GPUBuffers.SceneData->GetData();
+			sceneData.IsStatic = m_scene->IsWorldStatic();
+			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
+			sceneData.EnvironmentLightTextureTransform = m_scene->EnvironmentLightTexture.Transform();
+			sceneData.EnvironmentColor = m_scene->EnvironmentColor;
+			sceneData.EnvironmentTextureTransform = m_scene->EnvironmentTexture.Transform();
+		}
 	}
 
 	void DispatchRays() {
@@ -1044,7 +1056,7 @@ private:
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto
-			& depth = *m_renderTextures.at(RenderTextureNames::Depth),
+			& linearDepth = *m_renderTextures.at(RenderTextureNames::LinearDepth),
 			& baseColorMetalness = *m_renderTextures.at(RenderTextureNames::BaseColorMetalness),
 			& normalRoughness = *m_renderTextures.at(RenderTextureNames::NormalRoughness),
 			& denoisedDiffuse = *m_renderTextures.at(RenderTextureNames::DenoisedDiffuse),
@@ -1056,7 +1068,7 @@ private:
 			m_NRD->NewFrame(m_stepTimer.GetFrameCount() - 1);
 
 			const auto Tag = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->Tag(resourceType, texture.GetResource(), texture.GetCurrentState()); };
-			Tag(nrd::ResourceType::IN_VIEWZ, depth);
+			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
 			Tag(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors));
 			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
 			Tag(nrd::ResourceType::IN_NORMAL_ROUGHNESS, normalRoughness);
@@ -1097,7 +1109,7 @@ private:
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(depth.GetResource(), depth.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(linearDepth.GetResource(), linearDepth.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(baseColorMetalness.GetResource(), baseColorMetalness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(emissiveColor.GetResource(), emissiveColor.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 					CD3DX12_RESOURCE_BARRIER::Transition(normalRoughness.GetResource(), normalRoughness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
@@ -1107,7 +1119,7 @@ private:
 			);
 
 			m_denoisedComposition->Descriptors = {
-				.InDepth = m_resourceDescriptorHeap->GetGpuHandle(depth.GetSrvDescriptorHeapIndex()),
+				.InLinearDepth = m_resourceDescriptorHeap->GetGpuHandle(linearDepth.GetSrvDescriptorHeapIndex()),
 				.InBaseColorMetalness = m_resourceDescriptorHeap->GetGpuHandle(baseColorMetalness.GetSrvDescriptorHeapIndex()),
 				.InEmissiveColor = m_resourceDescriptorHeap->GetGpuHandle(emissiveColor.GetSrvDescriptorHeapIndex()),
 				.InNormalRoughness = m_resourceDescriptorHeap->GetGpuHandle(normalRoughness.GetSrvDescriptorHeapIndex()),
@@ -1186,38 +1198,19 @@ private:
 	void ProcessDLSS() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& depth = *m_renderTextures.at(RenderTextureNames::Depth);
+		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
+		auto& exposure = *m_renderTextures.at(RenderTextureNames::Exposure);
+		exposure.SetClearColor({ toneMappingSettings.Operator == ToneMapPostProcess::None ? 1 : pow(2.0f, toneMappingSettings.Exposure) });
+		exposure.Clear(commandList);
 
-		{
-			m_preDLSS->Descriptors = { .InOutDepth = m_resourceDescriptorHeap->GetGpuHandle(depth.GetUavDescriptorHeapIndex()) };
-
-			m_preDLSS->RenderSize = m_renderSize;
-
-			m_preDLSS->GetData() = {
-				.CameraPosition = m_cameraController.GetPosition(),
-				.CameraRightDirection = m_cameraController.GetRightDirection(),
-				.CameraUpDirection = m_cameraController.GetUpDirection(),
-				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-				.CameraWorldToProjection = m_cameraController.GetWorldToProjection()
-			};
-
-			m_preDLSS->Process(commandList);
-		}
-
-		{
-			auto& exposure = *m_renderTextures.at(RenderTextureNames::Exposure);
-			exposure.SetClearColor({ 1 });
-			exposure.Clear(commandList);
-
-			ResourceTagInfo resourceTagInfos[]{
-				CreateResourceTagInfo(kBufferTypeDepth, depth),
-				CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
-				CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Output)),
-				CreateResourceTagInfo(kBufferTypeExposure, exposure, false),
-				CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalOutput), false)
-			};
-			ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
-		}
+		ResourceTagInfo resourceTagInfos[]{
+			CreateResourceTagInfo(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
+			CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
+			CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Output)),
+			CreateResourceTagInfo(kBufferTypeExposure, exposure, false),
+			CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalOutput), false)
+		};
+		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -1323,8 +1316,10 @@ private:
 
 		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
-		auto& toneMapping = *m_toneMapping[ToneMapPostProcess::None];
+		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
+		auto& toneMapping = *m_toneMapping[toneMappingSettings.Operator];
 		toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()));
+		toneMapping.SetExposure(toneMappingSettings.Exposure);
 		toneMapping.Process(commandList);
 	}
 
@@ -1502,7 +1497,7 @@ private:
 							}
 
 							if (isEnabled) {
-								ImGui::Checkbox("Validation Layer", &NRDSettings.IsValidationOverlayEnabled);
+								ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
 
 								ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 							}
@@ -1598,6 +1593,28 @@ private:
 							ImGui::SliderFloat("Threshold", &bloomSettings.Threshold, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 							ImGui::SliderFloat("Blur size", &bloomSettings.BlurSize, 1, bloomSettings.MaxBlurSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						}
+
+						ImGui::TreePop();
+					}
+
+					if (ImGui::TreeNodeEx("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& toneMappingSettings = postProcessingSetttings.ToneMapping;
+
+						if (ImGui::BeginCombo("Operator", ToString(toneMappingSettings.Operator))) {
+							for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+								const auto isSelected = toneMappingSettings.Operator == toneMappingOperator;
+
+								if (ImGui::Selectable(ToString(toneMappingOperator), isSelected)) toneMappingSettings.Operator = toneMappingOperator;
+
+								if (isSelected) ImGui::SetItemDefaultFocus();
+							}
+
+							ImGui::EndCombo();
+						}
+
+						if (toneMappingSettings.Operator != ToneMapPostProcess::None) {
+							ImGui::SliderFloat("Exposure", &toneMappingSettings.Exposure, toneMappingSettings.MinExposure, toneMappingSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 						}
 
 						ImGui::TreePop();

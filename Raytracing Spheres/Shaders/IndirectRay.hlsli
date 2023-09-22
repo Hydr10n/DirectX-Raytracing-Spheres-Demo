@@ -20,7 +20,7 @@ struct IndirectRay {
 		scatterResult.Direction = worldRayDirection;
 
 		for (uint bounce = 1; bounce <= g_graphicsSettings.MaxNumberOfBounces; bounce++) {
-			const RayDesc rayDesc = { RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal * STL::Math::Sign(dot(scatterResult.Direction, hitInfo.Normal))), 0,scatterResult.Direction, 1.#INFf };
+			const RayDesc rayDesc = { RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal), 1e-4f,scatterResult.Direction, 1.#INFf };
 			if (CastRay(rayDesc, hitInfo)) {
 				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 

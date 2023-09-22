@@ -13,7 +13,7 @@ struct Camera {
 	float ApertureRadius;
 	float NearZ, FarZ;
 	float2 PixelJitter;
-	float4x4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld;
+	float4x4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld, WorldToProjection;
 
 	RayDesc GeneratePinholeRay(float2 NDC) {
 		RayDesc rayDesc;

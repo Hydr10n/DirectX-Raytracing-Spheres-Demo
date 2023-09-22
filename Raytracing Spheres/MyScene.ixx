@@ -58,10 +58,10 @@ export {
 
 			const path directoryPath = LR"(Assets\Textures)";
 
-			EnvironmentLightCubeMap = {
-				.FilePath = directoryPath / L"Space.dds",
+			EnvironmentLightTexture = {
+				.FilePath = directoryPath / L"141_hdrmaps_com_free.exr",
 				.Transform {
-					.Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI * 0.2f, XM_PI, 0)
+					.Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI, 0, 0)
 				}
 			};
 

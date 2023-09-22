@@ -2,6 +2,8 @@
 
 #include "JsonHelpers.h"
 
+#include "directxtk12/PostProcess.h"
+
 #include <Windows.h>
 
 #include <fstream>
@@ -61,6 +63,30 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
 	}
 );
 
+constexpr auto ToString(DirectX::ToneMapPostProcess::Operator value) {
+	using namespace DirectX;
+
+	switch (value) {
+		case ToneMapPostProcess::None: return "None";
+		case ToneMapPostProcess::Saturate: return "Saturate";
+		case ToneMapPostProcess::Reinhard: return "Reinhard";
+		case ToneMapPostProcess::ACESFilmic: return "ACES Filmic";
+		default: throw;
+	}
+}
+
+namespace DirectX {
+	NLOHMANN_JSON_SERIALIZE_ENUM(
+		ToneMapPostProcess::Operator,
+		{
+			{ ToneMapPostProcess::None, ToString(ToneMapPostProcess::None) },
+			{ ToneMapPostProcess::Saturate, ToString(ToneMapPostProcess::Saturate) },
+			{ ToneMapPostProcess::Reinhard, ToString(ToneMapPostProcess::Reinhard) },
+			{ ToneMapPostProcess::ACESFilmic, ToString(ToneMapPostProcess::ACESFilmic) }
+		}
+	);
+}
+
 class MyAppData {
 	template <typename T>
 	struct Data {
@@ -112,7 +138,7 @@ public:
 			struct Raytracing {
 				static constexpr UINT MaxMaxNumberOfBounces = 64, MaxSamplesPerPixel = 16;
 
-				bool IsRussianRouletteEnabled = true;
+				bool IsRussianRouletteEnabled = false;
 
 				UINT MaxNumberOfBounces = 8, SamplesPerPixel = 1;
 
@@ -156,7 +182,17 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(Bloom, IsEnabled, Threshold, BlurSize);
 				} Bloom;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, IsTemporalAntiAliasingEnabled, DLSS, NIS, Bloom);
+				struct ToneMapping {
+					static constexpr float MinExposure = -5, MaxExposure = 5;
+
+					DirectX::ToneMapPostProcess::Operator Operator = DirectX::ToneMapPostProcess::ACESFilmic;
+
+					float Exposure{};
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure);
+				} ToneMapping;
+
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, IsTemporalAntiAliasingEnabled, DLSS, NIS, Bloom, ToneMapping);
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
@@ -179,6 +215,13 @@ public:
 					{
 						PostProcessing.Bloom.Threshold = clamp(PostProcessing.Bloom.Threshold, 0.0f, 1.0f);
 						PostProcessing.Bloom.BlurSize = clamp(PostProcessing.Bloom.BlurSize, 1.0f, PostProcessing.Bloom.MaxBlurSize);
+					}
+
+					{
+						using namespace DirectX;
+
+						PostProcessing.ToneMapping.Operator = clamp(PostProcessing.ToneMapping.Operator, ToneMapPostProcess::None, static_cast<ToneMapPostProcess::Operator>(ToneMapPostProcess::Operator_Max - 1));
+						PostProcessing.ToneMapping.Exposure = clamp(PostProcessing.ToneMapping.Exposure, PostProcessing.ToneMapping.MinExposure, PostProcessing.ToneMapping.MaxExposure);
 					}
 				}
 			}

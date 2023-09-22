@@ -18,7 +18,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 	STL::Rng::Hash::Initialize(pixelCoordinate, g_graphicsSettings.FrameIndex);
 
-	float depth = 1.#INFf;
+	float linearDepth = 1.#INFf, normalizedDepth = 1;
 	float3 motionVector = 0;
 	float4 baseColorMetalness = 0;
 	float3 emissiveColor = 0;
@@ -33,14 +33,17 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	if (hit) {
 		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 
-		depth = dot(hitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
-		motionVector = CalculateMotionVector(UV, depth, hitInfo);
+		linearDepth = dot(hitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
+		const float4 projection = STL::Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position);
+		normalizedDepth = projection.z / projection.w;
+		motionVector = CalculateMotionVector(UV, linearDepth, hitInfo);
 		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 		emissiveColor = material.EmissiveColor;
 		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.EstimateDiffuseProbability(hitInfo.Normal, V) == 0);
 	}
 
-	g_depth[pixelCoordinate] = depth;
+	g_linearDepth[pixelCoordinate] = linearDepth;
+	g_normalizedDepth[pixelCoordinate] = normalizedDepth;
 	g_motionVectors[pixelCoordinate] = motionVector;
 	g_baseColorMetalness[pixelCoordinate] = baseColorMetalness;
 	g_emissiveColor[pixelCoordinate] = emissiveColor;
@@ -51,8 +54,6 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 	if (hit) {
 		const float NoV = abs(dot(hitInfo.Normal, V));
-
-		hitInfo.Position = RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal) + (V + hitInfo.Normal * STL::BRDF::Pow5(NoV)) * (3e-4f + depth * 5e-5f);
 
 		bool isDiffuse = true;
 		float hitDistance = 1.#INFf;
@@ -69,7 +70,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
-		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, depth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : material.Roughness);
+		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : material.Roughness);
 
 		float3 albedo, Rf0;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
@@ -82,7 +83,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
-	g_output[pixelCoordinate] = float4(radiance, depth * NRD_FP16_VIEWZ_SCALE);
+	g_output[pixelCoordinate] = float4(radiance, linearDepth * NRD_FP16_VIEWZ_SCALE);
 	g_noisyDiffuse[pixelCoordinate] = noisyDiffuse;
 	g_noisySpecular[pixelCoordinate] = noisySpecular;
 }
