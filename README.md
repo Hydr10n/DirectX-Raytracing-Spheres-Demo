@@ -80,7 +80,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 
 - [NVIDIA PhysX](https://github.com/NVIDIA-Omniverse/PhysX)
 	```powershell
-	> .\vcpkg install omniverse-physx-sdk:x64-windows
+	> .\vcpkg install physx:x64-windows
 	```
 
 - [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
