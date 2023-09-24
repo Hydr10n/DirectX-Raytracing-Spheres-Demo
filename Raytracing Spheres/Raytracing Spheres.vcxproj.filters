@@ -174,7 +174,7 @@
     <None Include="Shaders\Raytracing.hlsli">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="Shaders\RaytracingHelpers.hlsli">
+    <None Include="Shaders\SelfIntersectionAvoidance.hlsli">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>

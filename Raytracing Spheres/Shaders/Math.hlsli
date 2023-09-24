@@ -13,8 +13,8 @@ namespace Math {
 	}
 
 	inline float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3]) {
-		const float2 d0 = textureCoordinates[1] - textureCoordinates[0], d1 = textureCoordinates[2] - textureCoordinates[0];
-		return normalize(((positions[1] - positions[0]) * d1.y - (positions[2] - positions[0]) * d0.y) / (d0.x * d1.y - d0.y * d1.x));
+		const float2 d1 = textureCoordinates[1] - textureCoordinates[0], d2 = textureCoordinates[2] - textureCoordinates[0];
+		return ((positions[1] - positions[0]) * d2.y - (positions[2] - positions[0]) * d1.y) / (d1.x * d2.y - d1.y * d2.x);
 	}
 
 	inline float2 ToLatLongCoordinate(float3 direction) {

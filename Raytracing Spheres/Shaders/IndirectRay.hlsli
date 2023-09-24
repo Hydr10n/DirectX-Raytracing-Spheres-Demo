@@ -2,8 +2,6 @@
 
 #include "Raytracing.hlsli"
 
-#include "RaytracingHelpers.hlsli"
-
 struct IndirectRay {
 	struct TraceResult {
 		float3 Radiance;
@@ -20,7 +18,7 @@ struct IndirectRay {
 		scatterResult.Direction = worldRayDirection;
 
 		for (uint bounce = 1; bounce <= g_graphicsSettings.MaxNumberOfBounces; bounce++) {
-			const RayDesc rayDesc = { RaytracingHelpers::OffsetRay(hitInfo.Position, hitInfo.Normal), 1e-4f,scatterResult.Direction, 1.#INFf };
+			const RayDesc rayDesc = { hitInfo.GetSafeWorldRayOrigin(scatterResult.Direction), 0, scatterResult.Direction, 1.#INFf };
 			if (CastRay(rayDesc, hitInfo)) {
 				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 
