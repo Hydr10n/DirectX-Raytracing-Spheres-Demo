@@ -21,16 +21,14 @@ struct HitInfo : VertexPositionNormalTexture {
 	uint InstanceIndex, ObjectIndex, PrimitiveIndex;
 
 	void Initialize(float3 positions[3], float3 normals[3], float2 textureCoordinates[3], float2 barycentrics, float3x4 objectToWorld, float3x4 worldToObject, float3 worldRayOrigin, float3 worldRayDirection, float distance, bool setFaceNormal = true) {
-		Barycentrics = barycentrics;
-		Distance = distance;
-		ObjectPosition = Vertex::Interpolate(positions, barycentrics);
+		float3 objectNormal;
+		SelfIntersectionAvoidance::GetSafeTriangleSpawnPoint(ObjectPosition, SafePosition, objectNormal, SafeNormal, SafeOffset, positions, barycentrics, objectToWorld, worldToObject);
 		Position = worldRayOrigin + worldRayDirection * distance;
 		Normal = UnmappedNormal = normalize(STL::Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
 		if (setFaceNormal) SetFaceNormal(worldRayDirection);
 		TextureCoordinate = Vertex::Interpolate(textureCoordinates, barycentrics);
-
-		float3 objectPosition, objectNormal;
-		SelfIntersectionAvoidance::GetSafeTriangleSpawnOffset(objectPosition, SafePosition, objectNormal, SafeNormal, SafeOffset, positions[0], positions[1], positions[2], barycentrics, objectToWorld, worldToObject);
+		Barycentrics = barycentrics;
+		Distance = distance;
 	}
 
 	static bool SetFaceNormal(float3 worldRayDirection, inout float3 normal) {

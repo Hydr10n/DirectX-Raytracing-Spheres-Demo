@@ -60,7 +60,7 @@ export {
 
 			EnvironmentLightTexture = {
 				.FilePath = directoryPath / L"141_hdrmaps_com_free.exr",
-				.Transform {
+				.Transform{
 					.Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI, 0, 0)
 				}
 			};

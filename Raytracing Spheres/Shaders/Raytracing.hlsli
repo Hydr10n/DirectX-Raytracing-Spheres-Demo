@@ -236,7 +236,6 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 			positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position },
 			normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
-
 		hitInfo.Initialize(positions, normals, textureCoordinates, q.CommittedTriangleBarycentrics(), q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(), rayDesc.Origin, rayDesc.Direction, q.CommittedRayT(), false);
 		hitInfo.TextureCoordinate = STL::Geometry::AffineTransform(g_objectData[hitInfo.ObjectIndex].TextureTransform, float3(hitInfo.TextureCoordinate, 0)).xy;
 		if (objectResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
