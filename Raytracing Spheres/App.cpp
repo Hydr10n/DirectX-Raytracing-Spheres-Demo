@@ -675,10 +675,11 @@ private:
 		if (!updateOnly) {
 			m_bottomLevelAccelerationStructures.clear();
 
-			for (const auto& Mesh : m_scene->Meshes | views::values) {
-				if (const auto [first, second] = m_bottomLevelAccelerationStructures.try_emplace(Mesh); second) {
+			for (const auto& renderObject : m_scene->RenderObjects) {
+				const auto& mesh = renderObject.Mesh;
+				if (const auto [first, second] = m_bottomLevelAccelerationStructures.try_emplace(mesh); second) {
 					first->second = make_shared<BottomLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
-					first->second->Build(pCommandList, initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(Mesh->Vertices.Get(), Mesh->Indices.Get()) }, false);
+					first->second->Build(pCommandList, initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(mesh->Vertices.Get(), mesh->Indices.Get()) }, false);
 				}
 			}
 
@@ -952,8 +953,7 @@ private:
 				const auto outputSize = GetOutputSize();
 				if (const auto minValue = min(outputSize.cx, outputSize.cy);
 					minValue <= 720) mode = DLSSMode::eDLAA;
-				else if (minValue <= 1080) mode = DLSSMode::eMaxQuality;
-				else if (minValue <= 1440) mode = DLSSMode::eBalanced;
+				else if (minValue <= 1440) mode = DLSSMode::eMaxQuality;
 				else if (minValue <= 2160) mode = DLSSMode::eMaxPerformance;
 				else mode = DLSSMode::eUltraPerformance;
 			}
@@ -1485,15 +1485,13 @@ private:
 							auto isEnabled = IsNRDEnabled();
 
 							{
-								ImGui::PushID("Enable NVIDIA Real-Time Denoisers");
+								const ImGuiEx::ScopedID scopedID("Enable NVIDIA Real-Time Denoisers");
 
 								if (ImGui::Checkbox("Enable", &isEnabled)) {
 									NRDSettings.IsEnabled = isEnabled;
 
 									ResetTemporalAccumulation();
 								}
-
-								ImGui::PopID();
 							}
 
 							if (isEnabled) {
@@ -1517,15 +1515,13 @@ private:
 							auto isChanged = false, isEnabled = IsDLSSEnabled();
 
 							{
-								ImGui::PushID("Enable NVIDIA DLSS");
+								const ImGuiEx::ScopedID scopedID("Enable NVIDIA DLSS");
 
 								if (ImGui::Checkbox("Enable", &isEnabled)) {
 									DLSSSettings.IsEnabled = isEnabled;
 
 									isChanged = true;
 								}
-
-								ImGui::PopID();
 							}
 
 							if (isEnabled) {
@@ -1565,11 +1561,9 @@ private:
 							auto isEnabled = IsNISEnabled();
 
 							{
-								ImGui::PushID("Enable NVIDIA Image Scaling");
+								const ImGuiEx::ScopedID scopedID("Enable NVIDIA Image Scaling");
 
 								if (ImGui::Checkbox("Enable", &isEnabled)) NISSettings.IsEnabled = isEnabled;
-
-								ImGui::PopID();
 							}
 
 							if (isEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
@@ -1582,11 +1576,9 @@ private:
 						auto& bloomSettings = postProcessingSetttings.Bloom;
 
 						{
-							ImGui::PushID("Enable Bloom");
+							const ImGuiEx::ScopedID scopedID("Enable Bloom");
 
 							ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
-
-							ImGui::PopID();
 						}
 
 						if (bloomSettings.IsEnabled) {

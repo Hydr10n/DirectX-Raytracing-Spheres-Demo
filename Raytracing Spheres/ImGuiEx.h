@@ -15,6 +15,13 @@ namespace ImGuiEx {
 		}
 	};
 
+	struct ScopedID {
+		ScopedID(const void* ID) { ImGui::PushID(ID); }
+		ScopedID(int ID) { ImGui::PushID(ID); }
+
+		~ScopedID() { ImGui::PopID(); }
+	};
+
 	inline void AlignForWidth(float width, float alignment = 0.5f) {
 		if (const auto offset = (ImGui::GetContentRegionAvail().x - width) * alignment; offset > 0) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
 	}

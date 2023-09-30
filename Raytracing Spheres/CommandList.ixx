@@ -35,7 +35,7 @@ export namespace DirectX {
 		void Begin() { ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr)); }
 
 		future<void> End(ID3D12CommandQueue* pCommandQueue) {
-			return async(launch::async, [&] {
+			return async(launch::async, [&, pCommandQueue] {
 				{
 					ThrowIfFailed(m_commandList->Close());
 

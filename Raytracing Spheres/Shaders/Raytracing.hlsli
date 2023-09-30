@@ -117,10 +117,10 @@ inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 
 inline float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 barycentrics) {
 	const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[objectIndex];
-	const StructuredBuffer<VertexPositionNormalTextureTangent> vertices = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Vertices];
+	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Vertices];
 	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], primitiveIndex);
 	const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
-	return Vertex::Interpolate(textureCoordinates, barycentrics);
+	return STL::Geometry::AffineTransform(g_objectData[objectIndex].TextureTransform, float3(Vertex::Interpolate(textureCoordinates, barycentrics), 0)).xy;
 }
 
 inline float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBaseColorAlpha = true) {
@@ -236,7 +236,7 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 			positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position },
 			normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
-		hitInfo.Initialize(positions, normals, textureCoordinates, q.CommittedTriangleBarycentrics(), q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(), rayDesc.Origin, rayDesc.Direction, q.CommittedRayT(), false);
+		hitInfo.Initialize(positions, normals, textureCoordinates, q.CommittedTriangleBarycentrics(), q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(), rayDesc.Origin, rayDesc.Direction, q.CommittedRayT());
 		hitInfo.TextureCoordinate = STL::Geometry::AffineTransform(g_objectData[hitInfo.ObjectIndex].TextureTransform, float3(hitInfo.TextureCoordinate, 0)).xy;
 		if (objectResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
 			const Texture2D<float3> texture = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Textures.NormalMap];
@@ -244,7 +244,6 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 			const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
 			hitInfo.Normal = normalize(STL::Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
 		}
-		hitInfo.SetFaceNormal(rayDesc.Direction);
 	}
 	return ret;
 }

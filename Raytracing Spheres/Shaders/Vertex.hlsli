@@ -12,5 +12,3 @@ struct VertexPosition : Vertex { float3 Position; };
 struct VertexPositionNormal : VertexPosition { float3 Normal; };
 
 struct VertexPositionNormalTexture : VertexPositionNormal { float2 TextureCoordinate; };
-
-struct VertexPositionNormalTextureTangent : VertexPositionNormalTexture { float3 Tangent; };
