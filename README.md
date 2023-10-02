@@ -44,9 +44,13 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 		- Super Resolution
 	- NVIDIA Image Scaling
 		- Sharpness
+	- Chromatic Aberration
 	- Bloom
 		- Threshold
 		- Blur Size
+	- Tone Mapping
+		- Operator
+		- Exposure
 
 ### Supported Input Devices
 - Xbox Controller
@@ -71,6 +75,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - Windows 11 SDK (10.0.22621.0)
 
 - [MathLib](https://github.com/NVIDIAGameWorks/MathLib)
+
+- [NVIDIA RTX Memory Utility](https://github.com/NVIDIAGameWorks/RTXMU)
 
 - [NVIDIA Streamline](https://github.com/NVIDIAGameWorks/Streamline)
 

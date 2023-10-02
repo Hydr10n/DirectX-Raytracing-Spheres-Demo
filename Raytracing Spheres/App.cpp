@@ -16,7 +16,7 @@ module;
 
 #include "directxtk12/SpriteBatch.h"
 
-#include "directxtk12/PostProcess.h"
+#include "rtxmu/D3D12AccelStructManager.h"
 
 #include "sl_helpers.h"
 
@@ -41,6 +41,7 @@ import DeviceResources;
 import DirectX.BufferHelpers;
 import DirectX.CommandList;
 import DirectX.DescriptorHeap;
+import DirectX.PostProcess.ChromaticAberration;
 import DirectX.PostProcess.DenoisedComposition;
 import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
@@ -66,6 +67,7 @@ using namespace DX;
 using namespace Microsoft::WRL;
 using namespace nrd;
 using namespace physx;
+using namespace rtxmu;
 using namespace SharedData;
 using namespace sl;
 using namespace std;
@@ -193,13 +195,16 @@ struct App::Impl : IDeviceNotify {
 		m_GPUBuffers = {};
 
 		m_topLevelAccelerationStructure.reset();
-		m_bottomLevelAccelerationStructures = {};
+		m_bottomLevelAccelerationStructureIDs = {};
+		m_accelerationStructureManager.reset();
 
 		m_alphaBlending.reset();
 
+		for (auto& toneMapping : m_toneMapping) toneMapping.reset();
+
 		m_bloom = {};
 
-		for (auto& toneMapping : m_toneMapping) toneMapping.reset();
+		m_chromaticAberration.reset();
 
 		m_temporalAntiAliasing.reset();
 
@@ -322,6 +327,8 @@ private:
 	DLSSOptimalSettings m_DLSSOptimalSettings;
 	DLSSOptions m_DLSSOptions;
 
+	unique_ptr<ChromaticAberration> m_chromaticAberration;
+
 	struct {
 		unique_ptr<BasicPostProcess> Extraction, Blur;
 		unique_ptr<DualPostProcess> Combination;
@@ -331,7 +338,8 @@ private:
 
 	unique_ptr<SpriteBatch> m_alphaBlending;
 
-	unordered_map<shared_ptr<Mesh>, shared_ptr<BottomLevelAccelerationStructure>> m_bottomLevelAccelerationStructures;
+	unique_ptr<DxAccelStructManager> m_accelerationStructureManager;
+	unordered_map<shared_ptr<Mesh>, uint64_t> m_bottomLevelAccelerationStructureIDs;
 	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
 
 	struct {
@@ -516,7 +524,7 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		if (!m_futures.contains(FutureNames::Scene) && m_scene) {
-			if (!m_scene->IsWorldStatic()) CreateAccelerationStructures(commandList, true);
+			if (!m_scene->IsWorldStatic()) CreateAccelerationStructures(true);
 			DispatchRays();
 
 			PostProcessGraphics();
@@ -564,14 +572,7 @@ private:
 
 			ResetCamera();
 
-			{
-				CommandList<ID3D12GraphicsCommandList4> commandList(device);
-				commandList.Begin();
-
-				CreateAccelerationStructures(commandList.GetNative(), false);
-
-				commandList.End(commandQueue).get();
-			}
+			CreateAccelerationStructures(false);
 
 			{
 				auto& globalResourceDescriptorHeapIndices = m_GPUBuffers.GlobalResourceDescriptorHeapIndices->GetData();
@@ -645,6 +646,8 @@ private:
 
 		m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
 
+		m_chromaticAberration = make_unique<ChromaticAberration>(device);
+
 		{
 			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
 
@@ -669,36 +672,82 @@ private:
 		}
 	}
 
-	void CreateAccelerationStructures(ID3D12GraphicsCommandList4* pCommandList, bool updateOnly) {
+	void CreateAccelerationStructures(bool updateOnly) {
 		const auto device = m_deviceResources->GetD3DDevice();
+		const auto commandQueue = m_deviceResources->GetCommandQueue();
 
-		if (!updateOnly) {
-			m_bottomLevelAccelerationStructures.clear();
+		CommandList<ID3D12GraphicsCommandList4> commandList(device);
+
+		const auto pCommandList = commandList.GetNative();
+
+		vector<uint64_t> newBottomLevelAccelerationStructureIDs;
+
+		{
+			commandList.Begin();
+
+			if (!updateOnly) {
+				m_bottomLevelAccelerationStructureIDs = {};
+
+				m_accelerationStructureManager = make_unique<DxAccelStructManager>(device);
+				m_accelerationStructureManager->Initialize();
+			}
+
+			vector<vector<D3D12_RAYTRACING_GEOMETRY_DESC>> geometryDescs;
+			vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> newBuildBottomLevelAccelerationStructureInputs;
+			vector<shared_ptr<Mesh>> newMeshes;
 
 			for (const auto& renderObject : m_scene->RenderObjects) {
 				const auto& mesh = renderObject.Mesh;
-				if (const auto [first, second] = m_bottomLevelAccelerationStructures.try_emplace(mesh); second) {
-					first->second = make_shared<BottomLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
-					first->second->Build(pCommandList, initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(mesh->Vertices.Get(), mesh->Indices.Get()) }, false);
+				if (const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh); second) {
+					auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(mesh->Vertices.Get(), mesh->Indices.Get()) });
+					newBuildBottomLevelAccelerationStructureInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
+						.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
+						.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
+						.NumDescs = static_cast<UINT>(size(_geometryDescs)),
+						.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+						.pGeometryDescs = data(_geometryDescs)
+						});
+					newMeshes.emplace_back(mesh);
 				}
 			}
 
-			m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+			if (!newBuildBottomLevelAccelerationStructureInputs.empty()) {
+				m_accelerationStructureManager->PopulateBuildCommandList(pCommandList, data(newBuildBottomLevelAccelerationStructureInputs), static_cast<uint32_t>(size(newBuildBottomLevelAccelerationStructureInputs)), newBottomLevelAccelerationStructureIDs);
+				for (UINT i = 0; const auto & meshNode : newMeshes) m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
+				m_accelerationStructureManager->PopulateUAVBarriersCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+				m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+			}
+
+			if (!updateOnly) {
+				m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+			}
+			vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
+			instanceDescs.reserve(m_topLevelAccelerationStructure->GetDescCount());
+			for (UINT objectIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
+				D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
+				XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), Transform(*renderObject.Shape));
+				instanceDesc.InstanceID = objectIndex;
+				instanceDesc.InstanceMask = renderObject.IsVisible ? ~0u : 0;
+				instanceDesc.InstanceContributionToHitGroupIndex = 0;
+				instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
+				instanceDesc.AccelerationStructure = m_accelerationStructureManager->GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh));
+				instanceDescs.emplace_back(instanceDesc);
+				objectIndex++;
+			}
+			m_topLevelAccelerationStructure->Build(pCommandList, instanceDescs, updateOnly);
+
+			commandList.End(commandQueue).get();
 		}
-		vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
-		instanceDescs.reserve(m_topLevelAccelerationStructure->GetDescCount());
-		for (UINT objectIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
-			D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
-			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), Transform(*renderObject.Shape));
-			instanceDesc.InstanceID = objectIndex;
-			instanceDesc.InstanceMask = renderObject.IsVisible ? ~0u : 0;
-			instanceDesc.InstanceContributionToHitGroupIndex = 0;
-			instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
-			instanceDesc.AccelerationStructure = m_bottomLevelAccelerationStructures.at(renderObject.Mesh)->GetBuffer()->GetGPUVirtualAddress();
-			instanceDescs.emplace_back(instanceDesc);
-			objectIndex++;
+
+		if (!newBottomLevelAccelerationStructureIDs.empty()) {
+			commandList.Begin();
+
+			m_accelerationStructureManager->PopulateCompactionCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+
+			commandList.End(commandQueue).get();
+
+			m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
 		}
-		m_topLevelAccelerationStructure->Build(pCommandList, instanceDescs, updateOnly);
 	}
 
 	void CreateConstantBuffers() {
@@ -877,7 +926,7 @@ private:
 			if (keyboardState.W) displacement.z += movementSpeed;
 			if (keyboardState.S) displacement.z -= movementSpeed;
 
-			const auto rotationSpeed = XM_2PI * 0.0004f * speedSettings.Rotation;
+			const auto rotationSpeed = XM_2PI * 4e-4f * speedSettings.Rotation;
 			yaw += static_cast<float>(mouseState.x) * rotationSpeed;
 			pitch += static_cast<float>(-mouseState.y) * rotationSpeed;
 		}
@@ -1014,6 +1063,12 @@ private:
 
 		if (IsNISEnabled()) {
 			ProcessNIS(*input, *output);
+
+			swap(input, output);
+		}
+
+		if (postProcessingSettings.IsChromaticAberrationEnabled) {
+			ProcessChromaticAberration(*input, *output);
 
 			swap(input, output);
 		}
@@ -1232,6 +1287,22 @@ private:
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+	}
+
+	void ProcessChromaticAberration(RenderTexture& input, RenderTexture& output) {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+
+		const auto outputSize = GetOutputSize();
+		m_chromaticAberration->RenderSize = XMUINT2(outputSize.cx, outputSize.cy);
+
+		m_chromaticAberration->Descriptors = {
+			.Input = m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()),
+			.Output = m_resourceDescriptorHeap->GetGpuHandle(output.GetUavDescriptorHeapIndex())
+		};
+
+		m_chromaticAberration->Process(commandList);
 	}
 
 	void ProcessBloom(RenderTexture& input, RenderTexture& output) {
@@ -1464,11 +1535,15 @@ private:
 				if (ImGui::TreeNodeEx("Raytracing", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
-					ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
+					auto isChanged = false;
 
-					ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 1, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
+					isChanged |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
 
-					ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+					isChanged |= ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 1, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+					if (isChanged) ResetTemporalAccumulation();
 
 					ImGui::TreePop();
 				}
@@ -1571,6 +1646,8 @@ private:
 							ImGui::TreePop();
 						}
 					}
+
+					ImGui::Checkbox("Chromatic Aberration", &postProcessingSetttings.IsChromaticAberrationEnabled);
 
 					if (ImGui::TreeNodeEx("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& bloomSettings = postProcessingSetttings.Bloom;

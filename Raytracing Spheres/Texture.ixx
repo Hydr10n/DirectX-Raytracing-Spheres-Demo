@@ -4,8 +4,6 @@ module;
 
 #include "directxtk12/DirectXHelpers.h"
 
-#include "directxtk12/DescriptorHeap.h"
-
 #include "directxtk12/DDSTextureLoader.h"
 #include "directxtk12/WICTextureLoader.h"
 

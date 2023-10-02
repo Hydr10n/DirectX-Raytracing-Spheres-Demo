@@ -172,6 +172,8 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(NIS, IsEnabled, Sharpness);
 				} NIS;
 
+				bool IsChromaticAberrationEnabled = true;
+
 				struct Bloom {
 					static constexpr float MaxBlurSize = 5;
 
@@ -192,7 +194,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure);
 				} ToneMapping;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, IsTemporalAntiAliasingEnabled, DLSS, NIS, Bloom, ToneMapping);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, IsTemporalAntiAliasingEnabled, DLSS, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
@@ -248,7 +250,7 @@ public:
 
 			struct Camera {
 				struct Speed {
-					static constexpr float MaxMovement = 100, MaxRotation = 2;
+					static constexpr float MaxMovement = 1000, MaxRotation = 2;
 
 					float Movement = 10, Rotation = 0.5f;
 

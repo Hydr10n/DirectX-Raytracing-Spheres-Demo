@@ -138,6 +138,9 @@
     <ClCompile Include="TextureHelpers.ixx">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="ChromaticAberration.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Direct3D 12 Win32 App.rc">
@@ -186,6 +189,9 @@
       <Filter>Shader Files</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\DenoisedComposition.hlsl">
+      <Filter>Shader Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ChromaticAberration.hlsl">
       <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>

@@ -57,7 +57,7 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\RTXMU\include;..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -92,7 +92,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\RTXMU\include;..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -133,6 +133,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
   <ItemGroup>
     <ClCompile Include="App.ixx" />
     <ClCompile Include="Camera.ixx" />
+    <ClCompile Include="ChromaticAberration.ixx" />
     <ClCompile Include="CommandList.ixx" />
     <ClCompile Include="DenoisedComposition.ixx" />
     <ClCompile Include="DescriptorHeap.ixx" />
@@ -181,6 +182,12 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
     <None Include="Shaders\Vertex.hlsli" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Shaders\ChromaticAberration.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_%(Filename)</VariableName>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_%(Filename)</VariableName>
+    </FxCompile>
     <FxCompile Include="Shaders\DenoisedComposition.hlsl">
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_%(Filename)</VariableName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>

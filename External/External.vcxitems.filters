@@ -46,6 +46,18 @@
     <Filter Include="NVIDIA\NRD\Lib\Release">
       <UniqueIdentifier>{b1fa42dd-4418-49e7-9e65-8a8eeba23591}</UniqueIdentifier>
     </Filter>
+    <Filter Include="NVIDIA\RTXMU">
+      <UniqueIdentifier>{ca6476e0-39e6-4c34-a9fe-ed84571eeebb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="NVIDIA\RTXMU\include">
+      <UniqueIdentifier>{ccf95c12-02a7-4165-add0-7374c439ed58}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="NVIDIA\RTXMU\src">
+      <UniqueIdentifier>{16dca450-0bc7-46d4-9ea7-284a7e28f162}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="NVIDIA\RTXMU\include\rtxmu">
+      <UniqueIdentifier>{81869bfe-b7d8-4684-91a7-1300d62105b2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)NVIDIA\NRI\Lib\Debug\NRI.dll">
@@ -98,6 +110,15 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)NVIDIA\NRD\Integration\NRDIntegration.h">
       <Filter>NVIDIA\NRD\Integration</Filter>
     </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)NVIDIA\RTXMU\include\rtxmu\AccelStructManager.h">
+      <Filter>NVIDIA\RTXMU\include\rtxmu</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)NVIDIA\RTXMU\include\rtxmu\D3D12AccelStructManager.h">
+      <Filter>NVIDIA\RTXMU\include\rtxmu</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)NVIDIA\RTXMU\include\rtxmu\D3D12Suballocator.h">
+      <Filter>NVIDIA\RTXMU\include\rtxmu</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="$(MSBuildThisFileDirectory)NVIDIA\NRI\Lib\Debug\NRI.lib">
@@ -116,6 +137,12 @@
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)NVIDIA\NRD\Integration\NRDIntegration.cpp">
       <Filter>NVIDIA\NRD\Integration</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)NVIDIA\RTXMU\src\D3D12AccelStructManager.cpp">
+      <Filter>NVIDIA\RTXMU\src</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)NVIDIA\RTXMU\src\D3D12Suballocator.cpp">
+      <Filter>NVIDIA\RTXMU\src</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
