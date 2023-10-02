@@ -4,3 +4,6 @@
 [submodule "External/NVIDIA/Streamline"]
 	path = External/NVIDIA/Streamline
 	url = https://github.com/NVIDIAGameWorks/Streamline
+[submodule "External/NVIDIA/RTXMU"]
+	path = External/NVIDIA/RTXMU
+	url = https://github.com/NVIDIAGameWorks/RTXMU
