@@ -30,7 +30,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - V-Sync
 - Camera
 	- Jitter
-	- Vertical Field of View
+	- Horizontal Field of View
 - Raytracing
 	- Russian Roulette
 	- Max Number of Bounces
@@ -94,7 +94,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	> .\vcpkg install directxtk12:x64-windows
 	```
 
-- [DirectXTex Texture Processing Library](https://github.com/Microsoft/DirectXTK12)
+- [DirectXTex Texture Processing Library](https://github.com/Microsoft/DirectXTex)
 	```powershell
 	> .\vcpkg install directxtex[dx12,openexr]:x64-windows
 	```

@@ -126,13 +126,13 @@ public:
 			bool IsVSyncEnabled = true;
 
 			struct Camera {
-				static constexpr float MinVerticalFieldOfView = 30, MaxVerticalFieldOfView = 120;
+				static constexpr float MinHorizontalFieldOfView = 30, MaxHorizontalFieldOfView = 120;
 
 				bool IsJitterEnabled = true;
 
-				float VerticalFieldOfView = 45;
+				float HorizontalFieldOfView = 90;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(Camera, IsJitterEnabled, VerticalFieldOfView);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Camera, IsJitterEnabled, HorizontalFieldOfView);
 			} Camera;
 
 			struct Raytracing {
@@ -202,7 +202,7 @@ public:
 			void Check() override {
 				using namespace std;
 
-				Camera.VerticalFieldOfView = clamp(Camera.VerticalFieldOfView, Camera.MinVerticalFieldOfView, Camera.MaxVerticalFieldOfView);
+				Camera.HorizontalFieldOfView = clamp(Camera.HorizontalFieldOfView, Camera.MinHorizontalFieldOfView, Camera.MaxHorizontalFieldOfView);
 
 				{
 					Raytracing.MaxNumberOfBounces = clamp(Raytracing.MaxNumberOfBounces, 1u, Raytracing.MaxMaxNumberOfBounces);

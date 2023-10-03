@@ -11,7 +11,7 @@ struct Camera {
 	float _2;
 	float3 ForwardDirection;
 	float ApertureRadius;
-	float NearZ, FarZ;
+	float NearDepth, FarDepth;
 	float2 PixelJitter;
 	float4x4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld, WorldToProjection;
 
@@ -20,8 +20,8 @@ struct Camera {
 		rayDesc.Origin = Position;
 		rayDesc.Direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
 		const float invCos = 1 / dot(normalize(ForwardDirection), rayDesc.Direction);
-		rayDesc.TMin = NearZ * invCos;
-		rayDesc.TMax = FarZ * invCos;
+		rayDesc.TMin = NearDepth * invCos;
+		rayDesc.TMax = FarDepth * invCos;
 		return rayDesc;
 	}
 
@@ -32,8 +32,8 @@ struct Camera {
 		rayDesc.Origin = Position + offset;
 		rayDesc.Direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection - offset);
 		const float invCos = 1 / dot(normalize(ForwardDirection), rayDesc.Direction);
-		rayDesc.TMin = NearZ * invCos;
-		rayDesc.TMax = FarZ * invCos;
+		rayDesc.TMin = NearDepth * invCos;
+		rayDesc.TMax = FarDepth * invCos;
 		return rayDesc;
 	}
 };

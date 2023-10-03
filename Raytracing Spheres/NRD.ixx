@@ -97,15 +97,15 @@ public:
 		m_NRD.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool, true);
 
 		vector<TextureTransitionBarrierDesc> textureTransitionBarrierDescs;
-		for (auto& TextureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
-			if (TextureTransitionBarrierDesc.texture != nullptr
-				&& TextureTransitionBarrierDesc.nextAccess != TextureTransitionBarrierDesc.initialAccess
-				&& TextureTransitionBarrierDesc.nextLayout != TextureTransitionBarrierDesc.initialLayout) {
-				TextureTransitionBarrierDesc.prevAccess = TextureTransitionBarrierDesc.nextAccess;
-				TextureTransitionBarrierDesc.nextAccess = TextureTransitionBarrierDesc.initialAccess;
-				TextureTransitionBarrierDesc.prevLayout = TextureTransitionBarrierDesc.nextLayout;
-				TextureTransitionBarrierDesc.nextLayout = TextureTransitionBarrierDesc.initialLayout;
-				textureTransitionBarrierDescs.emplace_back(TextureTransitionBarrierDesc);
+		for (auto& textureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
+			if (textureTransitionBarrierDesc.texture != nullptr
+				&& textureTransitionBarrierDesc.nextAccess != textureTransitionBarrierDesc.initialAccess
+				&& textureTransitionBarrierDesc.nextLayout != textureTransitionBarrierDesc.initialLayout) {
+				textureTransitionBarrierDesc.prevAccess = textureTransitionBarrierDesc.nextAccess;
+				textureTransitionBarrierDesc.nextAccess = textureTransitionBarrierDesc.initialAccess;
+				textureTransitionBarrierDesc.prevLayout = textureTransitionBarrierDesc.nextLayout;
+				textureTransitionBarrierDesc.nextLayout = textureTransitionBarrierDesc.initialLayout;
+				textureTransitionBarrierDescs.emplace_back(textureTransitionBarrierDesc);
 			}
 		}
 		const TransitionBarrierDesc transitionBarrierDesc{ .textures = data(textureTransitionBarrierDescs), .textureNum = static_cast<uint32_t>(size(textureTransitionBarrierDescs)) };

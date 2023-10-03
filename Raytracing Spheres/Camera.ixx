@@ -2,6 +2,8 @@ module;
 
 #include "directxtk12/SimpleMath.h"
 
+#include "MathLib.h"
+
 export module Camera;
 
 using namespace DirectX;
@@ -18,12 +20,14 @@ export {
 		float _2;
 		XMFLOAT3 ForwardDirection;
 		float ApertureRadius;
-		float NearZ, FarZ;
+		float NearDepth, FarDepth;
 		XMFLOAT2 PixelJitter;
 		XMFLOAT4X4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld, WorldToProjection;
 	};
 
 	struct CameraController {
+		CameraController(bool isReversedDepth = true) : m_projectionFlags(PROJ_LEFT_HANDED | (isReversedDepth ? PROJ_REVERSED_Z : 0)) {}
+
 		const auto& GetPosition() const { return m_position; }
 
 		void SetPosition(const XMFLOAT3& value) {
@@ -110,15 +114,18 @@ export {
 			return viewToWorld;
 		}
 
-		auto GetVerticalFieldOfView() const { return m_verticalFieldOfView; }
+		auto GetHorizontalFieldOfView() const { return m_horizontalFieldOfView; }
 		auto GetAspectRatio() const { return m_aspectRatio; }
 
-		auto GetNearZ() const { return m_nearZ; }
-		auto GetFarZ() const { return m_farZ; }
+		auto GetNearDepth() const { return m_nearDepth; }
+		auto GetFarDepth() const { return m_farDepth; }
 
 		const auto& GetViewToProjection() const {
 			if (m_isProjectionChanged) {
-				m_viewToProjection = XMMatrixPerspectiveFovLH(m_verticalFieldOfView, m_aspectRatio, m_nearZ, m_farZ);
+				float4x4 viewToProjection;
+				if (m_farDepth == numeric_limits<float>::infinity()) viewToProjection.SetupByHalfFovxInf(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_projectionFlags);
+				else viewToProjection.SetupByHalfFovx(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_farDepth, m_projectionFlags);
+				m_viewToProjection = reinterpret_cast<const Matrix&>(viewToProjection);
 
 				m_isProjectionChanged = false;
 			}
@@ -127,20 +134,23 @@ export {
 
 		auto GetProjectionToView() const { return GetViewToProjection().Invert(); }
 
-		void SetLens(float verticalFieldOfView, float aspectRatio) { SetLens(verticalFieldOfView, aspectRatio, m_nearZ, m_farZ); }
-		void SetLens(float verticalFieldOfView, float aspectRatio, float nearZ, float farZ) {
-			m_verticalFieldOfView = verticalFieldOfView;
+		void SetLens(float horizontalFieldOfView, float aspectRatio) {
+			m_horizontalFieldOfView = horizontalFieldOfView;
 			m_aspectRatio = aspectRatio;
 
-			m_nearZ = nearZ;
-			m_farZ = farZ;
-
-			m_upDirectionLength = tan(verticalFieldOfView / 2) * m_forwardDirectionLength;
-			m_rightDirectionLength = m_upDirectionLength * aspectRatio;
+			m_rightDirectionLength = tan(horizontalFieldOfView / 2) * m_forwardDirectionLength;
+			m_upDirectionLength = m_rightDirectionLength / aspectRatio;
 			m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 
 			m_isProjectionChanged = true;
+		}
+
+		void SetLens(float horizontalFieldOfView, float aspectRatio, float nearDepth, float farDepth = numeric_limits<float>::infinity()) {
+			SetLens(horizontalFieldOfView, aspectRatio);
+
+			m_nearDepth = nearDepth;
+			m_farDepth = farDepth;
 		}
 
 		auto GetWorldToProjection() const { return GetWorldToView() * GetViewToProjection(); }
@@ -154,7 +164,8 @@ export {
 		mutable Matrix m_worldToView;
 
 		mutable bool m_isProjectionChanged = true;
-		float m_verticalFieldOfView{}, m_aspectRatio{}, m_nearZ = 1e-2f, m_farZ = 1e4f;
+		uint32_t m_projectionFlags;
+		float m_horizontalFieldOfView{}, m_aspectRatio{}, m_nearDepth = 1e-2f, m_farDepth = numeric_limits<float>::infinity();
 		mutable Matrix m_viewToProjection;
 	};
 }

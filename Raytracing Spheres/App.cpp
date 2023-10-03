@@ -232,7 +232,7 @@ struct App::Impl : IDeviceNotify {
 private:
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_D32_FLOAT, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_D32_FLOAT, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing | DeviceResources::c_ReverseDepth);
 
 	StepTimer m_stepTimer;
 
@@ -309,7 +309,7 @@ private:
 	Constants m_slConstants = [] {
 		Constants constants;
 		constants.cameraPinholeOffset = { 0, 0 };
-		constants.depthInverted = Boolean::eFalse;
+		constants.depthInverted = Boolean::eTrue;
 		constants.cameraMotionIncluded = Boolean::eTrue;
 		constants.motionVectors3D = Boolean::eFalse;
 		constants.reset = Boolean::eFalse;
@@ -454,7 +454,7 @@ private:
 
 		OnRenderSizeChanged();
 
-		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.VerticalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
+		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.HorizontalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
 
 		{
 			const auto& IO = ImGui::GetIO();
@@ -484,8 +484,8 @@ private:
 			camera.RightDirection = m_cameraController.GetRightDirection();
 			camera.UpDirection = m_cameraController.GetUpDirection();
 			camera.ForwardDirection = m_cameraController.GetForwardDirection();
-			camera.NearZ = m_cameraController.GetNearZ();
-			camera.FarZ = m_cameraController.GetFarZ();
+			camera.NearDepth = m_cameraController.GetNearDepth();
+			camera.FarDepth = m_cameraController.GetFarDepth();
 			camera.PixelJitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 			camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 		}
@@ -506,10 +506,9 @@ private:
 
 		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Clear");
 
-		const auto renderTargetView = m_deviceResources->GetRenderTargetView(), depthStencilView = m_deviceResources->GetDepthStencilView();
-		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &depthStencilView);
+		const auto renderTargetView = m_deviceResources->GetRenderTargetView();
+		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 		commandList->ClearRenderTargetView(renderTargetView, Colors::Black, 0, nullptr);
-		commandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1, 0, 0, nullptr);
 
 		const auto viewport = m_deviceResources->GetScreenViewport();
 		const auto scissorRect = m_deviceResources->GetScissorRect();
@@ -724,14 +723,13 @@ private:
 			vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
 			instanceDescs.reserve(m_topLevelAccelerationStructure->GetDescCount());
 			for (UINT objectIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
-				D3D12_RAYTRACING_INSTANCE_DESC instanceDesc;
+				auto& instanceDesc = instanceDescs.emplace_back(D3D12_RAYTRACING_INSTANCE_DESC{
+					.InstanceID = objectIndex,
+					.InstanceMask = renderObject.IsVisible ? ~0u : 0,
+					.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,
+					.AccelerationStructure = m_accelerationStructureManager->GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh))
+					});
 				XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), Transform(*renderObject.Shape));
-				instanceDesc.InstanceID = objectIndex;
-				instanceDesc.InstanceMask = renderObject.IsVisible ? ~0u : 0;
-				instanceDesc.InstanceContributionToHitGroupIndex = 0;
-				instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
-				instanceDesc.AccelerationStructure = m_accelerationStructureManager->GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh));
-				instanceDescs.emplace_back(instanceDesc);
 				objectIndex++;
 			}
 			m_topLevelAccelerationStructure->Build(pCommandList, instanceDescs, updateOnly);
@@ -1093,9 +1091,9 @@ private:
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraUp) = m_cameraController.GetUpDirection();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraRight) = m_cameraController.GetRightDirection();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraFwd) = m_cameraController.GetForwardDirection();
-		m_slConstants.cameraNear = m_cameraController.GetNearZ();
-		m_slConstants.cameraFar = m_cameraController.GetFarZ();
-		m_slConstants.cameraFOV = m_cameraController.GetVerticalFieldOfView();
+		m_slConstants.cameraNear = m_cameraController.GetNearDepth();
+		m_slConstants.cameraFar = m_cameraController.GetFarDepth();
+		m_slConstants.cameraFOV = m_cameraController.GetHorizontalFieldOfView();
 		m_slConstants.cameraAspectRatio = m_cameraController.GetAspectRatio();
 		reinterpret_cast<XMFLOAT4X4&>(m_slConstants.cameraViewToClip) = m_cameraController.GetViewToProjection();
 		recalculateCameraMatrices(m_slConstants, reinterpret_cast<const float4x4&>(camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(camera.PreviousViewToProjection));
@@ -1525,8 +1523,8 @@ private:
 
 					if (ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled)) ResetTemporalAccumulation();
 
-					if (ImGui::SliderFloat("Vertical Field of View", &cameraSettings.VerticalFieldOfView, cameraSettings.MinVerticalFieldOfView, cameraSettings.MaxVerticalFieldOfView, "%.1f°", ImGuiSliderFlags_AlwaysClamp)) {
-						m_cameraController.SetLens(XMConvertToRadians(cameraSettings.VerticalFieldOfView), m_cameraController.GetAspectRatio());
+					if (ImGui::SliderFloat("Horizontal Field of View", &cameraSettings.HorizontalFieldOfView, cameraSettings.MinHorizontalFieldOfView, cameraSettings.MaxHorizontalFieldOfView, "%.1f°", ImGuiSliderFlags_AlwaysClamp)) {
+						m_cameraController.SetLens(XMConvertToRadians(cameraSettings.HorizontalFieldOfView), m_cameraController.GetAspectRatio());
 					}
 
 					ImGui::TreePop();

@@ -57,7 +57,7 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\RTXMU\include;..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\MathLib;..\External\NVIDIA\RTXMU\include;..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -92,7 +92,7 @@ xcopy /y /d /i /s "Assets" "$(OutDir)Assets"</Command>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\RTXMU\include;..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);$(IntDir);..\External\NVIDIA\MathLib;..\External\NVIDIA\RTXMU\include;..\External\NVIDIA\Streamline\include;..\External\NVIDIA\NRD\Include;..\External\NVIDIA\NRD\Integration;..\External\NVIDIA\NRI\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
