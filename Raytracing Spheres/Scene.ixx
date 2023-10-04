@@ -93,7 +93,7 @@ export {
 
 		vector<RenderObject> RenderObjects;
 
-		virtual bool IsWorldStatic() const = 0;
+		virtual bool IsStatic() const = 0;
 
 		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) = 0;
 

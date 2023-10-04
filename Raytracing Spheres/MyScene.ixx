@@ -274,7 +274,7 @@ export {
 };
 
 struct MyScene : Scene {
-	bool IsWorldStatic() const override { return !m_isSimulatingPhysics; }
+	bool IsStatic() const override { return !m_isSimulatingPhysics; }
 
 	void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
 		if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {

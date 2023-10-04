@@ -523,7 +523,7 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		if (!m_futures.contains(FutureNames::Scene) && m_scene) {
-			if (!m_scene->IsWorldStatic()) CreateAccelerationStructures(true);
+			if (!m_scene->IsStatic()) CreateAccelerationStructures(true);
 			DispatchRays();
 
 			PostProcessGraphics();
@@ -717,6 +717,14 @@ private:
 				m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
 			}
 
+			commandList.End(commandQueue).get();
+		}
+
+		{
+			commandList.Begin();
+
+			if (!newBottomLevelAccelerationStructureIDs.empty()) m_accelerationStructureManager->PopulateCompactionCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+
 			if (!updateOnly) {
 				m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 			}
@@ -737,15 +745,7 @@ private:
 			commandList.End(commandQueue).get();
 		}
 
-		if (!newBottomLevelAccelerationStructureIDs.empty()) {
-			commandList.Begin();
-
-			m_accelerationStructureManager->PopulateCompactionCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
-
-			commandList.End(commandQueue).get();
-
-			m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
-		}
+		if (!newBottomLevelAccelerationStructureIDs.empty()) m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
 	}
 
 	void CreateConstantBuffers() {
@@ -950,7 +950,7 @@ private:
 	}
 
 	void UpdateScene() {
-		if (!m_scene->IsWorldStatic()) {
+		if (!m_scene->IsStatic()) {
 			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Transform(*renderObject.Shape);
 		}
 
@@ -958,7 +958,7 @@ private:
 
 		{
 			auto& sceneData = m_GPUBuffers.SceneData->GetData();
-			sceneData.IsStatic = m_scene->IsWorldStatic();
+			sceneData.IsStatic = m_scene->IsStatic();
 			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
 			sceneData.EnvironmentLightTextureTransform = m_scene->EnvironmentLightTexture.Transform();
 			sceneData.EnvironmentColor = m_scene->EnvironmentColor;

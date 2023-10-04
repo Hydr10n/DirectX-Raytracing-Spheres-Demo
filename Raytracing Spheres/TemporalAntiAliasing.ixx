@@ -40,8 +40,8 @@ export namespace DirectX::PostProcess {
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
 		}
 
-		const auto& GetData() const { return m_data.GetData(); }
-		auto& GetData() { return m_data.GetData(); }
+		const auto& GetData() const noexcept { return m_data.GetData(); }
+		auto& GetData() noexcept { return m_data.GetData(); }
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
