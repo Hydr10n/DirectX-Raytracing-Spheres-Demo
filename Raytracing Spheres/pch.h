@@ -46,7 +46,7 @@
 
 namespace DX {
 	[[noreturn]] inline void throw_std_system_error(int code, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {
-		throw std::system_error(code, std::system_category(), std::format("{}{}{}", message, message.empty() ? "" : "\n\n", std::to_string(stacktrace)));
+		throw std::system_error(code, std::system_category(), std::format("{}{}{}", message, std::empty(message) ? "" : "\n\n", std::to_string(stacktrace)));
 	}
 
 	inline void ThrowIfFailed(BOOL value, const std::string& message = "", const std::stacktrace& stacktrace = std::stacktrace::current()) {

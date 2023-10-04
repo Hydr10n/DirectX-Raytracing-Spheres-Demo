@@ -104,12 +104,12 @@ export {
 			resourceUploadBatch.Begin();
 
 			{
-				if (!sceneDesc.EnvironmentLightTexture.FilePath.empty()) {
+				if (!empty(sceneDesc.EnvironmentLightTexture.FilePath)) {
 					EnvironmentLightTexture.Load(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
 					EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
 				}
 
-				if (!sceneDesc.EnvironmentTexture.FilePath.empty()) {
+				if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
 					EnvironmentTexture.Load(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), pDevice, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
 					EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 				}

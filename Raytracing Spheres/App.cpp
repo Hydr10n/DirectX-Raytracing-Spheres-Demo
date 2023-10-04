@@ -710,7 +710,7 @@ private:
 				}
 			}
 
-			if (!newBuildBottomLevelAccelerationStructureInputs.empty()) {
+			if (!empty(newBuildBottomLevelAccelerationStructureInputs)) {
 				m_accelerationStructureManager->PopulateBuildCommandList(pCommandList, data(newBuildBottomLevelAccelerationStructureInputs), static_cast<uint32_t>(size(newBuildBottomLevelAccelerationStructureInputs)), newBottomLevelAccelerationStructureIDs);
 				for (UINT i = 0; const auto & meshNode : newMeshes) m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
 				m_accelerationStructureManager->PopulateUAVBarriersCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
@@ -723,7 +723,7 @@ private:
 		{
 			commandList.Begin();
 
-			if (!newBottomLevelAccelerationStructureIDs.empty()) m_accelerationStructureManager->PopulateCompactionCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+			if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->PopulateCompactionCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
 
 			if (!updateOnly) {
 				m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
@@ -745,7 +745,7 @@ private:
 			commandList.End(commandQueue).get();
 		}
 
-		if (!newBottomLevelAccelerationStructureIDs.empty()) m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
+		if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
 	}
 
 	void CreateConstantBuffers() {
@@ -1021,7 +1021,7 @@ private:
 	void ResetTemporalAccumulation() {
 		m_slConstants.reset = Boolean::eTrue;
 
-		m_NRDCommonSettings.accumulationMode = AccumulationMode::RESTART;
+		m_NRDCommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
 
 		m_temporalAntiAliasing->GetData().Reset = true;
 	}
@@ -1135,10 +1135,12 @@ private:
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = camera.PreviousViewToProjection;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
+			ranges::copy(m_NRDCommonSettings.cameraJitter, m_NRDCommonSettings.cameraJitterPrev);
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter;
 
 			const auto outputSize = GetOutputSize();
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScalePrev) = reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
+			ranges::copy(m_NRDCommonSettings.resolutionScale, m_NRDCommonSettings.resolutionScalePrev);
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
 			const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;

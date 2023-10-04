@@ -132,7 +132,7 @@ int WINAPI wWinMain(
 
 	g_app.reset();
 
-	if (!error.empty()) MessageBoxA(nullptr, error.c_str(), nullptr, MB_OK | MB_ICONERROR);
+	if (!empty(error)) MessageBoxA(nullptr, error.c_str(), nullptr, MB_OK | MB_ICONERROR);
 
 	return ret;
 }
