@@ -12,8 +12,8 @@ using namespace std;
 
 export {
 	struct Camera {
+		BOOL IsNormalizedFarDepth0;
 		XMFLOAT3 Position;
-		float _;
 		XMFLOAT3 RightDirection;
 		float _1;
 		XMFLOAT3 UpDirection;

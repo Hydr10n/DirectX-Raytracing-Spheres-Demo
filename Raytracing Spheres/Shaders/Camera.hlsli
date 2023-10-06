@@ -3,8 +3,8 @@
 #include "STL.hlsli"
 
 struct Camera {
+	bool IsNormalizedFarDepth0;
 	float3 Position;
-	float _;
 	float3 RightDirection;
 	float _1;
 	float3 UpDirection;

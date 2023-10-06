@@ -775,7 +775,7 @@ private:
 			}
 		);
 		CreateBuffer(m_GPUBuffers.GraphicsSettings, GraphicsSettings(), ResourceDescriptorHeapIndex::InGraphicsSettings);
-		CreateBuffer(m_GPUBuffers.Camera, Camera(), ResourceDescriptorHeapIndex::InCamera);
+		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedFarDepth0 = true }, ResourceDescriptorHeapIndex::InCamera);
 		CreateBuffer(m_GPUBuffers.SceneData, SceneData(), ResourceDescriptorHeapIndex::InSceneData);
 	}
 
