@@ -7,3 +7,9 @@
 [submodule "External/NVIDIA/RTXMU"]
 	path = External/NVIDIA/RTXMU
 	url = https://github.com/NVIDIAGameWorks/RTXMU
+[submodule "External/NVIDIA/NRD"]
+	path = External/NVIDIA/NRD
+	url = https://github.com/NVIDIAGameWorks/RayTracingDenoiser
+[submodule "External/NVIDIA/NRI"]
+	path = External/NVIDIA/NRI
+	url = https://github.com/NVIDIAGameWorks/NRI
