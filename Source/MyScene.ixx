@@ -256,7 +256,7 @@ export {
 
 						textures[TextureType::BaseColorMap] = directoryPath / L"Moon_BaseColor.jpg";
 						textures[TextureType::NormalMap] = directoryPath / L"Moon_Normal.jpg";
-						RenderObjects.back().TextureTransform.Position = { 0.5f, 0, 0 };
+						RenderObjects.back().TextureTransform.Translation = { 0.5f, 0, 0 };
 					}
 					else if (renderObject.Name == ObjectNames::Earth) {
 						rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
