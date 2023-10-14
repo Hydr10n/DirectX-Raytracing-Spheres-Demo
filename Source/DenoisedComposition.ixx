@@ -4,7 +4,7 @@ module;
 
 #include "directxtk12/PostProcess.h"
 
-#include "Shaders/DenoisedComposition.hlsl.h"
+#include "Shaders/DenoisedComposition.dxil.h"
 
 export module DirectX.PostProcess.DenoisedComposition;
 
@@ -33,7 +33,7 @@ export namespace DirectX::PostProcess {
 		};
 
 		DenoisedComposition(ID3D12Device* device) noexcept(false) : m_data(device) {
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_DenoisedComposition, size(g_DenoisedComposition));
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_DenoisedComposition_dxil, size(g_DenoisedComposition_dxil));
 			ThrowIfFailed(device->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));

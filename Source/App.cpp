@@ -32,7 +32,7 @@ module;
 
 #include <shellapi.h>
 
-#include "Shaders/Raytracing.hlsl.h"
+#include "Shaders/Raytracing.dxil.h"
 
 module App;
 
@@ -613,14 +613,14 @@ private:
 	void CreateRootSignatures() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
-		ThrowIfFailed(device->CreateRootSignature(0, g_Raytracing, size(g_Raytracing), IID_PPV_ARGS(&m_rootSignature)));
+		ThrowIfFailed(device->CreateRootSignature(0, g_Raytracing_dxil, size(g_Raytracing_dxil), IID_PPV_ARGS(&m_rootSignature)));
 	}
 
 	void CreatePipelineStates() {
 		const auto device = m_deviceResources->GetD3DDevice();
 
 		{
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_Raytracing, size(g_Raytracing));
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_Raytracing_dxil, size(g_Raytracing_dxil));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 		}
@@ -775,7 +775,7 @@ private:
 			}
 		);
 		CreateBuffer(m_GPUBuffers.GraphicsSettings, GraphicsSettings(), ResourceDescriptorHeapIndex::InGraphicsSettings);
-		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedFarDepth0 = true }, ResourceDescriptorHeapIndex::InCamera);
+		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedDepthReversed = true }, ResourceDescriptorHeapIndex::InCamera);
 		CreateBuffer(m_GPUBuffers.SceneData, SceneData(), ResourceDescriptorHeapIndex::InSceneData);
 	}
 

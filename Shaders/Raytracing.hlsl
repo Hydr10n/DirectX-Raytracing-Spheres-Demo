@@ -18,7 +18,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 	STL::Rng::Hash::Initialize(pixelCoordinate, g_graphicsSettings.FrameIndex);
 
-	float linearDepth = 1.#INFf, normalizedDepth = !g_camera.IsNormalizedFarDepth0;
+	float linearDepth = 1.#INFf, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
 	float3 motionVector = 0;
 	float4 baseColorMetalness = 0;
 	float3 emissiveColor = 0;

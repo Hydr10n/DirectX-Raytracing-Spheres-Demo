@@ -4,7 +4,7 @@ module;
 
 #include "directxtk12/PostProcess.h"
 
-#include "Shaders/ChromaticAberration.hlsl.h"
+#include "Shaders/ChromaticAberration.dxil.h"
 
 export module DirectX.PostProcess.ChromaticAberration;
 
@@ -29,7 +29,7 @@ export namespace DirectX::PostProcess {
 		XMUINT2 RenderSize{};
 
 		ChromaticAberration(ID3D12Device* device) noexcept(false) : m_data(device) {
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_ChromaticAberration, size(g_ChromaticAberration));
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil));
 			ThrowIfFailed(device->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));

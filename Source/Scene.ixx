@@ -1,6 +1,6 @@
 module;
 
-#include <d3d12.h>
+#include "directx/d3dx12.h"
 
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"

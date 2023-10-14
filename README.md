@@ -63,6 +63,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ### Development Tools
 - Microsoft Visual Studio 2022 (17.4)
 
+- CMake (3.28)
+
 - vcpkg
 	```powershell
 	> git clone https://github.com/Microsoft/vcpkg
@@ -71,18 +73,15 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	> .\vcpkg integrate install
 	```
 
+	Set environment variable VCPKG_ROOT to current full path
+
 ### Dependencies
+- Git Submodule
+	```powershell
+	> git submodule update --init --update --recursive
+	```
+
 - Windows 11 SDK (10.0.22621.0)
-
-- [MathLib](https://github.com/NVIDIAGameWorks/MathLib)
-
-- [NVIDIA RTX Memory Utility](https://github.com/NVIDIAGameWorks/RTXMU)
-
-- [NVIDIA Streamline](https://github.com/NVIDIAGameWorks/Streamline)
-
-- [NVIDIA Real-Time Denoisers](https://github.com/NVIDIAGameWorks/RayTracingDenoiser)
-
-- [NVIDIA Render Interface](https://github.com/NVIDIAGameWorks/NRI)
 
 - [NVIDIA PhysX](https://github.com/NVIDIA-Omniverse/PhysX)
 	```powershell

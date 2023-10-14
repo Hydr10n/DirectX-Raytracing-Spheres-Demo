@@ -4,7 +4,7 @@ module;
 
 #include "directxtk12/PostProcess.h"
 
-#include "Shaders/TemporalAntiAliasing.hlsl.h"
+#include "Shaders/TemporalAntiAliasing.dxil.h"
 
 export module DirectX.PostProcess.TemporalAntiAliasing;
 
@@ -34,7 +34,7 @@ export namespace DirectX::PostProcess {
 		};
 
 		TemporalAntiAliasing(ID3D12Device* device) noexcept(false) : m_data(device) {
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_TemporalAntiAliasing, size(g_TemporalAntiAliasing));
+			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_TemporalAntiAliasing_dxil, size(g_TemporalAntiAliasing_dxil));
 			ThrowIfFailed(device->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
 			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));

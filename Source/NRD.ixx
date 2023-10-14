@@ -1,7 +1,11 @@
 module;
 
-#include "NRDIntegration.h"
+#include "NRD.h"
+#include "NRI.h"
+#include "NRIDescs.h"
+#include "Extensions/NRIHelper.h"
 #include "Extensions/NRIWrapperD3D12.h"
+#include "NRDIntegration.hpp"
 
 #include <d3d12.h>
 

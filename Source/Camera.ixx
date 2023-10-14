@@ -12,7 +12,7 @@ using namespace std;
 
 export {
 	struct Camera {
-		BOOL IsNormalizedFarDepth0;
+		BOOL IsNormalizedDepthReversed;
 		XMFLOAT3 Position;
 		XMFLOAT3 RightDirection;
 		float _1;
@@ -26,7 +26,7 @@ export {
 	};
 
 	struct CameraController {
-		CameraController(bool isReversedDepth = true) : m_projectionFlags(PROJ_LEFT_HANDED | (isReversedDepth ? PROJ_REVERSED_Z : 0)) {}
+		CameraController(bool isNormalizedDepthReversed = true) : m_projectionFlags(PROJ_LEFT_HANDED | (isNormalizedDepthReversed ? PROJ_REVERSED_Z : 0)) {}
 
 		const auto& GetPosition() const { return m_position; }
 
