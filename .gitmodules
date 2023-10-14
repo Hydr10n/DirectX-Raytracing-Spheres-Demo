@@ -13,3 +13,6 @@
 [submodule "External/NVIDIA/NRI"]
 	path = External/NVIDIA/NRI
 	url = https://github.com/NVIDIAGameWorks/NRI
+[submodule "External/NVIDIA/ShaderMake"]
+	path = External/NVIDIA/ShaderMake
+	url = https://github.com/NVIDIAGameWorks/ShaderMake
