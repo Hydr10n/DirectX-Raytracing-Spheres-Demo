@@ -78,7 +78,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ### Dependencies
 - Git Submodule
 	```powershell
-	> git submodule update --init --update --recursive
+	> git submodule update --init --recursive
 	```
 
 - Windows 11 SDK (10.0.22621.0)
