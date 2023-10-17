@@ -70,10 +70,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	> git clone https://github.com/Microsoft/vcpkg
 	> cd vcpkg
 	> .\bootstrap-vcpkg.bat
-	> .\vcpkg integrate install
+	> [Environment]::SetEnvironmentVariable("VCPKG_ROOT", $PWD.Path, [EnvironmentVariableTarget]::User)
 	```
-
-	Set environment variable VCPKG_ROOT to current full path
 
 ### Dependencies
 - Git Submodule
@@ -82,31 +80,6 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	```
 
 - Windows 11 SDK (10.0.22621.0)
-
-- [NVIDIA PhysX](https://github.com/NVIDIA-Omniverse/PhysX)
-	```powershell
-	> .\vcpkg install physx:x64-windows
-	```
-
-- [DirectX Tool Kit for DirectX 12](https://github.com/Microsoft/DirectXTK12)
-	```powershell
-	> .\vcpkg install directxtk12:x64-windows
-	```
-
-- [DirectXTex Texture Processing Library](https://github.com/Microsoft/DirectXTex)
-	```powershell
-	> .\vcpkg install directxtex[dx12,openexr]:x64-windows
-	```
-
-- [Dear ImGui](https://github.com/ocornut/imgui)
-	```powershell
-	> .\vcpkg install imgui[dx12-binding,win32-binding]:x64-windows
-	```
-
-- [JSON for Modern C++](https://github.com/nlohmann/json)
-	```powershell
-	> .\vcpkg install nlohmann-json:x64-windows
-	```
 
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 2004

@@ -3,22 +3,24 @@ cmake_minimum_required(VERSION 3.28)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+
 set(project "RaytracingSpheres")
 
 project(${project})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 
+set(GLOBAL_BIN_OUTPUT_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} CACHE STRING "")
+
 set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
-set(RTXMU_WITH_D3D12 ON CACHE BOOL "" FORCE)
-set(RTXMU_WITH_VULKAN OFF CACHE BOOL "" FORCE)
+set(RTXMU_WITH_D3D12 ON CACHE BOOL "")
+set(RTXMU_WITH_VULKAN OFF CACHE BOOL "")
 
-set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "" FORCE)
-set(NRD_EMBEDS_DXBC_SHADERS OFF CACHE BOOL "" FORCE)
+set(NRD_EMBEDS_DXBC_SHADERS OFF CACHE BOOL "")
+set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "")
 file(GLOB NRD_integration_headers "${NVIDIA_library_path}*")
-
-set(GLOBAL_BIN_OUTPUT_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} CACHE STRING "" FORCE)
 
 add_subdirectory("${NVIDIA_library_path}NRD")
 add_subdirectory("${NVIDIA_library_path}NRI")
@@ -74,9 +76,9 @@ foreach(package ${packages})
     find_package(${package} CONFIG REQUIRED)
 endforeach()
 target_link_libraries(${project} PRIVATE
-    imgui::imgui
     Microsoft::DirectXTex
     Microsoft::DirectXTK12
+    imgui::imgui
     nlohmann_json::nlohmann_json
     unofficial::omniverse-physx-sdk::sdk)
 

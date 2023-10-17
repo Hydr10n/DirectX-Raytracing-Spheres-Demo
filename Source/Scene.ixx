@@ -1,7 +1,5 @@
 module;
 
-#include "directx/d3dx12.h"
-
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
