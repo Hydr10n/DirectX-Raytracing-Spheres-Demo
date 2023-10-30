@@ -9,9 +9,7 @@ set(project "RaytracingSpheres")
 
 project(${project})
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
-
-set(GLOBAL_BIN_OUTPUT_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} CACHE STRING "")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin/$<CONFIG>")
 
 set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
@@ -22,26 +20,25 @@ set(NRD_EMBEDS_DXBC_SHADERS OFF CACHE BOOL "")
 set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "")
 file(GLOB NRD_integration_headers "${NVIDIA_library_path}*")
 
+add_subdirectory("${NVIDIA_library_path}ShaderMake")
+
 add_subdirectory("${NVIDIA_library_path}NRD")
+
 add_subdirectory("${NVIDIA_library_path}NRI")
+
 add_subdirectory("${NVIDIA_library_path}RTXMU")
-if (NOT TARGET ShaderMake)
-    add_subdirectory("${NVIDIA_library_path}ShaderMake")
-endif()
 
 include(ShaderCompilation.cmake)
 set(shader_include_directories "MathLib" "NRD/Shaders/Include")
 list(TRANSFORM shader_include_directories PREPEND ${NVIDIA_library_path})
 file(GLOB shaders "Shaders/*.hlsli" "Shaders/*.hlsl")
-CompileShaders(
-    target ${project}_shaders
+CompileShaders(target ${project}_shaders
     config ${CMAKE_CURRENT_SOURCE_DIR}/Shaders.cfg
     out ${CMAKE_CURRENT_BINARY_DIR}
     include_directories ${shader_include_directories}
     source ${shaders}
     folder ${project}
-    extraOptions "--shaderModel 6_6 --hlsl2021"
-)
+    extraOptions "--shaderModel 6_6 --hlsl2021")
 
 file(GLOB include "Source/*.h")
 file(GLOB modules "Source/*.ixx")
@@ -82,9 +79,7 @@ target_link_libraries(${project} PRIVATE
     nlohmann_json::nlohmann_json
     unofficial::omniverse-physx-sdk::sdk)
 
-set(output_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>")
-
-set_target_properties(${project} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${output_directory})
+set_target_properties(${project} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 set(DLL
     "nvngx_dlss.dll"
     "sl.common.dll"
@@ -94,6 +89,6 @@ set(DLL
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} COMMAND_EXPAND_LISTS
     -E copy_if_different
     "$<LIST:TRANSFORM,${DLL},PREPEND,${NVIDIA_library_path}Streamline/bin/x64/$<IF:$<CONFIG:Debug>,development/,>>"
-    ${output_directory})
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
-add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SOURCE_DIR}/Assets" "${output_directory}/Assets")
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")

@@ -48,13 +48,11 @@ import DirectX.RaytracingHelpers;
 import HaltonSamplePattern;
 import Model;
 import MyScene;
-import NRD;
 import RaytracingShaderData;
 import RenderTexture;
 import Scene;
 import SharedData;
 import StepTimer;
-import Streamline;
 import Texture;
 import ThreadHelpers;
 
@@ -232,7 +230,7 @@ struct App::Impl : IDeviceNotify {
 private:
 	const shared_ptr<WindowModeHelper> m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_D32_FLOAT, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing | DeviceResources::c_ReverseDepth);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing);
 
 	StepTimer m_stepTimer;
 
@@ -319,6 +317,7 @@ private:
 
 	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
 	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
+	RelaxDiffuseSpecularSettings m_NRDRelaxSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
@@ -423,7 +422,10 @@ private:
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(),
 				m_deviceResources->GetBackBufferCount(),
-				initializer_list<DenoiserDesc>{ { 0, Denoiser::REBLUR_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) } }
+				initializer_list<DenoiserDesc>{
+					{ static_cast<Identifier>(NRDDenoiser::ReBLUR), Denoiser::REBLUR_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) },
+					{ static_cast<Identifier>(NRDDenoiser::ReLAX), Denoiser::RELAX_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) }
+			}
 			);
 				m_NRD->IsAvailable()) {
 				CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
@@ -780,7 +782,7 @@ private:
 	}
 
 	void CreateStructuredBuffers() {
-		if (const UINT objectCount = static_cast<UINT>(size(m_scene->RenderObjects))) {
+		if (const auto objectCount = static_cast<UINT>(size(m_scene->RenderObjects))) {
 			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, UINT count, UINT descriptorHeapIndex) {
 				uploadBuffer = make_unique<T>(m_deviceResources->GetD3DDevice(), count);
 				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
@@ -789,7 +791,7 @@ private:
 			CreateBuffer(m_GPUBuffers.ObjectResourceDescriptorHeapIndices, objectCount, ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices);
 			CreateBuffer(m_GPUBuffers.ObjectData, objectCount, ResourceDescriptorHeapIndex::InObjectData);
 
-			for (UINT instanceIndex = 0, objectIndex = 0, textureTransformIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
+			for (UINT instanceIndex = 0, objectIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
 				m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Transform(*renderObject.Shape);
 
 				auto& objectData = m_GPUBuffers.ObjectData->GetData(objectIndex);
@@ -945,6 +947,7 @@ private:
 			.MaxNumberOfBounces = raytracingSettings.MaxNumberOfBounces,
 			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
 			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+			.NRDDenoiser = g_graphicsSettings.PostProcessing.NRD.Denoiser,
 			.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
 		};
 	}
@@ -988,7 +991,7 @@ private:
 		return resourceTagInfo;
 	}
 
-	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.IsEnabled && m_NRD->IsAvailable(); }
+	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 	bool IsDLSSEnabled() const { return g_graphicsSettings.PostProcessing.DLSS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
 	bool IsDLSSSuperResolutionEnabled() const { return IsDLSSEnabled() && g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode != DLSSSuperResolutionMode::Off; }
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
@@ -1108,6 +1111,8 @@ private:
 	void ProcessNRD() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
+		const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
+
 		const auto
 			& linearDepth = *m_renderTextures.at(RenderTextureNames::LinearDepth),
 			& baseColorMetalness = *m_renderTextures.at(RenderTextureNames::BaseColorMetalness),
@@ -1118,7 +1123,7 @@ private:
 		const auto& camera = m_GPUBuffers.Camera->GetData();
 
 		{
-			m_NRD->NewFrame(m_stepTimer.GetFrameCount() - 1);
+			m_NRD->NewFrame();
 
 			const auto Tag = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->Tag(resourceType, texture.GetResource(), texture.GetCurrentState()); };
 			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
@@ -1143,14 +1148,15 @@ private:
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
-			const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
 			m_NRDCommonSettings.splitScreen = NRDSettings.SplitScreen;
 			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationOverlayEnabled;
 
 			ignore = m_NRD->SetCommonSettings(m_NRDCommonSettings);
-			ignore = m_NRD->SetDenoiserSettings(0, m_NRDReblurSettings);
 
-			m_NRD->Denoise(initializer_list<Identifier>{ 0 });
+			const auto denoiser = static_cast<Identifier>(NRDSettings.Denoiser);
+			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) ignore = m_NRD->SetDenoiserSettings(denoiser, m_NRDReblurSettings);
+			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) ignore = m_NRD->SetDenoiserSettings(denoiser, m_NRDRelaxSettings);
+			m_NRD->Denoise(initializer_list<Identifier>{ denoiser });
 
 			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
 		}
@@ -1186,6 +1192,7 @@ private:
 			m_denoisedComposition->RenderSize = m_renderSize;
 
 			m_denoisedComposition->GetData() = {
+				.NRDDenoiser = NRDSettings.Denoiser,
 				.CameraRightDirection = m_cameraController.GetRightDirection(),
 				.CameraUpDirection = m_cameraController.GetUpDirection(),
 				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
@@ -1557,19 +1564,23 @@ private:
 						if (ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& NRDSettings = postProcessingSetttings.NRD;
 
-							auto isEnabled = IsNRDEnabled();
+							if (ImGui::BeginCombo("Denoiser", ToString(NRDSettings.Denoiser))) {
+								for (const auto Denoiser : { NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX }) {
+									const auto isSelected = NRDSettings.Denoiser == Denoiser;
 
-							{
-								const ImGuiEx::ScopedID scopedID("Enable NVIDIA Real-Time Denoisers");
+									if (ImGui::Selectable(ToString(Denoiser), isSelected)) {
+										NRDSettings.Denoiser = Denoiser;
 
-								if (ImGui::Checkbox("Enable", &isEnabled)) {
-									NRDSettings.IsEnabled = isEnabled;
+										ResetTemporalAccumulation();
+									}
 
-									ResetTemporalAccumulation();
+									if (isSelected) ImGui::SetItemDefaultFocus();
 								}
+
+								ImGui::EndCombo();
 							}
 
-							if (isEnabled) {
+							if (NRDSettings.Denoiser != NRDDenoiser::None) {
 								ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
 
 								ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);

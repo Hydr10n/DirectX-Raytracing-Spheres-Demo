@@ -9,6 +9,7 @@ module;
 export module DirectX.PostProcess.DenoisedComposition;
 
 import DirectX.BufferHelpers;
+import NRD;
 
 using namespace DirectX::BufferHelpers;
 using namespace DX;
@@ -22,8 +23,8 @@ export namespace DirectX::PostProcess {
 		XMUINT2 RenderSize{};
 
 		struct Data {
+			NRDDenoiser NRDDenoiser;
 			XMFLOAT3 CameraRightDirection;
-			float _;
 			XMFLOAT3 CameraUpDirection;
 			float _1;
 			XMFLOAT3 CameraForwardDirection;

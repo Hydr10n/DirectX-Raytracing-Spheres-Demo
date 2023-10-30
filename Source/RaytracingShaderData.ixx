@@ -5,6 +5,7 @@ module;
 export module RaytracingShaderData;
 
 import Material;
+import NRD;
 
 using namespace DirectX;
 
@@ -30,6 +31,8 @@ export {
 	struct GraphicsSettings {
 		UINT FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 		BOOL IsRussianRouletteEnabled;
+		NRDDenoiser NRDDenoiser;
+		XMUINT3 _;
 		XMFLOAT4 NRDHitDistanceParameters;
 	};
 

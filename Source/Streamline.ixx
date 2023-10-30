@@ -83,6 +83,8 @@ export {
 		FrameToken* m_currentFrame{};
 	};
 
+	enum class DLSSSuperResolutionMode { Off, Auto, DLAA, Quality, Balanced, Performance, UltraPerformance };
+
 	struct ResourceTagInfo {
 		BufferType Type;
 		Resource Resource;

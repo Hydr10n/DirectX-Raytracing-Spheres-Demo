@@ -9,6 +9,8 @@
 #include <fstream>
 
 import DisplayHelpers;
+import NRD;
+import Streamline;
 import WindowHelpers;
 
 JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
@@ -35,7 +37,23 @@ namespace WindowHelpers {
 	);
 }
 
-enum class DLSSSuperResolutionMode { Off, Auto, DLAA, Quality, Balanced, Performance, UltraPerformance };
+constexpr auto ToString(NRDDenoiser value) {
+	switch (value) {
+		case NRDDenoiser::None: return "None";
+		case NRDDenoiser::ReBLUR: return "ReBLUR";
+		case NRDDenoiser::ReLAX: return "ReLAX";
+		default: throw;
+	}
+}
+
+NLOHMANN_JSON_SERIALIZE_ENUM(
+	NRDDenoiser,
+	{
+		{ NRDDenoiser::None, ToString(NRDDenoiser::None) },
+		{ NRDDenoiser::ReBLUR, ToString(NRDDenoiser::ReBLUR) },
+		{ NRDDenoiser::ReLAX, ToString(NRDDenoiser::ReLAX) }
+	}
+);
 
 constexpr auto ToString(DLSSSuperResolutionMode value) {
 	switch (value) {
@@ -147,11 +165,13 @@ public:
 
 			struct PostProcessing {
 				struct NRD {
-					bool IsEnabled = true, IsValidationOverlayEnabled{};
+					NRDDenoiser Denoiser = NRDDenoiser::ReLAX;
+
+					bool IsValidationOverlayEnabled{};
 
 					float SplitScreen{};
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, IsEnabled, IsValidationOverlayEnabled, SplitScreen);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, Denoiser, IsValidationOverlayEnabled, SplitScreen);
 				} NRD;
 
 				bool IsTemporalAntiAliasingEnabled = true;

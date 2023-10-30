@@ -10,6 +10,8 @@
 
 #include "MeshHelpers.hlsli"
 
+#include "NRDDenoiser.hlsli"
+
 SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
@@ -38,6 +40,8 @@ ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHe
 struct GraphicsSettings {
 	uint FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 	bool IsRussianRouletteEnabled;
+	NRDDenoiser NRDDenoiser;
+	uint3 _;
 	float4 NRDHitDistanceParameters;
 };
 static const GraphicsSettings g_graphicsSettings = (ConstantBuffer<GraphicsSettings>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InGraphicsSettings];

@@ -70,14 +70,21 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
-		hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : material.Roughness);
-
-		float3 albedo, Rf0;
-		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
-		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
-		const float4 radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
-		if (isDiffuse) noisyDiffuse = radianceHitDistance;
-		else noisySpecular = radianceHitDistance;
+		if (g_graphicsSettings.NRDDenoiser != NRDDenoiser::None) {
+			float3 albedo, Rf0;
+			STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
+			const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
+			float4 radianceHitDistance = 0;
+			if (g_graphicsSettings.NRDDenoiser == NRDDenoiser::ReBLUR) {
+				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : material.Roughness);
+				radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), normalizedHitDistance);
+			}
+			else if (g_graphicsSettings.NRDDenoiser == NRDDenoiser::ReLAX) {
+				radianceHitDistance = RELAX_FrontEnd_PackRadianceAndHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
+			}
+			if (isDiffuse) noisyDiffuse = radianceHitDistance;
+			else noisySpecular = radianceHitDistance;
+		}
 
 		radiance += material.EmissiveColor;
 	}
