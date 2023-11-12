@@ -16,3 +16,6 @@
 [submodule "External/NVIDIA/ShaderMake"]
 	path = External/NVIDIA/ShaderMake
 	url = https://github.com/NVIDIAGameWorks/ShaderMake
+[submodule "External/AMD/FSR2"]
+	path = External/AMD/FSR2
+	url = https://github.com/GPUOpen-Effects/FidelityFX-FSR2
