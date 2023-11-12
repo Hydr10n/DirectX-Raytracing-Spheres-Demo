@@ -22,4 +22,6 @@ namespace Math {
 		direction = normalize(direction);
 		return float2((1 + atan2(direction.x, direction.z) / Pi) / 2, acos(direction.y) / Pi);
 	}
+
+	inline float3x3 InverseTranspose(float3x3 m) { return float3x3(cross(m[1], m[2]), cross(m[2], m[0]), cross(m[0], m[1])) / dot(cross(m[0], m[1]), m[2]); }
 }

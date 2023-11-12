@@ -16,11 +16,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 SamplerState gLinearSampler : register( s0 );
 
-Texture2D<float3> gIn_HistoryOutput : register( t0 );
-Texture2D<float4> gIn_CurrentOutput : register( t1 );
+Texture2D<float3> gIn_HistoryColor : register( t0 );
+Texture2D<float4> gIn_CurrentColor : register( t1 );
 Texture2D<float3> gIn_MotionVectors : register( t2 );
 
-RWTexture2D<float3> gOut_FinalOutput : register( u0 );
+RWTexture2D<float3> gOut_FinalColor : register( u0 );
 
 cbuffer _ : register(b0) { uint2 gRectSize; }
 
@@ -58,7 +58,7 @@ void Preload( uint2 sharedPos, int2 globalPos, uint2 rectSize )
 {
     globalPos = clamp( globalPos, 0, rectSize - 1.0 );
 
-    float4 color_viewZ = gIn_CurrentOutput[ globalPos ];
+    float4 color_viewZ = gIn_CurrentColor[ globalPos ];
     color_viewZ.w = color_viewZ.w / NRD_FP16_VIEWZ_SCALE;
 
     s_Data[ sharedPos.y ][ sharedPos.x ] = color_viewZ;
@@ -184,7 +184,7 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
 
     // History clamping
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gRectSize;
-    float3 history = gReset ? 0 : BicubicFilterNoCorners( gIn_HistoryOutput, gLinearSampler, pixelPosPrev, invRectSize, TAA_HISTORY_SHARPNESS ).xyz;
+    float3 history = gReset ? 0 : BicubicFilterNoCorners( gIn_HistoryColor, gLinearSampler, pixelPosPrev, invRectSize, TAA_HISTORY_SHARPNESS ).xyz;
     float3 historyClamped = STL::Color::ClampAabb( m1, sigma, history );
 
     // History weight
@@ -194,9 +194,5 @@ void main( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadI
     float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, motionAmount );
     historyWeight *= float( isInScreen );
 
-    // Final mix
-    float3 result = lerp( input, historyClamped, historyWeight );
-
-    // Output
-    gOut_FinalOutput[ pixelPos ] = result;
+    gOut_FinalColor[ pixelPos ] = lerp(input, historyClamped, historyWeight);
 }

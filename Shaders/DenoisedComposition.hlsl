@@ -12,7 +12,7 @@ Texture2D<float4> g_normalRoughness : register(t3);
 Texture2D<float4> g_denoisedDiffuse : register(t4);
 Texture2D<float4> g_denoisedSpecular : register(t5);
 
-RWTexture2D<float3> g_output : register(u0);
+RWTexture2D<float3> g_color : register(u0);
 
 cbuffer _ : register(b0) { uint2 g_renderSize; }
 
@@ -20,11 +20,11 @@ cbuffer Data : register(b1) {
 	NRDDenoiser g_NRDDenoiser;
 	float3 g_cameraRightDirection;
 	float3 g_cameraUpDirection;
-	float _1;
+	float _;
 	float3 g_cameraForwardDirection;
-	float _2;
+	float _1;
 	float2 g_cameraPixelJitter;
-	float2 _3;
+	float2 _2;
 }
 
 #define ROOT_SIGNATURE \
@@ -65,5 +65,5 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	}
 	diffuse *= lerp((1 - Fenvironment) * albedo, 1, 0.01f);
 	specular *= lerp(Fenvironment, 1, 0.01f);
-	g_output[pixelCoordinate] = diffuse + specular + g_emissiveColor[pixelCoordinate];
+	g_color[pixelCoordinate] = diffuse + specular + g_emissiveColor[pixelCoordinate];
 }

@@ -24,7 +24,7 @@ export namespace DirectX::PostProcess {
 	};
 
 	struct ChromaticAberration : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE Input, Output; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InColor, OutColor; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
@@ -41,8 +41,8 @@ export namespace DirectX::PostProcess {
 
 		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, Descriptors.Input);
-			commandList->SetComputeRootDescriptorTable(1, Descriptors.Output);
+			commandList->SetComputeRootDescriptorTable(0, Descriptors.InColor);
+			commandList->SetComputeRootDescriptorTable(1, Descriptors.OutColor);
 			commandList->SetComputeRoot32BitConstants(2, 2, &RenderSize, 0);
 			commandList->SetComputeRootConstantBufferView(3, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());

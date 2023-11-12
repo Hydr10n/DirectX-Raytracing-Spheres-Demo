@@ -18,7 +18,7 @@ export {
 			InInstanceData = ~0u,
 			InObjectResourceDescriptorHeapIndices = ~0u, InObjectData = ~0u,
 			InEnvironmentLightTexture = ~0u, InEnvironmentTexture = ~0u,
-			Output = ~0u,
+			OutColor = ~0u,
 			OutLinearDepth = ~0u, OutNormalizedDepth = ~0u,
 			OutMotionVectors = ~0u,
 			OutBaseColorMetalness = ~0u,

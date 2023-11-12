@@ -18,7 +18,7 @@ using namespace std;
 
 export namespace DirectX::PostProcess {
 	struct DenoisedComposition : IPostProcess {
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InLinearDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, Output; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InLinearDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, OutColor; } Descriptors{};
 
 		XMUINT2 RenderSize{};
 
@@ -26,11 +26,11 @@ export namespace DirectX::PostProcess {
 			NRDDenoiser NRDDenoiser;
 			XMFLOAT3 CameraRightDirection;
 			XMFLOAT3 CameraUpDirection;
-			float _1;
+			float _;
 			XMFLOAT3 CameraForwardDirection;
-			float _2;
+			float _1;
 			XMFLOAT2 CameraPixelJitter;
-			XMFLOAT2 _3;
+			XMFLOAT2 _2;
 		};
 
 		DenoisedComposition(ID3D12Device* device) noexcept(false) : m_data(device) {
@@ -51,7 +51,7 @@ export namespace DirectX::PostProcess {
 			commandList->SetComputeRootDescriptorTable(3, Descriptors.InNormalRoughness);
 			commandList->SetComputeRootDescriptorTable(4, Descriptors.InDenoisedDiffuse);
 			commandList->SetComputeRootDescriptorTable(5, Descriptors.InDenoisedSpecular);
-			commandList->SetComputeRootDescriptorTable(6, Descriptors.Output);
+			commandList->SetComputeRootDescriptorTable(6, Descriptors.OutColor);
 			commandList->SetComputeRoot32BitConstants(7, 2, &RenderSize, 0);
 			commandList->SetComputeRootConstantBufferView(8, m_data.GetResource()->GetGPUVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());

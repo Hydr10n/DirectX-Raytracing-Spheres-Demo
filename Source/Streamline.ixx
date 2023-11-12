@@ -24,11 +24,11 @@ export {
 
 		Streamline(uint32_t viewportID, LUID adapterLUID, ID3D12GraphicsCommandList* pCommandList) : m_viewport(viewportID), m_commandList(pCommandList) {
 			if (_.IsInitialized) {
-				for (const auto feature : Features) {
+				for (const auto Feature : Features) {
 					AdapterInfo adapterInfo;
 					adapterInfo.deviceLUID = reinterpret_cast<uint8_t*>(&adapterLUID);
 					adapterInfo.deviceLUIDSizeInBytes = sizeof(adapterLUID);
-					if (slIsFeatureSupported(feature, adapterInfo) == Result::eOk) m_features.emplace(feature);
+					if (slIsFeatureSupported(Feature, adapterInfo) == Result::eOk) m_features.emplace(Feature);
 				}
 			}
 		}

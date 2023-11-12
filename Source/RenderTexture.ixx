@@ -106,21 +106,13 @@ export namespace DX
             m_rtvDescriptorHeapIndex = rtvDescriptorHeapIndex;
         }
 
-        void CreateResource(UINT64 width, UINT height)
+        void CreateResource(UINT width, UINT height)
         {
             if (width == m_width && height == m_height)
                 return;
 
-            if (m_width > UINT32_MAX || m_height > UINT32_MAX)
-            {
-                throw out_of_range("Invalid width/height");
-            }
-
             if (!m_device)
                 return;
-
-            width = max<UINT64>(width, 1);
-            height = max<UINT>(height, 1);
 
             auto const heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
@@ -194,7 +186,7 @@ export namespace DX
         }
 
         ID3D12Resource* GetResource() const noexcept { return m_resource.Get(); }
-        D3D12_RESOURCE_STATES GetCurrentState() const noexcept { return m_state; }
+        D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
         UINT GetSrvDescriptorHeapIndex() const noexcept { return m_srvDescriptorHeapIndex; }
         UINT GetUavDescriptorHeapIndex() const noexcept { return m_uavDescriptorHeapIndex; }
         UINT GetRtvDescriptorHeapIndex() const noexcept { return m_rtvDescriptorHeapIndex; }
@@ -218,7 +210,7 @@ export namespace DX
 
         DXGI_FORMAT                                         m_format;
 
-        UINT64                                              m_width;
-        UINT                                              m_height;
+        UINT                                                m_width;
+        UINT                                                m_height;
     };
 }

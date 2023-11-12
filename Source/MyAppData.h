@@ -177,11 +177,9 @@ public:
 				bool IsTemporalAntiAliasingEnabled = true;
 
 				struct DLSS {
-					bool IsEnabled = true;
-
 					DLSSSuperResolutionMode SuperResolutionMode = DLSSSuperResolutionMode::Auto;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(DLSS, IsEnabled, SuperResolutionMode);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(DLSS, SuperResolutionMode);
 				} DLSS;
 
 				struct NIS {

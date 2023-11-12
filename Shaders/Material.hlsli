@@ -31,18 +31,13 @@ struct Material {
 	}
 
 	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, float splitProbability = STL::Rng::Hash::GetFloat()) {
-		/*
-		 * Sampling the GGX Distribution of Visible Normals
-		 * https://jcgt.org/published/0007/04/01/
-		 */
-
 		ScatterResult scatterResult;
 		scatterResult.Throughput = AmbientOcclusion;
 
 		float3 albedo, Rf0;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
 
-		const float2 random = STL::Rng::Hash::GetFloat2();
+		const float2 randomValue = STL::Rng::Hash::GetFloat2();
 
 		const float3 N = hitInfo.Normal, V = -worldRayDirection;
 		const float3x3 basis = STL::Geometry::GetBasis(N);
@@ -50,7 +45,7 @@ struct Material {
 		float3 H, L;
 
 		if (Opacity != 1) {
-			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(random, Roughness, STL::Geometry::RotateVector(basis, V)));
+			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 
 			const float VoH = abs(dot(V, H));
 			const float refractiveIndex = hitInfo.IsFrontFace ? STL::BRDF::IOR::Vacuum / RefractiveIndex : RefractiveIndex;
@@ -73,14 +68,14 @@ struct Material {
 
 		const float diffuseProbability = EstimateDiffuseProbability(N, V);
 		if (splitProbability < diffuseProbability) {
-			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(random));
+			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(randomValue));
 			H = normalize(V + L);
 
 			scatterResult.Type = ScatterType::DiffuseReflection;
 			scatterResult.Throughput *= albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, abs(dot(N, L)), abs(dot(N, V)), abs(dot(V, H))) / diffuseProbability;
 		}
 		else {
-			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(random, Roughness, STL::Geometry::RotateVector(basis, V)));
+			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 			L = reflect(-V, H);
 
 			scatterResult.Type = ScatterType::SpecularReflection;

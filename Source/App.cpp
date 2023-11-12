@@ -267,9 +267,9 @@ private:
 			InSceneData,
 			InInstanceData,
 			InObjectResourceDescriptorHeapIndices, InObjectData,
-			InHistoryOutput, OutHistoryOutput,
-			InOutput, Output,
-			InFinalOutput, OutFinalOutput,
+			InHistoryColor, OutHistoryColor,
+			InColor, OutColor,
+			InFinalColor, OutFinalColor,
 			InLinearDepth, OutLinearDepth,
 			InNormalizedDepth, OutNormalizedDepth,
 			InMotionVectors, OutMotionVectors,
@@ -280,7 +280,6 @@ private:
 			InDenoisedDiffuse, OutDenoisedDiffuse,
 			InDenoisedSpecular, OutDenoisedSpecular,
 			InValidation, OutValidation,
-			InExposure,
 			InBlur1, InBlur2,
 			InFont,
 			Reserve,
@@ -291,9 +290,8 @@ private:
 
 	struct RenderDescriptorHeapIndex {
 		enum {
-			Output,
-			FinalOutput,
-			Exposure,
+			Color,
+			FinalColor,
 			Blur1, Blur2,
 			Count
 		};
@@ -323,7 +321,6 @@ private:
 
 	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
 
-	DLSSOptimalSettings m_DLSSOptimalSettings;
 	DLSSOptions m_DLSSOptions;
 
 	unique_ptr<ChromaticAberration> m_chromaticAberration;
@@ -352,9 +349,9 @@ private:
 	} m_GPUBuffers;
 
 	struct RenderTextureNames {
-		MAKE_NAME(HistoryOutput);
-		MAKE_NAME(Output);
-		MAKE_NAME(FinalOutput);
+		MAKE_NAME(HistoryColor);
+		MAKE_NAME(Color);
+		MAKE_NAME(FinalColor);
 		MAKE_NAME(LinearDepth);
 		MAKE_NAME(NormalizedDepth);
 		MAKE_NAME(MotionVectors);
@@ -366,7 +363,6 @@ private:
 		MAKE_NAME(DenoisedDiffuse);
 		MAKE_NAME(DenoisedSpecular);
 		MAKE_NAME(Validation);
-		MAKE_NAME(Exposure);
 		MAKE_NAME(Blur1);
 		MAKE_NAME(Blur2);
 	};
@@ -399,6 +395,8 @@ private:
 
 		const auto outputSize = GetOutputSize();
 
+		m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
+
 		{
 			const auto CreateTexture = [&](DXGI_FORMAT format, SIZE size, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u, UINT rtvDescriptorHeapIndex = ~0u) {
 				auto& texture = m_renderTextures[textureName];
@@ -410,9 +408,9 @@ private:
 				CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex, rtvDescriptorHeapIndex);
 			};
 
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::HistoryOutput, ResourceDescriptorHeapIndex::InHistoryOutput, ResourceDescriptorHeapIndex::OutHistoryOutput);
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Output, ResourceDescriptorHeapIndex::InOutput, ResourceDescriptorHeapIndex::Output, RenderDescriptorHeapIndex::Output);
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalOutput, ResourceDescriptorHeapIndex::InFinalOutput, ResourceDescriptorHeapIndex::OutFinalOutput, RenderDescriptorHeapIndex::FinalOutput);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::HistoryColor, ResourceDescriptorHeapIndex::InHistoryColor, ResourceDescriptorHeapIndex::OutHistoryColor);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Color, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalColor, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth, ~0u);
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::NormalizedDepth, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth, ~0u);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
@@ -440,11 +438,9 @@ private:
 			}
 
 			if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
-				CreateTexture(DXGI_FORMAT_R32_FLOAT, { 1, 1 }, RenderTextureNames::Exposure, ResourceDescriptorHeapIndex::InExposure, ~0u, RenderDescriptorHeapIndex::Exposure);
-
 				m_DLSSOptions.outputWidth = outputSize.cx;
 				m_DLSSOptions.outputHeight = outputSize.cy;
-				SetDLSSOptimalSettings();
+				if (IsDLSSSuperResolutionEnabled()) SetDLSSOptimalSettings();
 			}
 
 			{
@@ -765,7 +761,7 @@ private:
 				.InInstanceData = ResourceDescriptorHeapIndex::InInstanceData,
 				.InObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices,
 				.InObjectData = ResourceDescriptorHeapIndex::InObjectData,
-				.Output = ResourceDescriptorHeapIndex::Output,
+				.OutColor = ResourceDescriptorHeapIndex::OutColor,
 				.OutLinearDepth = ResourceDescriptorHeapIndex::OutLinearDepth,
 				.OutNormalizedDepth = ResourceDescriptorHeapIndex::OutNormalizedDepth,
 				.OutMotionVectors = ResourceDescriptorHeapIndex::OutMotionVectors,
@@ -809,20 +805,18 @@ private:
 				};
 
 				for (const auto& [TextureType, Texture] : renderObject.Textures) {
-					UINT* pTexture;
-					auto& textures = objectResourceDescriptorHeapIndices.Textures;
-					switch (TextureType) {
-						case TextureType::BaseColorMap: pTexture = &textures.BaseColorMap; break;
-						case TextureType::EmissiveColorMap: pTexture = &textures.EmissiveColorMap; break;
-						case TextureType::MetallicMap: pTexture = &textures.MetallicMap; break;
-						case TextureType::RoughnessMap: pTexture = &textures.RoughnessMap; break;
-						case TextureType::AmbientOcclusionMap: pTexture = &textures.AmbientOcclusionMap; break;
-						case TextureType::TransmissionMap: pTexture = &textures.TransmissionMap; break;
-						case TextureType::OpacityMap: pTexture = &textures.OpacityMap; break;
-						case TextureType::NormalMap: pTexture = &textures.NormalMap; break;
-						default: pTexture = nullptr; break;
+					const auto index = Texture.DescriptorHeapIndices.SRV;
+					switch (auto& indices = objectResourceDescriptorHeapIndices.Textures; TextureType) {
+						case TextureType::BaseColorMap: indices.BaseColorMap = index; break;
+						case TextureType::EmissiveColorMap: indices.EmissiveColorMap = index; break;
+						case TextureType::MetallicMap: indices.MetallicMap = index; break;
+						case TextureType::RoughnessMap: indices.RoughnessMap = index; break;
+						case TextureType::AmbientOcclusionMap: indices.AmbientOcclusionMap = index; break;
+						case TextureType::TransmissionMap: indices.TransmissionMap = index; break;
+						case TextureType::OpacityMap: indices.OpacityMap = index; break;
+						case TextureType::NormalMap: indices.NormalMap = index; break;
+						default: throw out_of_range("Unsupported texture type");
 					}
-					if (pTexture != nullptr) *pTexture = Texture.DescriptorHeapIndices.SRV;
 				}
 
 				objectIndex++;
@@ -979,10 +973,10 @@ private:
 		commandList->Dispatch((m_renderSize.x + 15) / 16, (m_renderSize.y + 15) / 16, 1);
 	}
 
-	auto CreateResourceTagInfo(BufferType type, const RenderTexture& renderTexture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
+	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
 		ResourceTagInfo resourceTagInfo{
 			.Type = type,
-			.Resource = Resource(sl::ResourceType::eTex2d, renderTexture.GetResource(), renderTexture.GetCurrentState()),
+			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetState()),
 			.Lifecycle = lifecycle
 		};
 		if (isRenderSize) {
@@ -991,10 +985,9 @@ private:
 		return resourceTagInfo;
 	}
 
-	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
-	bool IsDLSSEnabled() const { return g_graphicsSettings.PostProcessing.DLSS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
-	bool IsDLSSSuperResolutionEnabled() const { return IsDLSSEnabled() && g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode != DLSSSuperResolutionMode::Off; }
+	bool IsDLSSSuperResolutionEnabled() const { return m_streamline->IsFeatureAvailable(kFeatureDLSS) && g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode != DLSSSuperResolutionMode::Off; }
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
+	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 
 	void SetDLSSOptimalSettings() {
 		switch (auto& mode = m_DLSSOptions.mode; g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode) {
@@ -1016,9 +1009,11 @@ private:
 			case DLSSSuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
 			default: mode = DLSSMode::eOff; break;
 		}
-		slDLSSGetOptimalSettings(m_DLSSOptions, m_DLSSOptimalSettings);
-		m_DLSSOptions.sharpness = m_DLSSOptimalSettings.optimalSharpness;
+
+		DLSSOptimalSettings optimalSettings;
+		slDLSSGetOptimalSettings(m_DLSSOptions, optimalSettings);
 		ignore = m_streamline->SetConstants(m_DLSSOptions);
+		m_renderSize = XMUINT2(optimalSettings.optimalRenderWidth, optimalSettings.optimalRenderHeight);
 	}
 
 	void ResetTemporalAccumulation() {
@@ -1031,11 +1026,7 @@ private:
 
 	void OnRenderSizeChanged() {
 		const auto outputSize = GetOutputSize();
-
-		m_renderSize = IsDLSSSuperResolutionEnabled() ? XMUINT2(m_DLSSOptimalSettings.optimalRenderWidth, m_DLSSOptimalSettings.optimalRenderHeight) : XMUINT2(outputSize.cx, outputSize.cy);
-
-		const auto scale = static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x);
-		m_haltonSamplePattern = static_cast<UINT>(8 * scale * scale);
+		m_haltonSamplePattern = static_cast<UINT>(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y)));
 
 		ResetTemporalAccumulation();
 	}
@@ -1049,38 +1040,38 @@ private:
 
 		if (isNRDEnabled) ProcessNRD();
 
-		auto input = m_renderTextures.at(RenderTextureNames::Output).get(), output = m_renderTextures.at(RenderTextureNames::FinalOutput).get();
+		auto inColor = m_renderTextures.at(RenderTextureNames::Color).get(), outColor = m_renderTextures.at(RenderTextureNames::FinalColor).get();
 
 		if (IsDLSSSuperResolutionEnabled()) {
-			ProcessDLSS();
+			ProcessDLSSSuperResolution();
 
-			swap(input, output);
+			swap(inColor, outColor);
 		}
 		else if (postProcessingSettings.IsTemporalAntiAliasingEnabled) {
 			ProcessTemporalAntiAliasing();
 
-			swap(input, output);
+			swap(inColor, outColor);
 		}
 
 		if (IsNISEnabled()) {
-			ProcessNIS(*input, *output);
+			ProcessNIS(*inColor, *outColor);
 
-			swap(input, output);
+			swap(inColor, outColor);
 		}
 
 		if (postProcessingSettings.IsChromaticAberrationEnabled) {
-			ProcessChromaticAberration(*input, *output);
+			ProcessChromaticAberration(*inColor, *outColor);
 
-			swap(input, output);
+			swap(inColor, outColor);
 		}
 
 		if (postProcessingSettings.Bloom.IsEnabled) {
-			ProcessBloom(*input, *output);
+			ProcessBloom(*inColor, *outColor);
 
-			swap(input, output);
+			swap(inColor, outColor);
 		}
 
-		ProcessToneMapping(*input);
+		ProcessToneMapping(*inColor);
 
 		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationOverlayEnabled) ProcessAlphaBlending(*m_renderTextures.at(RenderTextureNames::Validation));
 	}
@@ -1125,7 +1116,7 @@ private:
 		{
 			m_NRD->NewFrame();
 
-			const auto Tag = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->Tag(resourceType, texture.GetResource(), texture.GetCurrentState()); };
+			const auto Tag = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->Tag(resourceType, texture.GetResource(), texture.GetState()); };
 			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
 			Tag(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors));
 			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
@@ -1170,12 +1161,12 @@ private:
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(linearDepth.GetResource(), linearDepth.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(baseColorMetalness.GetResource(), baseColorMetalness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(emissiveColor.GetResource(), emissiveColor.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(normalRoughness.GetResource(), normalRoughness.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(denoisedDiffuse.GetResource(), denoisedDiffuse.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(denoisedSpecular.GetResource(), denoisedSpecular.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+					CD3DX12_RESOURCE_BARRIER::Transition(linearDepth.GetResource(), linearDepth.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(baseColorMetalness.GetResource(), baseColorMetalness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(emissiveColor.GetResource(), emissiveColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(normalRoughness.GetResource(), normalRoughness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(denoisedDiffuse.GetResource(), denoisedDiffuse.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(denoisedSpecular.GetResource(), denoisedSpecular.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
 				}
 			);
 
@@ -1186,7 +1177,7 @@ private:
 				.InNormalRoughness = m_resourceDescriptorHeap->GetGpuHandle(normalRoughness.GetSrvDescriptorHeapIndex()),
 				.InDenoisedDiffuse = m_resourceDescriptorHeap->GetGpuHandle(denoisedDiffuse.GetSrvDescriptorHeapIndex()),
 				.InDenoisedSpecular = m_resourceDescriptorHeap->GetGpuHandle(denoisedSpecular.GetSrvDescriptorHeapIndex()),
-				.Output = m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(RenderTextureNames::Output)->GetUavDescriptorHeapIndex())
+				.OutColor = m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(RenderTextureNames::Color)->GetUavDescriptorHeapIndex())
 			};
 
 			m_denoisedComposition->RenderSize = m_renderSize;
@@ -1206,38 +1197,36 @@ private:
 	void ProcessTemporalAntiAliasing() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& historyOutput = *m_renderTextures.at(RenderTextureNames::HistoryOutput), & finalOutput = *m_renderTextures.at(RenderTextureNames::FinalOutput);
+		const auto& historyColor = *m_renderTextures.at(RenderTextureNames::HistoryColor), & finalColor = *m_renderTextures.at(RenderTextureNames::FinalColor);
 
 		{
-			const auto& output = *m_renderTextures.at(RenderTextureNames::Output), & motionVectors = *m_renderTextures.at(RenderTextureNames::MotionVectors);
+			const auto& color = *m_renderTextures.at(RenderTextureNames::Color), & motionVectors = *m_renderTextures.at(RenderTextureNames::MotionVectors);
 
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(motionVectors.GetResource(), motionVectors.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+					CD3DX12_RESOURCE_BARRIER::Transition(historyColor.GetResource(), historyColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(color.GetResource(), color.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(motionVectors.GetResource(), motionVectors.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
 				}
 			);
 
 			m_temporalAntiAliasing->Descriptors = {
-				.InHistoryOutput = m_resourceDescriptorHeap->GetGpuHandle(historyOutput.GetSrvDescriptorHeapIndex()),
-				.InCurrentOutput = m_resourceDescriptorHeap->GetGpuHandle(output.GetSrvDescriptorHeapIndex()),
+				.InHistoryColor = m_resourceDescriptorHeap->GetGpuHandle(historyColor.GetSrvDescriptorHeapIndex()),
+				.InCurrentColor = m_resourceDescriptorHeap->GetGpuHandle(color.GetSrvDescriptorHeapIndex()),
 				.InMotionVectors = m_resourceDescriptorHeap->GetGpuHandle(motionVectors.GetSrvDescriptorHeapIndex()),
-				.OutFinalOutput = m_resourceDescriptorHeap->GetGpuHandle(finalOutput.GetUavDescriptorHeapIndex())
+				.OutFinalColor = m_resourceDescriptorHeap->GetGpuHandle(finalColor.GetUavDescriptorHeapIndex())
 			};
 
 			m_temporalAntiAliasing->RenderSize = m_renderSize;
 
 			auto& data = m_temporalAntiAliasing->GetData();
 
-			data = {
-				.CameraPosition = m_cameraController.GetPosition(),
-				.CameraRightDirection = m_cameraController.GetRightDirection(),
-				.CameraUpDirection = m_cameraController.GetUpDirection(),
-				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-				.CameraPreviousWorldToProjection = m_GPUBuffers.Camera->GetData().PreviousWorldToProjection
-			};
+			data.CameraPosition = m_cameraController.GetPosition();
+			data.CameraRightDirection = m_cameraController.GetRightDirection();
+			data.CameraUpDirection = m_cameraController.GetUpDirection();
+			data.CameraForwardDirection = m_cameraController.GetForwardDirection();
+			data.CameraPreviousWorldToProjection = m_GPUBuffers.Camera->GetData().PreviousWorldToProjection;
 
 			m_temporalAntiAliasing->Process(commandList);
 
@@ -1248,29 +1237,23 @@ private:
 			const ScopedBarrier scopedBarrier(
 				commandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(historyOutput.GetResource(), historyOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_DEST),
-					CD3DX12_RESOURCE_BARRIER::Transition(finalOutput.GetResource(), finalOutput.GetCurrentState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
+					CD3DX12_RESOURCE_BARRIER::Transition(historyColor.GetResource(), historyColor.GetState(), D3D12_RESOURCE_STATE_COPY_DEST),
+					CD3DX12_RESOURCE_BARRIER::Transition(finalColor.GetResource(), finalColor.GetState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
 				}
 			);
 
-			commandList->CopyResource(historyOutput.GetResource(), finalOutput.GetResource());
+			commandList->CopyResource(historyColor.GetResource(), finalColor.GetResource());
 		}
 	}
 
-	void ProcessDLSS() {
+	void ProcessDLSSSuperResolution() {
 		const auto commandList = m_deviceResources->GetCommandList();
-
-		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
-		auto& exposure = *m_renderTextures.at(RenderTextureNames::Exposure);
-		exposure.SetClearColor({ toneMappingSettings.Operator == ToneMapPostProcess::None ? 1 : pow(2.0f, toneMappingSettings.Exposure) });
-		exposure.Clear(commandList);
 
 		ResourceTagInfo resourceTagInfos[]{
 			CreateResourceTagInfo(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
 			CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
-			CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Output)),
-			CreateResourceTagInfo(kBufferTypeExposure, exposure, false),
-			CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalOutput), false)
+			CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Color)),
+			CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalColor), false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
 
@@ -1278,7 +1261,7 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessNIS(RenderTexture& input, RenderTexture& output) {
+	void ProcessNIS(RenderTexture& inColor, RenderTexture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		NISOptions NISOptions;
@@ -1287,8 +1270,8 @@ private:
 		ignore = m_streamline->SetConstants(NISOptions);
 
 		ResourceTagInfo resourceTagInfos[]{
-			CreateResourceTagInfo(kBufferTypeScalingInputColor, input, false),
-			CreateResourceTagInfo(kBufferTypeScalingOutputColor, output, false)
+			CreateResourceTagInfo(kBufferTypeScalingInputColor, inColor, false),
+			CreateResourceTagInfo(kBufferTypeScalingOutputColor, outColor, false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagInfos));
 
@@ -1296,23 +1279,23 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessChromaticAberration(RenderTexture& input, RenderTexture& output) {
+	void ProcessChromaticAberration(RenderTexture& inColor, RenderTexture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+
+		m_chromaticAberration->Descriptors = {
+			.InColor = m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()),
+			.OutColor = m_resourceDescriptorHeap->GetGpuHandle(outColor.GetUavDescriptorHeapIndex())
+		};
 
 		const auto outputSize = GetOutputSize();
 		m_chromaticAberration->RenderSize = XMUINT2(outputSize.cx, outputSize.cy);
 
-		m_chromaticAberration->Descriptors = {
-			.Input = m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()),
-			.Output = m_resourceDescriptorHeap->GetGpuHandle(output.GetUavDescriptorHeapIndex())
-		};
-
 		m_chromaticAberration->Process(commandList);
 	}
 
-	void ProcessBloom(RenderTexture& input, RenderTexture& output) {
+	void ProcessBloom(RenderTexture& inColor, RenderTexture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto& bloomSettings = g_graphicsSettings.PostProcessing.Bloom;
@@ -1321,10 +1304,10 @@ private:
 
 		auto& blur1 = *m_renderTextures.at(RenderTextureNames::Blur1), & blur2 = *m_renderTextures.at(RenderTextureNames::Blur2);
 
-		const auto inputState = input.GetCurrentState(), blur1State = blur1.GetCurrentState(), blur2State = blur2.GetCurrentState();
+		const auto inColorState = inColor.GetState(), blur1State = blur1.GetState(), blur2State = blur2.GetState();
 
 		const auto
-			inputSRV = m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()),
+			inColorSRV = m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()),
 			blur1SRV = m_resourceDescriptorHeap->GetGpuHandle(blur1.GetSrvDescriptorHeapIndex()),
 			blur2SRV = m_resourceDescriptorHeap->GetGpuHandle(blur2.GetSrvDescriptorHeapIndex());
 
@@ -1332,9 +1315,9 @@ private:
 			blur1RTV = m_renderDescriptorHeap->GetCpuHandle(blur1.GetRtvDescriptorHeapIndex()),
 			blur2RTV = m_renderDescriptorHeap->GetCpuHandle(blur2.GetRtvDescriptorHeapIndex());
 
-		input.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		inColor.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
-		Extraction->SetSourceTexture(inputSRV, input.GetResource());
+		Extraction->SetSourceTexture(inColorSRV, inColor.GetResource());
 		Extraction->SetBloomExtractParameter(bloomSettings.Threshold);
 
 		commandList->OMSetRenderTargets(1, &blur1RTV, FALSE, nullptr);
@@ -1369,11 +1352,11 @@ private:
 
 		blur1.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
-		Combination->SetSourceTexture(inputSRV);
+		Combination->SetSourceTexture(inColorSRV);
 		Combination->SetSourceTexture2(blur1SRV);
 		Combination->SetBloomCombineParameters(1.25f, 1, 1, 1);
 
-		auto renderTargetView = m_renderDescriptorHeap->GetCpuHandle(output.GetRtvDescriptorHeapIndex());
+		auto renderTargetView = m_renderDescriptorHeap->GetCpuHandle(outColor.GetRtvDescriptorHeapIndex());
 
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 
@@ -1381,7 +1364,7 @@ private:
 
 		Combination->Process(commandList);
 
-		input.TransitionTo(commandList, inputState);
+		inColor.TransitionTo(commandList, inColorState);
 		blur1.TransitionTo(commandList, blur1State);
 		blur2.TransitionTo(commandList, blur2State);
 
@@ -1389,26 +1372,26 @@ private:
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 	}
 
-	void ProcessToneMapping(RenderTexture& input) {
+	void ProcessToneMapping(RenderTexture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
 		auto& toneMapping = *m_toneMapping[toneMappingSettings.Operator];
-		toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()));
+		toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()));
 		toneMapping.SetExposure(toneMappingSettings.Exposure);
 		toneMapping.Process(commandList);
 	}
 
-	void ProcessAlphaBlending(RenderTexture& input) {
+	void ProcessAlphaBlending(RenderTexture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetCurrentState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
 		m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		m_alphaBlending->Begin(commandList);
-		m_alphaBlending->Draw(m_resourceDescriptorHeap->GetGpuHandle(input.GetSrvDescriptorHeapIndex()), GetTextureSize(input.GetResource()), XMFLOAT2());
+		m_alphaBlending->Draw(m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()), GetTextureSize(inColor.GetResource()), XMFLOAT2());
 		m_alphaBlending->End();
 	}
 
@@ -1598,38 +1581,30 @@ private:
 						if (ImGui::TreeNodeEx("NVIDIA DLSS", ImGuiTreeNodeFlags_DefaultOpen)) {
 							auto& DLSSSettings = postProcessingSetttings.DLSS;
 
-							auto isChanged = false, isEnabled = IsDLSSEnabled();
+							auto isChanged = false;
 
-							{
-								const ImGuiEx::ScopedID scopedID("Enable NVIDIA DLSS");
+							if (ImGui::BeginCombo("Super Resolution", ToString(DLSSSettings.SuperResolutionMode))) {
+								for (const auto DLSSSuperResolutionMode : { DLSSSuperResolutionMode::Off, DLSSSuperResolutionMode::Auto, DLSSSuperResolutionMode::DLAA, DLSSSuperResolutionMode::Quality, DLSSSuperResolutionMode::Balanced, DLSSSuperResolutionMode::Performance, DLSSSuperResolutionMode::UltraPerformance }) {
+									const auto isSelected = DLSSSettings.SuperResolutionMode == DLSSSuperResolutionMode;
 
-								if (ImGui::Checkbox("Enable", &isEnabled)) {
-									DLSSSettings.IsEnabled = isEnabled;
+									if (ImGui::Selectable(ToString(DLSSSuperResolutionMode), isSelected)) {
+										DLSSSettings.SuperResolutionMode = DLSSSuperResolutionMode;
 
-									isChanged = true;
-								}
-							}
-
-							if (isEnabled) {
-								if (ImGui::BeginCombo("Super Resolution", ToString(DLSSSettings.SuperResolutionMode))) {
-									for (const auto DLSSSuperResolutionMode : { DLSSSuperResolutionMode::Off, DLSSSuperResolutionMode::Auto, DLSSSuperResolutionMode::DLAA, DLSSSuperResolutionMode::Quality, DLSSSuperResolutionMode::Balanced, DLSSSuperResolutionMode::Performance, DLSSSuperResolutionMode::UltraPerformance }) {
-										const auto isSelected = DLSSSettings.SuperResolutionMode == DLSSSuperResolutionMode;
-
-										if (ImGui::Selectable(ToString(DLSSSuperResolutionMode), isSelected)) {
-											DLSSSettings.SuperResolutionMode = DLSSSuperResolutionMode;
-
-											isChanged = true;
-										}
-
-										if (isSelected) ImGui::SetItemDefaultFocus();
+										isChanged = true;
 									}
 
-									ImGui::EndCombo();
+									if (isSelected) ImGui::SetItemDefaultFocus();
 								}
+
+								ImGui::EndCombo();
 							}
 
 							if (isChanged) {
-								SetDLSSOptimalSettings();
+								if (DLSSSettings.SuperResolutionMode != DLSSSuperResolutionMode::Off) SetDLSSOptimalSettings();
+								else {
+									const auto [Width, Height] = GetOutputSize();
+									m_renderSize = XMUINT2(Width, Height);
+								}
 
 								OnRenderSizeChanged();
 							}

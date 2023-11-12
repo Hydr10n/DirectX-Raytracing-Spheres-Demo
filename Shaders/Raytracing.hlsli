@@ -26,7 +26,7 @@ struct GlobalResourceDescriptorHeapIndices {
 		InInstanceData,
 		InObjectResourceDescriptorHeapIndices, InObjectData,
 		InEnvironmentLightTexture, InEnvironmentTexture,
-		Output,
+		OutColor,
 		OutLinearDepth, OutNormalizedDepth,
 		OutMotionVectors,
 		OutBaseColorMetalness,
@@ -78,7 +78,7 @@ struct ObjectData {
 };
 static const StructuredBuffer<ObjectData> g_objectData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InObjectData];
 
-static const RWTexture2D<float4> g_output = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.Output];
+static const RWTexture2D<float4> g_color = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutColor];
 static const RWTexture2D<float> g_linearDepth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutLinearDepth];
 static const RWTexture2D<float> g_normalizedDepth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNormalizedDepth];
 static const RWTexture2D<float3> g_motionVectors = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutMotionVectors];

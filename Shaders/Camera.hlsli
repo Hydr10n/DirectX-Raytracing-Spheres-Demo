@@ -6,9 +6,9 @@ struct Camera {
 	bool IsNormalizedDepthReversed;
 	float3 Position;
 	float3 RightDirection;
-	float _1;
+	float _;
 	float3 UpDirection;
-	float _2;
+	float _1;
 	float3 ForwardDirection;
 	float ApertureRadius;
 	float NearDepth, FarDepth;

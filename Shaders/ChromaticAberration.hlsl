@@ -2,9 +2,9 @@
 
 SamplerState g_linearSampler : register(s0);
 
-Texture2D<float3> g_input : register(t0);
+Texture2D<float3> g_inColor : register(t0);
 
-RWTexture2D<float3> g_output : register(u0);
+RWTexture2D<float3> g_outColor : register(u0);
 
 cbuffer _ : register(b0) { uint2 g_renderSize; }
 
@@ -29,8 +29,8 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 	const float2 UV = Math::CalculateUV(pixelCoordinate, g_renderSize), direction = UV - g_focusUV;
 	float3 color;
-	color.r = g_input.SampleLevel(g_linearSampler, UV + direction * g_offsets.r, 0).r;
-	color.g = g_input.SampleLevel(g_linearSampler, UV + direction * g_offsets.g, 0).g;
-	color.b = g_input.SampleLevel(g_linearSampler, UV + direction * g_offsets.b, 0).b;
-	g_output[pixelCoordinate] = color;
+	color.r = g_inColor.SampleLevel(g_linearSampler, UV + direction * g_offsets.r, 0).r;
+	color.g = g_inColor.SampleLevel(g_linearSampler, UV + direction * g_offsets.g, 0).g;
+	color.b = g_inColor.SampleLevel(g_linearSampler, UV + direction * g_offsets.b, 0).b;
+	g_outColor[pixelCoordinate] = color;
 }

@@ -37,6 +37,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Samples Per Pixel
 - Post-Processing
 	- NVIDIA Real-Time Denoisers
+		- Denoiser
 		- Validation Overlay
 		- Split Screen
 	- Temporal Anti-Aliasing

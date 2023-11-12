@@ -15,9 +15,9 @@ export {
 		BOOL IsNormalizedDepthReversed;
 		XMFLOAT3 Position;
 		XMFLOAT3 RightDirection;
-		float _1;
+		float _;
 		XMFLOAT3 UpDirection;
-		float _2;
+		float _1;
 		XMFLOAT3 ForwardDirection;
 		float ApertureRadius;
 		float NearDepth, FarDepth;

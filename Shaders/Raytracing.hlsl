@@ -90,7 +90,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
-	g_output[pixelCoordinate] = float4(radiance, linearDepth * NRD_FP16_VIEWZ_SCALE);
+	g_color[pixelCoordinate] = float4(radiance, linearDepth * NRD_FP16_VIEWZ_SCALE);
 	g_noisyDiffuse[pixelCoordinate] = noisyDiffuse;
 	g_noisySpecular[pixelCoordinate] = noisySpecular;
 }
