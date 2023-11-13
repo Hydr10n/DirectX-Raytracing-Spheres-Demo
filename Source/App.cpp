@@ -22,6 +22,8 @@ module;
 
 #include "NRD.h"
 
+#include "ffx_fsr2.h"
+
 #include "PhysX.h"
 
 #include "imgui_impl_dx12.h"
@@ -43,7 +45,6 @@ import DirectX.CommandList;
 import DirectX.DescriptorHeap;
 import DirectX.PostProcess.ChromaticAberration;
 import DirectX.PostProcess.DenoisedComposition;
-import DirectX.PostProcess.TemporalAntiAliasing;
 import DirectX.RaytracingHelpers;
 import HaltonSamplePattern;
 import Model;
@@ -53,6 +54,7 @@ import RenderTexture;
 import Scene;
 import SharedData;
 import StepTimer;
+import StringConverters;
 import Texture;
 import ThreadHelpers;
 
@@ -204,7 +206,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_chromaticAberration.reset();
 
-		m_temporalAntiAliasing.reset();
+		m_FSR.reset();
 
 		m_denoisedComposition.reset();
 		m_NRD.reset();
@@ -267,7 +269,6 @@ private:
 			InSceneData,
 			InInstanceData,
 			InObjectResourceDescriptorHeapIndices, InObjectData,
-			InHistoryColor, OutHistoryColor,
 			InColor, OutColor,
 			InFinalColor, OutFinalColor,
 			InLinearDepth, OutLinearDepth,
@@ -319,9 +320,10 @@ private:
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
-	unique_ptr<TemporalAntiAliasing> m_temporalAntiAliasing;
-
 	DLSSOptions m_DLSSOptions;
+
+	FSRSettings m_FSRSettings;
+	unique_ptr<FSR> m_FSR;
 
 	unique_ptr<ChromaticAberration> m_chromaticAberration;
 
@@ -349,7 +351,6 @@ private:
 	} m_GPUBuffers;
 
 	struct RenderTextureNames {
-		MAKE_NAME(HistoryColor);
 		MAKE_NAME(Color);
 		MAKE_NAME(FinalColor);
 		MAKE_NAME(LinearDepth);
@@ -392,10 +393,9 @@ private:
 
 	void CreateWindowSizeDependentResources() {
 		const auto device = m_deviceResources->GetD3DDevice();
+		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto outputSize = GetOutputSize();
-
-		m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
 
 		{
 			const auto CreateTexture = [&](DXGI_FORMAT format, SIZE size, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u, UINT rtvDescriptorHeapIndex = ~0u) {
@@ -408,7 +408,6 @@ private:
 				CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex, rtvDescriptorHeapIndex);
 			};
 
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::HistoryColor, ResourceDescriptorHeapIndex::InHistoryColor, ResourceDescriptorHeapIndex::OutHistoryColor);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Color, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalColor, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth, ~0u);
@@ -418,7 +417,7 @@ private:
 			CreateTexture1(DXGI_FORMAT_R11G11B10_FLOAT, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
 
 			if (m_NRD = make_unique<NRD>(
-				device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(),
+				device, m_deviceResources->GetCommandQueue(), commandList,
 				m_deviceResources->GetBackBufferCount(),
 				initializer_list<DenoiserDesc>{
 					{ static_cast<Identifier>(NRDDenoiser::ReBLUR), Denoiser::REBLUR_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) },
@@ -440,17 +439,19 @@ private:
 			if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
 				m_DLSSOptions.outputWidth = outputSize.cx;
 				m_DLSSOptions.outputHeight = outputSize.cy;
-				if (IsDLSSSuperResolutionEnabled()) SetDLSSOptimalSettings();
 			}
+
+			m_FSR = make_unique<FSR>(device, commandList, FfxDimensions2D{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED | FFX_FSR2_ENABLE_DEPTH_INFINITE | FFX_FSR2_ENABLE_AUTO_EXPOSURE);
 
 			{
 				const SIZE size{ outputSize.cx / 2, outputSize.cy / 2 };
 				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur1, ResourceDescriptorHeapIndex::InBlur1, ~0u, RenderDescriptorHeapIndex::Blur1);
 				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur2, ResourceDescriptorHeapIndex::InBlur2, ~0u, RenderDescriptorHeapIndex::Blur2);
 			}
-		}
 
-		OnRenderSizeChanged();
+			SelectSuperResolutionUpscaler();
+			SetSuperResolutionOptimalSettings();
+		}
 
 		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.HorizontalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
 
@@ -484,7 +485,7 @@ private:
 			camera.ForwardDirection = m_cameraController.GetForwardDirection();
 			camera.NearDepth = m_cameraController.GetNearDepth();
 			camera.FarDepth = m_cameraController.GetFarDepth();
-			camera.PixelJitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
+			camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 			camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 		}
 
@@ -640,8 +641,6 @@ private:
 		}
 
 		m_denoisedComposition = make_unique<DenoisedComposition>(device);
-
-		m_temporalAntiAliasing = make_unique<TemporalAntiAliasing>(device);
 
 		m_chromaticAberration = make_unique<ChromaticAberration>(device);
 
@@ -985,35 +984,83 @@ private:
 		return resourceTagInfo;
 	}
 
-	bool IsDLSSSuperResolutionEnabled() const { return m_streamline->IsFeatureAvailable(kFeatureDLSS) && g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode != DLSSSuperResolutionMode::Off; }
+	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
+	bool IsFSRSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::FSR && m_FSR->IsAvailable(); }
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 
-	void SetDLSSOptimalSettings() {
-		switch (auto& mode = m_DLSSOptions.mode; g_graphicsSettings.PostProcessing.DLSS.SuperResolutionMode) {
-			case DLSSSuperResolutionMode::Auto:
-			{
-				const auto outputSize = GetOutputSize();
-				if (const auto minValue = min(outputSize.cx, outputSize.cy);
-					minValue <= 720) mode = DLSSMode::eDLAA;
-				else if (minValue <= 1440) mode = DLSSMode::eMaxQuality;
-				else if (minValue <= 2160) mode = DLSSMode::eMaxPerformance;
-				else mode = DLSSMode::eUltraPerformance;
+	void SelectSuperResolutionUpscaler() {
+		if (auto& upscaler = g_graphicsSettings.PostProcessing.SuperResolution.Upscaler;
+			upscaler == Upscaler::DLSS) {
+			if (!m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
+				if (m_FSR->IsAvailable()) upscaler = Upscaler::FSR;
+				else upscaler = Upscaler::None;
 			}
-			break;
-
-			case DLSSSuperResolutionMode::DLAA: mode = DLSSMode::eDLAA; break;
-			case DLSSSuperResolutionMode::Quality: mode = DLSSMode::eMaxQuality; break;
-			case DLSSSuperResolutionMode::Balanced: mode = DLSSMode::eBalanced; break;
-			case DLSSSuperResolutionMode::Performance: mode = DLSSMode::eMaxPerformance; break;
-			case DLSSSuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
-			default: mode = DLSSMode::eOff; break;
 		}
+		else if (upscaler == Upscaler::FSR) {
+			if (!m_FSR->IsAvailable()) {
+				if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) upscaler = Upscaler::DLSS;
+				else upscaler = Upscaler::None;
+			}
+		}
+	}
 
+	SuperResolutionMode SelectSuperResolutionMode() const {
+		if (g_graphicsSettings.PostProcessing.SuperResolution.Mode != SuperResolutionMode::Auto) return g_graphicsSettings.PostProcessing.SuperResolution.Mode;
+		const auto [Width, Height] = GetOutputSize();
+		const auto minValue = min(Width, Height);
+		if (minValue <= 720) return SuperResolutionMode::Native;
+		if (minValue <= 1440) return SuperResolutionMode::Quality;
+		if (minValue <= 2160) return SuperResolutionMode::Performance;
+		return SuperResolutionMode::UltraPerformance;
+	}
+
+	void SetDLSSOptimalSettings() {
+		switch (auto& mode = m_DLSSOptions.mode; SelectSuperResolutionMode()) {
+			case SuperResolutionMode::Native: mode = DLSSMode::eDLAA; break;
+			case SuperResolutionMode::Quality: mode = DLSSMode::eMaxQuality; break;
+			case SuperResolutionMode::Balanced: mode = DLSSMode::eBalanced; break;
+			case SuperResolutionMode::Performance: mode = DLSSMode::eMaxPerformance; break;
+			case SuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
+			default: throw;
+		}
 		DLSSOptimalSettings optimalSettings;
 		slDLSSGetOptimalSettings(m_DLSSOptions, optimalSettings);
 		ignore = m_streamline->SetConstants(m_DLSSOptions);
 		m_renderSize = XMUINT2(optimalSettings.optimalRenderWidth, optimalSettings.optimalRenderHeight);
+	}
+
+	void SetFSROptimalSettings() {
+		auto isNative = false;
+		FfxFsr2QualityMode mode;
+		switch (SelectSuperResolutionMode()) {
+			case SuperResolutionMode::Native: isNative = true; break;
+			case SuperResolutionMode::Quality: mode = FFX_FSR2_QUALITY_MODE_QUALITY; break;
+			case SuperResolutionMode::Balanced: mode = FFX_FSR2_QUALITY_MODE_BALANCED; break;
+			case SuperResolutionMode::Performance: mode = FFX_FSR2_QUALITY_MODE_PERFORMANCE; break;
+			case SuperResolutionMode::UltraPerformance: mode = FFX_FSR2_QUALITY_MODE_ULTRA_PERFORMANCE; break;
+			default: throw;
+		}
+		if (const auto outputSize = GetOutputSize(); isNative) m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
+		else {
+			ignore = ffxFsr2GetRenderResolutionFromQualityMode(&m_FSRSettings.RenderSize.width, &m_FSRSettings.RenderSize.height, outputSize.cx, outputSize.cy, mode);
+			m_renderSize = XMUINT2(m_FSRSettings.RenderSize.width, m_FSRSettings.RenderSize.height);
+		}
+	}
+
+	void SetSuperResolutionOptimalSettings() {
+		switch (g_graphicsSettings.PostProcessing.SuperResolution.Upscaler) {
+			case Upscaler::DLSS: SetDLSSOptimalSettings(); break;
+			case Upscaler::FSR: SetFSROptimalSettings(); break;
+			case Upscaler::None:
+			{
+				const auto [Width, Height] = GetOutputSize();
+				m_renderSize = XMUINT2(Width, Height);
+			}
+			break;
+		}
+
+		OnRenderSizeChanged();
 	}
 
 	void ResetTemporalAccumulation() {
@@ -1021,7 +1068,7 @@ private:
 
 		m_NRDCommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
 
-		m_temporalAntiAliasing->GetData().Reset = true;
+		m_FSRSettings.Reset = true;
 	}
 
 	void OnRenderSizeChanged() {
@@ -1047,8 +1094,8 @@ private:
 
 			swap(inColor, outColor);
 		}
-		else if (postProcessingSettings.IsTemporalAntiAliasingEnabled) {
-			ProcessTemporalAntiAliasing();
+		else if (IsFSRSuperResolutionEnabled()) {
+			ProcessFSRSuperResolution();
 
 			swap(inColor, outColor);
 		}
@@ -1080,14 +1127,14 @@ private:
 		ignore = m_streamline->NewFrame();
 
 		const auto& camera = m_GPUBuffers.Camera->GetData();
-		m_slConstants.jitterOffset = { -camera.PixelJitter.x, -camera.PixelJitter.y };
+		m_slConstants.jitterOffset = { -camera.Jitter.x, -camera.Jitter.y };
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraPos) = m_cameraController.GetPosition();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraUp) = m_cameraController.GetUpDirection();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraRight) = m_cameraController.GetRightDirection();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraFwd) = m_cameraController.GetForwardDirection();
 		m_slConstants.cameraNear = m_cameraController.GetNearDepth();
 		m_slConstants.cameraFar = m_cameraController.GetFarDepth();
-		m_slConstants.cameraFOV = m_cameraController.GetHorizontalFieldOfView();
+		m_slConstants.cameraFOV = m_cameraController.GetVerticalFieldOfView();
 		m_slConstants.cameraAspectRatio = m_cameraController.GetAspectRatio();
 		reinterpret_cast<XMFLOAT4X4&>(m_slConstants.cameraViewToClip) = m_cameraController.GetViewToProjection();
 		recalculateCameraMatrices(m_slConstants, reinterpret_cast<const float4x4&>(camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(camera.PreviousViewToProjection));
@@ -1132,7 +1179,7 @@ private:
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
 			ranges::copy(m_NRDCommonSettings.cameraJitter, m_NRDCommonSettings.cameraJitterPrev);
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.PixelJitter;
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.Jitter;
 
 			const auto outputSize = GetOutputSize();
 			ranges::copy(m_NRDCommonSettings.resolutionScale, m_NRDCommonSettings.resolutionScalePrev);
@@ -1187,62 +1234,10 @@ private:
 				.CameraRightDirection = m_cameraController.GetRightDirection(),
 				.CameraUpDirection = m_cameraController.GetUpDirection(),
 				.CameraForwardDirection = m_cameraController.GetForwardDirection(),
-				.CameraPixelJitter = camera.PixelJitter
+				.CameraJitter = camera.Jitter
 			};
 
 			m_denoisedComposition->Process(commandList);
-		}
-	}
-
-	void ProcessTemporalAntiAliasing() {
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		const auto& historyColor = *m_renderTextures.at(RenderTextureNames::HistoryColor), & finalColor = *m_renderTextures.at(RenderTextureNames::FinalColor);
-
-		{
-			const auto& color = *m_renderTextures.at(RenderTextureNames::Color), & motionVectors = *m_renderTextures.at(RenderTextureNames::MotionVectors);
-
-			const ScopedBarrier scopedBarrier(
-				commandList,
-				{
-					CD3DX12_RESOURCE_BARRIER::Transition(historyColor.GetResource(), historyColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(color.GetResource(), color.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(motionVectors.GetResource(), motionVectors.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
-				}
-			);
-
-			m_temporalAntiAliasing->Descriptors = {
-				.InHistoryColor = m_resourceDescriptorHeap->GetGpuHandle(historyColor.GetSrvDescriptorHeapIndex()),
-				.InCurrentColor = m_resourceDescriptorHeap->GetGpuHandle(color.GetSrvDescriptorHeapIndex()),
-				.InMotionVectors = m_resourceDescriptorHeap->GetGpuHandle(motionVectors.GetSrvDescriptorHeapIndex()),
-				.OutFinalColor = m_resourceDescriptorHeap->GetGpuHandle(finalColor.GetUavDescriptorHeapIndex())
-			};
-
-			m_temporalAntiAliasing->RenderSize = m_renderSize;
-
-			auto& data = m_temporalAntiAliasing->GetData();
-
-			data.CameraPosition = m_cameraController.GetPosition();
-			data.CameraRightDirection = m_cameraController.GetRightDirection();
-			data.CameraUpDirection = m_cameraController.GetUpDirection();
-			data.CameraForwardDirection = m_cameraController.GetForwardDirection();
-			data.CameraPreviousWorldToProjection = m_GPUBuffers.Camera->GetData().PreviousWorldToProjection;
-
-			m_temporalAntiAliasing->Process(commandList);
-
-			data.Reset = false;
-		}
-
-		{
-			const ScopedBarrier scopedBarrier(
-				commandList,
-				{
-					CD3DX12_RESOURCE_BARRIER::Transition(historyColor.GetResource(), historyColor.GetState(), D3D12_RESOURCE_STATE_COPY_DEST),
-					CD3DX12_RESOURCE_BARRIER::Transition(finalColor.GetResource(), finalColor.GetState(), D3D12_RESOURCE_STATE_COPY_SOURCE)
-				}
-			);
-
-			commandList->CopyResource(historyColor.GetResource(), finalColor.GetResource());
 		}
 	}
 
@@ -1256,6 +1251,51 @@ private:
 			CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalColor), false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
+
+		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+	}
+
+	void ProcessFSRSuperResolution() {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		struct FSRResource {
+			FSRResourceType Type;
+			RenderTexture& Texture;
+			D3D12_RESOURCE_STATES State = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		} resources[]{
+			{ FSRResourceType::Depth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth) },
+			{ FSRResourceType::MotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors) },
+			{ FSRResourceType::Color, *m_renderTextures.at(RenderTextureNames::Color) },
+			{ FSRResourceType::Output, *m_renderTextures.at(RenderTextureNames::FinalColor), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
+		};
+
+		for (auto& [Type, Texture, State] : resources) {
+			const auto state = Texture.GetState();
+			Texture.TransitionTo(commandList, State);
+			m_FSR->Tag(Type, Texture.GetResource(), State);
+			State = state;
+		}
+
+		reinterpret_cast<XMUINT2&>(m_FSRSettings.RenderSize) = m_renderSize;
+
+		const auto jitter = m_GPUBuffers.Camera->GetData().Jitter;
+		m_FSRSettings.Camera = {
+			.Jitter{ -jitter.x, -jitter.y },
+			.Near = m_cameraController.GetFarDepth(),
+			.Far = m_cameraController.GetNearDepth(),
+			.VerticalFOV = m_cameraController.GetVerticalFieldOfView()
+		};
+
+		m_FSRSettings.ElapsedMilliseconds = static_cast<float>(m_stepTimer.GetElapsedSeconds() * 1000);
+
+		m_FSR->UpdateSettings(m_FSRSettings);
+
+		m_FSRSettings.Reset = false;
+
+		ignore = m_FSR->Dispatch();
+
+		for (const auto& [_, Texture, State] : resources) Texture.TransitionTo(commandList, State);
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -1465,13 +1505,13 @@ private:
 					auto isChanged = false;
 
 					if (ImGui::BeginCombo("Window Mode", ToString(g_graphicsSettings.WindowMode))) {
-						for (const auto windowMode : { WindowMode::Windowed, WindowMode::Borderless, WindowMode::Fullscreen }) {
-							const auto isSelected = g_graphicsSettings.WindowMode == windowMode;
+						for (const auto WindowMode : { WindowMode::Windowed, WindowMode::Borderless, WindowMode::Fullscreen }) {
+							const auto isSelected = g_graphicsSettings.WindowMode == WindowMode;
 
-							if (ImGui::Selectable(ToString(windowMode), isSelected)) {
-								g_graphicsSettings.WindowMode = windowMode;
+							if (ImGui::Selectable(ToString(WindowMode), isSelected)) {
+								g_graphicsSettings.WindowMode = WindowMode;
 
-								m_windowModeHelper->SetMode(windowMode);
+								m_windowModeHelper->SetMode(WindowMode);
 
 								isChanged = true;
 							}
@@ -1484,13 +1524,13 @@ private:
 
 					if (const auto ToString = [](SIZE value) { return format("{} × {}", value.cx, value.cy); };
 						ImGui::BeginCombo("Resolution", ToString(g_graphicsSettings.Resolution).c_str())) {
-						for (const auto& displayResolution : g_displayResolutions) {
-							const auto isSelected = g_graphicsSettings.Resolution == displayResolution;
+						for (const auto& resolution : g_displayResolutions) {
+							const auto isSelected = g_graphicsSettings.Resolution == resolution;
 
-							if (ImGui::Selectable(ToString(displayResolution).c_str(), isSelected)) {
-								g_graphicsSettings.Resolution = displayResolution;
+							if (ImGui::Selectable(ToString(resolution).c_str(), isSelected)) {
+								g_graphicsSettings.Resolution = resolution;
 
-								m_windowModeHelper->SetResolution(displayResolution);
+								m_windowModeHelper->SetResolution(resolution);
 
 								isChanged = true;
 							}
@@ -1573,44 +1613,51 @@ private:
 						}
 					}
 
-					if (!IsDLSSSuperResolutionEnabled() && ImGui::Checkbox("Temporal Anti-Aliasing", &postProcessingSetttings.IsTemporalAntiAliasingEnabled)) ResetTemporalAccumulation();
+					if (ImGui::TreeNodeEx("Super Resolution", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& superResolutionSettings = postProcessingSetttings.SuperResolution;
 
-					{
-						const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureDLSS));
+						bool isChanged = false;
 
-						if (ImGui::TreeNodeEx("NVIDIA DLSS", ImGuiTreeNodeFlags_DefaultOpen)) {
-							auto& DLSSSettings = postProcessingSetttings.DLSS;
+						if (ImGui::BeginCombo("Upscaler", ToString(superResolutionSettings.Upscaler))) {
+							for (const auto Upscaler : { Upscaler::DLSS, Upscaler::FSR, Upscaler::None }) {
+								const auto IsSelectable = [&] {
+									return Upscaler == Upscaler::None
+										|| (Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS))
+										|| (Upscaler == Upscaler::FSR && m_FSR->IsAvailable());
+								};
+								const auto isSelected = superResolutionSettings.Upscaler == Upscaler;
 
-							auto isChanged = false;
+								if (ImGui::Selectable(ToString(Upscaler), isSelected, IsSelectable() ? ImGuiSelectableFlags_None : ImGuiSelectableFlags_Disabled)) {
+									superResolutionSettings.Upscaler = Upscaler;
 
-							if (ImGui::BeginCombo("Super Resolution", ToString(DLSSSettings.SuperResolutionMode))) {
-								for (const auto DLSSSuperResolutionMode : { DLSSSuperResolutionMode::Off, DLSSSuperResolutionMode::Auto, DLSSSuperResolutionMode::DLAA, DLSSSuperResolutionMode::Quality, DLSSSuperResolutionMode::Balanced, DLSSSuperResolutionMode::Performance, DLSSSuperResolutionMode::UltraPerformance }) {
-									const auto isSelected = DLSSSettings.SuperResolutionMode == DLSSSuperResolutionMode;
-
-									if (ImGui::Selectable(ToString(DLSSSuperResolutionMode), isSelected)) {
-										DLSSSettings.SuperResolutionMode = DLSSSuperResolutionMode;
-
-										isChanged = true;
-									}
-
-									if (isSelected) ImGui::SetItemDefaultFocus();
+									isChanged = true;
 								}
 
-								ImGui::EndCombo();
+								if (isSelected) ImGui::SetItemDefaultFocus();
 							}
 
-							if (isChanged) {
-								if (DLSSSettings.SuperResolutionMode != DLSSSuperResolutionMode::Off) SetDLSSOptimalSettings();
-								else {
-									const auto [Width, Height] = GetOutputSize();
-									m_renderSize = XMUINT2(Width, Height);
-								}
-
-								OnRenderSizeChanged();
-							}
-
-							ImGui::TreePop();
+							ImGui::EndCombo();
 						}
+
+						if (superResolutionSettings.Upscaler != Upscaler::None && ImGui::BeginCombo("Mode", ToString(superResolutionSettings.Mode))) {
+							for (const auto Mode : { SuperResolutionMode::Auto, SuperResolutionMode::Native, SuperResolutionMode::Quality, SuperResolutionMode::Balanced, SuperResolutionMode::Performance, SuperResolutionMode::UltraPerformance }) {
+								const auto isSelected = superResolutionSettings.Mode == Mode;
+
+								if (ImGui::Selectable(ToString(Mode), isSelected)) {
+									superResolutionSettings.Mode = Mode;
+
+									isChanged = true;
+								}
+
+								if (isSelected) ImGui::SetItemDefaultFocus();
+							}
+
+							ImGui::EndCombo();
+						}
+
+						if (isChanged) SetSuperResolutionOptimalSettings();
+
+						ImGui::TreePop();
 					}
 
 					{
@@ -1657,10 +1704,10 @@ private:
 						auto& toneMappingSettings = postProcessingSetttings.ToneMapping;
 
 						if (ImGui::BeginCombo("Operator", ToString(toneMappingSettings.Operator))) {
-							for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
-								const auto isSelected = toneMappingSettings.Operator == toneMappingOperator;
+							for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+								const auto isSelected = toneMappingSettings.Operator == Operator;
 
-								if (ImGui::Selectable(ToString(toneMappingOperator), isSelected)) toneMappingSettings.Operator = toneMappingOperator;
+								if (ImGui::Selectable(ToString(Operator), isSelected)) toneMappingSettings.Operator = Operator;
 
 								if (isSelected) ImGui::SetItemDefaultFocus();
 							}

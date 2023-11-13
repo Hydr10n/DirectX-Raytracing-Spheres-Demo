@@ -2,8 +2,6 @@ module;
 
 #include <DirectXMath.h>
 
-#include <cmath>
-
 #include <stdexcept>
 
 export module HaltonSamplePattern;
@@ -17,19 +15,19 @@ public:
 
 	static auto Get(uint32_t index, uint32_t base) {
 		float factor = 1, value = 0;
-		for (; index > 0; index /= base) {
+		while (index > 0) {
 			factor /= static_cast<float>(base);
-			value += factor * (index % base);
+			value += factor * static_cast<float>(index % base);
+			index /= base;
 		}
-		return modf(value + 0.5f, &value) - 0.5f;
+		return value - 0.5f;
 	}
 
 	static auto Get(uint32_t index) { return XMFLOAT2(Get(index, 2), Get(index, 3)); }
 
 	auto GetNext() const noexcept {
-		const auto ret = Get(m_sampleIndex);
-		m_sampleIndex = (m_sampleIndex + 1) % m_sampleCount;
-		return ret;
+		m_sampleIndex = m_sampleIndex % m_sampleCount + 1;
+		return Get(m_sampleIndex);
 	}
 
 	auto GetCount() const noexcept { return m_sampleCount; }

@@ -23,7 +23,7 @@ cbuffer Data : register(b1) {
 	float _;
 	float3 g_cameraForwardDirection;
 	float _1;
-	float2 g_cameraPixelJitter;
+	float2 g_cameraJitter;
 	float2 _2;
 }
 
@@ -49,7 +49,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	const float4 baseColorMetalness = g_baseColorMetalness[pixelCoordinate];
 	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, albedo, Rf0);
 
-	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelCoordinate, g_renderSize, g_cameraPixelJitter));
+	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelCoordinate, g_renderSize, g_cameraJitter));
 	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelCoordinate]);
 	float3 diffuse = 0, specular = 0;
 	const float3

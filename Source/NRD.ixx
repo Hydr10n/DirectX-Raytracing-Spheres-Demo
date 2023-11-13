@@ -20,8 +20,7 @@ using namespace std;
 export {
 	enum class NRDDenoiser { None, ReBLUR, ReLAX };
 
-	class NRD {
-	public:
+	struct NRD {
 		NRD(const NRD&) = delete;
 		NRD& operator=(const NRD&) = delete;
 
@@ -53,11 +52,11 @@ export {
 			if (m_device != nullptr) nriDestroyDevice(*m_device);
 		}
 
-		bool IsAvailable() const { return m_isAvailable; }
+		auto IsAvailable() const { return m_isAvailable; }
 
 		void NewFrame() { m_NRD.NewFrame(); }
 
-		bool Tag(ResourceType type, ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
+		auto Tag(ResourceType type, ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
 			if (!m_isAvailable || pResource == nullptr) return false;
 
 			AccessBits accessBits;
@@ -95,10 +94,10 @@ export {
 			return true;
 		}
 
-		bool SetCommonSettings(const CommonSettings& commonSettings) { return m_NRD.SetCommonSettings(commonSettings); }
+		auto SetCommonSettings(const CommonSettings& commonSettings) { return m_NRD.SetCommonSettings(commonSettings); }
 
 		template <typename T>
-		bool SetDenoiserSettings(Identifier denoiser, const T& denoiserSettings) { return m_NRD.SetDenoiserSettings(denoiser, &denoiserSettings); }
+		auto SetDenoiserSettings(Identifier denoiser, const T& denoiserSettings) { return m_NRD.SetDenoiserSettings(denoiser, &denoiserSettings); }
 
 		void Denoise(span<const Identifier> denoisers) {
 			m_NRD.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool);
@@ -119,11 +118,11 @@ export {
 			m_NRI.CmdPipelineBarrier(*m_commandBuffer, &transitionBarrierDesc, nullptr, BarrierDependency::ALL_STAGES);
 		}
 
-		double GetTotalMemoryUsageInMb() const { return m_NRD.GetTotalMemoryUsageInMb(); }
-		double GetPersistentMemoryUsageInMb() const { return m_NRD.GetPersistentMemoryUsageInMb(); }
-		double GetAliasableMemoryUsageInMb() const { return m_NRD.GetAliasableMemoryUsageInMb(); }
+		auto GetTotalMemoryUsageInMb() const { return m_NRD.GetTotalMemoryUsageInMb(); }
+		auto GetPersistentMemoryUsageInMb() const { return m_NRD.GetPersistentMemoryUsageInMb(); }
+		auto GetAliasableMemoryUsageInMb() const { return m_NRD.GetAliasableMemoryUsageInMb(); }
 
-		static constexpr DXGI_FORMAT ToDXGIFormat(NormalEncoding value) {
+		static constexpr auto ToDXGIFormat(NormalEncoding value) {
 			switch (value) {
 				case NormalEncoding::RGBA8_UNORM: return DXGI_FORMAT_R8G8B8A8_UNORM;
 				case NormalEncoding::RGBA8_SNORM: return DXGI_FORMAT_R8G8B8A8_SNORM;

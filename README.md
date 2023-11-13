@@ -25,7 +25,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ### Rigid-Body Simulation Using NVIDIA PhysX
 
 ### Graphics Settings
-- Window Mode
+- Window Mode: Windowed | Borderless | Fullscreen
 - Resolution
 - V-Sync
 - Camera
@@ -37,12 +37,10 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Samples Per Pixel
 - Post-Processing
 	- NVIDIA Real-Time Denoisers
-		- Denoiser
+		- Denoiser: ReBLUR | ReLAX
 		- Validation Overlay
 		- Split Screen
-	- Temporal Anti-Aliasing
-	- NVIDIA DLSS
-		- Super Resolution
+	- Super Resolution: NVIDIA DLSS | AMD FSR
 	- NVIDIA Image Scaling
 		- Sharpness
 	- Chromatic Aberration
@@ -50,7 +48,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 		- Threshold
 		- Blur Size
 	- Tone Mapping
-		- Operator
+		- Operator: Saturate | Reinhard | ACES Filmic
 		- Exposure
 
 ### Supported Input Devices

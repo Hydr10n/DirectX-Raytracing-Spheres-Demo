@@ -9,98 +9,66 @@
 #include <fstream>
 
 import DisplayHelpers;
+import FSR;
 import NRD;
 import Streamline;
 import WindowHelpers;
 
 JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
 
-constexpr auto ToString(WindowHelpers::WindowMode value) {
-	using namespace WindowHelpers;
-
-	switch (value) {
-		case WindowMode::Windowed: return "Windowed";
-		case WindowMode::Borderless: return "Borderless";
-		case WindowMode::Fullscreen: return "Fullscreen";
-		default: throw;
-	}
-}
-
 namespace WindowHelpers {
 	NLOHMANN_JSON_SERIALIZE_ENUM(
 		WindowMode,
 		{
-			{ WindowMode::Windowed, ToString(WindowMode::Windowed) },
-			{ WindowMode::Borderless, ToString(WindowMode::Borderless) },
-			{ WindowMode::Fullscreen, ToString(WindowMode::Fullscreen) }
+			{ WindowMode::Windowed, "Windowed" },
+			{ WindowMode::Borderless, "Borderless" },
+			{ WindowMode::Fullscreen, "Fullscreen" }
 		}
 	);
-}
-
-constexpr auto ToString(NRDDenoiser value) {
-	switch (value) {
-		case NRDDenoiser::None: return "None";
-		case NRDDenoiser::ReBLUR: return "ReBLUR";
-		case NRDDenoiser::ReLAX: return "ReLAX";
-		default: throw;
-	}
 }
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
 	NRDDenoiser,
 	{
-		{ NRDDenoiser::None, ToString(NRDDenoiser::None) },
-		{ NRDDenoiser::ReBLUR, ToString(NRDDenoiser::ReBLUR) },
-		{ NRDDenoiser::ReLAX, ToString(NRDDenoiser::ReLAX) }
+		{ NRDDenoiser::None, "None" },
+		{ NRDDenoiser::ReBLUR, "ReBLUR" },
+		{ NRDDenoiser::ReLAX, "ReLAX" }
 	}
 );
 
-constexpr auto ToString(DLSSSuperResolutionMode value) {
-	switch (value) {
-		case DLSSSuperResolutionMode::Off: return "Off";
-		case DLSSSuperResolutionMode::Auto: return "Auto";
-		case DLSSSuperResolutionMode::DLAA: return "DLAA";
-		case DLSSSuperResolutionMode::Quality: return "Quality";
-		case DLSSSuperResolutionMode::Balanced: return "Balanced";
-		case DLSSSuperResolutionMode::Performance: return "Performance";
-		case DLSSSuperResolutionMode::UltraPerformance: return "Ultra Performance";
-		default: throw;
-	}
-}
+enum class Upscaler { None, DLSS, FSR };
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
-	DLSSSuperResolutionMode,
+	Upscaler,
 	{
-		{ DLSSSuperResolutionMode::Off, ToString(DLSSSuperResolutionMode::Off) },
-		{ DLSSSuperResolutionMode::Auto, ToString(DLSSSuperResolutionMode::Auto) },
-		{ DLSSSuperResolutionMode::DLAA, ToString(DLSSSuperResolutionMode::DLAA) },
-		{ DLSSSuperResolutionMode::Quality, ToString(DLSSSuperResolutionMode::Quality) },
-		{ DLSSSuperResolutionMode::Balanced, ToString(DLSSSuperResolutionMode::Balanced) },
-		{ DLSSSuperResolutionMode::Performance, ToString(DLSSSuperResolutionMode::Performance) },
-		{ DLSSSuperResolutionMode::UltraPerformance, ToString(DLSSSuperResolutionMode::UltraPerformance) }
+		{ Upscaler::None, "None" },
+		{ Upscaler::DLSS, "DLSS" },
+		{ Upscaler::FSR, "FSR" }
 	}
 );
 
-constexpr auto ToString(DirectX::ToneMapPostProcess::Operator value) {
-	using namespace DirectX;
+enum class SuperResolutionMode { Auto, Native, Quality, Balanced, Performance, UltraPerformance };
 
-	switch (value) {
-		case ToneMapPostProcess::None: return "None";
-		case ToneMapPostProcess::Saturate: return "Saturate";
-		case ToneMapPostProcess::Reinhard: return "Reinhard";
-		case ToneMapPostProcess::ACESFilmic: return "ACES Filmic";
-		default: throw;
+NLOHMANN_JSON_SERIALIZE_ENUM(
+	SuperResolutionMode,
+	{
+		{ SuperResolutionMode::Auto, "Auto" },
+		{ SuperResolutionMode::Native, "Native" },
+		{ SuperResolutionMode::Quality, "Quality" },
+		{ SuperResolutionMode::Balanced, "Balanced" },
+		{ SuperResolutionMode::Performance, "Performance" },
+		{ SuperResolutionMode::UltraPerformance, "UltraPerformance" }
 	}
-}
+);
 
 namespace DirectX {
 	NLOHMANN_JSON_SERIALIZE_ENUM(
 		ToneMapPostProcess::Operator,
 		{
-			{ ToneMapPostProcess::None, ToString(ToneMapPostProcess::None) },
-			{ ToneMapPostProcess::Saturate, ToString(ToneMapPostProcess::Saturate) },
-			{ ToneMapPostProcess::Reinhard, ToString(ToneMapPostProcess::Reinhard) },
-			{ ToneMapPostProcess::ACESFilmic, ToString(ToneMapPostProcess::ACESFilmic) }
+			{ ToneMapPostProcess::None, "None" },
+			{ ToneMapPostProcess::Saturate, "Saturate" },
+			{ ToneMapPostProcess::Reinhard, "Reinhard" },
+			{ ToneMapPostProcess::ACESFilmic, "ACESFilmic" }
 		}
 	);
 }
@@ -174,18 +142,18 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, Denoiser, IsValidationOverlayEnabled, SplitScreen);
 				} NRD;
 
-				bool IsTemporalAntiAliasingEnabled = true;
+				struct SuperResolution {
+					Upscaler Upscaler = Upscaler::DLSS;
 
-				struct DLSS {
-					DLSSSuperResolutionMode SuperResolutionMode = DLSSSuperResolutionMode::Auto;
+					SuperResolutionMode Mode = SuperResolutionMode::Auto;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(DLSS, SuperResolutionMode);
-				} DLSS;
+					FRIEND_JSON_CONVERSION_FUNCTIONS(SuperResolution, Upscaler, Mode);
+				} SuperResolution;
 
 				struct NIS {
 					bool IsEnabled{};
 
-					float Sharpness{};
+					float Sharpness = 0.5f;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(NIS, IsEnabled, Sharpness);
 				} NIS;
@@ -212,7 +180,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure);
 				} ToneMapping;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, IsTemporalAntiAliasingEnabled, DLSS, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);

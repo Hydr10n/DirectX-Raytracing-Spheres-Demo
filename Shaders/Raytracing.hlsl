@@ -26,7 +26,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 	HitInfo hitInfo;
 	Material material;
-	const float2 UV = Math::CalculateUV(pixelCoordinate, g_renderSize, g_camera.PixelJitter);
+	const float2 UV = Math::CalculateUV(pixelCoordinate, g_renderSize, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	const float3 V = -rayDesc.Direction;
 	const bool hit = CastRay(rayDesc, hitInfo);

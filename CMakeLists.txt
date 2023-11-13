@@ -2,11 +2,16 @@ cmake_minimum_required(VERSION 3.28)
 
 set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin/$<CONFIG>")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Bin/$<CONFIG>")
 
 set(project "RaytracingSpheres")
 
 project(${project})
+
+set(AMD_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/AMD/")
+
+set(FFX_FSR2_API_VK OFF CACHE BOOL "")
+add_subdirectory("${AMD_library_path}FSR2/src/ffx-fsr2-api")
 
 set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
@@ -36,6 +41,15 @@ set_target_properties(${project} PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 set_target_properties(${project} PROPERTIES FOLDER ${project})
 
+set(cxx_include_directories
+	"MathLib"
+	"NRD/Include" "NRD/Integration"
+	"NRI/Include"
+	"RTXMU/include"
+	"Streamline/include")
+list(TRANSFORM cxx_include_directories PREPEND ${NVIDIA_library_path})
+target_include_directories(${project} PRIVATE "${AMD_library_path}FSR2/src/ffx-fsr2-api" ${cxx_include_directories} ${CMAKE_CURRENT_BINARY_DIR})
+
 include(ShaderCompilation.cmake)
 set(shader_include_directories "MathLib" "NRD/Shaders/Include")
 list(TRANSFORM shader_include_directories PREPEND ${NVIDIA_library_path})
@@ -49,16 +63,7 @@ CompileShaders(target ${project}_Shaders
 	extraOptions "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
-set(cxx_include_directories
-	"MathLib"
-	"NRD/Include" "NRD/Integration"
-	"NRI/Include"
-	"RTXMU/include"
-	"Streamline/include")
-list(TRANSFORM cxx_include_directories PREPEND ${NVIDIA_library_path})
-target_include_directories(${project} PRIVATE ${cxx_include_directories} ${CMAKE_CURRENT_BINARY_DIR})
-
-target_link_libraries(${project} PRIVATE NRD NRI rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
+target_link_libraries(${project} PRIVATE ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64 NRD NRI rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
 
 set(packages
 	directxtex
@@ -87,4 +92,4 @@ add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} COMMAND
 	"$<LIST:TRANSFORM,${DLL},PREPEND,${NVIDIA_library_path}Streamline/bin/x64/$<IF:$<CONFIG:Debug>,development/,>>"
 	${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
-add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")

@@ -21,7 +21,7 @@ export {
 		XMFLOAT3 ForwardDirection;
 		float ApertureRadius;
 		float NearDepth, FarDepth;
-		XMFLOAT2 PixelJitter;
+		XMFLOAT2 Jitter;
 		XMFLOAT4X4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld, WorldToProjection;
 	};
 
@@ -115,6 +115,7 @@ export {
 		}
 
 		auto GetHorizontalFieldOfView() const { return m_horizontalFieldOfView; }
+		auto GetVerticalFieldOfView() const { return 2 * atan(tan(m_horizontalFieldOfView / 2) * m_aspectRatio); }
 		auto GetAspectRatio() const { return m_aspectRatio; }
 
 		auto GetNearDepth() const { return m_nearDepth; }

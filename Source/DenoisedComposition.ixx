@@ -29,7 +29,7 @@ export namespace DirectX::PostProcess {
 			float _;
 			XMFLOAT3 CameraForwardDirection;
 			float _1;
-			XMFLOAT2 CameraPixelJitter;
+			XMFLOAT2 CameraJitter;
 			XMFLOAT2 _2;
 		};
 
