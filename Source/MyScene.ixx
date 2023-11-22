@@ -1,5 +1,7 @@
 module;
 
+#define NOMINMAX
+
 #include "directxtk12/GamePad.h"
 #include "directxtk12/GeometricPrimitive.h"
 #include "directxtk12/Keyboard.h"

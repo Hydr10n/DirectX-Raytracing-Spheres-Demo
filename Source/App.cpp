@@ -1,5 +1,7 @@
 module;
 
+#define NOMINMAX
+
 #include "directx/d3dx12.h"
 
 #include "directxtk12/CommonStates.h"

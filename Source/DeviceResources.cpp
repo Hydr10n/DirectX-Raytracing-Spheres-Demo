@@ -4,6 +4,8 @@
 
 module;
 
+#define NOMINMAX
+
 #include "directx/d3dx12.h"
 #include <dxgi1_6.h>
 
@@ -47,7 +49,7 @@ namespace
         long ax1, long ay1, long ax2, long ay2,
         long bx1, long by1, long bx2, long by2) noexcept
     {
-        return max(0l, min(ax2, bx2) - max(ax1, bx1)) * max(0l, min(ay2, by2) - max(ay1, by1));
+        return std::max(0l, std::min(ax2, bx2) - std::max(ax1, bx1)) * std::max(0l, std::min(ay2, by2) - std::max(ay1, by1));
     }
 }
 
@@ -290,8 +292,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
     }
 
     // Determine the render target size in pixels.
-    const UINT backBufferWidth = max(m_outputSize.cx, 1l);
-    const UINT backBufferHeight = max(m_outputSize.cy, 1l);
+    const UINT backBufferWidth = std::max(m_outputSize.cx, 1l);
+    const UINT backBufferHeight = std::max(m_outputSize.cy, 1l);
     const DXGI_FORMAT backBufferFormat = NoSRGB(m_backBufferFormat);
 
     // If the swap chain already exists, resize it, otherwise create one.
