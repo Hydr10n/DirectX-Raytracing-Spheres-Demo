@@ -1,17 +1,18 @@
 module;
 
-#include "pch.h"
+#include "directx/d3dx12.h"
 
 #include "directxtk12/PostProcess.h"
 
 #include "Shaders/ChromaticAberration.dxil.h"
 
-export module DirectX.PostProcess.ChromaticAberration;
+export module PostProcess.ChromaticAberration;
 
-import DirectX.BufferHelpers;
+import ErrorHelpers;
+import GPUBuffer;
 
-using namespace DirectX::BufferHelpers;
-using namespace DX;
+using namespace DirectX;
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 

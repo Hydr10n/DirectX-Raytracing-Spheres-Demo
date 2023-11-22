@@ -1,18 +1,19 @@
 module;
 
-#include "pch.h"
+#include "directx/d3dx12.h"
 
 #include "directxtk12/PostProcess.h"
 
 #include "Shaders/DenoisedComposition.dxil.h"
 
-export module DirectX.PostProcess.DenoisedComposition;
+export module PostProcess.DenoisedComposition;
 
-import DirectX.BufferHelpers;
+import ErrorHelpers;
+import GPUBuffer;
 import NRD;
 
-using namespace DirectX::BufferHelpers;
-using namespace DX;
+using namespace DirectX;
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 

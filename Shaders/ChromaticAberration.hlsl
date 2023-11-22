@@ -24,13 +24,13 @@ cbuffer Data : register(b1) {
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
-void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
-	if (pixelCoordinate.x >= g_renderSize.x || pixelCoordinate.y >= g_renderSize.y) return;
+void main(uint2 pixelPosition : SV_DispatchThreadID) {
+	if (pixelPosition.x >= g_renderSize.x || pixelPosition.y >= g_renderSize.y) return;
 
-	const float2 UV = Math::CalculateUV(pixelCoordinate, g_renderSize), direction = UV - g_focusUV;
+	const float2 UV = Math::CalculateUV(pixelPosition, g_renderSize), direction = UV - g_focusUV;
 	float3 color;
 	color.r = g_inColor.SampleLevel(g_linearSampler, UV + direction * g_offsets.r, 0).r;
 	color.g = g_inColor.SampleLevel(g_linearSampler, UV + direction * g_offsets.g, 0).g;
 	color.b = g_inColor.SampleLevel(g_linearSampler, UV + direction * g_offsets.b, 0).b;
-	g_outColor[pixelCoordinate] = color;
+	g_outColor[pixelPosition] = color;
 }

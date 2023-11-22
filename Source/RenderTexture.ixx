@@ -9,14 +9,17 @@
 
 module;
 
-#include "pch.h"
+#include "directx/d3dx12.h"
 
-#include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/DescriptorHeap.h"
+#include "directxtk12/DirectXHelpers.h"
 
 export module RenderTexture;
 
+import ErrorHelpers;
+
 using namespace DirectX;
+using namespace ErrorHelpers;
 using namespace std;
 
 export namespace DX

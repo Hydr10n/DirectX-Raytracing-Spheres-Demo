@@ -1,12 +1,17 @@
 module;
 
-#include "pch.h"
+#include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 
-export module DirectX.RaytracingHelpers;
+#include <span>
+#include <stdexcept>
 
-using namespace DX;
+export module RaytracingHelpers;
+
+import ErrorHelpers;
+
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
@@ -112,7 +117,7 @@ export namespace DirectX::RaytracingHelpers {
 		return D3D12_RAYTRACING_GEOMETRY_DESC{
 			.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
 			.Flags = flags,
-			.Triangles = {
+			.Triangles{
 				.Transform3x4 = transform3x4,
 				.IndexFormat = is_same_v<Index, UINT16> ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
 				.VertexFormat = vertexFormat,

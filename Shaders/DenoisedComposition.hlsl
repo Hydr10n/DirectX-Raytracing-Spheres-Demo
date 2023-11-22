@@ -40,30 +40,30 @@ cbuffer Data : register(b1) {
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
-void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
-	if (pixelCoordinate.x >= g_renderSize.x || pixelCoordinate.y >= g_renderSize.y) return;
+void main(uint2 pixelPosition : SV_DispatchThreadID) {
+	if (pixelPosition.x >= g_renderSize.x || pixelPosition.y >= g_renderSize.y) return;
 
-	if (g_linearDepth[pixelCoordinate] == 1.#INFf) return;
+	if (g_linearDepth[pixelPosition] == 1.#INFf) return;
 
 	float3 albedo, Rf0;
-	const float4 baseColorMetalness = g_baseColorMetalness[pixelCoordinate];
+	const float4 baseColorMetalness = g_baseColorMetalness[pixelPosition];
 	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, albedo, Rf0);
 
-	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelCoordinate, g_renderSize, g_cameraJitter));
-	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelCoordinate]);
+	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_renderSize, g_cameraJitter));
+	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
 	float3 diffuse = 0, specular = 0;
 	const float3
 		V = -normalize(NDC.x * g_cameraRightDirection + NDC.y * g_cameraUpDirection + g_cameraForwardDirection),
 		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(normalRoughness.xyz, V)), normalRoughness.w);
 	if (g_NRDDenoiser == NRDDenoiser::ReBLUR) {
-		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelCoordinate]).rgb;
-		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelCoordinate]).rgb;
+		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelPosition]).rgb;
+		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelPosition]).rgb;
 	}
 	else if (g_NRDDenoiser == NRDDenoiser::ReLAX) {
-		diffuse = RELAX_BackEnd_UnpackRadiance(g_denoisedDiffuse[pixelCoordinate]).rgb;
-		specular = RELAX_BackEnd_UnpackRadiance(g_denoisedSpecular[pixelCoordinate]).rgb;
+		diffuse = RELAX_BackEnd_UnpackRadiance(g_denoisedDiffuse[pixelPosition]).rgb;
+		specular = RELAX_BackEnd_UnpackRadiance(g_denoisedSpecular[pixelPosition]).rgb;
 	}
 	diffuse *= lerp((1 - Fenvironment) * albedo, 1, 0.01f);
 	specular *= lerp(Fenvironment, 1, 0.01f);
-	g_color[pixelCoordinate] = diffuse + specular + g_emissiveColor[pixelCoordinate];
+	g_color[pixelPosition] = diffuse + specular + g_emissiveColor[pixelPosition];
 }

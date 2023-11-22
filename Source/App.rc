@@ -80,9 +80,9 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Hydr10n"
             VALUE "FileVersion", "1.0.0.1"
-            VALUE "InternalName", "Raytracing Spheres.exe"
+            VALUE "InternalName", "RaytracingSpheres.exe"
             VALUE "LegalCopyright", "© Hydr10n@GitHub"
-            VALUE "OriginalFilename", "Raytracing Spheres.exe"
+            VALUE "OriginalFilename", "RaytracingSpheres.exe"
             VALUE "ProductName", "Raytracing Spheres"
             VALUE "ProductVersion", "1.0.0.1"
         END

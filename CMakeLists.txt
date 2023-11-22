@@ -60,7 +60,7 @@ CompileShaders(target ${project}_Shaders
 	include_directories ${shader_include_directories}
 	source ${shaders}
 	folder ${project}
-	extraOptions "--shaderModel 6_6 --hlsl2021")
+	additionalOptions "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
 target_link_libraries(${project} PRIVATE ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64 NRD NRI rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")

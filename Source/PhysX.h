@@ -5,10 +5,9 @@
 
 #include "physx/PxPhysicsAPI.h"
 
-#include <stdexcept>
-
-#include <numbers>
 #include <cmath>
+#include <numbers>
+#include <stdexcept>
 
 namespace PhysicsHelpers {
 	namespace UniversalGravitation {

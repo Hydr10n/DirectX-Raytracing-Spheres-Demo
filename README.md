@@ -64,6 +64,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 
 - CMake (3.28)
 
+- Git with LFS
+
 - vcpkg
 	```powershell
 	> git clone https://github.com/Microsoft/vcpkg

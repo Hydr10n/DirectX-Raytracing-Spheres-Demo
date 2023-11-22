@@ -1,22 +1,19 @@
 module;
 
-#include "pch.h"
-
-#include "directxtk12/DirectXHelpers.h"
-
 #include "directxtk12/DDSTextureLoader.h"
+#include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/WICTextureLoader.h"
 
 #include <filesystem>
 
 export module Texture;
 
-import DirectX.DescriptorHeap;
+import DescriptorHeap;
+import ErrorHelpers;
 import TextureHelpers;
 
 using namespace DirectX;
-using namespace DirectX::SimpleMath;
-using namespace DX;
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 using namespace std::filesystem;

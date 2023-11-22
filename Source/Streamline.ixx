@@ -6,9 +6,8 @@ module;
 #include <d3d12.h>
 
 #include <ranges>
-
-#include <vector>
 #include <set>
+#include <vector>
 
 export module Streamline;
 

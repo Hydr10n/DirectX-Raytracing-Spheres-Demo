@@ -1,6 +1,6 @@
 function(CompileShaders)
 	set(options "")
-	set(singleValueArgs target config out folder extraOptions)
+	set(singleValueArgs target config out folder additionalOptions)
 	set(multiValueArgs include_directories source)
 	cmake_parse_arguments(args "${options}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -38,8 +38,8 @@ function(CompileShaders)
 		--header --binaryBlob
 		--platform DXIL
 		${useAPI})
-	separate_arguments(args_extraOptions NATIVE_COMMAND ${args_extraOptions})
-	list(APPEND compilerCommand ${args_extraOptions})
+	separate_arguments(args_additionalOptions NATIVE_COMMAND ${args_additionalOptions})
+	list(APPEND compilerCommand ${args_additionalOptions})
 	add_custom_command(TARGET ${args_target} PRE_BUILD COMMAND ${compilerCommand})
 
 	if(args_folder)

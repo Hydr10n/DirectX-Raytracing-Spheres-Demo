@@ -1,12 +1,16 @@
 module;
 
-#include "pch.h"
+#include "directx/d3dx12.h"
+
+#include <wrl.h>
 
 #include <future>
 
-export module DirectX.CommandList;
+export module CommandList;
 
-using namespace DX;
+import ErrorHelpers;
+
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace Microsoft::WRL::Wrappers;
 using namespace std;

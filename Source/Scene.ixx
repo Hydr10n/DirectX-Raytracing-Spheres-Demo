@@ -3,22 +3,18 @@ module;
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
-
 #include "directxtk12/ResourceUploadBatch.h"
-
-#include "directxtk12/VertexTypes.h"
-
 #include "directxtk12/SimpleMath.h"
+#include "directxtk12/VertexTypes.h"
 
 #include "PhysX.h"
 
-#include <map>
-
 #include <filesystem>
+#include <map>
 
 export module Scene;
 
-import DirectX.DescriptorHeap;
+import DescriptorHeap;
 import Material;
 import Math;
 import Model;

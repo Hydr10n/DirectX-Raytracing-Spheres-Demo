@@ -9,8 +9,6 @@ using namespace WindowHelpers;
 
 export {
 	constexpr auto ToString(WindowMode value) {
-		using namespace WindowHelpers;
-
 		switch (value) {
 			case WindowMode::Windowed: return "Windowed";
 			case WindowMode::Borderless: return "Borderless";
@@ -50,8 +48,6 @@ export {
 	}
 
 	constexpr auto ToString(ToneMapPostProcess::Operator value) {
-		using namespace DirectX;
-
 		switch (value) {
 			case ToneMapPostProcess::None: return "None";
 			case ToneMapPostProcess::Saturate: return "Saturate";

@@ -4,7 +4,14 @@
 
 module;
 
-#include "pch.h"
+#include "directx/d3dx12.h"
+#include <dxgi1_6.h>
+
+#ifdef _DEBUG
+#include <dxgidebug.h>
+#endif
+
+#include <wrl.h>
 
 export module DeviceResources;
 

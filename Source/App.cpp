@@ -1,20 +1,18 @@
 module;
 
-#include "pch.h"
-
-#include "directxtk12/GraphicsMemory.h"
-
-#include "directxtk12/GamePad.h"
-#include "directxtk12/Keyboard.h"
-#include "directxtk12/Mouse.h"
-
-#include "directxtk12/DirectXHelpers.h"
-
-#include "directxtk12/ResourceUploadBatch.h"
+#include "directx/d3dx12.h"
 
 #include "directxtk12/CommonStates.h"
-
+#include "directxtk12/DirectXHelpers.h"
+#include "directxtk12/GamePad.h"
+#include "directxtk12/GraphicsMemory.h"
+#include "directxtk12/Keyboard.h"
+#include "directxtk12/Mouse.h"
+#include "directxtk12/ResourceUploadBatch.h"
+#include "directxtk12/SimpleMath.h"
 #include "directxtk12/SpriteBatch.h"
+
+#include "pix.h"
 
 #include "rtxmu/D3D12AccelStructManager.h"
 
@@ -39,16 +37,17 @@ module;
 module App;
 
 import Camera;
+import CommandList;
+import DescriptorHeap;
 import DeviceResources;
-import DirectX.BufferHelpers;
-import DirectX.CommandList;
-import DirectX.DescriptorHeap;
-import DirectX.PostProcess.ChromaticAberration;
-import DirectX.PostProcess.DenoisedComposition;
-import DirectX.RaytracingHelpers;
+import ErrorHelpers;
+import GPUBuffer;
 import HaltonSamplePattern;
 import Model;
 import MyScene;
+import PostProcess.ChromaticAberration;
+import PostProcess.DenoisedComposition;
+import RaytracingHelpers;
 import RaytracingShaderData;
 import RenderTexture;
 import Scene;
@@ -59,11 +58,11 @@ import Texture;
 import ThreadHelpers;
 
 using namespace DirectX;
-using namespace DirectX::BufferHelpers;
 using namespace DirectX::PostProcess;
 using namespace DirectX::RaytracingHelpers;
 using namespace DirectX::SimpleMath;
 using namespace DX;
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace nrd;
 using namespace physx;
@@ -695,12 +694,11 @@ private:
 			for (const auto& renderObject : m_scene->RenderObjects) {
 				const auto& mesh = renderObject.Mesh;
 				if (const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh); second) {
-					auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(mesh->Vertices.Get(), mesh->Indices.Get()) });
+					auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc<Mesh::VertexType, Mesh::IndexType>(mesh->Vertices->GetResource(), mesh->Indices->GetResource()) });
 					newBuildBottomLevelAccelerationStructureInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
 						.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
 						.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
 						.NumDescs = static_cast<UINT>(size(_geometryDescs)),
-						.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
 						.pGeometryDescs = data(_geometryDescs)
 						});
 					newMeshes.emplace_back(mesh);
@@ -746,10 +744,10 @@ private:
 	}
 
 	void CreateConstantBuffers() {
-		const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, const auto & data, UINT descriptorHeapIndex = ~0u) {
-			uploadBuffer = make_unique<T>(m_deviceResources->GetD3DDevice());
-			uploadBuffer->GetData() = data;
-			if (descriptorHeapIndex != ~0u) uploadBuffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+		const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&buffer, const auto & data, UINT descriptorHeapIndex = ~0u) {
+			buffer = make_unique<T>(m_deviceResources->GetD3DDevice());
+			buffer->GetData() = data;
+			if (descriptorHeapIndex != ~0u) buffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 		};
 		CreateBuffer(
 			m_GPUBuffers.GlobalResourceDescriptorHeapIndices,
@@ -778,9 +776,9 @@ private:
 
 	void CreateStructuredBuffers() {
 		if (const auto objectCount = static_cast<UINT>(size(m_scene->RenderObjects))) {
-			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&uploadBuffer, UINT count, UINT descriptorHeapIndex) {
-				uploadBuffer = make_unique<T>(m_deviceResources->GetD3DDevice(), count);
-				uploadBuffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
+			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&buffer, UINT count, UINT descriptorHeapIndex) {
+				buffer = make_unique<T>(m_deviceResources->GetD3DDevice(), count);
+				buffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
 			};
 			CreateBuffer(m_GPUBuffers.InstanceData, m_topLevelAccelerationStructure->GetDescCount(), ResourceDescriptorHeapIndex::InInstanceData);
 			CreateBuffer(m_GPUBuffers.ObjectResourceDescriptorHeapIndices, objectCount, ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices);
@@ -1005,57 +1003,59 @@ private:
 		}
 	}
 
-	SuperResolutionMode SelectSuperResolutionMode() const {
-		if (g_graphicsSettings.PostProcessing.SuperResolution.Mode != SuperResolutionMode::Auto) return g_graphicsSettings.PostProcessing.SuperResolution.Mode;
-		const auto [Width, Height] = GetOutputSize();
-		const auto minValue = min(Width, Height);
-		if (minValue <= 720) return SuperResolutionMode::Native;
-		if (minValue <= 1440) return SuperResolutionMode::Quality;
-		if (minValue <= 2160) return SuperResolutionMode::Performance;
-		return SuperResolutionMode::UltraPerformance;
-	}
-
-	void SetDLSSOptimalSettings() {
-		switch (auto& mode = m_DLSSOptions.mode; SelectSuperResolutionMode()) {
-			case SuperResolutionMode::Native: mode = DLSSMode::eDLAA; break;
-			case SuperResolutionMode::Quality: mode = DLSSMode::eMaxQuality; break;
-			case SuperResolutionMode::Balanced: mode = DLSSMode::eBalanced; break;
-			case SuperResolutionMode::Performance: mode = DLSSMode::eMaxPerformance; break;
-			case SuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
-			default: throw;
-		}
-		DLSSOptimalSettings optimalSettings;
-		slDLSSGetOptimalSettings(m_DLSSOptions, optimalSettings);
-		ignore = m_streamline->SetConstants(m_DLSSOptions);
-		m_renderSize = XMUINT2(optimalSettings.optimalRenderWidth, optimalSettings.optimalRenderHeight);
-	}
-
-	void SetFSROptimalSettings() {
-		auto isNative = false;
-		FfxFsr2QualityMode mode;
-		switch (SelectSuperResolutionMode()) {
-			case SuperResolutionMode::Native: isNative = true; break;
-			case SuperResolutionMode::Quality: mode = FFX_FSR2_QUALITY_MODE_QUALITY; break;
-			case SuperResolutionMode::Balanced: mode = FFX_FSR2_QUALITY_MODE_BALANCED; break;
-			case SuperResolutionMode::Performance: mode = FFX_FSR2_QUALITY_MODE_PERFORMANCE; break;
-			case SuperResolutionMode::UltraPerformance: mode = FFX_FSR2_QUALITY_MODE_ULTRA_PERFORMANCE; break;
-			default: throw;
-		}
-		if (const auto outputSize = GetOutputSize(); isNative) m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
-		else {
-			ignore = ffxFsr2GetRenderResolutionFromQualityMode(&m_FSRSettings.RenderSize.width, &m_FSRSettings.RenderSize.height, outputSize.cx, outputSize.cy, mode);
-			m_renderSize = XMUINT2(m_FSRSettings.RenderSize.width, m_FSRSettings.RenderSize.height);
-		}
-	}
-
 	void SetSuperResolutionOptimalSettings() {
+		const auto SelectSuperResolutionMode = [&] {
+			if (g_graphicsSettings.PostProcessing.SuperResolution.Mode != SuperResolutionMode::Auto) return g_graphicsSettings.PostProcessing.SuperResolution.Mode;
+			const auto [Width, Height] = GetOutputSize();
+			const auto minValue = min(Width, Height);
+			if (minValue <= 720) return SuperResolutionMode::Native;
+			if (minValue <= 1440) return SuperResolutionMode::Quality;
+			if (minValue <= 2160) return SuperResolutionMode::Performance;
+			return SuperResolutionMode::UltraPerformance;
+		};
+
 		switch (g_graphicsSettings.PostProcessing.SuperResolution.Upscaler) {
-			case Upscaler::DLSS: SetDLSSOptimalSettings(); break;
-			case Upscaler::FSR: SetFSROptimalSettings(); break;
 			case Upscaler::None:
 			{
 				const auto [Width, Height] = GetOutputSize();
 				m_renderSize = XMUINT2(Width, Height);
+			}
+			break;
+
+			case Upscaler::DLSS:
+			{
+				switch (auto& mode = m_DLSSOptions.mode; SelectSuperResolutionMode()) {
+					case SuperResolutionMode::Native: mode = DLSSMode::eDLAA; break;
+					case SuperResolutionMode::Quality: mode = DLSSMode::eMaxQuality; break;
+					case SuperResolutionMode::Balanced: mode = DLSSMode::eBalanced; break;
+					case SuperResolutionMode::Performance: mode = DLSSMode::eMaxPerformance; break;
+					case SuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
+					default: throw;
+				}
+				DLSSOptimalSettings optimalSettings;
+				slDLSSGetOptimalSettings(m_DLSSOptions, optimalSettings);
+				ignore = m_streamline->SetConstants(m_DLSSOptions);
+				m_renderSize = XMUINT2(optimalSettings.optimalRenderWidth, optimalSettings.optimalRenderHeight);
+			}
+			break;
+
+			case Upscaler::FSR:
+			{
+				auto isNative = false;
+				FfxFsr2QualityMode mode;
+				switch (SelectSuperResolutionMode()) {
+					case SuperResolutionMode::Native: isNative = true; break;
+					case SuperResolutionMode::Quality: mode = FFX_FSR2_QUALITY_MODE_QUALITY; break;
+					case SuperResolutionMode::Balanced: mode = FFX_FSR2_QUALITY_MODE_BALANCED; break;
+					case SuperResolutionMode::Performance: mode = FFX_FSR2_QUALITY_MODE_PERFORMANCE; break;
+					case SuperResolutionMode::UltraPerformance: mode = FFX_FSR2_QUALITY_MODE_ULTRA_PERFORMANCE; break;
+					default: throw;
+				}
+				if (const auto outputSize = GetOutputSize(); isNative) m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
+				else {
+					ignore = ffxFsr2GetRenderResolutionFromQualityMode(&m_FSRSettings.RenderSize.width, &m_FSRSettings.RenderSize.height, outputSize.cx, outputSize.cy, mode);
+					m_renderSize = XMUINT2(m_FSRSettings.RenderSize.width, m_FSRSettings.RenderSize.height);
+				}
 			}
 			break;
 		}

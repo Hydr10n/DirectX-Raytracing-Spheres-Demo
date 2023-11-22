@@ -13,10 +13,10 @@
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
-void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
-	if (pixelCoordinate.x >= g_renderSize.x || pixelCoordinate.y >= g_renderSize.y) return;
+void main(uint2 pixelPosition : SV_DispatchThreadID) {
+	if (pixelPosition.x >= g_renderSize.x || pixelPosition.y >= g_renderSize.y) return;
 
-	STL::Rng::Hash::Initialize(pixelCoordinate, g_graphicsSettings.FrameIndex);
+	STL::Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
 
 	float linearDepth = 1.#INFf, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
 	float3 motionVector = 0;
@@ -26,7 +26,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 	HitInfo hitInfo;
 	Material material;
-	const float2 UV = Math::CalculateUV(pixelCoordinate, g_renderSize, g_camera.Jitter);
+	const float2 UV = Math::CalculateUV(pixelPosition, g_renderSize, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	const float3 V = -rayDesc.Direction;
 	const bool hit = CastRay(rayDesc, hitInfo);
@@ -42,12 +42,12 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.EstimateDiffuseProbability(hitInfo.Normal, V) == 0);
 	}
 
-	g_linearDepth[pixelCoordinate] = linearDepth;
-	g_normalizedDepth[pixelCoordinate] = normalizedDepth;
-	g_motionVectors[pixelCoordinate] = motionVector;
-	g_baseColorMetalness[pixelCoordinate] = baseColorMetalness;
-	g_emissiveColor[pixelCoordinate] = emissiveColor;
-	g_normalRoughness[pixelCoordinate] = normalRoughness;
+	g_linearDepth[pixelPosition] = linearDepth;
+	g_normalizedDepth[pixelPosition] = normalizedDepth;
+	g_motionVectors[pixelPosition] = motionVector;
+	g_baseColorMetalness[pixelPosition] = baseColorMetalness;
+	g_emissiveColor[pixelPosition] = emissiveColor;
+	g_normalRoughness[pixelPosition] = normalRoughness;
 
 	float3 radiance = 0;
 	float4 noisyDiffuse = 0, noisySpecular = 0;
@@ -57,7 +57,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 
 		bool isDiffuse = true;
 		float hitDistance = 1.#INFf;
-		const float bayer4x4 = STL::Sequence::Bayer4x4(pixelCoordinate, g_graphicsSettings.FrameIndex);
+		const float bayer4x4 = STL::Sequence::Bayer4x4(pixelPosition, g_graphicsSettings.FrameIndex);
 		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++) {
 			const ScatterResult scatterResult = material.Scatter(hitInfo, rayDesc.Direction, bayer4x4 + STL::Rng::Hash::GetFloat() / 16);
 			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(hitInfo, scatterResult.Direction);
@@ -90,7 +90,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID) {
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
-	g_color[pixelCoordinate] = float4(radiance, linearDepth * NRD_FP16_VIEWZ_SCALE);
-	g_noisyDiffuse[pixelCoordinate] = noisyDiffuse;
-	g_noisySpecular[pixelCoordinate] = noisySpecular;
+	g_color[pixelPosition] = float4(radiance, linearDepth * NRD_FP16_VIEWZ_SCALE);
+	g_noisyDiffuse[pixelPosition] = noisyDiffuse;
+	g_noisySpecular[pixelPosition] = noisySpecular;
 }

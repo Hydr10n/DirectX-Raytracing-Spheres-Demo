@@ -2,7 +2,7 @@ module;
 
 #include "directxtk12/DescriptorHeap.h"
 
-export module DirectX.DescriptorHeap;
+export module DescriptorHeap;
 
 using namespace std;
 

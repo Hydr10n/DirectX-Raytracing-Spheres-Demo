@@ -1,4 +1,7 @@
-#include "pch.h"
+#include <Windows.h>
+#include <windowsx.h>
+
+#include <wrl.h>
 
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
@@ -7,16 +10,17 @@
 
 #include "MyAppData.h"
 
-#include "resource.h"
-
 #include <set>
 
+#include "resource.h"
+
 import App;
+import ErrorHelpers;
 import SharedData;
 
 using namespace DirectX;
 using namespace DisplayHelpers;
-using namespace DX;
+using namespace ErrorHelpers;
 using namespace Microsoft::WRL::Wrappers;
 using namespace SharedData;
 using namespace std;
