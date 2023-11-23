@@ -5,7 +5,7 @@ module;
 #include "directxtk12/BufferHelpers.h"
 #include "directxtk12/DirectXHelpers.h"
 
-#include <span>
+#include <ranges>
 #include <stdexcept>
 
 export module GPUBuffer;
@@ -20,7 +20,7 @@ export namespace DirectX {
 	template <typename T, D3D12_HEAP_TYPE Type = D3D12_HEAP_TYPE_DEFAULT, size_t Alignment = 2>
 	class GPUBuffer {
 	public:
-		static_assert(Alignment % 2 == 0);
+		static_assert(Alignment != 0 && IsPowerOf2(Alignment));
 
 		using ItemType = T;
 
@@ -46,7 +46,12 @@ export namespace DirectX {
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : m_capacity(size(data)), m_state(afterState) {
-			ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &m_resource, flags));
+			if (sizeof(T) % Alignment != 0) {
+				vector<BYTE> newData(ItemSize * m_capacity);
+				for (const auto i : views::iota(static_cast<size_t>(0), m_capacity)) *reinterpret_cast<T*>(::data(newData) + ItemSize * i) = data[i];
+				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &m_resource, flags));
+			}
+			else ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &m_resource, flags));
 		}
 
 		GPUBuffer(const GPUBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : m_capacity(source.m_capacity), m_state(source.m_state) {
@@ -83,10 +88,10 @@ export namespace DirectX {
 		D3D12_RESOURCE_STATES m_state{};
 		ComPtr<ID3D12Resource> m_resource;
 
-		void Swap(GPUBuffer& other) {
-			swap(m_capacity, other.m_capacity);
-			swap(m_state, other.m_state);
-			swap(m_resource, other.m_resource);
+		void Swap(GPUBuffer& source) {
+			swap(m_capacity, source.m_capacity);
+			swap(m_state, source.m_state);
+			swap(m_resource, source.m_resource);
 		}
 	};
 
@@ -134,9 +139,9 @@ export namespace DirectX {
 	protected:
 		PBYTE m_data{};
 
-		void Swap(MappableBuffer& other) {
-			MappableBuffer::Swap(other);
-			swap(m_data, other.m_data);
+		void Swap(MappableBuffer& source) {
+			GPUBuffer<T, MappableBuffer::HeapType, Alignment>::Swap(source);
+			swap(m_data, source.m_data);
 		}
 	};
 
