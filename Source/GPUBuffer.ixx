@@ -20,7 +20,7 @@ export namespace DirectX {
 	template <typename T, D3D12_HEAP_TYPE Type = D3D12_HEAP_TYPE_DEFAULT, size_t Alignment = 2>
 	class GPUBuffer {
 	public:
-		static_assert(Alignment != 0 && IsPowerOf2(Alignment));
+		static_assert(IsPowerOf2(Alignment));
 
 		using ItemType = T;
 
@@ -39,19 +39,6 @@ export namespace DirectX {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * capacity, flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
-		}
-
-		GPUBuffer(
-			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
-			span<const T> data,
-			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : m_capacity(size(data)), m_state(afterState) {
-			if (sizeof(T) % Alignment != 0) {
-				vector<BYTE> newData(ItemSize * m_capacity);
-				for (const auto i : views::iota(static_cast<size_t>(0), m_capacity)) *reinterpret_cast<T*>(::data(newData) + ItemSize * i) = data[i];
-				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &m_resource, flags));
-			}
-			else ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &m_resource, flags));
 		}
 
 		GPUBuffer(const GPUBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : m_capacity(source.m_capacity), m_state(source.m_state) {
@@ -88,6 +75,8 @@ export namespace DirectX {
 		D3D12_RESOURCE_STATES m_state{};
 		ComPtr<ID3D12Resource> m_resource;
 
+		GPUBuffer() = default;
+
 		void Swap(GPUBuffer& source) {
 			swap(m_capacity, source.m_capacity);
 			swap(m_state, source.m_state);
@@ -105,10 +94,13 @@ export namespace DirectX {
 		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, capacity, initialState, flags) { Map(); }
 
 		MappableBuffer(
-			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
+			ID3D12Device* pDevice,
 			span<const T> data,
-			D3D12_RESOURCE_STATES afterState = IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, resourceUploadBatch, data, afterState, flags) { Map(); }
+			D3D12_RESOURCE_STATES initialState = IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, size(data), initialState, flags) {
+			Map();
+			for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = data[i];
+		}
 
 		MappableBuffer(const MappableBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source, commandList) { Map(); }
 
@@ -191,7 +183,17 @@ export namespace DirectX {
 			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T>(pDevice, resourceUploadBatch, data, afterState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
+		) noexcept(false) {
+			this->m_capacity = size(data);
+			this->m_state = afterState;
+			const auto flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags;
+			if (sizeof(T) % 2 == 0) ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &this->m_resource, flags));
+			else {
+				vector<BYTE> newData(this->ItemSize * this->m_capacity);
+				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &this->m_resource, flags));
+			}
+		}
 
 		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			ComPtr<ID3D12Device> device;

@@ -53,7 +53,7 @@ int WINAPI wWinMain(
 	RoInitializeWrapper roInitializeWrapper(RO_INIT_MULTITHREADED);
 
 	try {
-		ThrowIfFailed(roInitializeWrapper);
+		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
@@ -64,7 +64,7 @@ int WINAPI wWinMain(
 			.hCursor = LoadCursor(nullptr, IDC_ARROW),
 			.lpszClassName = L"Direct3D 12"
 		};
-		ThrowIfFailed(RegisterClassExW(&wndClassEx));
+		ThrowIfFailed(static_cast<BOOL>(RegisterClassExW(&wndClassEx)));
 
 		const auto window = CreateWindowExW(
 			0,
@@ -78,7 +78,7 @@ int WINAPI wWinMain(
 			wndClassEx.hInstance,
 			nullptr
 		);
-		ThrowIfFailed(window != nullptr);
+		ThrowIfFailed(static_cast<BOOL>(window != nullptr));
 
 		RECT clientRect;
 		if (g_graphicsSettings.Resolution >= *cbegin(g_displayResolutions) && g_graphicsSettings.Resolution <= *--cend(g_displayResolutions)) {
@@ -161,7 +161,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 		const auto GetDisplayResolutions = [&](bool forceUpdate = false) {
 			const auto monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
-			ThrowIfFailed(monitor != nullptr);
+			ThrowIfFailed(static_cast<BOOL>(monitor != nullptr));
 
 			if (monitor != s_hMonitor || forceUpdate) {
 				ThrowIfFailed(::GetDisplayResolutions(g_displayResolutions, monitor));
