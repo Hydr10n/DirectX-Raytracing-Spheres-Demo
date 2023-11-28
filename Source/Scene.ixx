@@ -87,6 +87,19 @@ export {
 
 		vector<RenderObject> RenderObjects;
 
+		static auto Transform(const PxShape& shape) {
+			PxVec3 scaling;
+			switch (const PxGeometryHolder geometry = shape.getGeometry(); geometry.getType()) {
+				case PxGeometryType::eSPHERE: scaling = PxVec3(2 * geometry.sphere().radius); break;
+				default: throw;
+			}
+
+			PxMat44 world(PxVec4(1, 1, -1, 1));
+			world *= PxShapeExt::getGlobalPose(shape, *shape.getActor());
+			world.scale(PxVec4(scaling, 1));
+			return reinterpret_cast<const Matrix&>(*world.front());
+		}
+
 		virtual bool IsStatic() const = 0;
 
 		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) = 0;

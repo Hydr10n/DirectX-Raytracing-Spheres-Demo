@@ -10,6 +10,7 @@ module;
 export module RaytracingHelpers;
 
 import ErrorHelpers;
+import GPUBuffer;
 
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
@@ -106,16 +107,15 @@ export namespace DirectX::RaytracingHelpers {
 
 	template <typename Vertex, typename Index> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
-		ID3D12Resource * pVertexBuffer, ID3D12Resource * pIndexBuffer,
+		const GPUBuffer<Vertex>&vertices, const GPUBuffer<Index>&indices,
 		D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 	) {
-		const auto vertexCount = pVertexBuffer->GetDesc().Width / sizeof(Vertex), indexCount = pIndexBuffer->GetDesc().Width / sizeof(Index);
+		const auto vertexCount = vertices.GetCapacity(), indexCount = indices.GetCapacity();
 		if (vertexCount < 3) throw invalid_argument("Vertex count cannot be fewer than 3");
 		if (indexCount < 3) throw invalid_argument("Index count cannot be fewer than 3");
-		return D3D12_RAYTRACING_GEOMETRY_DESC{
-			.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+		return {
 			.Flags = flags,
 			.Triangles{
 				.Transform3x4 = transform3x4,
@@ -123,10 +123,10 @@ export namespace DirectX::RaytracingHelpers {
 				.VertexFormat = vertexFormat,
 				.IndexCount = static_cast<UINT>(indexCount),
 				.VertexCount = static_cast<UINT>(vertexCount),
-				.IndexBuffer = pIndexBuffer->GetGPUVirtualAddress(),
+				.IndexBuffer = indices.GetResource()->GetGPUVirtualAddress(),
 				.VertexBuffer{
-					.StartAddress = pVertexBuffer->GetGPUVirtualAddress(),
-					.StrideInBytes = sizeof(Vertex)
+					.StartAddress = vertices.GetResource()->GetGPUVirtualAddress(),
+					.StrideInBytes = GPUBuffer<Vertex>::ItemSize
 				}
 			}
 		};

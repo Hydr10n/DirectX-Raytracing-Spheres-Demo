@@ -8,13 +8,13 @@
 	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED)," \
 	"StaticSampler(s0)," \
 	"SRV(t0)," \
-	"RootConstants(num32BitConstants=2, b0)," \
+	"CBV(b0)," \
 	"CBV(b1)"
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
-	if (pixelPosition.x >= g_renderSize.x || pixelPosition.y >= g_renderSize.y) return;
+	if (pixelPosition.x >= g_graphicsSettings.RenderSize.x || pixelPosition.y >= g_graphicsSettings.RenderSize.y) return;
 
 	STL::Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
 
@@ -26,7 +26,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 	HitInfo hitInfo;
 	Material material;
-	const float2 UV = Math::CalculateUV(pixelPosition, g_renderSize, g_camera.Jitter);
+	const float2 UV = Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	const float3 V = -rayDesc.Direction;
 	const bool hit = CastRay(rayDesc, hitInfo);

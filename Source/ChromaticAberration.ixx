@@ -6,53 +6,43 @@ module;
 
 #include "Shaders/ChromaticAberration.dxil.h"
 
-export module PostProcess.ChromaticAberration;
+export module PostProcessing.ChromaticAberration;
 
 import ErrorHelpers;
-import GPUBuffer;
 
 using namespace DirectX;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
-export namespace DirectX::PostProcess {
-	struct Data {
-		XMFLOAT2 FocusUV{ 0.5f, 0.5f };
-		XMFLOAT2 _;
-		XMFLOAT3 Offsets{ 3e-3f, 3e-3f, -3e-3f };
-		float _1;
-	};
-
+export namespace PostProcessing {
 	struct ChromaticAberration : IPostProcess {
+		struct {
+			XMUINT2 RenderSize{};
+			XMFLOAT2 FocusUV{ 0.5f, 0.5f };
+			XMFLOAT3 Offsets{ 3e-3f, 3e-3f, -3e-3f };
+		} Constants;
+
 		struct { D3D12_GPU_DESCRIPTOR_HANDLE InColor, OutColor; } Descriptors{};
 
-		XMUINT2 RenderSize{};
-
-		ChromaticAberration(ID3D12Device* device) noexcept(false) : m_data(device) {
-			const CD3DX12_SHADER_BYTECODE shaderByteCode(g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil));
-			ThrowIfFailed(device->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
+		ChromaticAberration(ID3D12Device* pDevice) noexcept(false) {
+			constexpr D3D12_SHADER_BYTECODE shaderByteCode{ g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil) };
+			ThrowIfFailed(pDevice->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
-			ThrowIfFailed(device->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
-			m_data.GetData() = Data();
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
 		}
 
-		const auto& GetData() const noexcept { return m_data.GetData(); }
-		auto& GetData() noexcept { return m_data.GetData(); }
-
-		void Process(ID3D12GraphicsCommandList* commandList) noexcept override {
+		void Process(ID3D12GraphicsCommandList* commandList) override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRootDescriptorTable(0, Descriptors.InColor);
-			commandList->SetComputeRootDescriptorTable(1, Descriptors.OutColor);
-			commandList->SetComputeRoot32BitConstants(2, 2, &RenderSize, 0);
-			commandList->SetComputeRootConstantBufferView(3, m_data.GetResource()->GetGPUVirtualAddress());
+			commandList->SetComputeRoot32BitConstants(0, 7, &Constants.RenderSize, 0);
+			commandList->SetComputeRootDescriptorTable(1, Descriptors.InColor);
+			commandList->SetComputeRootDescriptorTable(2, Descriptors.OutColor);
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
-			commandList->Dispatch((RenderSize.x + 15) / 16, (RenderSize.y + 15) / 16, 1);
+			commandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}
 
 	private:
 		ComPtr<ID3D12RootSignature> m_rootSignature;
 		ComPtr<ID3D12PipelineState> m_pipelineStateObject;
-		ConstantBuffer<Data> m_data;
 	};
 }

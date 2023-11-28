@@ -1,10 +1,10 @@
 #pragma once
 
+#include "Common.hlsli"
+
 #include "Math.hlsli"
 
 #include "Camera.hlsli"
-
-#include "Material.hlsli"
 
 #include "HitInfo.hlsli"
 
@@ -16,11 +16,8 @@ SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
 
-cbuffer _ : register(b0) { uint2 g_renderSize; }
-
 struct GlobalResourceDescriptorHeapIndices {
 	uint
-		InGraphicsSettings,
 		InCamera,
 		InSceneData,
 		InInstanceData,
@@ -33,49 +30,27 @@ struct GlobalResourceDescriptorHeapIndices {
 		OutEmissiveColor,
 		OutNormalRoughness,
 		OutNoisyDiffuse, OutNoisySpecular;
-	uint3 _;
 };
-ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b1);
+ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b0);
 
 struct GraphicsSettings {
+	uint2 RenderSize;
 	uint FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 	bool IsRussianRouletteEnabled;
 	NRDDenoiser NRDDenoiser;
-	uint3 _;
+	uint _;
 	float4 NRDHitDistanceParameters;
 };
-static const GraphicsSettings g_graphicsSettings = (ConstantBuffer<GraphicsSettings>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InGraphicsSettings];
+ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b1);
 
 static const Camera g_camera = (ConstantBuffer<Camera>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InCamera];
 
-struct SceneData {
-	bool IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
-	bool _;
-	float4 EnvironmentLightColor;
-	float4x4 EnvironmentLightTextureTransform;
-	float4 EnvironmentColor;
-	float4x4 EnvironmentTextureTransform;
-};
 static const SceneData g_sceneData = (ConstantBuffer<SceneData>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InSceneData];
 
-struct InstanceData {
-	bool IsStatic;
-	float4x4 PreviousObjectToWorld;
-};
 static const StructuredBuffer<InstanceData> g_instanceData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InInstanceData];
 
-struct ObjectResourceDescriptorHeapIndices {
-	struct { uint Vertices, Indices, MotionVectors; } Mesh;
-	struct {
-		uint BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, TransmissionMap, OpacityMap, NormalMap;
-	} Textures;
-};
 static const StructuredBuffer<ObjectResourceDescriptorHeapIndices> g_objectResourceDescriptorHeapIndices = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InObjectResourceDescriptorHeapIndices];
 
-struct ObjectData {
-	Material Material;
-	float4x4 TextureTransform;
-};
 static const StructuredBuffer<ObjectData> g_objectData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InObjectData];
 
 static const RWTexture2D<float4> g_color = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutColor];
@@ -266,5 +241,5 @@ inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInf
 		}
 		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
-	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_renderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
+	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_graphicsSettings.RenderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
 }

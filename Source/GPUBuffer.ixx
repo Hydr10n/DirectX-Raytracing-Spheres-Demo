@@ -28,7 +28,6 @@ export namespace DirectX {
 
 		static constexpr size_t ItemSize = (sizeof(T) + Alignment - 1) & ~(Alignment - 1);
 
-		GPUBuffer(const GPUBuffer&) = delete;
 		GPUBuffer& operator=(const GPUBuffer&) = delete;
 
 		GPUBuffer(
@@ -39,19 +38,6 @@ export namespace DirectX {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * capacity, flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
-		}
-
-		GPUBuffer(const GPUBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : m_capacity(source.m_capacity), m_state(source.m_state) {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
-			const auto resourceDesc = source.m_resource->GetDesc();
-			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, commandList == nullptr ? source.m_state : D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_resource)));
-			if (commandList != nullptr) {
-				const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
-				commandList->CopyResource(m_resource.Get(), source.m_resource.Get());
-				TransitionResource(commandList, m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, source.m_state);
-			}
 		}
 
 		GPUBuffer(GPUBuffer&& source) noexcept { Swap(*this, source); }
@@ -76,6 +62,14 @@ export namespace DirectX {
 		ComPtr<ID3D12Resource> m_resource;
 
 		GPUBuffer() = default;
+
+		GPUBuffer(const GPUBuffer& source) noexcept(false) : m_capacity(source.m_capacity), m_state(source.m_state) {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
+			const auto resourceDesc = source.m_resource->GetDesc();
+			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, source.m_state, nullptr, IID_PPV_ARGS(&m_resource)));
+		}
 
 		void Swap(GPUBuffer& source) {
 			swap(m_capacity, source.m_capacity);
@@ -102,7 +96,10 @@ export namespace DirectX {
 			for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = data[i];
 		}
 
-		MappableBuffer(const MappableBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source, commandList) { Map(); }
+		MappableBuffer(const MappableBuffer& source) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source) {
+			Map();
+			for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = source[i];
+		}
 
 		MappableBuffer(MappableBuffer&& source) noexcept { Swap(source); }
 		MappableBuffer&& operator=(MappableBuffer&& source) noexcept {
@@ -129,7 +126,7 @@ export namespace DirectX {
 		T& GetData(size_t index = 0) { return (*this)[index]; }
 
 	protected:
-		PBYTE m_data{};
+		uint8_t* m_data{};
 
 		void Swap(MappableBuffer& source) {
 			GPUBuffer<T, MappableBuffer::HeapType, Alignment>::Swap(source);
@@ -189,9 +186,17 @@ export namespace DirectX {
 			const auto flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags;
 			if (sizeof(T) % 2 == 0) ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &this->m_resource, flags));
 			else {
-				vector<BYTE> newData(this->ItemSize * this->m_capacity);
+				vector<uint8_t> newData(this->ItemSize * this->m_capacity);
 				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
 				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &this->m_resource, flags));
+			}
+		}
+
+		RWStructuredBuffer(const RWStructuredBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : GPUBuffer<T>(source) {
+			if (commandList != nullptr) {
+				const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
+				commandList->CopyResource(this->m_resource.Get(), source.m_resource.Get());
+				TransitionResource(commandList, this->m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, source.m_state);
 			}
 		}
 

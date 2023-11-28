@@ -3,7 +3,17 @@
 #include "NRD.hlsli"
 #include "NRDDenoiser.hlsli"
 
+#include "Camera.hlsli"
+
 #include "Math.hlsli"
+
+struct Constants {
+	uint2 RenderSize;
+	NRDDenoiser NRDDenoiser;
+};
+ConstantBuffer<Constants> g_constants : register(b0);
+
+ConstantBuffer<Camera> g_camera : register(b1);
 
 Texture2D<float> g_linearDepth : register(t0);
 Texture2D<float4> g_baseColorMetalness : register(t1);
@@ -14,34 +24,21 @@ Texture2D<float4> g_denoisedSpecular : register(t5);
 
 RWTexture2D<float3> g_color : register(u0);
 
-cbuffer _ : register(b0) { uint2 g_renderSize; }
-
-cbuffer Data : register(b1) {
-	NRDDenoiser g_NRDDenoiser;
-	float3 g_cameraRightDirection;
-	float3 g_cameraUpDirection;
-	float _;
-	float3 g_cameraForwardDirection;
-	float _1;
-	float2 g_cameraJitter;
-	float2 _2;
-}
-
 #define ROOT_SIGNATURE \
+	"RootConstants(num32BitConstants=3, b0)," \
+	"CBV(b1)," \
 	"DescriptorTable(SRV(t0))," \
 	"DescriptorTable(SRV(t1))," \
 	"DescriptorTable(SRV(t2))," \
 	"DescriptorTable(SRV(t3))," \
 	"DescriptorTable(SRV(t4))," \
 	"DescriptorTable(SRV(t5))," \
-	"DescriptorTable(UAV(u0))," \
-	"RootConstants(num32BitConstants=2, b0)," \
-	"CBV(b1)"
+	"DescriptorTable(UAV(u0))"
 
 [RootSignature(ROOT_SIGNATURE)]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
-	if (pixelPosition.x >= g_renderSize.x || pixelPosition.y >= g_renderSize.y) return;
+	if (pixelPosition.x >= g_constants.RenderSize.x || pixelPosition.y >= g_constants.RenderSize.y) return;
 
 	if (g_linearDepth[pixelPosition] == 1.#INFf) return;
 
@@ -49,17 +46,17 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	const float4 baseColorMetalness = g_baseColorMetalness[pixelPosition];
 	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, albedo, Rf0);
 
-	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_renderSize, g_cameraJitter));
+	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_constants.RenderSize, g_camera.Jitter));
 	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
 	float3 diffuse = 0, specular = 0;
 	const float3
-		V = -normalize(NDC.x * g_cameraRightDirection + NDC.y * g_cameraUpDirection + g_cameraForwardDirection),
+		V = -normalize(NDC.x * g_camera.RightDirection + NDC.y * g_camera.UpDirection + g_camera.ForwardDirection),
 		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(normalRoughness.xyz, V)), normalRoughness.w);
-	if (g_NRDDenoiser == NRDDenoiser::ReBLUR) {
+	if (g_constants.NRDDenoiser == NRDDenoiser::ReBLUR) {
 		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelPosition]).rgb;
 		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelPosition]).rgb;
 	}
-	else if (g_NRDDenoiser == NRDDenoiser::ReLAX) {
+	else if (g_constants.NRDDenoiser == NRDDenoiser::ReLAX) {
 		diffuse = RELAX_BackEnd_UnpackRadiance(g_denoisedDiffuse[pixelPosition]).rgb;
 		specular = RELAX_BackEnd_UnpackRadiance(g_denoisedSpecular[pixelPosition]).rgb;
 	}
