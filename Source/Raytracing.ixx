@@ -14,7 +14,6 @@ module;
 export module Raytracing;
 
 import CommandList;
-import CommonShaderData;
 import ErrorHelpers;
 import GPUBuffer;
 import NRD;
@@ -71,10 +70,6 @@ export struct Raytracing {
 		CreateAccelerationStructures(false);
 	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
-
-	void UpdateAccelerationStructures(bool updateOnly = true) { CreateAccelerationStructures(updateOnly); }
-
 	void Render(ID3D12GraphicsCommandList* pCommandList) {
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 		pCommandList->SetComputeRootShaderResourceView(0, m_topLevelAccelerationStructure->GetBuffer()->GetGPUVirtualAddress());
@@ -85,27 +80,10 @@ export struct Raytracing {
 		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);
 	}
 
-private:
-	ID3D12Device5* m_device;
-	ID3D12CommandQueue* m_commandQueue;
-	CommandList<ID3D12GraphicsCommandList4> m_commandList;
+	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
 
-	struct {
-		ConstantBuffer<GlobalResourceDescriptorHeapIndices> GlobalResourceDescriptorHeapIndices;
-		ConstantBuffer<GraphicsSettings> GraphicsSettings;
-	} m_GPUBuffers;
-
-	shared_ptr<Scene> m_scene;
-
-	ComPtr<ID3D12RootSignature> m_rootSignature;
-	ComPtr<ID3D12PipelineState> m_pipelineState;
-
-	unique_ptr<DxAccelStructManager> m_accelerationStructureManager;
-	unordered_map<shared_ptr<Mesh>, uint64_t> m_bottomLevelAccelerationStructureIDs;
-	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
-
-	void CreateAccelerationStructures(bool updateOnly) {
-		const auto pCommandList = m_commandList.GetNative();
+	void CreateAccelerationStructures(bool updateOnly = true) {
+		const auto commandList = m_commandList.GetNative();
 
 		vector<uint64_t> newBottomLevelAccelerationStructureIDs;
 
@@ -138,10 +116,10 @@ private:
 			}
 
 			if (!empty(newBuildBottomLevelAccelerationStructureInputs)) {
-				m_accelerationStructureManager->PopulateBuildCommandList(pCommandList, data(newBuildBottomLevelAccelerationStructureInputs), size(newBuildBottomLevelAccelerationStructureInputs), newBottomLevelAccelerationStructureIDs);
+				m_accelerationStructureManager->PopulateBuildCommandList(commandList, data(newBuildBottomLevelAccelerationStructureInputs), size(newBuildBottomLevelAccelerationStructureInputs), newBottomLevelAccelerationStructureIDs);
 				for (size_t i = 0; const auto & meshNode : newMeshes) m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
-				m_accelerationStructureManager->PopulateUAVBarriersCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
-				m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+				m_accelerationStructureManager->PopulateUAVBarriersCommandList(commandList, newBottomLevelAccelerationStructureIDs);
+				m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(commandList, newBottomLevelAccelerationStructureIDs);
 			}
 
 			m_commandList.End(m_commandQueue).get();
@@ -150,7 +128,7 @@ private:
 		{
 			m_commandList.Begin();
 
-			if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->PopulateCompactionCommandList(pCommandList, newBottomLevelAccelerationStructureIDs);
+			if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->PopulateCompactionCommandList(commandList, newBottomLevelAccelerationStructureIDs);
 
 			if (!updateOnly) {
 				m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(m_device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
@@ -167,11 +145,30 @@ private:
 				XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), Scene::Transform(*renderObject.Shape));
 				objectIndex++;
 			}
-			m_topLevelAccelerationStructure->Build(pCommandList, instanceDescs, updateOnly);
+			m_topLevelAccelerationStructure->Build(commandList, instanceDescs, updateOnly);
 
 			m_commandList.End(m_commandQueue).get();
 		}
 
 		if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
 	}
+
+private:
+	ID3D12Device5* m_device;
+	ID3D12CommandQueue* m_commandQueue;
+	CommandList<ID3D12GraphicsCommandList4> m_commandList;
+
+	struct {
+		ConstantBuffer<GlobalResourceDescriptorHeapIndices> GlobalResourceDescriptorHeapIndices;
+		ConstantBuffer<GraphicsSettings> GraphicsSettings;
+	} m_GPUBuffers;
+
+	shared_ptr<Scene> m_scene;
+
+	ComPtr<ID3D12RootSignature> m_rootSignature;
+	ComPtr<ID3D12PipelineState> m_pipelineState;
+
+	unique_ptr<DxAccelStructManager> m_accelerationStructureManager;
+	unordered_map<shared_ptr<Mesh>, uint64_t> m_bottomLevelAccelerationStructureIDs;
+	unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
 };

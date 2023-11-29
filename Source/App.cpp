@@ -497,19 +497,7 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		if (!m_futures.contains(FutureNames::Scene) && m_scene) {
-			if (!m_scene->IsStatic()) m_raytracing->UpdateAccelerationStructures();
-
-			const auto& raytracingSettings = g_graphicsSettings.Raytracing;
-			m_raytracing->SetConstants({
-				.RenderSize = m_renderSize,
-				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-				.MaxNumberOfBounces = raytracingSettings.MaxNumberOfBounces,
-				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
-				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-				.NRDDenoiser = g_graphicsSettings.PostProcessing.NRD.Denoiser,
-				.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
-				});
-			m_raytracing->Render(commandList);
+			RenderScene();
 
 			PostProcessGraphics();
 		}
@@ -818,6 +806,24 @@ private:
 			sceneData.EnvironmentColor = m_scene->EnvironmentColor;
 			sceneData.EnvironmentTextureTransform = m_scene->EnvironmentTexture.Transform();
 		}
+	}
+
+	void RenderScene() {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		if (!m_scene->IsStatic()) m_raytracing->CreateAccelerationStructures();
+
+		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
+		m_raytracing->SetConstants({
+			.RenderSize = m_renderSize,
+			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+			.MaxNumberOfBounces = raytracingSettings.MaxNumberOfBounces,
+			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+			.NRDDenoiser = g_graphicsSettings.PostProcessing.NRD.Denoiser,
+			.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
+			});
+		m_raytracing->Render(commandList);
 	}
 
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
