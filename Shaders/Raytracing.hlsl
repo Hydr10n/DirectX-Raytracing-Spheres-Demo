@@ -4,14 +4,25 @@
 #include "NRDEncoding.hlsli"
 #include "NRD.hlsli"
 
-#define ROOT_SIGNATURE \
-	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED)," \
-	"StaticSampler(s0)," \
-	"SRV(t0)," \
-	"CBV(b0)," \
-	"CBV(b1)"
-
-[RootSignature(ROOT_SIGNATURE)]
+[RootSignature(
+	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
+	"StaticSampler(s0),"
+	"SRV(t0),"
+	"CBV(b0),"
+	"CBV(b1),"
+	"CBV(b2),"
+	"SRV(t1),"
+	"SRV(t2),"
+	"DescriptorTable(UAV(u0)),"
+	"DescriptorTable(UAV(u1)),"
+	"DescriptorTable(UAV(u2)),"
+	"DescriptorTable(UAV(u3)),"
+	"DescriptorTable(UAV(u4)),"
+	"DescriptorTable(UAV(u5)),"
+	"DescriptorTable(UAV(u6)),"
+	"DescriptorTable(UAV(u7)),"
+	"DescriptorTable(UAV(u8))"
+)]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	if (pixelPosition.x >= g_graphicsSettings.RenderSize.x || pixelPosition.y >= g_graphicsSettings.RenderSize.y) return;
@@ -70,16 +81,17 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
-		if (g_graphicsSettings.NRDDenoiser != NRDDenoiser::None) {
+		const NRDSettings NRDSettings = g_graphicsSettings.NRD;
+		if (NRDSettings.Denoiser != NRDDenoiser::None) {
 			float3 albedo, Rf0;
 			STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
 			const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
 			float4 radianceHitDistance = 0;
-			if (g_graphicsSettings.NRDDenoiser == NRDDenoiser::ReBLUR) {
-				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, g_graphicsSettings.NRDHitDistanceParameters, isDiffuse ? 1 : material.Roughness);
+			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
+				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, NRDSettings.HitDistanceParameters, isDiffuse ? 1 : material.Roughness);
 				radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), normalizedHitDistance);
 			}
-			else if (g_graphicsSettings.NRDDenoiser == NRDDenoiser::ReLAX) {
+			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) {
 				radianceHitDistance = RELAX_FrontEnd_PackRadianceAndHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
 			}
 			if (isDiffuse) noisyDiffuse = radianceHitDistance;

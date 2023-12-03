@@ -24,18 +24,17 @@ Texture2D<float4> g_denoisedSpecular : register(t5);
 
 RWTexture2D<float3> g_color : register(u0);
 
-#define ROOT_SIGNATURE \
-	"RootConstants(num32BitConstants=3, b0)," \
-	"CBV(b1)," \
-	"DescriptorTable(SRV(t0))," \
-	"DescriptorTable(SRV(t1))," \
-	"DescriptorTable(SRV(t2))," \
-	"DescriptorTable(SRV(t3))," \
-	"DescriptorTable(SRV(t4))," \
-	"DescriptorTable(SRV(t5))," \
+[RootSignature(
+	"RootConstants(num32BitConstants=3, b0),"
+	"CBV(b1),"
+	"DescriptorTable(SRV(t0)),"
+	"DescriptorTable(SRV(t1)),"
+	"DescriptorTable(SRV(t2)),"
+	"DescriptorTable(SRV(t3)),"
+	"DescriptorTable(SRV(t4)),"
+	"DescriptorTable(SRV(t5)),"
 	"DescriptorTable(UAV(u0))"
-
-[RootSignature(ROOT_SIGNATURE)]
+)]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	if (pixelPosition.x >= g_constants.RenderSize.x || pixelPosition.y >= g_constants.RenderSize.y) return;

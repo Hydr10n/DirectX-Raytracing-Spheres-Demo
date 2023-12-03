@@ -131,10 +131,10 @@ export {
 
 					if (auto& textures = renderObject.Textures; Name == ObjectNames::AlienMetal) {
 						textures[TextureType::BaseColorMap] = directoryPath / L"Alien-Metal_Albedo.png";
-						textures[TextureType::NormalMap] = directoryPath / L"Alien-Metal_Normal.png";
 						textures[TextureType::MetallicMap] = directoryPath / L"Alien-Metal_Metallic.png";
 						textures[TextureType::RoughnessMap] = directoryPath / L"Alien-Metal_Roughness.png";
 						textures[TextureType::AmbientOcclusionMap] = directoryPath / L"Alien-Metal_AO.png";
+						textures[TextureType::NormalMap] = directoryPath / L"Alien-Metal_Normal.png";
 					}
 
 					AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
@@ -255,7 +255,6 @@ export {
 
 						textures[TextureType::BaseColorMap] = directoryPath / L"Moon_BaseColor.jpg";
 						textures[TextureType::NormalMap] = directoryPath / L"Moon_Normal.jpg";
-						RenderObjects.back().TextureTransform.Translation = { 0.5f, 0, 0 };
 					}
 					else if (renderObject.Name == ObjectNames::Earth) {
 						rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
@@ -273,6 +272,8 @@ export {
 };
 
 struct MyScene : Scene {
+	using Scene::Scene;
+
 	bool IsStatic() const override { return !m_isSimulatingPhysics; }
 
 	void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
@@ -293,7 +294,7 @@ struct MyScene : Scene {
 			}
 		}
 
-		if (!m_isSimulatingPhysics) return;
+		if (IsStatic()) return;
 
 		for (auto& renderObject : RenderObjects) {
 			const auto& shape = *renderObject.Shape;
@@ -329,7 +330,9 @@ struct MyScene : Scene {
 			}
 		}
 
-		PhysX->Tick(static_cast<PxReal>(min(1.0 / 60, elapsedSeconds)));
+		PhysX->Tick(static_cast<float>(min(1.0 / 60, elapsedSeconds)));
+
+		UpdateData();
 	}
 
 private:

@@ -23,7 +23,7 @@ export namespace PostProcessing {
 			XMFLOAT3 Offsets{ 3e-3f, 3e-3f, -3e-3f };
 		} Constants;
 
-		struct { D3D12_GPU_DESCRIPTOR_HANDLE InColor, OutColor; } Descriptors{};
+		struct { D3D12_GPU_DESCRIPTOR_HANDLE InColor, OutColor; } GPUDescriptors{};
 
 		ChromaticAberration(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE shaderByteCode{ g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil) };
@@ -35,8 +35,8 @@ export namespace PostProcessing {
 		void Process(ID3D12GraphicsCommandList* commandList) override {
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRoot32BitConstants(0, 7, &Constants.RenderSize, 0);
-			commandList->SetComputeRootDescriptorTable(1, Descriptors.InColor);
-			commandList->SetComputeRootDescriptorTable(2, Descriptors.OutColor);
+			commandList->SetComputeRootDescriptorTable(1, GPUDescriptors.InColor);
+			commandList->SetComputeRootDescriptorTable(2, GPUDescriptors.OutColor);
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 			commandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}

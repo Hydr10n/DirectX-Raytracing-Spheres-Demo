@@ -162,7 +162,7 @@ void DeviceResources::CreateDeviceResources()
 
     CreateDevice();
 
-    m_d3dDevice->SetName(L"DeviceResources");
+    m_device->SetName(L"DeviceResources");
 
 #ifndef NDEBUG
     // Configure debug device (if active).
@@ -204,7 +204,7 @@ void DeviceResources::CreateDeviceResources()
         static_cast<UINT>(std::size(s_featureLevels)), s_featureLevels, D3D_FEATURE_LEVEL_12_0
     };
 
-    if (SUCCEEDED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &featLevels, sizeof(featLevels))))
+    if (SUCCEEDED(m_device->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &featLevels, sizeof(featLevels))))
     {
         m_d3dFeatureLevel = featLevels.MaxSupportedFeatureLevel;
     }
@@ -218,7 +218,7 @@ void DeviceResources::CreateDeviceResources()
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-    ThrowIfFailed(m_d3dDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));
+    ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));
 
     m_commandQueue->SetName(L"DeviceResources");
 
@@ -227,11 +227,11 @@ void DeviceResources::CreateDeviceResources()
     rtvDescriptorHeapDesc.NumDescriptors = m_backBufferCount;
     rtvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 
-    ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&rtvDescriptorHeapDesc, IID_PPV_ARGS(m_rtvDescriptorHeap.ReleaseAndGetAddressOf())));
+    ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvDescriptorHeapDesc, IID_PPV_ARGS(m_rtvDescriptorHeap.ReleaseAndGetAddressOf())));
 
     m_rtvDescriptorHeap->SetName(L"DeviceResources");
 
-    m_rtvDescriptorSize = m_d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
     if (m_depthBufferFormat != DXGI_FORMAT_UNKNOWN)
     {
@@ -239,7 +239,7 @@ void DeviceResources::CreateDeviceResources()
         dsvDescriptorHeapDesc.NumDescriptors = 1;
         dsvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 
-        ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvDescriptorHeapDesc, IID_PPV_ARGS(m_dsvDescriptorHeap.ReleaseAndGetAddressOf())));
+        ThrowIfFailed(m_device->CreateDescriptorHeap(&dsvDescriptorHeapDesc, IID_PPV_ARGS(m_dsvDescriptorHeap.ReleaseAndGetAddressOf())));
 
         m_dsvDescriptorHeap->SetName(L"DeviceResources");
     }
@@ -247,7 +247,7 @@ void DeviceResources::CreateDeviceResources()
     // Create a command allocator for each back buffer that will be rendered to.
     for (UINT n = 0; n < m_backBufferCount; n++)
     {
-        ThrowIfFailed(m_d3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_commandAllocators[n].ReleaseAndGetAddressOf())));
+        ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_commandAllocators[n].ReleaseAndGetAddressOf())));
 
         wchar_t name[25] = {};
         swprintf_s(name, L"Render target %u", n);
@@ -255,13 +255,13 @@ void DeviceResources::CreateDeviceResources()
     }
 
     // Create a command list for recording graphics commands.
-    ThrowIfFailed(m_d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
+    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
     ThrowIfFailed(m_commandList->Close());
 
     m_commandList->SetName(L"DeviceResources");
 
     // Create a fence for tracking GPU execution progress.
-    ThrowIfFailed(m_d3dDevice->CreateFence(m_fenceValues[m_backBufferIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
+    ThrowIfFailed(m_device->CreateFence(m_fenceValues[m_backBufferIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
     m_fenceValues[m_backBufferIndex]++;
 
     m_fence->SetName(L"DeviceResources");
@@ -384,7 +384,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
         const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvDescriptor(
             m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
             static_cast<INT>(n), m_rtvDescriptorSize);
-        m_d3dDevice->CreateRenderTargetView(m_renderTargets[n].Get(), &rtvDesc, rtvDescriptor);
+        m_device->CreateRenderTargetView(m_renderTargets[n].Get(), &rtvDesc, rtvDescriptor);
     }
 
     // Reset the index to the current back buffer.
@@ -407,7 +407,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
 
         const CD3DX12_CLEAR_VALUE depthOptimizedClearValue(m_depthBufferFormat, (m_options & c_ReverseDepth) ? 0.0f : 1.0f, 0u);
 
-        ThrowIfFailed(m_d3dDevice->CreateCommittedResource(
+        ThrowIfFailed(m_device->CreateCommittedResource(
             &depthHeapProperties,
             D3D12_HEAP_FLAG_NONE,
             &depthStencilDesc,
@@ -422,7 +422,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
         dsvDesc.Format = m_depthBufferFormat;
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 
-        m_d3dDevice->CreateDepthStencilView(m_depthStencil.Get(), &dsvDesc, m_dsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+        m_device->CreateDepthStencilView(m_depthStencil.Get(), &dsvDesc, m_dsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
     }
 
     // Set the 3D rendering viewport and scissor rectangle to target the entire window.
@@ -489,7 +489,7 @@ void DeviceResources::HandleDeviceLost()
     m_rtvDescriptorHeap.Reset();
     m_dsvDescriptorHeap.Reset();
     m_swapChain.Reset();
-    m_d3dDevice.Reset();
+    m_device.Reset();
     m_dxgiFactory.Reset();
 
 #ifdef _DEBUG
@@ -698,7 +698,7 @@ void DeviceResources::CreateDevice()
     }
 
     m_adapter = adapter;
-    m_d3dDevice = device;
+    m_device = device;
     m_raytracingTier = options5.RaytracingTier;
 }
 

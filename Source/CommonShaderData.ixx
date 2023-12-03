@@ -9,18 +9,23 @@ import Material;
 using namespace DirectX;
 
 export {
+	struct SceneResourceDescriptorHeapIndices {
+		UINT InEnvironmentLightTexture = ~0u, InEnvironmentTexture = ~0u;
+		XMUINT2 _;
+	};
+
 	struct SceneData {
 		BOOL IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 		BOOL _;
-		XMFLOAT4 EnvironmentLightColor;
-		XMFLOAT4X4 EnvironmentLightTextureTransform;
-		XMFLOAT4 EnvironmentColor;
-		XMFLOAT4X4 EnvironmentTextureTransform;
+		SceneResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
+		XMFLOAT4 EnvironmentLightColor, EnvironmentColor;
+		XMFLOAT3X4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
 	};
 
 	struct InstanceData {
 		BOOL IsStatic;
-		XMFLOAT4X4 PreviousObjectToWorld;
+		UINT FirstGeometryIndex;
+		XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 	};
 
 	struct ObjectResourceDescriptorHeapIndices {
@@ -30,6 +35,6 @@ export {
 
 	struct ObjectData {
 		Material Material;
-		XMFLOAT4X4 TextureTransform;
+		ObjectResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
 	};
 }

@@ -2,18 +2,23 @@
 
 #include "Material.hlsli"
 
+struct SceneResourceDescriptorHeapIndices {
+	uint InEnvironmentLightTexture, InEnvironmentTexture;
+	uint2 _;
+};
+
 struct SceneData {
 	bool IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 	bool _;
-	float4 EnvironmentLightColor;
-	float4x4 EnvironmentLightTextureTransform;
-	float4 EnvironmentColor;
-	float4x4 EnvironmentTextureTransform;
+	SceneResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
+	float4 EnvironmentLightColor, EnvironmentColor;
+	row_major float3x4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
 };
 
 struct InstanceData {
 	bool IsStatic;
-	float4x4 PreviousObjectToWorld;
+	uint FirstGeometryIndex;
+	row_major float3x4 PreviousObjectToWorld, ObjectToWorld;
 };
 
 struct ObjectResourceDescriptorHeapIndices {
@@ -23,5 +28,5 @@ struct ObjectResourceDescriptorHeapIndices {
 
 struct ObjectData {
 	Material Material;
-	float4x4 TextureTransform;
+	ObjectResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
 };

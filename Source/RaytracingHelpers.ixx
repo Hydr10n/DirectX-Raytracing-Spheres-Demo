@@ -107,7 +107,7 @@ export namespace DirectX::RaytracingHelpers {
 
 	template <typename Vertex, typename Index> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
-		const GPUBuffer<Vertex>&vertices, const GPUBuffer<Index>&indices,
+		const DefaultBuffer<Vertex>&vertices, const DefaultBuffer<Index>&indices,
 		D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
@@ -126,7 +126,7 @@ export namespace DirectX::RaytracingHelpers {
 				.IndexBuffer = indices.GetResource()->GetGPUVirtualAddress(),
 				.VertexBuffer{
 					.StartAddress = vertices.GetResource()->GetGPUVirtualAddress(),
-					.StrideInBytes = GPUBuffer<Vertex>::ItemSize
+					.StrideInBytes = vertices.ItemSize
 				}
 			}
 		};

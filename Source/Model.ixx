@@ -21,8 +21,8 @@ export struct Mesh {
 
 	string Name;
 
-	shared_ptr<RWStructuredBuffer<VertexType>> Vertices;
-	shared_ptr<RWStructuredBuffer<IndexType>> Indices;
+	shared_ptr<DefaultBuffer<VertexType>> Vertices;
+	shared_ptr<DefaultBuffer<IndexType>> Indices;
 
 	struct { UINT Vertices = ~0u, Indices = ~0u; } DescriptorHeapIndices;
 
@@ -31,7 +31,7 @@ export struct Mesh {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);
 			descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex);
 			srvDescriptorHeapIndex = descriptorHeapIndex - 1;
-			buffer->CreateShaderResourceView(descriptorHeap.GetCpuHandle(srvDescriptorHeapIndex));
+			buffer->CreateStructuredSRV(descriptorHeap.GetCpuHandle(srvDescriptorHeapIndex));
 		};
 		const auto mesh = make_shared<Mesh>();
 		CreateBuffer(mesh->Vertices, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, mesh->DescriptorHeapIndices.Vertices);

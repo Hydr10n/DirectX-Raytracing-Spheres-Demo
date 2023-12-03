@@ -16,61 +16,47 @@ SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
 
-struct GlobalResourceDescriptorHeapIndices {
-	uint
-		InCamera,
-		InSceneData,
-		InInstanceData,
-		InObjectResourceDescriptorHeapIndices, InObjectData,
-		InEnvironmentLightTexture, InEnvironmentTexture,
-		OutColor,
-		OutLinearDepth, OutNormalizedDepth,
-		OutMotionVectors,
-		OutBaseColorMetalness,
-		OutEmissiveColor,
-		OutNormalRoughness,
-		OutNoisyDiffuse, OutNoisySpecular;
+struct NRDSettings {
+	NRDDenoiser Denoiser;
+	uint3 _;
+	float4 HitDistanceParameters;
 };
-ConstantBuffer<GlobalResourceDescriptorHeapIndices> g_globalResourceDescriptorHeapIndices : register(b0);
 
 struct GraphicsSettings {
 	uint2 RenderSize;
 	uint FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 	bool IsRussianRouletteEnabled;
-	NRDDenoiser NRDDenoiser;
-	uint _;
-	float4 NRDHitDistanceParameters;
+	uint2 _;
+	NRDSettings NRD;
 };
-ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b1);
+ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
 
-static const Camera g_camera = (ConstantBuffer<Camera>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InCamera];
+ConstantBuffer<SceneData> g_sceneData : register(b1);
 
-static const SceneData g_sceneData = (ConstantBuffer<SceneData>)ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InSceneData];
+ConstantBuffer<Camera> g_camera : register(b2);
 
-static const StructuredBuffer<InstanceData> g_instanceData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InInstanceData];
+StructuredBuffer<InstanceData> g_instanceData : register(t1);
+StructuredBuffer<ObjectData> g_objectData : register(t2);
 
-static const StructuredBuffer<ObjectResourceDescriptorHeapIndices> g_objectResourceDescriptorHeapIndices = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InObjectResourceDescriptorHeapIndices];
-
-static const StructuredBuffer<ObjectData> g_objectData = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InObjectData];
-
-static const RWTexture2D<float4> g_color = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutColor];
-static const RWTexture2D<float> g_linearDepth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutLinearDepth];
-static const RWTexture2D<float> g_normalizedDepth = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNormalizedDepth];
-static const RWTexture2D<float3> g_motionVectors = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutMotionVectors];
-static const RWTexture2D<float4> g_baseColorMetalness = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutBaseColorMetalness];
-static const RWTexture2D<float3> g_emissiveColor = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutEmissiveColor];
-static const RWTexture2D<float4> g_normalRoughness = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNormalRoughness];
-static const RWTexture2D<float4> g_noisyDiffuse = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNoisyDiffuse];
-static const RWTexture2D<float4> g_noisySpecular = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.OutNoisySpecular];
+RWTexture2D<float4> g_color : register(u0);
+RWTexture2D<float> g_linearDepth : register(u1);
+RWTexture2D<float> g_normalizedDepth : register(u2);
+RWTexture2D<float3> g_motionVectors : register(u3);
+RWTexture2D<float4> g_baseColorMetalness : register(u4);
+RWTexture2D<float3> g_emissiveColor : register(u5);
+RWTexture2D<float4> g_normalRoughness : register(u6);
+RWTexture2D<float4> g_noisyDiffuse : register(u7);
+RWTexture2D<float4> g_noisySpecular : register(u8);
 
 inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
-	if (g_globalResourceDescriptorHeapIndices.InEnvironmentLightTexture != ~0u) {
-		worldRayDirection = normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
+	const SceneResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_sceneData.ResourceDescriptorHeapIndices;
+	if (resourceDescriptorHeapIndices.InEnvironmentLightTexture != ~0u) {
+		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentLightTextureCubeMap) {
-			const TextureCube<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentLightTexture];
+			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.InEnvironmentLightTexture];
 			return texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
-		const Texture2D<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentLightTexture];
+		const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.InEnvironmentLightTexture];
 		return texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 	}
 	if (g_sceneData.EnvironmentLightColor.a >= 0) return g_sceneData.EnvironmentLightColor.rgb;
@@ -78,15 +64,16 @@ inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
 }
 
 inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
+	const SceneResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_sceneData.ResourceDescriptorHeapIndices;
 	bool ret;
-	if ((ret = g_globalResourceDescriptorHeapIndices.InEnvironmentTexture != ~0u)) {
-		worldRayDirection = normalize(STL::Geometry::RotateVector(g_sceneData.EnvironmentTextureTransform, worldRayDirection));
+	if ((ret = resourceDescriptorHeapIndices.InEnvironmentTexture != ~0u)) {
+		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentTextureCubeMap) {
-			const TextureCube<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentTexture];
+			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.InEnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
 		else {
-			const Texture2D<float3> texture = ResourceDescriptorHeap[g_globalResourceDescriptorHeapIndices.InEnvironmentTexture];
+			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.InEnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 		}
 	}
@@ -95,27 +82,27 @@ inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 }
 
 inline float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 barycentrics) {
-	const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[objectIndex];
-	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Vertices];
-	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], primitiveIndex);
+	const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[objectIndex].ResourceDescriptorHeapIndices;
+	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
+	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], primitiveIndex);
 	const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
-	return STL::Geometry::AffineTransform(g_objectData[objectIndex].TextureTransform, float3(Vertex::Interpolate(textureCoordinates, barycentrics), 0)).xy;
+	return Vertex::Interpolate(textureCoordinates, barycentrics);
 }
 
 inline float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBaseColorAlpha = true) {
-	const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[objectIndex];
+	const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[objectIndex].ResourceDescriptorHeapIndices;
 
 	uint index;
-	if ((index = objectResourceDescriptorHeapIndices.Textures.TransmissionMap) != ~0u) {
+	if ((index = resourceDescriptorHeapIndices.Textures.TransmissionMap) != ~0u) {
 		const Texture2D<float> texture = ResourceDescriptorHeap[index];
 		return 1 - texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
-	if ((index = objectResourceDescriptorHeapIndices.Textures.OpacityMap) != ~0u) {
+	if ((index = resourceDescriptorHeapIndices.Textures.OpacityMap) != ~0u) {
 		const Texture2D<float> texture = ResourceDescriptorHeap[index];
 		return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
 	if (g_objectData[objectIndex].Material.AlphaMode != AlphaMode::Opaque && getBaseColorAlpha) {
-		if ((index = objectResourceDescriptorHeapIndices.Textures.BaseColorMap) != ~0u) {
+		if ((index = resourceDescriptorHeapIndices.Textures.BaseColorMap) != ~0u) {
 			const Texture2D<float4> texture = ResourceDescriptorHeap[index];
 			return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).a;
 		}
@@ -125,19 +112,19 @@ inline float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBase
 }
 
 inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
-	const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[objectIndex];
+	const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[objectIndex].ResourceDescriptorHeapIndices;
 
 	Material material;
 
 	uint index;
 
-	if ((index = objectResourceDescriptorHeapIndices.Textures.BaseColorMap) != ~0u) {
+	if ((index = resourceDescriptorHeapIndices.Textures.BaseColorMap) != ~0u) {
 		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
 		material.BaseColor = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
 	else material.BaseColor = g_objectData[objectIndex].Material.BaseColor;
 
-	if ((index = objectResourceDescriptorHeapIndices.Textures.EmissiveColorMap) != ~0u) {
+	if ((index = resourceDescriptorHeapIndices.Textures.EmissiveColorMap) != ~0u) {
 		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
 		material.EmissiveColor = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
@@ -150,9 +137,9 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 		 */
 
 		const uint
-			metallicMapIndex = objectResourceDescriptorHeapIndices.Textures.MetallicMap,
-			roughnessMapIndex = objectResourceDescriptorHeapIndices.Textures.RoughnessMap,
-			ambientOcclusionMapIndex = objectResourceDescriptorHeapIndices.Textures.AmbientOcclusionMap;
+			metallicMapIndex = resourceDescriptorHeapIndices.Textures.MetallicMap,
+			roughnessMapIndex = resourceDescriptorHeapIndices.Textures.RoughnessMap,
+			ambientOcclusionMapIndex = resourceDescriptorHeapIndices.Textures.AmbientOcclusionMap;
 		const uint metallicMapChannel = metallicMapIndex == roughnessMapIndex && roughnessMapIndex == ambientOcclusionMapIndex ? 2 : 0;
 
 		if (metallicMapIndex != ~0u) {
@@ -191,7 +178,7 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0u, rayDesc);
 
 	while (q.Proceed()) {
-		const uint objectIndex = q.CandidateGeometryIndex() + q.CandidateInstanceID();
+		const uint objectIndex = g_instanceData[q.CandidateInstanceIndex()].FirstGeometryIndex + q.CandidateGeometryIndex();
 		const AlphaMode alphaMode = g_objectData[objectIndex].Material.AlphaMode;
 		if (alphaMode == AlphaMode::Opaque) q.CommitNonOpaqueTriangleHit();
 		else {
@@ -205,20 +192,19 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	const bool ret = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (ret) {
 		hitInfo.InstanceIndex = q.CommittedInstanceIndex();
-		hitInfo.ObjectIndex = q.CommittedGeometryIndex() + q.CommittedInstanceID();
+		hitInfo.ObjectIndex = g_instanceData[q.CommittedInstanceIndex()].FirstGeometryIndex + q.CommittedGeometryIndex();
 		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
 
-		const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[hitInfo.ObjectIndex];
-		const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Vertices];
-		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
+		const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorHeapIndices;
+		const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
+		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
 		const float3
 			positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position },
 			normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
 		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
 		hitInfo.Initialize(positions, normals, textureCoordinates, q.CommittedTriangleBarycentrics(), q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(), rayDesc.Origin, rayDesc.Direction, q.CommittedRayT());
-		hitInfo.TextureCoordinate = STL::Geometry::AffineTransform(g_objectData[hitInfo.ObjectIndex].TextureTransform, float3(hitInfo.TextureCoordinate, 0)).xy;
-		if (objectResourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
-			const Texture2D<float3> texture = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Textures.NormalMap];
+		if (resourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
+			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Textures.NormalMap];
 			const float3 T = normalize(Math::CalculateTangent(positions, textureCoordinates));
 			const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
 			hitInfo.Normal = normalize(STL::Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
@@ -232,10 +218,10 @@ inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInf
 	if (g_sceneData.IsStatic || g_instanceData[hitInfo.InstanceIndex].IsStatic) previousPosition = hitInfo.Position;
 	else {
 		previousPosition = hitInfo.ObjectPosition;
-		if (g_objectResourceDescriptorHeapIndices[hitInfo.ObjectIndex].Mesh.MotionVectors != ~0u) {
-			const ObjectResourceDescriptorHeapIndices objectResourceDescriptorHeapIndices = g_objectResourceDescriptorHeapIndices[hitInfo.ObjectIndex];
-			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.MotionVectors];
-			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[objectResourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
+		const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorHeapIndices;
+		if (resourceDescriptorHeapIndices.Mesh.MotionVectors != ~0u) {
+			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.MotionVectors];
+			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
 			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
 			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
 		}

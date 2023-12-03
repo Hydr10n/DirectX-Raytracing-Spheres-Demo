@@ -4,6 +4,9 @@ module;
 
 #include "directxtk12/BufferHelpers.h"
 #include "directxtk12/DirectXHelpers.h"
+#include "directxtk12/ResourceUploadBatch.h"
+
+#include "FormatHelpers.h"
 
 #include <ranges>
 #include <stdexcept>
@@ -12,12 +15,13 @@ export module GPUBuffer;
 
 import ErrorHelpers;
 
+using namespace DirectX::FormatHelpers;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX {
-	template <typename T, D3D12_HEAP_TYPE Type = D3D12_HEAP_TYPE_DEFAULT, size_t Alignment = 2>
+	template <typename T, D3D12_HEAP_TYPE Type, size_t Alignment = 2>
 	class GPUBuffer {
 	public:
 		static_assert(IsPowerOf2(Alignment));
@@ -56,6 +60,88 @@ export namespace DirectX {
 			m_state = state;
 		}
 
+		void CreateCBV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
+				.BufferLocation = m_resource->GetGPUVirtualAddress(),
+				.SizeInBytes = static_cast<UINT>(m_resource->GetDesc().Width)
+			};
+			device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
+		}
+
+		void CreateStructuredSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			CreateBufferShaderResourceView(device.Get(), m_resource.Get(), descriptor, ItemSize);
+		}
+
+		void CreateRawSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
+				.Format = DXGI_FORMAT_R32_TYPELESS,
+				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+				.Buffer{
+					.NumElements = static_cast<UINT>((ItemSize * m_capacity + 3) / 4),
+					.Flags = D3D12_BUFFER_SRV_FLAG_RAW
+				}
+			};
+			device->CreateShaderResourceView(m_resource.Get(), &shaderResourceViewDesc, descriptor);
+		}
+
+		void CreateTypedSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format) const {
+			const auto size = GetBits(format) / 8;
+			if (ItemSize != size) throw invalid_argument("Format size doesn't match");
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
+				.Format = format,
+				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+				.Buffer{
+					.NumElements = static_cast<UINT>((ItemSize * m_capacity + size - 1) / size)
+				}
+			};
+			device->CreateShaderResourceView(m_resource.Get(), &shaderResourceViewDesc, descriptor);
+		}
+
+		void CreateStructuredUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			CreateBufferUnorderedAccessView(device.Get(), m_resource.Get(), descriptor, ItemSize);
+		}
+
+		void CreateRawUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{
+				.Format = DXGI_FORMAT_R32_TYPELESS,
+				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+				.Buffer{
+					.NumElements = static_cast<UINT>((ItemSize * m_capacity + 3) / 4),
+					.Flags = D3D12_BUFFER_UAV_FLAG_RAW
+				}
+			};
+			device->CreateUnorderedAccessView(m_resource.Get(), nullptr, &unorderedAccessViewDesc, descriptor);
+		}
+
+		void CreateTypedUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format) const {
+			const auto size = GetBits(format) / 8;
+			if (ItemSize != size) throw invalid_argument("Format size doesn't match");
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{
+				.Format = format,
+				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+				.Buffer{
+					.NumElements = static_cast<UINT>((ItemSize * m_capacity + size - 1) / size)
+				}
+			};
+			device->CreateUnorderedAccessView(m_resource.Get(), nullptr, &unorderedAccessViewDesc, descriptor);
+		}
+
 	protected:
 		size_t m_capacity{};
 		D3D12_RESOURCE_STATES m_state{};
@@ -75,6 +161,64 @@ export namespace DirectX {
 			swap(m_capacity, source.m_capacity);
 			swap(m_state, source.m_state);
 			swap(m_resource, source.m_resource);
+		}
+	};
+
+	template <typename T>
+	struct DefaultBuffer : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT> {
+		using GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>::GPUBuffer;
+
+		DefaultBuffer(
+			ID3D12Device* pDevice,
+			size_t capacity = 1,
+			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
+
+		DefaultBuffer(
+			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
+			span<const T> data,
+			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) {
+			this->m_capacity = size(data);
+			this->m_state = afterState;
+			const auto flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags;
+			if (sizeof(T) % 2 == 0) ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &this->m_resource, flags));
+			else {
+				vector<uint8_t> newData(this->ItemSize * this->m_capacity);
+				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &this->m_resource, flags));
+			}
+		}
+
+		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(source) {
+			if (commandList != nullptr) {
+				const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
+				commandList->CopyResource(this->m_resource.Get(), source.m_resource.Get());
+				TransitionResource(commandList, this->m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, source.m_state);
+			}
+		}
+
+		void Upload(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
+			if (size(data) > this->m_capacity) {
+				ComPtr<ID3D12Device> device;
+				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
+				*this = DefaultBuffer(device.Get(), resourceUploadBatch, data);
+			}
+			else {
+				vector<uint8_t> newData;
+				D3D12_SUBRESOURCE_DATA subresourceData;
+				if (sizeof(T) % 2 == 0) subresourceData = { ::data(data), static_cast<LONG_PTR>(this->ItemSize * size(data)) };
+				else {
+					newData = vector<uint8_t>(this->ItemSize * this->m_capacity);
+					for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+					subresourceData = { ::data(newData), static_cast<LONG_PTR>(this->ItemSize * size(newData)) };
+				}
+				const auto resource = this->m_resource.Get();
+				const auto state = this->m_state;
+				resourceUploadBatch.Transition(resource, state, D3D12_RESOURCE_STATE_COPY_DEST);
+				resourceUploadBatch.Upload(resource, 0, &subresourceData, 1);
+				resourceUploadBatch.Transition(resource, D3D12_RESOURCE_STATE_COPY_DEST, state);
+			}
 		}
 	};
 
@@ -105,6 +249,17 @@ export namespace DirectX {
 		MappableBuffer&& operator=(MappableBuffer&& source) noexcept {
 			Swap(source);
 			return move(*this);
+		}
+
+		void Upload(span<const T> data) {
+			if (size(data) > this->m_capacity) {
+				ComPtr<ID3D12Device> device;
+				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
+				*this = MappableBuffer(device.Get(), data);
+			}
+			else {
+				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = data[i];
+			}
 		}
 
 		void Map() { if (m_data == nullptr) ThrowIfFailed(this->m_resource->Map(0, nullptr, reinterpret_cast<void**>(&m_data))); }
@@ -141,75 +296,5 @@ export namespace DirectX {
 	using ReadBackBuffer = MappableBuffer<T, false, Alignment>;
 
 	template <typename T>
-	struct ConstantBuffer : UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT> {
-		using UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>::UploadBuffer;
-
-		void CreateConstantBufferView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
-				.BufferLocation = this->m_resource->GetGPUVirtualAddress(),
-				.SizeInBytes = static_cast<UINT>(this->m_resource->GetDesc().Width)
-			};
-			device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
-		}
-	};
-
-	template <typename T>
-	struct StructuredBuffer : UploadBuffer<T> {
-		using UploadBuffer<T>::UploadBuffer;
-
-		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferShaderResourceView(device.Get(), this->m_resource.Get(), descriptor, this->ItemSize);
-		}
-	};
-
-	template <typename T>
-	struct RWStructuredBuffer : GPUBuffer<T> {
-		using GPUBuffer<T>::GPUBuffer;
-
-		RWStructuredBuffer(
-			ID3D12Device* pDevice,
-			size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T>(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
-
-		RWStructuredBuffer(
-			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
-			span<const T> data,
-			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) {
-			this->m_capacity = size(data);
-			this->m_state = afterState;
-			const auto flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags;
-			if (sizeof(T) % 2 == 0) ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &this->m_resource, flags));
-			else {
-				vector<uint8_t> newData(this->ItemSize * this->m_capacity);
-				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
-				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &this->m_resource, flags));
-			}
-		}
-
-		RWStructuredBuffer(const RWStructuredBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : GPUBuffer<T>(source) {
-			if (commandList != nullptr) {
-				const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
-				commandList->CopyResource(this->m_resource.Get(), source.m_resource.Get());
-				TransitionResource(commandList, this->m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, source.m_state);
-			}
-		}
-
-		void CreateShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferShaderResourceView(device.Get(), this->m_resource.Get(), descriptor, this->ItemSize);
-		}
-
-		void CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferUnorderedAccessView(device.Get(), this->m_resource.Get(), descriptor, this->ItemSize);
-		}
-	};
+	using ConstantBuffer = UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>;
 }

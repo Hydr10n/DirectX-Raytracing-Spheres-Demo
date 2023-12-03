@@ -75,7 +75,7 @@ struct PhysX {
 
 	auto& GetScene() const noexcept { return *m_scene; }
 
-	void Tick(physx::PxReal elapsedTime, bool block = true) {
+	void Tick(float elapsedTime, bool block = true) {
 		m_scene->simulate(elapsedTime);
 		m_scene->fetchResults(block);
 	}

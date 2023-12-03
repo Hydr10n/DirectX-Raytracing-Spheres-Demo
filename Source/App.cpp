@@ -7,7 +7,6 @@ module;
 #include "directxtk12/CommonStates.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/GamePad.h"
-#include "directxtk12/GraphicsMemory.h"
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
 #include "directxtk12/ResourceUploadBatch.h"
@@ -21,8 +20,6 @@ module;
 #include "NRD.h"
 
 #include "ffx_fsr2.h"
-
-#include "PhysX.h"
 
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
@@ -60,7 +57,6 @@ using namespace DX;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace nrd;
-using namespace physx;
 using namespace PostProcessing;
 using namespace SharedData;
 using namespace sl;
@@ -115,6 +111,8 @@ struct App::Impl : IDeviceNotify {
 		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
 
 		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
+
+		LoadScene();
 	}
 
 	~Impl() {
@@ -215,6 +213,8 @@ struct App::Impl : IDeviceNotify {
 		CreateDeviceDependentResources();
 
 		CreateWindowSizeDependentResources();
+
+		LoadScene();
 	}
 
 private:
@@ -252,10 +252,6 @@ private:
 
 	struct ResourceDescriptorHeapIndex {
 		enum {
-			InCamera,
-			InSceneData,
-			InInstanceData,
-			InObjectResourceDescriptorHeapIndices, InObjectData,
 			InColor, OutColor,
 			InFinalColor, OutFinalColor,
 			InLinearDepth, OutLinearDepth,
@@ -339,11 +335,10 @@ private:
 	map<string, shared_ptr<RenderTexture>, less<>> m_renderTextures;
 
 	struct {
-		unique_ptr<ConstantBuffer<Camera>> Camera;
-		unique_ptr<ConstantBuffer<SceneData>> SceneData;
-		unique_ptr<StructuredBuffer<InstanceData>> InstanceData;
-		unique_ptr<StructuredBuffer<ObjectResourceDescriptorHeapIndices>> ObjectResourceDescriptorHeapIndices;
-		unique_ptr<StructuredBuffer<ObjectData>> ObjectData;
+		shared_ptr<ConstantBuffer<Camera>> Camera;
+		shared_ptr<ConstantBuffer<SceneData>> SceneData;
+		shared_ptr<UploadBuffer<InstanceData>> InstanceData;
+		shared_ptr<UploadBuffer<ObjectData>> ObjectData;
 	} m_GPUBuffers;
 
 	CameraController m_cameraController;
@@ -355,21 +350,19 @@ private:
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowVisible; } m_UIStates{};
 
 	void CreateDeviceDependentResources() {
-		const auto device = m_deviceResources->GetD3DDevice();
+		const auto device = m_deviceResources->GetDevice();
 
 		m_graphicsMemory = make_unique<GraphicsMemory>(device);
 
 		CreateDescriptorHeaps();
 
-		CreatePostProcess();
+		CreatePostProcessing();
 
 		CreateConstantBuffers();
-
-		LoadScene();
 	}
 
 	void CreateWindowSizeDependentResources() {
-		const auto device = m_deviceResources->GetD3DDevice();
+		const auto device = m_deviceResources->GetDevice();
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const auto outputSize = GetOutputSize();
@@ -520,14 +513,16 @@ private:
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
 			try {
-			const auto device = m_deviceResources->GetD3DDevice();
+			const auto device = m_deviceResources->GetDevice();
 			const auto commandQueue = m_deviceResources->GetCommandQueue();
 
 			{
 				UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-				m_scene = make_unique<MyScene>();
-				m_scene->Load(MySceneDesc(), device, commandQueue, *m_resourceDescriptorHeap, descriptorHeapIndex);
+				m_scene = make_unique<MyScene>(device, commandQueue);
+				m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
 			}
+
+			CreateStructuredBuffers();
 
 			ResetCamera();
 
@@ -537,34 +532,16 @@ private:
 					const auto desc = pResource->GetDesc();
 					return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
 				};
-				auto& globalData = m_GPUBuffers.SceneData->GetData();
-				globalData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
-				globalData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
-			}
-
-			CreateStructuredBuffers();
-
-			{
-				const Raytracing::GlobalResourceDescriptorHeapIndices globalResourceDescriptorHeapIndices{
-					.InCamera = ResourceDescriptorHeapIndex::InCamera,
-					.InSceneData = ResourceDescriptorHeapIndex::InSceneData,
-					.InInstanceData = ResourceDescriptorHeapIndex::InInstanceData,
-					.InObjectResourceDescriptorHeapIndices = ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices,
-					.InObjectData = ResourceDescriptorHeapIndex::InObjectData,
+				auto& sceneData = m_GPUBuffers.SceneData->GetData();
+				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
+				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
+				sceneData.ResourceDescriptorHeapIndices = {
 					.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV,
-					.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV,
-					.OutColor = ResourceDescriptorHeapIndex::OutColor,
-					.OutLinearDepth = ResourceDescriptorHeapIndex::OutLinearDepth,
-					.OutNormalizedDepth = ResourceDescriptorHeapIndex::OutNormalizedDepth,
-					.OutMotionVectors = ResourceDescriptorHeapIndex::OutMotionVectors,
-					.OutBaseColorMetalness = ResourceDescriptorHeapIndex::OutBaseColorMetalness,
-					.OutEmissiveColor = ResourceDescriptorHeapIndex::OutEmissiveColor,
-					.OutNormalRoughness = ResourceDescriptorHeapIndex::OutNormalRoughness,
-					.OutNoisyDiffuse = ResourceDescriptorHeapIndex::OutNoisyDiffuse,
-					.OutNoisySpecular = ResourceDescriptorHeapIndex::OutNoisySpecular,
+					.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
 				};
-				m_raytracing = make_unique<Raytracing>(device, commandQueue, globalResourceDescriptorHeapIndices, m_scene);
 			}
+
+			m_raytracing = make_unique<Raytracing>(device, m_scene);
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -575,24 +552,22 @@ private:
 	}
 
 	void CreateDescriptorHeaps() {
-		const auto device = m_deviceResources->GetD3DDevice();
+		const auto device = m_deviceResources->GetDevice();
 
 		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorHeapIndex::Count, ResourceDescriptorHeapIndex::Reserve);
 
 		m_renderDescriptorHeap = make_unique<DescriptorHeap>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorHeapIndex::Count);
 	}
 
-	void CreatePostProcess() {
-		const auto device = m_deviceResources->GetD3DDevice();
-		const auto commandQueue = m_deviceResources->GetCommandQueue();
-		const auto commandList = m_deviceResources->GetCommandList();
+	void CreatePostProcessing() {
+		const auto device = m_deviceResources->GetDevice();
 
 		{
 			ignore = slSetD3DDevice(device);
 
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
-			m_streamline = make_unique<Streamline>(0, adapterDesc.AdapterLuid, commandList);
+			m_streamline = make_unique<Streamline>(0, adapterDesc.AdapterLuid, m_deviceResources->GetCommandList());
 		}
 
 		m_denoisedComposition = make_unique<DenoisedComposition>(device);
@@ -619,42 +594,37 @@ private:
 
 			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(RenderTargetState(m_deviceResources->GetBackBufferFormat(), m_deviceResources->GetDepthBufferFormat()), &CommonStates::NonPremultiplied));
 
-			resourceUploadBatch.End(commandQueue).get();
+			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
 		}
 	}
 
 	void CreateConstantBuffers() {
-		const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&buffer, const auto & data, UINT descriptorHeapIndex) {
-			buffer = make_unique<T>(m_deviceResources->GetD3DDevice());
-			buffer->GetData() = data;
-			buffer->CreateConstantBufferView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
-		};
-		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedDepthReversed = true }, ResourceDescriptorHeapIndex::InCamera);
-		CreateBuffer(m_GPUBuffers.SceneData, SceneData(), ResourceDescriptorHeapIndex::InSceneData);
+		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data) { buffer = make_unique<T>(m_deviceResources->GetDevice(), initializer_list{ data }); };
+		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedDepthReversed = true });
+		CreateBuffer(m_GPUBuffers.SceneData, SceneData());
 	}
 
 	void CreateStructuredBuffers() {
-		const auto instanceCount = static_cast<UINT>(size(m_scene->RenderObjects)), objectCount = instanceCount;
-		if (objectCount) {
-			const auto CreateBuffer = [&]<typename T>(unique_ptr<T>&buffer, size_t capacity, UINT descriptorHeapIndex) {
-				buffer = make_unique<T>(m_deviceResources->GetD3DDevice(), capacity);
-				buffer->CreateShaderResourceView(m_resourceDescriptorHeap->GetCpuHandle(descriptorHeapIndex));
-			};
-			CreateBuffer(m_GPUBuffers.InstanceData, instanceCount, ResourceDescriptorHeapIndex::InInstanceData);
-			CreateBuffer(m_GPUBuffers.ObjectResourceDescriptorHeapIndices, objectCount, ResourceDescriptorHeapIndex::InObjectResourceDescriptorHeapIndices);
-			CreateBuffer(m_GPUBuffers.ObjectData, objectCount, ResourceDescriptorHeapIndex::InObjectData);
+		if (const auto instanceCount = static_cast<UINT>(size(m_scene->GetInstanceData())), objectCount = m_scene->GetObjectCount(); objectCount) {
+			const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, size_t capacity) { buffer = make_unique<T>(m_deviceResources->GetDevice(), capacity); };
+			CreateBuffer(m_GPUBuffers.InstanceData, instanceCount);
+			CreateBuffer(m_GPUBuffers.ObjectData, objectCount);
 
-			for (size_t instanceIndex = 0, objectIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
-				m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Scene::Transform(*renderObject.Shape);
+			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
+				const auto& instanceData = m_scene->GetInstanceData()[instanceIndex];
+				m_GPUBuffers.InstanceData->GetData(instanceIndex) = {
+					.FirstGeometryIndex = instanceData.FirstGeometryIndex,
+					.PreviousObjectToWorld = instanceData.ObjectToWorld,
+					.ObjectToWorld = instanceData.ObjectToWorld
+				};
+				instanceIndex++;
 
-				auto& objectData = m_GPUBuffers.ObjectData->GetData(objectIndex);
+				auto& objectData = m_GPUBuffers.ObjectData->GetData(instanceData.FirstGeometryIndex);
 
 				objectData.Material = renderObject.Material;
 
-				objectData.TextureTransform = renderObject.TextureTransform();
-
-				auto& objectResourceDescriptorHeapIndices = m_GPUBuffers.ObjectResourceDescriptorHeapIndices->GetData(objectIndex);
-				objectResourceDescriptorHeapIndices = {
+				auto& resourceDescriptorHeapIndices = objectData.ResourceDescriptorHeapIndices;
+				resourceDescriptorHeapIndices = {
 					.Mesh{
 						.Vertices = renderObject.Mesh->DescriptorHeapIndices.Vertices,
 						.Indices = renderObject.Mesh->DescriptorHeapIndices.Indices
@@ -663,7 +633,7 @@ private:
 
 				for (const auto& [TextureType, Texture] : renderObject.Textures) {
 					const auto index = Texture.DescriptorHeapIndices.SRV;
-					switch (auto& indices = objectResourceDescriptorHeapIndices.Textures; TextureType) {
+					switch (auto& indices = resourceDescriptorHeapIndices.Textures; TextureType) {
 						case TextureType::BaseColorMap: indices.BaseColorMap = index; break;
 						case TextureType::EmissiveColorMap: indices.EmissiveColorMap = index; break;
 						case TextureType::MetallicMap: indices.MetallicMap = index; break;
@@ -675,8 +645,6 @@ private:
 						default: throw out_of_range("Unsupported texture type");
 					}
 				}
-
-				objectIndex++;
 			}
 		}
 	}
@@ -792,27 +760,30 @@ private:
 	}
 
 	void UpdateScene() {
-		if (!m_scene->IsStatic()) {
-			for (size_t instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) m_GPUBuffers.InstanceData->GetData(instanceIndex++).PreviousObjectToWorld = Scene::Transform(*renderObject.Shape);
-		}
+		m_scene->Tick(m_stepTimer.GetElapsedSeconds(), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
 
-		m_scene->Tick(static_cast<PxReal>(min(1.0 / 60, m_stepTimer.GetElapsedSeconds())), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
+		if (!m_scene->IsStatic()) {
+			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
+				auto& instanceData = m_GPUBuffers.InstanceData->GetData(instanceIndex);
+				instanceData.PreviousObjectToWorld = instanceData.ObjectToWorld;
+				instanceData.ObjectToWorld = m_scene->GetInstanceData()[instanceIndex].ObjectToWorld;
+				instanceIndex++;
+			}
+
+			m_scene->CreateAccelerationStructures(true);
+		}
 
 		{
 			auto& sceneData = m_GPUBuffers.SceneData->GetData();
 			sceneData.IsStatic = m_scene->IsStatic();
 			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
-			sceneData.EnvironmentLightTextureTransform = m_scene->EnvironmentLightTexture.Transform();
 			sceneData.EnvironmentColor = m_scene->EnvironmentColor;
-			sceneData.EnvironmentTextureTransform = m_scene->EnvironmentTexture.Transform();
+			XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
+			XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 		}
 	}
 
 	void RenderScene() {
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		if (!m_scene->IsStatic()) m_raytracing->CreateAccelerationStructures();
-
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 		m_raytracing->SetConstants({
 			.RenderSize = m_renderSize,
@@ -820,10 +791,33 @@ private:
 			.MaxNumberOfBounces = raytracingSettings.MaxNumberOfBounces,
 			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
 			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-			.NRDDenoiser = g_graphicsSettings.PostProcessing.NRD.Denoiser,
-			.NRDHitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
+			.NRD{
+				.Denoiser = g_graphicsSettings.PostProcessing.NRD.Denoiser,
+				.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
+			}
 			});
-		m_raytracing->Render(commandList);
+
+		m_raytracing->GPUBuffers = {
+			.InSceneData = m_GPUBuffers.SceneData,
+			.InCamera = m_GPUBuffers.Camera,
+			.InInstanceData = m_GPUBuffers.InstanceData,
+			.InObjectData = m_GPUBuffers.ObjectData
+		};
+
+		const auto GetUAV = [&](LPCSTR name) { return m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(name)->GetUavDescriptorHeapIndex()); };
+		m_raytracing->GPUDescriptors = {
+			.OutColor = GetUAV(RenderTextureNames::Color),
+			.OutLinearDepth = GetUAV(RenderTextureNames::LinearDepth),
+			.OutNormalizedDepth = GetUAV(RenderTextureNames::NormalizedDepth),
+			.OutMotionVectors = GetUAV(RenderTextureNames::MotionVectors),
+			.OutBaseColorMetalness = GetUAV(RenderTextureNames::BaseColorMetalness),
+			.OutEmissiveColor = GetUAV(RenderTextureNames::EmissiveColor),
+			.OutNormalRoughness = GetUAV(RenderTextureNames::NormalRoughness),
+			.OutNoisyDiffuse = GetUAV(RenderTextureNames::NoisyDiffuse),
+			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular)
+		};
+
+		m_raytracing->Render(m_deviceResources->GetCommandList());
 	}
 
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
@@ -1064,7 +1058,7 @@ private:
 				.NRDDenoiser = NRDSettings.Denoiser
 			};
 
-			m_denoisedComposition->Buffers = { .InCamera = m_GPUBuffers.Camera->GetResource() };
+			m_denoisedComposition->GPUBuffers = { .InCamera = m_GPUBuffers.Camera };
 
 			const auto& emissiveColor = *m_renderTextures.at(RenderTextureNames::EmissiveColor);
 
@@ -1080,7 +1074,7 @@ private:
 				}
 			);
 
-			m_denoisedComposition->Descriptors = {
+			m_denoisedComposition->GPUDescriptors = {
 				.InLinearDepth = m_resourceDescriptorHeap->GetGpuHandle(linearDepth.GetSrvDescriptorHeapIndex()),
 				.InBaseColorMetalness = m_resourceDescriptorHeap->GetGpuHandle(baseColorMetalness.GetSrvDescriptorHeapIndex()),
 				.InEmissiveColor = m_resourceDescriptorHeap->GetGpuHandle(emissiveColor.GetSrvDescriptorHeapIndex()),
@@ -1180,7 +1174,7 @@ private:
 
 		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
-		m_chromaticAberration->Descriptors = {
+		m_chromaticAberration->GPUDescriptors = {
 			.InColor = m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()),
 			.OutColor = m_resourceDescriptorHeap->GetGpuHandle(outColor.GetUavDescriptorHeapIndex())
 		};

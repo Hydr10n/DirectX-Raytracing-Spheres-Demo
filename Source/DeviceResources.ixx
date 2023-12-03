@@ -66,7 +66,7 @@ export namespace DX
         SIZE GetOutputSize() const noexcept { return m_outputSize; }
         
         // Direct3D Accessors.
-        auto                        GetD3DDevice() const noexcept            { return m_d3dDevice.Get(); }
+        auto                        GetDevice() const noexcept               { return m_device.Get(); }
         auto                        GetSwapChain() const noexcept            { return m_swapChain.Get(); }
         auto                        GetAdapter() const noexcept              { return m_adapter.Get(); }
         auto                        GetDXGIFactory() const noexcept          { return m_dxgiFactory.Get(); }
@@ -108,7 +108,7 @@ export namespace DX
         UINT                                                m_backBufferIndex;
 
         // Direct3D objects.
-        Microsoft::WRL::ComPtr<ID3D12Device5>               m_d3dDevice;
+        Microsoft::WRL::ComPtr<ID3D12Device5>               m_device;
         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4>  m_commandList;
         Microsoft::WRL::ComPtr<ID3D12CommandQueue>          m_commandQueue;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator>      m_commandAllocators[MAX_BACK_BUFFER_COUNT];
