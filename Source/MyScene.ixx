@@ -103,7 +103,7 @@ export {
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0,
 							.Opacity = 0,
-							.RefractiveIndex = 1.5f,
+							.RefractiveIndex = 1.5f
 						}
 					},
 					{
@@ -112,7 +112,7 @@ export {
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0.5f,
 							.Opacity = 0,
-							.RefractiveIndex = 1.5f,
+							.RefractiveIndex = 1.5f
 						}
 					},
 					{
@@ -133,7 +133,6 @@ export {
 						textures[TextureType::BaseColorMap] = directoryPath / L"Alien-Metal_Albedo.png";
 						textures[TextureType::MetallicMap] = directoryPath / L"Alien-Metal_Metallic.png";
 						textures[TextureType::RoughnessMap] = directoryPath / L"Alien-Metal_Roughness.png";
-						textures[TextureType::AmbientOcclusionMap] = directoryPath / L"Alien-Metal_AO.png";
 						textures[TextureType::NormalMap] = directoryPath / L"Alien-Metal_Normal.png";
 					}
 
@@ -332,7 +331,7 @@ struct MyScene : Scene {
 
 		PhysX->Tick(static_cast<float>(min(1.0 / 60, elapsedSeconds)));
 
-		UpdateData();
+		Refresh();
 	}
 
 private:

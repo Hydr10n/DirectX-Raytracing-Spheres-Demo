@@ -112,9 +112,8 @@ export namespace DirectX::RaytracingHelpers {
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 	) {
-		const auto vertexCount = vertices.GetCapacity(), indexCount = indices.GetCapacity();
-		if (vertexCount < 3) throw invalid_argument("Vertex count cannot be fewer than 3");
-		if (indexCount < 3) throw invalid_argument("Index count cannot be fewer than 3");
+		const auto vertexCount = vertices.GetCount(), indexCount = indices.GetCount();
+		if (indexCount % 3 != 0) throw invalid_argument("Index count must be divisible by 3");
 		return {
 			.Flags = flags,
 			.Triangles{

@@ -137,9 +137,7 @@ public:
 
 					bool IsValidationOverlayEnabled{};
 
-					float SplitScreen{};
-
-					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, Denoiser, IsValidationOverlayEnabled, SplitScreen);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, Denoiser, IsValidationOverlayEnabled);
 				} NRD;
 
 				struct SuperResolution {
@@ -191,13 +189,11 @@ public:
 				Camera.HorizontalFieldOfView = clamp(Camera.HorizontalFieldOfView, Camera.MinHorizontalFieldOfView, Camera.MaxHorizontalFieldOfView);
 
 				{
-					Raytracing.MaxNumberOfBounces = clamp(Raytracing.MaxNumberOfBounces, 1u, Raytracing.MaxMaxNumberOfBounces);
+					Raytracing.MaxNumberOfBounces = clamp(Raytracing.MaxNumberOfBounces, 0u, Raytracing.MaxMaxNumberOfBounces);
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
 				}
 
 				{
-					PostProcessing.NRD.SplitScreen = clamp(PostProcessing.NRD.SplitScreen, 0.0f, 1.0f);
-
 					PostProcessing.NIS.Sharpness = clamp(PostProcessing.NIS.Sharpness, 0.0f, 1.0f);
 
 					{

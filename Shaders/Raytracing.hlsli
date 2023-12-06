@@ -6,8 +6,6 @@
 
 #include "Camera.hlsli"
 
-#include "HitInfo.hlsli"
-
 #include "MeshHelpers.hlsli"
 
 #include "NRDDenoiser.hlsli"
@@ -38,7 +36,7 @@ ConstantBuffer<Camera> g_camera : register(b2);
 StructuredBuffer<InstanceData> g_instanceData : register(t1);
 StructuredBuffer<ObjectData> g_objectData : register(t2);
 
-RWTexture2D<float4> g_color : register(u0);
+RWTexture2D<float3> g_color : register(u0);
 RWTexture2D<float> g_linearDepth : register(u1);
 RWTexture2D<float> g_normalizedDepth : register(u2);
 RWTexture2D<float3> g_motionVectors : register(u3);
@@ -153,13 +151,7 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 			material.Roughness = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).g;
 		}
 		else material.Roughness = g_objectData[objectIndex].Material.Roughness;
-		material.Roughness = max(material.Roughness, 1e-4f);
-
-		if (ambientOcclusionMapIndex != ~0u) {
-			const Texture2D<float3> texture = ResourceDescriptorHeap[ambientOcclusionMapIndex];
-			material.AmbientOcclusion = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).r;
-		}
-		else material.AmbientOcclusion = 1;
+		material.Roughness = max(material.Roughness, MinRoughness);
 	}
 
 	material.Opacity = GetOpacity(objectIndex, textureCoordinate, false);
@@ -173,22 +165,39 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 	return material;
 }
 
-inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
-	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
-	q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0u, rayDesc);
-
-	while (q.Proceed()) {
-		const uint objectIndex = g_instanceData[q.CandidateInstanceIndex()].FirstGeometryIndex + q.CandidateGeometryIndex();
-		const AlphaMode alphaMode = g_objectData[objectIndex].Material.AlphaMode;
-		if (alphaMode == AlphaMode::Opaque) q.CommitNonOpaqueTriangleHit();
-		else {
-			//TODO: Alpha Blending
-			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
-			const float opacity = GetOpacity(objectIndex, textureCoordinate);
-			if (opacity >= g_objectData[objectIndex].Material.AlphaThreshold) q.CommitNonOpaqueTriangleHit();
+inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
+	float3 previousPosition;
+	if (g_sceneData.IsStatic || g_instanceData[hitInfo.InstanceIndex].IsStatic) previousPosition = hitInfo.Position;
+	else {
+		previousPosition = hitInfo.ObjectPosition;
+		const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorHeapIndices;
+		if (resourceDescriptorHeapIndices.Mesh.MotionVectors != ~0u) {
+			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.MotionVectors];
+			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
+			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
+			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
 		}
+		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
+	}
+	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_graphicsSettings.RenderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
+}
+
+#define TRACE_RAY(q, rayDesc, flags, mask) \
+	q.TraceRayInline(g_scene, flags, mask, rayDesc); \
+	while (q.Proceed()) { \
+		const uint objectIndex = g_instanceData[q.CandidateInstanceIndex()].FirstGeometryIndex + q.CandidateGeometryIndex(); \
+		const AlphaMode alphaMode = g_objectData[objectIndex].Material.AlphaMode; \
+		if (alphaMode == AlphaMode::Opaque) q.CommitNonOpaqueTriangleHit(); \
+		else { /*TODO: Alpha Blending*/ \
+			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics()); \
+			const float opacity = GetOpacity(objectIndex, textureCoordinate); \
+			if (opacity >= g_objectData[objectIndex].Material.AlphaThreshold) q.CommitNonOpaqueTriangleHit(); \
+		} \
 	}
 
+inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
+	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
+	TRACE_RAY(q, rayDesc, RAY_FLAG_NONE, ~0u);
 	const bool ret = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (ret) {
 		hitInfo.InstanceIndex = q.CommittedInstanceIndex();
@@ -211,21 +220,4 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 		}
 	}
 	return ret;
-}
-
-inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
-	float3 previousPosition;
-	if (g_sceneData.IsStatic || g_instanceData[hitInfo.InstanceIndex].IsStatic) previousPosition = hitInfo.Position;
-	else {
-		previousPosition = hitInfo.ObjectPosition;
-		const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorHeapIndices;
-		if (resourceDescriptorHeapIndices.Mesh.MotionVectors != ~0u) {
-			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.MotionVectors];
-			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
-			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
-			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
-		}
-		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
-	}
-	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_graphicsSettings.RenderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
 }

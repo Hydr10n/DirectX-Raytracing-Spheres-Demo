@@ -7,7 +7,7 @@
 #include "SelfIntersectionAvoidance.hlsli"
 
 struct HitInfo : VertexPositionNormalTexture {
-	float3 ObjectPosition, UnmappedNormal;
+	float3 ObjectPosition, GeometricNormal;
 
 	float3 SafePosition, SafeNormal;
 	float SafeOffset;
@@ -27,7 +27,7 @@ struct HitInfo : VertexPositionNormalTexture {
 		Normal = normalize(STL::Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
 		IsFrontFace = dot(Normal, worldRayDirection) < 0;
 		if (!IsFrontFace) Normal = -Normal;
-		UnmappedNormal = Normal;
+		GeometricNormal = Normal;
 		TextureCoordinate = Vertex::Interpolate(textureCoordinates, barycentrics);
 		Barycentrics = barycentrics;
 		Distance = distance;

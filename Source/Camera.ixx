@@ -22,7 +22,7 @@ export {
 		float ApertureRadius;
 		float NearDepth, FarDepth;
 		XMFLOAT2 Jitter;
-		XMFLOAT4X4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousViewToWorld, WorldToProjection;
+		XMFLOAT4X4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousProjectionToView, PreviousViewToWorld, WorldToProjection;
 	};
 
 	struct CameraController {

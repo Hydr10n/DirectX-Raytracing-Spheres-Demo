@@ -25,7 +25,7 @@
 )]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
-	if (pixelPosition.x >= g_graphicsSettings.RenderSize.x || pixelPosition.y >= g_graphicsSettings.RenderSize.y) return;
+	if (any(pixelPosition >= g_graphicsSettings.RenderSize)) return;
 
 	STL::Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
 
@@ -36,13 +36,19 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	float4 normalRoughness = 0;
 
 	HitInfo hitInfo;
+	float NoV;
 	Material material;
+	float3 albedo, Rf0;
+	float diffuseProbability;
 	const float2 UV = Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	const float3 V = -rayDesc.Direction;
 	const bool hit = CastRay(rayDesc, hitInfo);
 	if (hit) {
+		NoV = abs(dot(hitInfo.Normal, V));
 		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
+		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
+		diffuseProbability = Material::EstimateDiffuseProbability(albedo, Rf0, material.Roughness, NoV);
 
 		linearDepth = dot(hitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 		const float4 projection = STL::Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position);
@@ -50,7 +56,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 		motionVector = CalculateMotionVector(UV, linearDepth, hitInfo);
 		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 		emissiveColor = material.EmissiveColor;
-		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.EstimateDiffuseProbability(hitInfo.Normal, V) == 0);
+		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, diffuseProbability == 0);
 	}
 
 	g_linearDepth[pixelPosition] = linearDepth;
@@ -64,8 +70,6 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	float4 noisyDiffuse = 0, noisySpecular = 0;
 
 	if (hit) {
-		const float NoV = abs(dot(hitInfo.Normal, V));
-
 		bool isDiffuse = true;
 		float hitDistance = 1.#INFf;
 		const float bayer4x4 = STL::Sequence::Bayer4x4(pixelPosition, g_graphicsSettings.FrameIndex);
@@ -83,8 +87,6 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 		const NRDSettings NRDSettings = g_graphicsSettings.NRD;
 		if (NRDSettings.Denoiser != NRDDenoiser::None) {
-			float3 albedo, Rf0;
-			STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
 			const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
 			float4 radianceHitDistance = 0;
 			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
@@ -102,7 +104,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
-	g_color[pixelPosition] = float4(radiance, linearDepth * NRD_FP16_VIEWZ_SCALE);
+	g_color[pixelPosition] = radiance;
 	g_noisyDiffuse[pixelPosition] = noisyDiffuse;
 	g_noisySpecular[pixelPosition] = noisySpecular;
 }

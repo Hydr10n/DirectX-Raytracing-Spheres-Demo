@@ -13,17 +13,17 @@ struct ScatterResult {
 
 enum class AlphaMode { Opaque, Blend, Mask };
 
+static const float MinRoughness = 1e-3f;
+
 struct Material {
 	float4 BaseColor;
 	float3 EmissiveColor;
 	float Metallic, Roughness, Opacity, RefractiveIndex;
 	AlphaMode AlphaMode;
-	float AlphaThreshold, AmbientOcclusion;
+	float AlphaThreshold;
 
-	float EstimateDiffuseProbability(float3 N, float3 V) {
-		float3 albedo, Rf0;
-		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
-		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, abs(dot(N, V)), Roughness);
+	static float EstimateDiffuseProbability(float3 albedo, float3 Rf0, float roughness, float NoV) {
+		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, NoV, roughness);
 		const float
 			diffuse = STL::Color::Luminance(albedo * (1 - Fenvironment)), specular = STL::Color::Luminance(Fenvironment),
 			diffuseProbability = diffuse / (diffuse + specular + 1e-6f);
@@ -32,7 +32,6 @@ struct Material {
 
 	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, float splitProbability = STL::Rng::Hash::GetFloat()) {
 		ScatterResult scatterResult;
-		scatterResult.Throughput = AmbientOcclusion;
 
 		float3 albedo, Rf0;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
@@ -61,30 +60,31 @@ struct Material {
 			}
 
 			scatterResult.Direction = L;
-			scatterResult.Throughput *= albedo * (1 - Opacity);
+			scatterResult.Throughput = albedo * (1 - Opacity);
 
 			return scatterResult;
 		}
 
-		const float diffuseProbability = EstimateDiffuseProbability(N, V);
+		const float NoV = abs(dot(N, V));
+		const float diffuseProbability = EstimateDiffuseProbability(albedo, Rf0, Roughness, NoV);
 		if (splitProbability < diffuseProbability) {
 			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(randomValue));
 			H = normalize(V + L);
 
 			scatterResult.Type = ScatterType::DiffuseReflection;
-			scatterResult.Throughput *= albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, abs(dot(N, L)), abs(dot(N, V)), abs(dot(V, H))) / diffuseProbability;
+			scatterResult.Throughput = albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, abs(dot(N, L)), NoV, abs(dot(V, H))) / diffuseProbability;
 		}
 		else {
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 			L = reflect(-V, H);
 
 			scatterResult.Type = ScatterType::SpecularReflection;
-			scatterResult.Throughput *= STL::BRDF::GeometryTerm_Smith(Roughness, abs(dot(N, L))) * STL::BRDF::FresnelTerm_Schlick(Rf0, abs(dot(V, H))) / (1 - diffuseProbability);
+			scatterResult.Throughput = STL::BRDF::FresnelTerm_Schlick(Rf0, abs(dot(V, H))) * STL::BRDF::GeometryTerm_Smith(Roughness, abs(dot(N, L))) / (1 - diffuseProbability);
 		}
 
 		scatterResult.Direction = L;
 
-		if (dot(hitInfo.UnmappedNormal, L) < 0) scatterResult.Throughput = 0;
+		if (dot(hitInfo.GeometricNormal, L) <= 0) scatterResult.Throughput = 0;
 
 		return scatterResult;
 	}

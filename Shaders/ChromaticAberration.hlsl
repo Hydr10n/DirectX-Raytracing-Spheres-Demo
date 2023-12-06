@@ -21,7 +21,7 @@ RWTexture2D<float3> g_outColor : register(u0);
 )]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
-	if (pixelPosition.x >= g_constants.RenderSize.x || pixelPosition.y >= g_constants.RenderSize.y) return;
+	if (any(pixelPosition >= g_constants.RenderSize)) return;
 
 	const float2 UV = Math::CalculateUV(pixelPosition, g_constants.RenderSize), direction = UV - g_constants.FocusUV;
 	g_outColor[pixelPosition] = float3(

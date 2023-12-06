@@ -380,11 +380,13 @@ private:
 
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Color, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalColor, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
-			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth, ~0u);
-			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::NormalizedDepth, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth, ~0u);
+			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth);
+			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::NormalizedDepth, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
 			CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
 			CreateTexture1(DXGI_FORMAT_R11G11B10_FLOAT, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
+
+			CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -395,15 +397,11 @@ private:
 			}
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisyDiffuse, ~0u, ResourceDescriptorHeapIndex::OutNoisyDiffuse);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisySpecular, ~0u, ResourceDescriptorHeapIndex::OutNoisySpecular);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedDiffuse, ResourceDescriptorHeapIndex::InDenoisedDiffuse, ResourceDescriptorHeapIndex::OutDenoisedDiffuse);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedSpecular, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
 				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
-			}
-			else {
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_SNORM, RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
 			}
 
 			if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
@@ -445,6 +443,7 @@ private:
 			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
 			camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
+			camera.PreviousProjectionToView = m_cameraController.GetProjectionToView();
 			camera.PreviousViewToWorld = m_cameraController.GetViewToWorld();
 
 			ProcessInput();
@@ -933,7 +932,7 @@ private:
 
 		PrepareStreamline();
 
-		const auto isNRDEnabled = IsNRDEnabled() && postProcessingSettings.NRD.SplitScreen != 1;
+		const auto isNRDEnabled = IsNRDEnabled();
 
 		if (isNRDEnabled) ProcessNRD();
 
@@ -1036,7 +1035,6 @@ private:
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
-			m_NRDCommonSettings.splitScreen = NRDSettings.SplitScreen;
 			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationOverlayEnabled;
 
 			ignore = m_NRD->SetCommonSettings(m_NRDCommonSettings);
@@ -1089,8 +1087,6 @@ private:
 	}
 
 	void ProcessDLSSSuperResolution() {
-		const auto commandList = m_deviceResources->GetCommandList();
-
 		ResourceTagInfo resourceTagInfos[]{
 			CreateResourceTagInfo(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
 			CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
@@ -1100,7 +1096,7 @@ private:
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ProcessFSRSuperResolution() {
@@ -1149,8 +1145,6 @@ private:
 	}
 
 	void ProcessNIS(RenderTexture& inColor, RenderTexture& outColor) {
-		const auto commandList = m_deviceResources->GetCommandList();
-
 		NISOptions NISOptions;
 		NISOptions.mode = NISMode::eSharpen;
 		NISOptions.sharpness = g_graphicsSettings.PostProcessing.NIS.Sharpness;
@@ -1163,7 +1157,7 @@ private:
 		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagInfos));
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ProcessChromaticAberration(RenderTexture& inColor, RenderTexture& outColor) {
@@ -1416,7 +1410,7 @@ private:
 
 					isChanged |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
 
-					isChanged |= ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 1, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
+					isChanged |= ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 0, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
 
@@ -1450,11 +1444,7 @@ private:
 								ImGui::EndCombo();
 							}
 
-							if (NRDSettings.Denoiser != NRDDenoiser::None) {
-								ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
-
-								ImGui::SliderFloat("Split Screen", &NRDSettings.SplitScreen, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-							}
+							if (NRDSettings.Denoiser != NRDDenoiser::None) ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
 
 							ImGui::TreePop();
 						}
@@ -1466,7 +1456,7 @@ private:
 						bool isChanged = false;
 
 						if (ImGui::BeginCombo("Upscaler", ToString(superResolutionSettings.Upscaler))) {
-							for (const auto Upscaler : { Upscaler::DLSS, Upscaler::FSR, Upscaler::None }) {
+							for (const auto Upscaler : { Upscaler::None, Upscaler::DLSS, Upscaler::FSR }) {
 								const auto IsSelectable = [&] {
 									return Upscaler == Upscaler::None
 										|| (Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS))
@@ -1502,7 +1492,7 @@ private:
 							ImGui::EndCombo();
 						}
 
-						if (isChanged) SetSuperResolutionOptimalSettings();
+						if (isChanged) m_futures["SuperResolutionSetting"] = async(launch::deferred, [&] { SetSuperResolutionOptimalSettings(); });
 
 						ImGui::TreePop();
 					}

@@ -142,7 +142,7 @@ export {
 
 			resourceUploadBatch.End(m_commandQueue).get();
 
-			UpdateData();
+			Refresh();
 
 			CreateAccelerationStructures(false);
 		}
@@ -151,7 +151,7 @@ export {
 
 		auto GetObjectCount() const noexcept { return m_objectCount; }
 
-		void UpdateData() {
+		void Refresh() {
 			UINT instanceIndex = 0, objectIndex = 0;
 			for (const auto& renderObject : RenderObjects) {
 				const auto Transform = [&] {
@@ -206,7 +206,7 @@ export {
 				for (const auto& renderObject : RenderObjects) {
 					const auto& mesh = renderObject.Mesh;
 					if (const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh); second) {
-						auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(*mesh->Vertices, *mesh->Indices) });
+						auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(*mesh->Vertices, *mesh->Indices, renderObject.Material.AlphaMode == AlphaMode::Opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE) });
 						newBuildBottomLevelAccelerationStructureInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
 							.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
 							.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,

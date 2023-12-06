@@ -38,7 +38,7 @@ export namespace DirectX {
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : m_capacity(capacity), m_state(initialState) {
+		) noexcept(false) : m_capacity(capacity), m_count(capacity), m_state(initialState) {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * capacity, flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
@@ -53,6 +53,7 @@ export namespace DirectX {
 		ID3D12Resource* GetResource() const noexcept { return m_resource.Get(); }
 
 		size_t GetCapacity() const noexcept { return m_capacity; }
+		size_t GetCount() const noexcept { return m_count; }
 
 		D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
 		void TransitionTo(ID3D12GraphicsCommandList* commandList, D3D12_RESOURCE_STATES state) {
@@ -84,7 +85,7 @@ export namespace DirectX {
 				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
 				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_capacity + 3) / 4),
+					.NumElements = static_cast<UINT>((ItemSize * m_count + 3) / 4),
 					.Flags = D3D12_BUFFER_SRV_FLAG_RAW
 				}
 			};
@@ -101,7 +102,7 @@ export namespace DirectX {
 				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
 				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_capacity + size - 1) / size)
+					.NumElements = static_cast<UINT>((ItemSize * m_count + size - 1) / size)
 				}
 			};
 			device->CreateShaderResourceView(m_resource.Get(), &shaderResourceViewDesc, descriptor);
@@ -120,7 +121,7 @@ export namespace DirectX {
 				.Format = DXGI_FORMAT_R32_TYPELESS,
 				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_capacity + 3) / 4),
+					.NumElements = static_cast<UINT>((ItemSize * m_count + 3) / 4),
 					.Flags = D3D12_BUFFER_UAV_FLAG_RAW
 				}
 			};
@@ -136,20 +137,20 @@ export namespace DirectX {
 				.Format = format,
 				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_capacity + size - 1) / size)
+					.NumElements = static_cast<UINT>((ItemSize * m_count + size - 1) / size)
 				}
 			};
 			device->CreateUnorderedAccessView(m_resource.Get(), nullptr, &unorderedAccessViewDesc, descriptor);
 		}
 
 	protected:
-		size_t m_capacity{};
+		size_t m_capacity{}, m_count{};
 		D3D12_RESOURCE_STATES m_state{};
 		ComPtr<ID3D12Resource> m_resource;
 
 		GPUBuffer() = default;
 
-		GPUBuffer(const GPUBuffer& source) noexcept(false) : m_capacity(source.m_capacity), m_state(source.m_state) {
+		GPUBuffer(const GPUBuffer& source) noexcept(false) : m_capacity(source.m_capacity), m_count(source.m_count), m_state(source.m_state) {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
@@ -159,6 +160,7 @@ export namespace DirectX {
 
 		void Swap(GPUBuffer& source) {
 			swap(m_capacity, source.m_capacity);
+			swap(m_count, source.m_count);
 			swap(m_state, source.m_state);
 			swap(m_resource, source.m_resource);
 		}
@@ -179,13 +181,13 @@ export namespace DirectX {
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) {
-			this->m_capacity = size(data);
+			this->m_capacity = this->m_count = size(data);
 			this->m_state = afterState;
 			const auto flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags;
 			if (sizeof(T) % 2 == 0) ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &this->m_resource, flags));
 			else {
-				vector<uint8_t> newData(this->ItemSize * this->m_capacity);
-				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+				vector<uint8_t> newData(this->ItemSize * this->m_count);
+				for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
 				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &this->m_resource, flags));
 			}
 		}
@@ -199,7 +201,7 @@ export namespace DirectX {
 		}
 
 		void Upload(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
-			if (size(data) > this->m_capacity) {
+			if (const auto count = size(data); count > this->m_capacity) {
 				ComPtr<ID3D12Device> device;
 				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
 				*this = DefaultBuffer(device.Get(), resourceUploadBatch, data);
@@ -207,17 +209,18 @@ export namespace DirectX {
 			else {
 				vector<uint8_t> newData;
 				D3D12_SUBRESOURCE_DATA subresourceData;
-				if (sizeof(T) % 2 == 0) subresourceData = { ::data(data), static_cast<LONG_PTR>(this->ItemSize * size(data)) };
+				if (sizeof(T) % 2 == 0) subresourceData = { ::data(data), static_cast<LONG_PTR>(this->ItemSize * count) };
 				else {
-					newData = vector<uint8_t>(this->ItemSize * this->m_capacity);
-					for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
-					subresourceData = { ::data(newData), static_cast<LONG_PTR>(this->ItemSize * size(newData)) };
+					newData = vector<uint8_t>(this->ItemSize * count);
+					for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+					subresourceData = { ::data(newData), static_cast<LONG_PTR>(this->ItemSize * count) };
 				}
 				const auto resource = this->m_resource.Get();
 				const auto state = this->m_state;
 				resourceUploadBatch.Transition(resource, state, D3D12_RESOURCE_STATE_COPY_DEST);
 				resourceUploadBatch.Upload(resource, 0, &subresourceData, 1);
 				resourceUploadBatch.Transition(resource, D3D12_RESOURCE_STATE_COPY_DEST, state);
+				this->m_count = count;
 			}
 		}
 	};
@@ -237,12 +240,12 @@ export namespace DirectX {
 			D3D12_RESOURCE_STATES initialState = IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, size(data), initialState, flags) {
 			Map();
-			for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = data[i];
+			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = data[i];
 		}
 
 		MappableBuffer(const MappableBuffer& source) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source) {
 			Map();
-			for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = source[i];
+			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
 		}
 
 		MappableBuffer(MappableBuffer&& source) noexcept { Swap(source); }
@@ -252,13 +255,14 @@ export namespace DirectX {
 		}
 
 		void Upload(span<const T> data) {
-			if (size(data) > this->m_capacity) {
+			if (const auto count = size(data); count > this->m_capacity) {
 				ComPtr<ID3D12Device> device;
 				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
 				*this = MappableBuffer(device.Get(), data);
 			}
 			else {
-				for (const auto i : views::iota(static_cast<size_t>(0), this->m_capacity)) (*this)[i] = data[i];
+				for (const auto i : views::iota(static_cast<size_t>(0), count)) (*this)[i] = data[i];
+				this->m_count = count;
 			}
 		}
 
@@ -272,7 +276,7 @@ export namespace DirectX {
 		}
 
 		const T& operator[](size_t index) const {
-			if (index >= this->m_capacity) throw out_of_range("");
+			if (index >= this->m_count) throw out_of_range("");
 			return *reinterpret_cast<const T*>(m_data + this->ItemSize * index);
 		}
 		T& operator[](size_t index) { return const_cast<T&>(as_const(*this)[index]); }

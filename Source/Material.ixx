@@ -15,6 +15,5 @@ export {
 		float Metallic{}, Roughness = 0.5f, Opacity = 1, RefractiveIndex = 1;
 		AlphaMode AlphaMode = AlphaMode::Opaque;
 		float AlphaThreshold = 0.5f;
-		float _;
 	};
 }
