@@ -88,16 +88,16 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 		const NRDSettings NRDSettings = g_graphicsSettings.NRD;
 		if (NRDSettings.Denoiser != NRDDenoiser::None) {
 			const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
-			float4 radianceHitDistance = 0;
+			const float3 diffuse = (isDiffuse ? radiance : 0) / lerp((1 - Fenvironment) * albedo, 1, 0.01f), specular = (isDiffuse ? 0 : radiance) / lerp(Fenvironment, 1, 0.01f);
 			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
 				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, NRDSettings.HitDistanceParameters, isDiffuse ? 1 : material.Roughness);
-				radianceHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), normalizedHitDistance);
+				noisyDiffuse = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, normalizedHitDistance);
+				noisySpecular = REBLUR_FrontEnd_PackRadianceAndNormHitDist(specular, normalizedHitDistance);
 			}
 			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) {
-				radianceHitDistance = RELAX_FrontEnd_PackRadianceAndHitDist(radiance / lerp(isDiffuse ? (1 - Fenvironment) * albedo : Fenvironment, 1, 0.01f), hitDistance);
+				noisyDiffuse = RELAX_FrontEnd_PackRadianceAndHitDist(diffuse, hitDistance);
+				noisySpecular = RELAX_FrontEnd_PackRadianceAndHitDist(specular, hitDistance);
 			}
-			if (isDiffuse) noisyDiffuse = radianceHitDistance;
-			else noisySpecular = radianceHitDistance;
 		}
 
 		radiance += material.EmissiveColor;

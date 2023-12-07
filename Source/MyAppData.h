@@ -169,7 +169,7 @@ public:
 				} Bloom;
 
 				struct ToneMapping {
-					static constexpr float MinExposure = -5, MaxExposure = 5;
+					static constexpr float MinExposure = -10, MaxExposure = 10;
 
 					DirectX::ToneMapPostProcess::Operator Operator = DirectX::ToneMapPostProcess::ACESFilmic;
 

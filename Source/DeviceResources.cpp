@@ -167,7 +167,7 @@ void DeviceResources::CreateDeviceResources()
 #ifndef NDEBUG
     // Configure debug device (if active).
     ComPtr<ID3D12InfoQueue> d3dInfoQueue;
-    if (SUCCEEDED(m_d3dDevice.As(&d3dInfoQueue)))
+    if (SUCCEEDED(m_device.As(&d3dInfoQueue)))
     {
 #ifdef _DEBUG
         d3dInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
@@ -313,7 +313,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
 #ifdef _DEBUG
             char buff[64] = {};
             sprintf_s(buff, "Device Lost on ResizeBuffers: Reason code 0x%08X\n",
-                static_cast<unsigned int>((hr == DXGI_ERROR_DEVICE_REMOVED) ? m_d3dDevice->GetDeviceRemovedReason() : hr));
+                static_cast<unsigned int>((hr == DXGI_ERROR_DEVICE_REMOVED) ? m_device->GetDeviceRemovedReason() : hr));
             OutputDebugStringA(buff);
 #endif
             // If the device was removed for any reason, a new device and swap chain will need to be created.
@@ -565,7 +565,7 @@ void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState)
 #ifdef _DEBUG
         char buff[64] = {};
         sprintf_s(buff, "Device Lost on Present: Reason code 0x%08X\n",
-            static_cast<unsigned int>((hr == DXGI_ERROR_DEVICE_REMOVED) ? m_d3dDevice->GetDeviceRemovedReason() : hr));
+            static_cast<unsigned int>((hr == DXGI_ERROR_DEVICE_REMOVED) ? m_device->GetDeviceRemovedReason() : hr));
         OutputDebugStringA(buff);
 #endif
         HandleDeviceLost();
