@@ -528,8 +528,6 @@ private:
 
 			ResetCamera();
 
-			ResetTemporalAccumulation();
-
 			{
 				const auto IsCubeMap = [](ID3D12Resource* pResource) {
 					if (pResource == nullptr) return false;
