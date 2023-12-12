@@ -138,7 +138,7 @@ struct App::Impl : IDeviceNotify {
 
 		if (const auto pFuture = m_futures.find(FutureNames::Scene); pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) m_futures.erase(pFuture);
 
-		m_stepTimer.Tick([&] { if (!m_futures.contains(FutureNames::Scene) && m_scene) Update(); });
+		m_stepTimer.Tick([&] { Update(); });
 
 		Render();
 
@@ -180,8 +180,6 @@ struct App::Impl : IDeviceNotify {
 	void OnDeviceLost() override {
 		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
-		m_raytracing.reset();
-
 		m_scene.reset();
 
 		m_GPUBuffers = {};
@@ -202,6 +200,8 @@ struct App::Impl : IDeviceNotify {
 		m_NRD.reset();
 
 		m_streamline.reset();
+
+		m_raytracing.reset();
 
 		m_renderDescriptorHeap.reset();
 		m_resourceDescriptorHeap.reset();
@@ -282,6 +282,8 @@ private:
 	};
 	unique_ptr<DescriptorHeap> m_renderDescriptorHeap;
 
+	unique_ptr<Raytracing> m_raytracing;
+
 	Constants m_slConstants = [] {
 		Constants constants;
 		constants.cameraPinholeOffset = { 0, 0 };
@@ -345,9 +347,7 @@ private:
 
 	shared_ptr<Scene> m_scene;
 
-	unique_ptr<Raytracing> m_raytracing;
-
-	struct { bool IsVisible, HasFocus = true, IsSettingsWindowVisible; } m_UIStates{};
+	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
 
 	void CreateDeviceDependentResources() {
 		const auto device = m_deviceResources->GetDevice();
@@ -356,7 +356,7 @@ private:
 
 		CreateDescriptorHeaps();
 
-		CreatePostProcessing();
+		CreatePipelineStates();
 
 		CreateConstantBuffers();
 	}
@@ -458,7 +458,7 @@ private:
 			camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 		}
 
-		UpdateScene();
+		if (IsSceneReady()) UpdateScene();
 
 		PIXEndEvent();
 	}
@@ -488,7 +488,7 @@ private:
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-		if (!m_futures.contains(FutureNames::Scene) && m_scene) {
+		if (IsSceneReady()) {
 			RenderScene();
 
 			PostProcessGraphics();
@@ -508,6 +508,9 @@ private:
 
 		PIXEndEvent();
 	}
+
+	bool IsSceneLoading() const { return m_futures.contains(FutureNames::Scene); }
+	bool IsSceneReady() const { return !IsSceneLoading() && m_scene; }
 
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
@@ -539,8 +542,6 @@ private:
 					.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
 				};
 			}
-
-			m_raytracing = make_unique<Raytracing>(device, m_scene);
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -556,6 +557,14 @@ private:
 		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorHeapIndex::Count, ResourceDescriptorHeapIndex::Reserve);
 
 		m_renderDescriptorHeap = make_unique<DescriptorHeap>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorHeapIndex::Count);
+	}
+
+	void CreatePipelineStates() {
+		const auto device = m_deviceResources->GetDevice();
+
+		m_raytracing = make_unique<Raytracing>(device);
+
+		CreatePostProcessing();
 	}
 
 	void CreatePostProcessing() {
@@ -667,6 +676,8 @@ private:
 			if (keyboardStateTracker.IsKeyPressed(Key::Escape)) m_UIStates.IsVisible = !m_UIStates.IsVisible;
 		}
 
+		const auto isSceneReady = IsSceneReady();
+
 		if (m_UIStates.IsVisible) {
 			if (!isUIVisible) {
 				m_UIStates.HasFocus = true;
@@ -681,7 +692,7 @@ private:
 			auto& IO = ImGui::GetIO();
 			if (IO.WantCaptureKeyboard) m_UIStates.HasFocus = true;
 			if (IO.WantCaptureMouse && !(IO.ConfigFlags & ImGuiConfigFlags_NoMouse)) m_UIStates.HasFocus = true;
-			else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) m_UIStates.HasFocus = false;
+			else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isSceneReady) m_UIStates.HasFocus = false;
 			if (m_UIStates.HasFocus) {
 				IO.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
 
@@ -690,7 +701,7 @@ private:
 			else IO.ConfigFlags |= ImGuiConfigFlags_NoMouse;
 		}
 
-		if (!m_UIStates.IsVisible || !m_UIStates.HasFocus) {
+		if (isSceneReady && (!m_UIStates.IsVisible || !m_UIStates.HasFocus)) {
 			m_inputDevices.Mouse->SetMode(Mouse::MODE_RELATIVE);
 
 			UpdateCamera();
@@ -752,7 +763,7 @@ private:
 		if (pitch == 0) {
 			if (displacement == Vector3() && yaw == 0) return;
 		}
-		else if (const auto angle = XM_PIDIV2 - abs(asin(m_cameraController.GetNormalizedForwardDirection().y) + pitch); angle <= 0) pitch = copysign(max(0.0f, angle - 0.1f), pitch);
+		else if (const auto angle = XM_PIDIV2 - abs(-m_cameraController.GetRotation().ToEuler().x + pitch); angle <= 0) pitch = copysign(max(0.0f, angle - 0.1f), pitch);
 
 		m_cameraController.Move(m_cameraController.GetNormalizedRightDirection() * displacement.x + m_cameraController.GetNormalizedUpDirection() * displacement.y + m_cameraController.GetNormalizedForwardDirection() * displacement.z);
 		m_cameraController.Rotate(yaw, pitch);
@@ -816,7 +827,7 @@ private:
 			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular)
 		};
 
-		m_raytracing->Render(m_deviceResources->GetCommandList());
+		m_raytracing->Render(m_deviceResources->GetCommandList(), *m_scene);
 	}
 
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
@@ -1285,25 +1296,24 @@ private:
 
 		ImGui::NewFrame();
 
-		const auto openPopupModalName = RenderMenuBar();
+		const auto popupModalName = RenderMenuBar();
 
-		if (m_UIStates.IsSettingsWindowVisible) RenderSettingsWindow();
+		if (m_UIStates.IsSettingsWindowOpen) RenderSettingsWindow();
 
-		RenderPopupModalWindow(openPopupModalName);
+		RenderPopupModalWindow(popupModalName);
 
-		if (m_futures.contains(FutureNames::Scene)) RenderLoadingSceneWindow();
+		if (IsSceneLoading()) RenderLoadingSceneWindow();
 
 		ImGui::Render();
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_deviceResources->GetCommandList());
 	}
 
 	string RenderMenuBar() {
-		string openPopupModalName;
-
+		string popupModalName;
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::GetFrameCount() == 1) ImGui::SetKeyboardFocusHere();
 
-			const auto PopupModal = [&](LPCSTR name) { if (ImGui::MenuItem(name)) openPopupModalName = name; };
+			const auto PopupModal = [&](LPCSTR name) { if (ImGui::MenuItem(name)) popupModalName = name; };
 
 			if (ImGui::BeginMenu("File")) {
 				if (ImGui::MenuItem("Exit")) PostQuitMessage(ERROR_SUCCESS);
@@ -1312,7 +1322,7 @@ private:
 			}
 
 			if (ImGui::BeginMenu("View")) {
-				m_UIStates.IsSettingsWindowVisible |= ImGui::MenuItem("Settings");
+				m_UIStates.IsSettingsWindowOpen |= ImGui::MenuItem("Settings");
 
 				ImGui::EndMenu();
 			}
@@ -1329,8 +1339,7 @@ private:
 
 			ImGui::EndMainMenuBar();
 		}
-
-		return openPopupModalName;
+		return popupModalName;
 	}
 
 	void RenderSettingsWindow() {
@@ -1340,7 +1349,7 @@ private:
 		ImGui::SetNextWindowPos({ viewport.WorkPos.x, viewport.WorkPos.y });
 		ImGui::SetNextWindowSize({});
 
-		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsWindowVisible, ImGuiWindowFlags_HorizontalScrollbar)) {
+		if (ImGui::Begin("Settings", &m_UIStates.IsSettingsWindowOpen, ImGuiWindowFlags_HorizontalScrollbar)) {
 			if (ImGui::TreeNode("Graphics")) {
 				{
 					auto isChanged = false;
@@ -1597,14 +1606,14 @@ private:
 		ImGui::End();
 	}
 
-	void RenderPopupModalWindow(const string& openPopupModalName) {
+	void RenderPopupModalWindow(const string& popupModalName) {
 		const auto PopupModal = [&](LPCSTR name, const auto& lambda) {
-			if (name == openPopupModalName) ImGui::OpenPopup(name);
+			if (name == popupModalName) ImGui::OpenPopup(name);
 
 			ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
 			ImGui::SetNextWindowSize({});
 
-			if (ImGui::BeginPopupModal(name)) {
+			if (ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_HorizontalScrollbar)) {
 				lambda();
 
 				ImGui::Separator();
@@ -1648,7 +1657,7 @@ private:
 			"##XboxController",
 			{
 				{ "Menu", "Show/hide UI" },
-				{ "X (hold)", "Show window switcher if UI visible" },
+				{ "X (hold)", "Show window switcher when UI visible" },
 				{ "View", "Reset camera" },
 				{ "LS (rotate)", "Move" },
 				{ "RS (rotate)", "Look around" },
@@ -1665,7 +1674,7 @@ private:
 			{
 				{ "Alt + Enter", "Toggle between windowed/borderless & fullscreen modes" },
 				{ "Esc", "Show/hide UI" },
-				{ "Ctrl + Tab (hold)", "Show window switcher if UI visible" },
+				{ "Ctrl + Tab (hold)", "Show window switcher when UI visible" },
 				{ "Home", "Reset camera" },
 				{ "W A S D", "Move" },
 				{ "Space", "Run/pause physics simulation" },

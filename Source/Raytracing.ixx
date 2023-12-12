@@ -53,18 +53,16 @@ export struct Raytracing {
 			OutNoisyDiffuse, OutNoisySpecular;
 	} GPUDescriptors{};
 
-	Raytracing(ID3D12Device* pDevice, const shared_ptr<Scene>& scene) noexcept(false) :
-		m_scene(scene),
-		m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
-		constexpr D3D12_SHADER_BYTECODE shaderByteCode{ g_Raytracing_dxil, size(g_Raytracing_dxil) };
-		ThrowIfFailed(pDevice->CreateRootSignature(0, shaderByteCode.pShaderBytecode, shaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
-		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = shaderByteCode };
+	Raytracing(ID3D12Device* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
+		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Raytracing_dxil, size(g_Raytracing_dxil) };
+		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
+		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
 		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 	}
 
-	void Render(ID3D12GraphicsCommandList* pCommandList) {
+	void Render(ID3D12GraphicsCommandList* pCommandList, const Scene& scene) {
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		pCommandList->SetComputeRootShaderResourceView(0, m_scene->GetTopLevelAccelerationStructure().GetBuffer()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(0, scene.GetTopLevelAccelerationStructure().GetBuffer()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(1, m_GPUBuffers.GraphicsSettings.GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(2, GPUBuffers.InSceneData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(3, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
@@ -87,8 +85,6 @@ export struct Raytracing {
 	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
 
 private:
-	shared_ptr<Scene> m_scene;
-
 	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;

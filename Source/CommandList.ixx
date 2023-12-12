@@ -29,7 +29,7 @@ export namespace DirectX {
 
 			ThrowIfFailed(pDevice->CreateFence(m_fenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
 			m_fenceEvent.Attach(CreateEventEx(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE));
-			if (!m_fenceEvent.IsValid()) throw_std_system_error(static_cast<int>(GetLastError()));
+			ThrowIfFailed(static_cast<BOOL>(m_fenceEvent.IsValid()));
 		}
 
 		T* GetNative() const noexcept { return m_commandList.Get(); }
@@ -40,14 +40,14 @@ export namespace DirectX {
 		future<void> End(ID3D12CommandQueue* pCommandQueue) {
 			return async(launch::async, [=] {
 				ThrowIfFailed(m_commandList->Close());
-				pCommandQueue->ExecuteCommandLists(1, CommandListCast(m_commandList.GetAddressOf()));
+			pCommandQueue->ExecuteCommandLists(1, CommandListCast(m_commandList.GetAddressOf()));
 
-				ThrowIfFailed(pCommandQueue->Signal(m_fence.Get(), ++m_fenceValue));
-				if (m_fence->GetCompletedValue() < m_fenceValue) {
-					ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent.Get()));
-					ignore = WaitForSingleObject(m_fenceEvent.Get(), INFINITE);
-				}
-			});
+			ThrowIfFailed(pCommandQueue->Signal(m_fence.Get(), ++m_fenceValue));
+			if (m_fence->GetCompletedValue() < m_fenceValue) {
+				ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent.Get()));
+				ignore = WaitForSingleObject(m_fenceEvent.Get(), INFINITE);
+			}
+				});
 		}
 
 	private:

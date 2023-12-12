@@ -93,10 +93,7 @@ export {
 		void Move(const XMFLOAT3& value) { SetPosition(m_position + value); }
 
 		void Rotate(float yaw, float pitch, float roll = 0) {
-			m_rotation *= Quaternion::CreateFromAxisAngle(m_rightDirection, -pitch);
-			m_rotation *= Quaternion::CreateFromAxisAngle({ 0, 1, 0 }, yaw);
-			m_rotation *= Quaternion::CreateFromAxisAngle(m_forwardDirection, -roll);
-			SetRotation(m_rotation);
+			SetRotation(m_rotation * Quaternion::CreateFromAxisAngle(m_rightDirection, -pitch) * Quaternion::CreateFromAxisAngle({ 0, 1, 0 }, yaw) * Quaternion::CreateFromAxisAngle(m_forwardDirection, -roll));
 		}
 
 		const auto& GetWorldToView() const {

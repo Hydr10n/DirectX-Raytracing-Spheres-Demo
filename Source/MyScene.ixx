@@ -273,12 +273,12 @@ export {
 struct MyScene : Scene {
 	using Scene::Scene;
 
-	bool IsStatic() const override { return !m_isSimulatingPhysics; }
+	bool IsStatic() const override { return !m_isPhysXRunning; }
 
 	void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
 		if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {
-			if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isSimulatingPhysics = !m_isSimulatingPhysics;
-			if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isSimulatingPhysics = !m_isSimulatingPhysics;
+			if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isPhysXRunning = !m_isPhysXRunning;
+			if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isPhysXRunning = !m_isPhysXRunning;
 
 			{
 				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidActors.at(ObjectNames::Earth)->userData);
@@ -335,6 +335,6 @@ struct MyScene : Scene {
 	}
 
 private:
-	bool m_isSimulatingPhysics = true;
+	bool m_isPhysXRunning = true;
 };
 }

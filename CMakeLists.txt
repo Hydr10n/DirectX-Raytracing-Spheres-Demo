@@ -48,7 +48,7 @@ set(cxx_include_directories
 	"RTXMU/include"
 	"Streamline/include")
 list(TRANSFORM cxx_include_directories PREPEND ${NVIDIA_library_path})
-target_include_directories(${project} PRIVATE "${AMD_library_path}FSR2/src/ffx-fsr2-api" ${cxx_include_directories} ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(${project} PRIVATE ${cxx_include_directories} "${AMD_library_path}FSR2/src/ffx-fsr2-api" ${CMAKE_CURRENT_BINARY_DIR})
 
 include(ShaderCompilation.cmake)
 set(shader_include_directories "MathLib" "NRD/Shaders/Include")

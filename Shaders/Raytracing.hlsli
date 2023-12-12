@@ -182,16 +182,16 @@ inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInf
 	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_graphicsSettings.RenderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
 }
 
-#define TRACE_RAY(q, rayDesc, flags, mask) \
-	q.TraceRayInline(g_scene, flags, mask, rayDesc); \
-	while (q.Proceed()) { \
-		const uint objectIndex = g_instanceData[q.CandidateInstanceIndex()].FirstGeometryIndex + q.CandidateGeometryIndex(); \
+#define TRACE_RAY(rayQuery, rayDesc, flags, mask) \
+	rayQuery.TraceRayInline(g_scene, flags, mask, rayDesc); \
+	while (rayQuery.Proceed()) { \
+		const uint objectIndex = g_instanceData[rayQuery.CandidateInstanceIndex()].FirstGeometryIndex + rayQuery.CandidateGeometryIndex(); \
 		const AlphaMode alphaMode = g_objectData[objectIndex].Material.AlphaMode; \
-		if (alphaMode == AlphaMode::Opaque) q.CommitNonOpaqueTriangleHit(); \
+		if (alphaMode == AlphaMode::Opaque) rayQuery.CommitNonOpaqueTriangleHit(); \
 		else { /*TODO: Alpha Blending*/ \
-			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics()); \
+			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, rayQuery.CandidatePrimitiveIndex(), rayQuery.CandidateTriangleBarycentrics()); \
 			const float opacity = GetOpacity(objectIndex, textureCoordinate); \
-			if (opacity >= g_objectData[objectIndex].Material.AlphaThreshold) q.CommitNonOpaqueTriangleHit(); \
+			if (opacity >= g_objectData[objectIndex].Material.AlphaThreshold) rayQuery.CommitNonOpaqueTriangleHit(); \
 		} \
 	}
 
