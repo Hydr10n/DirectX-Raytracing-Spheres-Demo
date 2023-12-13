@@ -16,7 +16,6 @@ struct SceneData {
 };
 
 struct InstanceData {
-	bool IsStatic;
 	uint FirstGeometryIndex;
 	row_major float3x4 PreviousObjectToWorld, ObjectToWorld;
 };

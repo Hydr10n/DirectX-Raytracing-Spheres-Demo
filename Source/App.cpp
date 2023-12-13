@@ -1018,8 +1018,6 @@ private:
 			& denoisedDiffuse = *m_renderTextures.at(RenderTextureNames::DenoisedDiffuse),
 			& denoisedSpecular = *m_renderTextures.at(RenderTextureNames::DenoisedSpecular);
 
-		const auto& camera = m_GPUBuffers.Camera->GetData();
-
 		{
 			m_NRD->NewFrame();
 
@@ -1034,6 +1032,7 @@ private:
 			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
 			Tag(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
 
+			const auto& camera = m_GPUBuffers.Camera->GetData();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = camera.PreviousWorldToView;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = camera.PreviousViewToProjection;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();

@@ -301,6 +301,9 @@ struct MyScene : Scene {
 			const auto rigidBody = shape.getActor()->is<PxRigidBody>();
 			if (rigidBody == nullptr) continue;
 
+			rigidBody->setActorFlag(PxActorFlag::eDISABLE_SIMULATION, !renderObject.IsVisible);
+			if (!renderObject.IsVisible) continue;
+
 			const auto mass = rigidBody->getMass();
 			if (!mass) continue;
 

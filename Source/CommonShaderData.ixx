@@ -23,7 +23,6 @@ export {
 	};
 
 	struct InstanceData {
-		BOOL IsStatic;
 		UINT FirstGeometryIndex;
 		XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 	};

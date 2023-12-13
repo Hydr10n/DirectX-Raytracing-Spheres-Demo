@@ -167,7 +167,7 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 
 inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
 	float3 previousPosition;
-	if (g_sceneData.IsStatic || g_instanceData[hitInfo.InstanceIndex].IsStatic) previousPosition = hitInfo.Position;
+	if (g_sceneData.IsStatic) previousPosition = hitInfo.Position;
 	else {
 		previousPosition = hitInfo.ObjectPosition;
 		const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorHeapIndices;
