@@ -156,7 +156,7 @@ struct App::Impl : IDeviceNotify {
 		m_inputDevices.Mouse->EndOfInputFrame();
 	}
 
-	void OnWindowSizeChanged() { if (m_deviceResources->WindowSizeChanged(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
+	void OnWindowSizeChanged() { if (m_deviceResources->ResizeWindow(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
 
 	void OnDisplayChanged() { m_deviceResources->UpdateColorSpace(); }
 
@@ -489,6 +489,8 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		if (IsSceneReady()) {
+			if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
+
 			RenderScene();
 
 			PostProcessGraphics();
@@ -515,33 +517,30 @@ private:
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
 			try {
-			const auto device = m_deviceResources->GetDevice();
-			const auto commandQueue = m_deviceResources->GetCommandQueue();
+				{
+					UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
+					m_scene = make_shared<MyScene>(m_deviceResources->GetDevice(), m_deviceResources->GetCommandQueue());
+					m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
+				}
 
-			{
-				UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-				m_scene = make_unique<MyScene>(device, commandQueue);
-				m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
-			}
+				CreateStructuredBuffers();
 
-			CreateStructuredBuffers();
+				ResetCamera();
 
-			ResetCamera();
-
-			{
-				const auto IsCubeMap = [](ID3D12Resource* pResource) {
-					if (pResource == nullptr) return false;
-					const auto desc = pResource->GetDesc();
-					return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
-				};
-				auto& sceneData = m_GPUBuffers.SceneData->GetData();
-				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
-				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
-				sceneData.ResourceDescriptorHeapIndices = {
-					.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV,
-					.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
-				};
-			}
+				{
+					const auto IsCubeMap = [](ID3D12Resource* pResource) {
+						if (pResource == nullptr) return false;
+						const auto desc = pResource->GetDesc();
+						return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
+					};
+					auto& sceneData = m_GPUBuffers.SceneData->GetData();
+					sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
+					sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
+					sceneData.ResourceDescriptorHeapIndices = {
+						.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV,
+						.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
+					};
+				}
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -575,7 +574,7 @@ private:
 
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
-			m_streamline = make_unique<Streamline>(0, adapterDesc.AdapterLuid, m_deviceResources->GetCommandList());
+			m_streamline = make_unique<Streamline>(m_deviceResources->GetCommandList(), &adapterDesc.AdapterLuid, sizeof(adapterDesc.AdapterLuid), 0);
 		}
 
 		m_denoisedComposition = make_unique<DenoisedComposition>(device);
@@ -607,14 +606,14 @@ private:
 	}
 
 	void CreateConstantBuffers() {
-		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data) { buffer = make_unique<T>(m_deviceResources->GetDevice(), initializer_list{ data }); };
+		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data) { buffer = make_shared<T>(m_deviceResources->GetDevice(), initializer_list{ data }); };
 		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedDepthReversed = true });
 		CreateBuffer(m_GPUBuffers.SceneData, SceneData());
 	}
 
 	void CreateStructuredBuffers() {
 		if (const auto instanceCount = static_cast<UINT>(size(m_scene->GetInstanceData())), objectCount = m_scene->GetObjectCount(); objectCount) {
-			const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, size_t capacity) { buffer = make_unique<T>(m_deviceResources->GetDevice(), capacity); };
+			const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, size_t capacity) { buffer = make_shared<T>(m_deviceResources->GetDevice(), capacity); };
 			CreateBuffer(m_GPUBuffers.InstanceData, instanceCount);
 			CreateBuffer(m_GPUBuffers.ObjectData, objectCount);
 
@@ -779,8 +778,6 @@ private:
 				instanceData.ObjectToWorld = m_scene->GetInstanceData()[instanceIndex].ObjectToWorld;
 				instanceIndex++;
 			}
-
-			m_scene->CreateAccelerationStructures(true);
 		}
 
 		{

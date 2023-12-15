@@ -14,7 +14,6 @@ module;
 #endif
 
 #include <format>
-#include <system_error>
 
 module DeviceResources;
 
@@ -267,10 +266,7 @@ void DeviceResources::CreateDeviceResources()
     m_fence->SetName(L"DeviceResources");
 
     m_fenceEvent.Attach(CreateEventEx(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE));
-    if (!m_fenceEvent.IsValid())
-    {
-        throw std::system_error(std::error_code(static_cast<int>(GetLastError()), std::system_category()), "CreateEventEx");
-    }
+    ThrowIfFailed(static_cast<BOOL>(m_fenceEvent.IsValid()), "CreateEventEx");
 }
 
 // These resources need to be recreated every time the window size is changed.
@@ -452,7 +448,7 @@ bool DeviceResources::EnableVSync(bool enable) noexcept {
 }
 
 // This method is called when the Win32 window changes size.
-bool DeviceResources::WindowSizeChanged(SIZE size)
+bool DeviceResources::ResizeWindow(SIZE size)
 {
     if (size.cx == m_outputSize.cx
         && size.cy == m_outputSize.cy)
@@ -726,8 +722,7 @@ void DeviceResources::UpdateColorSpace()
 
         // Get the retangle bounds of the app window.
         RECT windowBounds;
-        if (!GetWindowRect(m_window, &windowBounds))
-            throw std::system_error(std::error_code(static_cast<int>(GetLastError()), std::system_category()), "GetWindowRect");
+        ThrowIfFailed(GetWindowRect(m_window, &windowBounds), "GetWindowRect");
 
         const long ax1 = windowBounds.left;
         const long ay1 = windowBounds.top;

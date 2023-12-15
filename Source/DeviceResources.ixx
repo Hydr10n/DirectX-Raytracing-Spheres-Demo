@@ -7,10 +7,6 @@ module;
 #include "directx/d3dx12.h"
 #include <dxgi1_6.h>
 
-#ifdef _DEBUG
-#include <dxgidebug.h>
-#endif
-
 #include <wrl.h>
 
 export module DeviceResources;
@@ -53,7 +49,7 @@ export namespace DX
         void CreateWindowSizeDependentResources();
         void SetWindow(HWND window, SIZE size) noexcept;
         bool EnableVSync(bool enable) noexcept;
-        bool WindowSizeChanged(SIZE size);
+        bool ResizeWindow(SIZE size);
         void HandleDeviceLost();
         void RegisterDeviceNotify(IDeviceNotify* deviceNotify) noexcept { m_deviceNotify = deviceNotify; }
         void Prepare(D3D12_RESOURCE_STATES beforeState = D3D12_RESOURCE_STATE_PRESENT,

@@ -2,7 +2,6 @@ module;
 
 #include "directx/d3dx12.h"
 
-#include "directxtk12/BufferHelpers.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
@@ -56,8 +55,8 @@ export namespace DirectX {
 		size_t GetCount() const noexcept { return m_count; }
 
 		D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
-		void TransitionTo(ID3D12GraphicsCommandList* commandList, D3D12_RESOURCE_STATES state) {
-			TransitionResource(commandList, m_resource.Get(), m_state, state);
+		void TransitionTo(ID3D12GraphicsCommandList* pCommandList, D3D12_RESOURCE_STATES state) {
+			TransitionResource(pCommandList, m_resource.Get(), m_state, state);
 			m_state = state;
 		}
 
@@ -148,8 +147,6 @@ export namespace DirectX {
 		D3D12_RESOURCE_STATES m_state{};
 		ComPtr<ID3D12Resource> m_resource;
 
-		GPUBuffer() = default;
-
 		GPUBuffer(const GPUBuffer& source) noexcept(false) : m_capacity(source.m_capacity), m_count(source.m_count), m_state(source.m_state) {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
@@ -180,48 +177,45 @@ export namespace DirectX {
 			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) {
-			this->m_capacity = this->m_count = size(data);
-			this->m_state = afterState;
-			const auto flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags;
-			if (sizeof(T) % 2 == 0) ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, data, afterState, &this->m_resource, flags));
-			else {
-				vector<uint8_t> newData(this->ItemSize * this->m_count);
-				for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
-				ThrowIfFailed(CreateStaticBuffer(pDevice, resourceUploadBatch, newData, afterState, &this->m_resource, flags));
-			}
+		) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
+			Upload(resourceUploadBatch, data);
+			resourceUploadBatch.Transition(this->m_resource.Get(), D3D12_RESOURCE_STATE_COMMON, afterState);
 		}
 
-		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* commandList) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(source) {
-			if (commandList != nullptr) {
-				const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
-				commandList->CopyResource(this->m_resource.Get(), source.m_resource.Get());
-				TransitionResource(commandList, this->m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, source.m_state);
+		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(source) {
+			if (pCommandList != nullptr) {
+				const ScopedBarrier scopedBarrier(
+					pCommandList,
+					{
+						CD3DX12_RESOURCE_BARRIER::Transition(this->m_resource.Get(), this->m_state, D3D12_RESOURCE_STATE_COPY_DEST),
+						CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE)
+					}
+				);
+				pCommandList->CopyResource(this->m_resource.Get(), source.m_resource.Get());
 			}
 		}
 
 		void Upload(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
-			if (const auto count = size(data); count > this->m_capacity) {
+			const auto state = this->m_state;
+			const auto count = size(data);
+			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->ItemSize * count) };
+			if (count > this->m_capacity) {
 				ComPtr<ID3D12Device> device;
 				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
-				*this = DefaultBuffer(device.Get(), resourceUploadBatch, data);
+				*this = DefaultBuffer(device.Get(), count);
 			}
+			else this->m_count = count;
+			vector<uint8_t> newData;
+			if (sizeof(T) % 2 == 0) subresourceData.pData = ::data(data);
 			else {
-				vector<uint8_t> newData;
-				D3D12_SUBRESOURCE_DATA subresourceData;
-				if (sizeof(T) % 2 == 0) subresourceData = { ::data(data), static_cast<LONG_PTR>(this->ItemSize * count) };
-				else {
-					newData = vector<uint8_t>(this->ItemSize * count);
-					for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
-					subresourceData = { ::data(newData), static_cast<LONG_PTR>(this->ItemSize * count) };
-				}
-				const auto resource = this->m_resource.Get();
-				const auto state = this->m_state;
-				resourceUploadBatch.Transition(resource, state, D3D12_RESOURCE_STATE_COPY_DEST);
-				resourceUploadBatch.Upload(resource, 0, &subresourceData, 1);
-				resourceUploadBatch.Transition(resource, D3D12_RESOURCE_STATE_COPY_DEST, state);
-				this->m_count = count;
+				newData = vector<uint8_t>(this->ItemSize * count);
+				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+				subresourceData.pData = ::data(newData);
 			}
+			const auto resource = this->m_resource.Get();
+			resourceUploadBatch.Transition(resource, state, D3D12_RESOURCE_STATE_COPY_DEST);
+			resourceUploadBatch.Upload(resource, 0, &subresourceData, 1);
+			resourceUploadBatch.Transition(resource, D3D12_RESOURCE_STATE_COPY_DEST, state);
 		}
 	};
 

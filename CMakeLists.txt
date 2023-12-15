@@ -53,14 +53,14 @@ target_include_directories(${project} PRIVATE ${cxx_include_directories} "${AMD_
 include(ShaderCompilation.cmake)
 set(shader_include_directories "MathLib" "NRD/Shaders/Include")
 list(TRANSFORM shader_include_directories PREPEND ${NVIDIA_library_path})
-file(GLOB shaders "Shaders/*.hlsli" "Shaders/*.hlsl")
+file(GLOB shaders "Shaders/*.hlsl")
 CompileShaders(target ${project}_Shaders
 	config ${CMAKE_CURRENT_SOURCE_DIR}/Shaders.cfg
 	out ${CMAKE_CURRENT_BINARY_DIR}
 	include_directories ${shader_include_directories}
 	source ${shaders}
 	folder ${project}
-	additionalOptions "--shaderModel 6_6 --hlsl2021")
+	additional_options "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
 target_link_libraries(${project} PRIVATE ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64 NRD NRI rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")

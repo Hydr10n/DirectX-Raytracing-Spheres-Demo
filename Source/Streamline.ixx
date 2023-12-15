@@ -3,8 +3,6 @@ module;
 #include "sl_helpers.h"
 #include "sl_matrix_helpers.h"
 
-#include <d3d12.h>
-
 #include <ranges>
 #include <set>
 #include <vector>
@@ -21,13 +19,13 @@ export {
 		Streamline(const Streamline&) = delete;
 		Streamline& operator=(const Streamline&) = delete;
 
-		Streamline(uint32_t viewportID, LUID adapterLUID, ID3D12GraphicsCommandList* pCommandList) : m_viewport(viewportID), m_commandList(pCommandList) {
+		Streamline(void* commandBuffer, void* adapterLUID, size_t adapterLUIDSize, uint32_t viewportID) : m_commandBuffer(commandBuffer), m_viewport(viewportID) {
 			if (_.IsInitialized) {
-				for (const auto Feature : Features) {
+				for (const auto feature : Features) {
 					AdapterInfo adapterInfo;
-					adapterInfo.deviceLUID = reinterpret_cast<uint8_t*>(&adapterLUID);
-					adapterInfo.deviceLUIDSizeInBytes = sizeof(adapterLUID);
-					if (slIsFeatureSupported(Feature, adapterInfo) == Result::eOk) m_features.emplace(Feature);
+					adapterInfo.deviceLUID = static_cast<uint8_t*>(adapterLUID);
+					adapterInfo.deviceLUIDSizeInBytes = adapterLUIDSize;
+					if (slIsFeatureSupported(feature, adapterInfo) == Result::eOk) m_features.emplace(feature);
 				}
 			}
 		}
@@ -38,7 +36,7 @@ export {
 
 		auto NewFrame(const uint32_t* index = nullptr) { return slGetNewFrameToken(m_currentFrame, index); }
 
-		auto Tag(span<const ResourceTag> resourceTags) const { return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandList); }
+		auto Tag(span<const ResourceTag> resourceTags) const { return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandBuffer); }
 
 		template <typename T>
 		auto SetConstants(const T& constants) const {
@@ -51,7 +49,7 @@ export {
 		auto EvaluateFeature(Feature feature, span<const ResourceTag> resourceTags = {}) const {
 			vector<const BaseStructure*> inputs{ &m_viewport };
 			for (const auto& resourceTag : resourceTags) inputs.emplace_back(&resourceTag);
-			return slEvaluateFeature(feature, *m_currentFrame, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandList);
+			return slEvaluateFeature(feature, *m_currentFrame, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandBuffer);
 		}
 
 	private:
@@ -73,9 +71,9 @@ export {
 			~_() { if (IsInitialized) slShutdown(); }
 		} _;
 
-		ViewportHandle m_viewport;
+		void* m_commandBuffer;
 
-		ID3D12GraphicsCommandList* m_commandList;
+		ViewportHandle m_viewport;
 
 		set<Feature> m_features;
 
