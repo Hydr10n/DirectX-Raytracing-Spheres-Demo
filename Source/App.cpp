@@ -297,11 +297,9 @@ private:
 
 	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
 	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
-	RelaxDiffuseSpecularSettings m_NRDRelaxSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
+	RelaxSettings m_NRDRelaxSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
-
-	DLSSOptions m_DLSSOptions;
 
 	FSRSettings m_FSRSettings;
 	unique_ptr<FSR> m_FSR;
@@ -390,10 +388,11 @@ private:
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
+				static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy),
 				m_deviceResources->GetBackBufferCount(),
 				initializer_list<DenoiserDesc>{
-					{ static_cast<Identifier>(NRDDenoiser::ReBLUR), Denoiser::REBLUR_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) },
-					{ static_cast<Identifier>(NRDDenoiser::ReLAX), Denoiser::RELAX_DIFFUSE_SPECULAR, static_cast<uint16_t>(outputSize.cx), static_cast<UINT16>(outputSize.cy) }
+					{ static_cast<Identifier>(NRDDenoiser::ReBLUR), Denoiser::REBLUR_DIFFUSE_SPECULAR },
+					{ static_cast<Identifier>(NRDDenoiser::ReLAX), Denoiser::RELAX_DIFFUSE_SPECULAR }
 			}
 			);
 				m_NRD->IsAvailable()) {
@@ -402,11 +401,6 @@ private:
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedDiffuse, ResourceDescriptorHeapIndex::InDenoisedDiffuse, ResourceDescriptorHeapIndex::OutDenoisedDiffuse);
 				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedSpecular, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
 				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
-			}
-
-			if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
-				m_DLSSOptions.outputWidth = outputSize.cx;
-				m_DLSSOptions.outputHeight = outputSize.cy;
 			}
 
 			m_FSR = make_unique<FSR>(device, commandList, FfxDimensions2D{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED | FFX_FSR2_ENABLE_DEPTH_INFINITE | FFX_FSR2_ENABLE_AUTO_EXPOSURE);
@@ -833,9 +827,7 @@ private:
 			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetState()),
 			.Lifecycle = lifecycle
 		};
-		if (isRenderSize) {
-			resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
-		}
+		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
 		return resourceTagInfo;
 	}
 
@@ -861,10 +853,11 @@ private:
 	}
 
 	void SetSuperResolutionOptimalSettings() {
+		const auto outputSize = m_deviceResources->GetOutputSize();
+
 		const auto SelectSuperResolutionMode = [&] {
 			if (g_graphicsSettings.PostProcessing.SuperResolution.Mode != SuperResolutionMode::Auto) return g_graphicsSettings.PostProcessing.SuperResolution.Mode;
-			const auto [Width, Height] = GetOutputSize();
-			const auto minValue = min(Width, Height);
+			const auto minValue = min(outputSize.cx, outputSize.cy);
 			if (minValue <= 720) return SuperResolutionMode::Native;
 			if (minValue <= 1440) return SuperResolutionMode::Quality;
 			if (minValue <= 2160) return SuperResolutionMode::Performance;
@@ -872,16 +865,12 @@ private:
 		};
 
 		switch (g_graphicsSettings.PostProcessing.SuperResolution.Upscaler) {
-			case Upscaler::None:
-			{
-				const auto [Width, Height] = GetOutputSize();
-				m_renderSize = XMUINT2(Width, Height);
-			}
-			break;
+			case Upscaler::None: m_renderSize = XMUINT2(outputSize.cx, outputSize.cy); break;
 
 			case Upscaler::DLSS:
 			{
-				switch (auto& mode = m_DLSSOptions.mode; SelectSuperResolutionMode()) {
+				DLSSOptions options;
+				switch (auto& mode = options.mode; SelectSuperResolutionMode()) {
 					case SuperResolutionMode::Native: mode = DLSSMode::eDLAA; break;
 					case SuperResolutionMode::Quality: mode = DLSSMode::eMaxQuality; break;
 					case SuperResolutionMode::Balanced: mode = DLSSMode::eBalanced; break;
@@ -889,9 +878,11 @@ private:
 					case SuperResolutionMode::UltraPerformance: mode = DLSSMode::eUltraPerformance; break;
 					default: throw;
 				}
+				options.outputWidth = outputSize.cx;
+				options.outputHeight = outputSize.cy;
 				DLSSOptimalSettings optimalSettings;
-				slDLSSGetOptimalSettings(m_DLSSOptions, optimalSettings);
-				ignore = m_streamline->SetConstants(m_DLSSOptions);
+				slDLSSGetOptimalSettings(options, optimalSettings);
+				ignore = m_streamline->SetConstants(options);
 				m_renderSize = XMUINT2(optimalSettings.optimalRenderWidth, optimalSettings.optimalRenderHeight);
 			}
 			break;
@@ -908,7 +899,7 @@ private:
 					case SuperResolutionMode::UltraPerformance: mode = FFX_FSR2_QUALITY_MODE_ULTRA_PERFORMANCE; break;
 					default: throw;
 				}
-				if (const auto outputSize = GetOutputSize(); isNative) m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
+				if (isNative) m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
 				else {
 					ignore = ffxFsr2GetRenderResolutionFromQualityMode(&m_FSRSettings.RenderSize.width, &m_FSRSettings.RenderSize.height, outputSize.cx, outputSize.cy, mode);
 					m_renderSize = XMUINT2(m_FSRSettings.RenderSize.width, m_FSRSettings.RenderSize.height);
@@ -1038,17 +1029,23 @@ private:
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.Jitter;
 
 			const auto outputSize = GetOutputSize();
-			ranges::copy(m_NRDCommonSettings.resolutionScale, m_NRDCommonSettings.resolutionScalePrev);
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.resolutionScale) = { static_cast<float>(m_renderSize.x) / static_cast<float>(outputSize.cx), static_cast<float>(m_renderSize.y) / static_cast<float>(outputSize.cy) };
+			ranges::copy(m_NRDCommonSettings.resourceSize, m_NRDCommonSettings.resourceSizePrev);
+			m_NRDCommonSettings.resourceSize[0] = static_cast<uint16_t>(outputSize.cx);
+			m_NRDCommonSettings.resourceSize[1] = static_cast<uint16_t>(outputSize.cy);
+
+			ranges::copy(m_NRDCommonSettings.rectSize, m_NRDCommonSettings.rectSizePrev);
+			m_NRDCommonSettings.rectSize[0] = static_cast<uint16_t>(m_renderSize.x);
+			m_NRDCommonSettings.rectSize[1] = static_cast<uint16_t>(m_renderSize.y);
+
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
 			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationOverlayEnabled;
 
-			ignore = m_NRD->SetCommonSettings(m_NRDCommonSettings);
+			ignore = m_NRD->SetConstants(m_NRDCommonSettings);
 
 			const auto denoiser = static_cast<Identifier>(NRDSettings.Denoiser);
-			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) ignore = m_NRD->SetDenoiserSettings(denoiser, m_NRDReblurSettings);
-			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) ignore = m_NRD->SetDenoiserSettings(denoiser, m_NRDRelaxSettings);
+			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) ignore = m_NRD->SetConstants(denoiser, m_NRDReblurSettings);
+			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) ignore = m_NRD->SetConstants(denoiser, m_NRDRelaxSettings);
 			m_NRD->Denoise(initializer_list<Identifier>{ denoiser });
 
 			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
@@ -1112,16 +1109,17 @@ private:
 		reinterpret_cast<XMUINT2&>(m_FSRSettings.RenderSize) = m_renderSize;
 
 		const auto jitter = m_GPUBuffers.Camera->GetData().Jitter;
+		const auto farDepth = m_cameraController.GetFarDepth();
 		m_FSRSettings.Camera = {
 			.Jitter{ -jitter.x, -jitter.y },
-			.Near = m_cameraController.GetFarDepth(),
+			.Near = farDepth == numeric_limits<float>::infinity() ? numeric_limits<float>::max() : farDepth,
 			.Far = m_cameraController.GetNearDepth(),
 			.VerticalFOV = m_cameraController.GetVerticalFieldOfView()
 		};
 
 		m_FSRSettings.ElapsedMilliseconds = static_cast<float>(m_stepTimer.GetElapsedSeconds() * 1000);
 
-		m_FSR->UpdateSettings(m_FSRSettings);
+		m_FSR->SetConstants(m_FSRSettings);
 
 		m_FSRSettings.Reset = false;
 

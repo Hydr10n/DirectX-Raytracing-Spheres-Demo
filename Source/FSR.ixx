@@ -64,7 +64,7 @@ export {
 			return true;
 		}
 
-		void UpdateSettings(const FSRSettings& settings) {
+		void SetConstants(const FSRSettings& settings) {
 			m_dispatchDescription.renderSize = settings.RenderSize;
 			m_dispatchDescription.motionVectorScale = settings.MotionVectorScale;
 			m_dispatchDescription.jitterOffset = settings.Camera.Jitter;

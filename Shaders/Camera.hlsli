@@ -37,7 +37,7 @@ struct Camera {
 		return rayDesc;
 	}
 
-	float3 GetPreviousWorldPosition(float2 NDC, float linearDepth) {
+	float3 ReconstructPreviousWorldPosition(float2 NDC, float linearDepth) {
 		float4 projection = STL::Geometry::ProjectiveTransform(PreviousProjectionToView, float4(NDC, 0.5f, 1));
 		projection.xy /= projection.z;
 		projection.zw = 1;
@@ -45,7 +45,7 @@ struct Camera {
 		return STL::Geometry::AffineTransform(PreviousViewToWorld, projection);
 	}
 
-	float3 GetWorldPosition(float2 NDC, float linearDepth) {
+	float3 ReconstructWorldPosition(float2 NDC, float linearDepth) {
 		const float3 direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
 		return Position + direction * linearDepth / dot(normalize(ForwardDirection), direction);
 	}

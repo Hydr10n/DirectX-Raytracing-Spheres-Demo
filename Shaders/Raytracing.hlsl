@@ -91,12 +91,12 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 			const float3 diffuse = (isDiffuse ? radiance : 0) / lerp((1 - Fenvironment) * albedo, 1, 0.01f), specular = (isDiffuse ? 0 : radiance) / lerp(Fenvironment, 1, 0.01f);
 			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
 				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, NRDSettings.HitDistanceParameters, isDiffuse ? 1 : material.Roughness);
-				noisyDiffuse = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, normalizedHitDistance);
-				noisySpecular = REBLUR_FrontEnd_PackRadianceAndNormHitDist(specular, normalizedHitDistance);
+				noisyDiffuse = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, normalizedHitDistance, true);
+				noisySpecular = REBLUR_FrontEnd_PackRadianceAndNormHitDist(specular, normalizedHitDistance, true);
 			}
 			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) {
-				noisyDiffuse = RELAX_FrontEnd_PackRadianceAndHitDist(diffuse, hitDistance);
-				noisySpecular = RELAX_FrontEnd_PackRadianceAndHitDist(specular, hitDistance);
+				noisyDiffuse = RELAX_FrontEnd_PackRadianceAndHitDist(diffuse, hitDistance, true);
+				noisySpecular = RELAX_FrontEnd_PackRadianceAndHitDist(specular, hitDistance, true);
 			}
 		}
 

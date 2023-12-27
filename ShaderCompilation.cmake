@@ -48,7 +48,7 @@ function(CompileShaders)
 		endif()
 	endforeach()
 
-	add_custom_target(${args_target} COMMAND ${compiler_command} DEPENDS ShaderMake SOURCES ${args_source} BYPRODUCTS ${compiled_shaders})
+	add_custom_target(${args_target} COMMAND ${compiler_command} DEPENDS ShaderMake BYPRODUCTS ${compiled_shaders})
 
 	if(args_folder)
 		set_target_properties(${args_target} PROPERTIES FOLDER ${args_folder})

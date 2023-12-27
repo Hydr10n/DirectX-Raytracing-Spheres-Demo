@@ -43,7 +43,7 @@ struct Material {
 
 		float3 H, L;
 
-		if (Opacity != 1) {
+		if (Opacity < 1) {
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 
 			const float VoH = abs(dot(V, H));

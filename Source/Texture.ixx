@@ -36,11 +36,11 @@ export {
 				!lstrcmpiW(extension, L"dds") ?
 				CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap) :
 				!lstrcmpW(extension, L"hdr") ?
-				LoadFromHDRFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource) :
+				LoadFromHDRFile(pDevice, resourceUploadBatch, filePath, &Resource) :
 				!lstrcmpW(extension, L"exr") ?
-				LoadFromEXRFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource) :
+				LoadFromEXRFile(pDevice, resourceUploadBatch, filePath, &Resource) :
 				!lstrcmpW(extension, L"tga") ?
-				LoadFromTGAFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource) :
+				LoadFromTGAFile(pDevice, resourceUploadBatch, filePath, &Resource) :
 				CreateWICTextureFromFileEx(pDevice, resourceUploadBatch, filePath.c_str(), 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &Resource),
 				filePath.string()
 			);

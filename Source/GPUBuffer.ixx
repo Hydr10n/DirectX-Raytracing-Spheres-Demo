@@ -191,7 +191,7 @@ export namespace DirectX {
 						CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE)
 					}
 				);
-				pCommandList->CopyResource(this->m_resource.Get(), source.m_resource.Get());
+				pCommandList->CopyBufferRegion(this->m_resource.Get(), 0, source.m_resource.Get(), 0, this->ItemSize * source.m_count);
 			}
 		}
 

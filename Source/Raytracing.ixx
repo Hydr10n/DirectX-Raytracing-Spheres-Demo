@@ -60,6 +60,8 @@ export struct Raytracing {
 		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 	}
 
+	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
+
 	void Render(ID3D12GraphicsCommandList* pCommandList, const Scene& scene) {
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 		pCommandList->SetComputeRootShaderResourceView(0, scene.GetTopLevelAccelerationStructure().GetBuffer()->GetGPUVirtualAddress());
@@ -81,8 +83,6 @@ export struct Raytracing {
 		const auto renderSize = m_GPUBuffers.GraphicsSettings.GetData().RenderSize;
 		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);
 	}
-
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
 
 private:
 	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;

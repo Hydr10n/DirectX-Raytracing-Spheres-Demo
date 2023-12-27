@@ -26,16 +26,16 @@ export {
 
 		NRD(
 			ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, ID3D12GraphicsCommandList* pCommandList,
+			uint16_t resourceWidth, uint16_t resourceHeight,
 			uint32_t backBufferCount,
 			span<const DenoiserDesc> denoiserDescs
 		) : m_NRD(backBufferCount, true) {
-			if (nriCreateDeviceFromD3D12Device(DeviceCreationD3D12Desc{ .d3d12Device = pDevice, .d3d12GraphicsQueue = pCommandQueue }, m_device) == nri::Result::SUCCESS
+			if (nriCreateDeviceFromD3D12Device({ .d3d12Device = pDevice, .d3d12GraphicsQueue = pCommandQueue }, m_device) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::CoreInterface), static_cast<CoreInterface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::HelperInterface), static_cast<HelperInterface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList }, m_commandBuffer) == nri::Result::SUCCESS) {
-				const InstanceCreationDesc denoiserCreationDesc{ .denoisers = data(denoiserDescs), .denoisersNum = static_cast<uint32_t>(size(denoiserDescs)) };
-				m_isAvailable = m_NRD.Initialize(denoiserCreationDesc, *m_device, m_NRI, m_NRI);
+				m_isAvailable = m_NRD.Initialize(resourceWidth, resourceHeight, { .denoisers = data(denoiserDescs), .denoisersNum = static_cast<uint32_t>(size(denoiserDescs)) }, *m_device, m_NRI, m_NRI);
 				if (m_isAvailable) m_textureTransitionBarrierDescs.resize(NrdUserPool().max_size());
 			}
 		}
@@ -77,8 +77,7 @@ export {
 
 			auto& textureTransitionBarrierDesc = m_textureTransitionBarrierDescs[static_cast<size_t>(type)];
 
-			textureTransitionBarrierDesc.initialAccess = textureTransitionBarrierDesc.nextAccess = accessBits;
-			textureTransitionBarrierDesc.initialLayout = textureTransitionBarrierDesc.nextLayout = textureLayout;
+			textureTransitionBarrierDesc.initialState = textureTransitionBarrierDesc.nextState = { accessBits, textureLayout };
 
 			if (textureTransitionBarrierDesc.resource == pResource) return true;
 
@@ -94,10 +93,10 @@ export {
 			return true;
 		}
 
-		auto SetCommonSettings(const CommonSettings& commonSettings) { return m_NRD.SetCommonSettings(commonSettings); }
+		auto SetConstants(const CommonSettings& commonSettings) { return m_NRD.SetCommonSettings(commonSettings); }
 
 		template <typename T>
-		auto SetDenoiserSettings(Identifier denoiser, const T& denoiserSettings) { return m_NRD.SetDenoiserSettings(denoiser, &denoiserSettings); }
+		auto SetConstants(Identifier denoiser, const T& denoiserSettings) { return m_NRD.SetDenoiserSettings(denoiser, &denoiserSettings); }
 
 		void Denoise(span<const Identifier> denoisers) {
 			m_NRD.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool);
@@ -105,12 +104,10 @@ export {
 			vector<TextureTransitionBarrierDesc> textureTransitionBarrierDescs;
 			for (auto& textureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
 				if (textureTransitionBarrierDesc.texture != nullptr
-					&& textureTransitionBarrierDesc.nextAccess != textureTransitionBarrierDesc.initialAccess
-					&& textureTransitionBarrierDesc.nextLayout != textureTransitionBarrierDesc.initialLayout) {
-					textureTransitionBarrierDesc.prevAccess = textureTransitionBarrierDesc.nextAccess;
-					textureTransitionBarrierDesc.nextAccess = textureTransitionBarrierDesc.initialAccess;
-					textureTransitionBarrierDesc.prevLayout = textureTransitionBarrierDesc.nextLayout;
-					textureTransitionBarrierDesc.nextLayout = textureTransitionBarrierDesc.initialLayout;
+					&& (textureTransitionBarrierDesc.nextState.acessBits != textureTransitionBarrierDesc.initialState.acessBits
+						|| textureTransitionBarrierDesc.nextState.layout != textureTransitionBarrierDesc.initialState.layout)) {
+					textureTransitionBarrierDesc.prevState = textureTransitionBarrierDesc.nextState;
+					textureTransitionBarrierDesc.nextState = textureTransitionBarrierDesc.initialState;
 					textureTransitionBarrierDescs.emplace_back(textureTransitionBarrierDesc);
 				}
 			}
@@ -144,8 +141,7 @@ export {
 
 		struct TextureTransitionBarrierDescEx : TextureTransitionBarrierDesc {
 			ID3D12Resource* resource;
-			AccessBits initialAccess;
-			TextureLayout initialLayout;
+			AccessAndLayout initialState;
 		};
 		vector<TextureTransitionBarrierDescEx> m_textureTransitionBarrierDescs;
 	};

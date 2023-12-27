@@ -6,10 +6,13 @@ module;
 
 #include "directxtk12/ResourceUploadBatch.h"
 
+#include <filesystem>
+
 export module TextureHelpers;
 
 using namespace DirectX;
 using namespace std;
+using namespace std::filesystem;
 
 #define Load(Loader, ...) \
 	HRESULT ret; \
@@ -30,15 +33,15 @@ export namespace TextureHelpers {
 
 	HRESULT LoadFromHDRMemory(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource) { Load(LoadFromHDRMemory, pData, size); }
 
-	HRESULT LoadFromHDRFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, LPCWSTR fileName, ID3D12Resource** ppResource) { Load(LoadFromHDRFile, fileName); }
+	HRESULT LoadFromHDRFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromHDRFile, filePath.c_str()); }
 
-	HRESULT LoadFromEXRFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, LPCWSTR fileName, ID3D12Resource** ppResource) { Load(LoadFromEXRFile, fileName); }
+	HRESULT LoadFromEXRFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromEXRFile, filePath.c_str()); }
 
 	HRESULT LoadFromTGAMemory(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
 		Load(LoadFromTGAMemory, pData, size, flags);
 	}
 
-	HRESULT LoadFromTGAFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, LPCWSTR fileName, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
-		Load(LoadFromTGAFile, fileName, flags);
+	HRESULT LoadFromTGAFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
+		Load(LoadFromTGAFile, filePath.c_str(), flags);
 	}
 }
