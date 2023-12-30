@@ -22,31 +22,28 @@ export namespace DirectX::RaytracingHelpers {
 
 		AccelerationStructureBuffers() = default;
 
-		AccelerationStructureBuffers(ID3D12Device* pDevice, UINT64 scratchSize, UINT64 resultSize, UINT64 instanceDescsSize) noexcept(false) {
-			const auto CreateBuffer = [&](ComPtr<ID3D12Resource>& buffer, UINT64 size, D3D12_RESOURCE_STATES initialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE type = D3D12_HEAP_TYPE_DEFAULT) {
+		AccelerationStructureBuffers(ID3D12Device* pDevice, size_t scratchSize, size_t resultSize, size_t instanceDescCount) noexcept(false) {
+			const auto CreateBuffer = [&](ComPtr<ID3D12Resource>& buffer, size_t size, D3D12_RESOURCE_STATES initialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE type = D3D12_HEAP_TYPE_DEFAULT) {
 				const CD3DX12_HEAP_PROPERTIES heapProperties(type);
 				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, flags);
 				ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&buffer)));
 			};
 			CreateBuffer(Scratch, scratchSize, D3D12_RESOURCE_STATE_COMMON);
 			CreateBuffer(Result, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-			if (instanceDescsSize) CreateBuffer(InstanceDescs, instanceDescsSize, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
+			if (instanceDescCount) CreateBuffer(InstanceDescs, sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * instanceDescCount, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
 		}
 	};
 
-	template <typename T> requires same_as<T, D3D12_RAYTRACING_GEOMETRY_DESC> || same_as<T, D3D12_RAYTRACING_INSTANCE_DESC>
+	template <bool IsTop>
 	class AccelerationStructure {
 	public:
-		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) :
-			m_device(pDevice), m_flags(flags) {}
+		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_device(pDevice), m_flags(flags) {}
 
 		ID3D12Resource* GetBuffer() const noexcept { return m_buffers.Result.Get(); }
 
 		UINT GetDescCount() const noexcept { return m_descCount; }
 
-		void Build(ID3D12GraphicsCommandList4* pCommandList, span<const T> descs, bool updateOnly) {
-			constexpr auto IsBottom = is_same_v<T, D3D12_RAYTRACING_GEOMETRY_DESC>;
-
+		void Build(ID3D12GraphicsCommandList4* pCommandList, span<const conditional_t<IsTop, D3D12_RAYTRACING_INSTANCE_DESC, D3D12_RAYTRACING_GEOMETRY_DESC>> descs, bool updateOnly) {
 			m_descCount = static_cast<UINT>(size(descs));
 
 			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
@@ -54,11 +51,11 @@ export namespace DirectX::RaytracingHelpers {
 				.Flags = m_flags,
 				.NumDescs = m_descCount
 			};
-			if constexpr (IsBottom) {
+			if constexpr (IsTop) desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+			else {
 				desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 				desc.Inputs.pGeometryDescs = data(descs);
 			}
-			else desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 
 			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result != nullptr) {
 				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
@@ -68,12 +65,12 @@ export namespace DirectX::RaytracingHelpers {
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
 				m_device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
 
-				m_buffers = AccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, IsBottom ? 0 : sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * desc.Inputs.NumDescs);
+				m_buffers = AccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, IsTop ? desc.Inputs.NumDescs : 0);
 
 				desc.SourceAccelerationStructureData = NULL;
 			}
 
-			if constexpr (!IsBottom) {
+			if constexpr (IsTop) {
 				if (m_buffers.InstanceDescs != nullptr) {
 					D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
 					ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
@@ -102,12 +99,12 @@ export namespace DirectX::RaytracingHelpers {
 		AccelerationStructureBuffers m_buffers;
 	};
 
-	using BottomLevelAccelerationStructure = AccelerationStructure<D3D12_RAYTRACING_GEOMETRY_DESC>;
-	using TopLevelAccelerationStructure = AccelerationStructure<D3D12_RAYTRACING_INSTANCE_DESC>;
+	using BottomLevelAccelerationStructure = AccelerationStructure<false>;
+	using TopLevelAccelerationStructure = AccelerationStructure<true>;
 
-	template <typename Vertex, typename Index> requires same_as<Index, UINT16> || same_as<Index, UINT32>
+	template <typename Vertex, D3D12_HEAP_TYPE VertexHeapType, typename Index, D3D12_HEAP_TYPE IndexHeapType> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
-		const DefaultBuffer<Vertex>&vertices, const DefaultBuffer<Index>&indices,
+		const GPUBuffer<Vertex, VertexHeapType>&vertices, const GPUBuffer<Index, IndexHeapType>&indices,
 		D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT

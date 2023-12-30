@@ -13,9 +13,10 @@ import CommonShaderData;
 import ErrorHelpers;
 import GPUBuffer;
 import NRD;
-import Scene;
+import RaytracingHelpers;
 
 using namespace DirectX;
+using namespace DirectX::RaytracingHelpers;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
@@ -62,9 +63,9 @@ export struct Raytracing {
 
 	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
 
-	void Render(ID3D12GraphicsCommandList* pCommandList, const Scene& scene) {
+	void Render(ID3D12GraphicsCommandList* pCommandList, const TopLevelAccelerationStructure& topLevelAccelerationStructure) {
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		pCommandList->SetComputeRootShaderResourceView(0, scene.GetTopLevelAccelerationStructure().GetBuffer()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(0, topLevelAccelerationStructure.GetBuffer()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(1, m_GPUBuffers.GraphicsSettings.GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(2, GPUBuffers.InSceneData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(3, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());

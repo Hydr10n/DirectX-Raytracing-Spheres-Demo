@@ -818,7 +818,7 @@ private:
 			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular)
 		};
 
-		m_raytracing->Render(m_deviceResources->GetCommandList(), *m_scene);
+		m_raytracing->Render(m_deviceResources->GetCommandList(), m_scene->GetTopLevelAccelerationStructure());
 	}
 
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
