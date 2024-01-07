@@ -14,8 +14,9 @@ export module DeviceResources;
 export namespace DX
 {
     // Provides an interface for an application that owns DeviceResources to be notified of the device being lost or created.
-    interface IDeviceNotify
+    class IDeviceNotify
     {
+    public:
         virtual void OnDeviceLost() = 0;
         virtual void OnDeviceRestored() = 0;
 
@@ -101,7 +102,7 @@ export namespace DX
 
         static constexpr size_t MAX_BACK_BUFFER_COUNT = 3;
 
-        UINT                                                m_backBufferIndex;
+        UINT                                                m_backBufferIndex{};
 
         // Direct3D objects.
         Microsoft::WRL::ComPtr<ID3D12Device5>               m_device;
@@ -118,15 +119,15 @@ export namespace DX
 
         // Presentation fence objects.
         Microsoft::WRL::ComPtr<ID3D12Fence>                 m_fence;
-        UINT64                                              m_fenceValues[MAX_BACK_BUFFER_COUNT];
+        UINT64                                              m_fenceValues[MAX_BACK_BUFFER_COUNT]{};
         Microsoft::WRL::Wrappers::Event                     m_fenceEvent;
 
         // Direct3D rendering objects.
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>        m_rtvDescriptorHeap;
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>        m_dsvDescriptorHeap;
-        UINT                                                m_rtvDescriptorSize;
-        D3D12_VIEWPORT                                      m_screenViewport;
-        D3D12_RECT                                          m_scissorRect;
+        UINT                                                m_rtvDescriptorSize{};
+        D3D12_VIEWPORT                                      m_screenViewport{};
+        D3D12_RECT                                          m_scissorRect{};
 
         // Direct3D properties.
         DXGI_FORMAT                                         m_backBufferFormat;
@@ -136,20 +137,20 @@ export namespace DX
         D3D12_RAYTRACING_TIER                               m_minRaytracingTier;
 
         // Cached device properties.
-        HWND                                                m_window;
-        D3D_FEATURE_LEVEL                                   m_d3dFeatureLevel;
-        D3D12_RAYTRACING_TIER                               m_raytracingTier;
-        DWORD                                               m_dxgiFactoryFlags;
-        SIZE                                                m_outputSize;
+        HWND                                                m_window{};
+        D3D_FEATURE_LEVEL                                   m_d3dFeatureLevel = D3D_FEATURE_LEVEL_12_0;
+        D3D12_RAYTRACING_TIER                               m_raytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
+        DWORD                                               m_dxgiFactoryFlags{};
+        SIZE                                                m_outputSize{};
 
         // HDR Support
-        DXGI_COLOR_SPACE_TYPE                               m_colorSpace;
+        DXGI_COLOR_SPACE_TYPE                               m_colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 
         // DeviceResources options (see flags above)
         unsigned int                                        m_options;
-        bool                                                m_isVSyncEnabled;
+        bool                                                m_isVSyncEnabled = true;
 
         // The IDeviceNotify can be held directly as it owns the DeviceResources.
-        IDeviceNotify*                                      m_deviceNotify;
+        IDeviceNotify*                                      m_deviceNotify{};
     };
 }

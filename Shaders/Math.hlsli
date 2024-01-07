@@ -19,4 +19,18 @@ namespace Math {
 		direction = normalize(direction);
 		return float2((1 + atan2(direction.x, direction.z) / Pi) / 2, acos(direction.y) / Pi);
 	}
+
+	inline float3 ToBarycentrics(float2 UV) { return float3(1 - UV.x - UV.y, UV.x, UV.y); }
+
+	inline float2 RandomFromBarycentrics(float3 barycentrics) {
+		const float value = 1 - barycentrics.x;
+		return float2(value * value, barycentrics.z / value);
+	}
+
+	inline float3 SampleTriangle(float2 randomValue) {
+		const float value = sqrt(randomValue.x);
+		return float3(1 - value, value * (1 - randomValue.y), value * randomValue.y);
+	}
+
+	inline float ToSolidAnglePDF(float AreaPDF, float _length, float cosTheta) { return AreaPDF * _length * _length / cosTheta; }
 }

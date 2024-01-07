@@ -8,11 +8,26 @@
 
 #include "MeshHelpers.hlsli"
 
+#define RTXDI_ENABLE_PRESAMPLING 0
+#include "rtxdi/RtxdiParameters.h"
+
+#define NRD_HEADER_ONLY
+#include "NRDEncoding.hlsli"
+#include "NRD.hlsli"
 #include "NRDDenoiser.hlsli"
 
 SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
+
+struct RTXDISettings {
+	bool IsEnabled;
+	uint LocalLightSamples, BRDFSamples, SpatioTemporalSamples, InputBufferIndex, OutputBufferIndex, UniformRandomNumber;
+	uint _;
+	RTXDI_LightBufferParameters LightBufferParameters;
+	RTXDI_RuntimeParameters RuntimeParameters;
+	RTXDI_ReservoirBufferParameters ReservoirBufferParameters;
+};
 
 struct NRDSettings {
 	NRDDenoiser Denoiser;
@@ -25,6 +40,7 @@ struct GraphicsSettings {
 	uint FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 	bool IsRussianRouletteEnabled;
 	uint2 _;
+	RTXDISettings RTXDI;
 	NRDSettings NRD;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
@@ -43,8 +59,9 @@ RWTexture2D<float3> g_motionVectors : register(u3);
 RWTexture2D<float4> g_baseColorMetalness : register(u4);
 RWTexture2D<float3> g_emissiveColor : register(u5);
 RWTexture2D<float4> g_normalRoughness : register(u6);
-RWTexture2D<float4> g_noisyDiffuse : register(u7);
-RWTexture2D<float4> g_noisySpecular : register(u8);
+RWTexture2D<float4> g_geometricNormals : register(u7);
+RWTexture2D<float4> g_noisyDiffuse : register(u8);
+RWTexture2D<float4> g_noisySpecular : register(u9);
 
 inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
 	const SceneResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_sceneData.ResourceDescriptorHeapIndices;

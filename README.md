@@ -35,6 +35,10 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Russian Roulette
 	- Max Number of Bounces
 	- Samples Per Pixel
+	- NVIDIA RTX Direct Illumination
+		- Local Light Samples
+		- BRDF Samples
+		- Spatio-Temporal Samples
 - Post-Processing
 	- NVIDIA Real-Time Denoisers
 		- Denoiser: ReBLUR | ReLAX

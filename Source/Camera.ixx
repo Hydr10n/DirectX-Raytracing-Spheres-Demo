@@ -26,7 +26,7 @@ export {
 	};
 
 	struct CameraController {
-		CameraController(bool isNormalizedDepthReversed = true) : m_projectionFlags(PROJ_LEFT_HANDED | (isNormalizedDepthReversed ? PROJ_REVERSED_Z : 0)) {}
+		explicit CameraController(bool isNormalizedDepthReversed = true) : m_projectionFlags(PROJ_LEFT_HANDED | (isNormalizedDepthReversed ? PROJ_REVERSED_Z : 0)) {}
 
 		const auto& GetPosition() const { return m_position; }
 

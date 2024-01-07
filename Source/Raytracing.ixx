@@ -4,6 +4,8 @@ module;
 
 #include <DirectXMath.h>
 
+#include "rtxdi/RtxdiParameters.h"
+
 #include "Shaders/Raytracing.dxil.h"
 
 export module Raytracing;
@@ -14,6 +16,7 @@ import ErrorHelpers;
 import GPUBuffer;
 import NRD;
 import RaytracingHelpers;
+import RTXDIResources;
 
 using namespace DirectX;
 using namespace DirectX::RaytracingHelpers;
@@ -22,6 +25,15 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export struct Raytracing {
+	struct RTXDISettings {
+		BOOL IsEnabled;
+		UINT LocalLightSamples, BRDFSamples, SpatioTemporalSamples, InputBufferIndex, OutputBufferIndex, UniformRandomNumber;
+		UINT _;
+		RTXDI_LightBufferParameters LightBufferParameters;
+		RTXDI_RuntimeParameters RuntimeParameters;
+		RTXDI_ReservoirBufferParameters ReservoirBufferParameters;
+	};
+
 	struct NRDSettings {
 		NRDDenoiser Denoiser;
 		XMUINT3 _;
@@ -33,6 +45,7 @@ export struct Raytracing {
 		UINT FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
 		BOOL IsRussianRouletteEnabled;
 		XMUINT2 _;
+		RTXDISettings RTXDI;
 		NRDSettings NRD;
 	};
 
@@ -41,6 +54,9 @@ export struct Raytracing {
 		shared_ptr<ConstantBuffer<Camera>> InCamera;
 		shared_ptr<UploadBuffer<InstanceData>> InInstanceData;
 		shared_ptr<UploadBuffer<ObjectData>> InObjectData;
+		shared_ptr<DefaultBuffer<RAB_LightInfo>> InLightInfo;
+		shared_ptr<DefaultBuffer<UINT>> InLightIndices;
+		shared_ptr<DefaultBuffer<RTXDI_PackedDIReservoir>> OutDIReservoir;
 	} GPUBuffers;
 
 	struct {
@@ -51,10 +67,16 @@ export struct Raytracing {
 			OutBaseColorMetalness,
 			OutEmissiveColor,
 			OutNormalRoughness,
-			OutNoisyDiffuse, OutNoisySpecular;
+			OutGeometricNormals,
+			OutNoisyDiffuse, OutNoisySpecular,
+			InPreviousLinearDepth,
+			InPreviousBaseColorMetalness,
+			InPreviousNormalRoughness,
+			InPreviousGeometricNormals,
+			InNeighborOffsets;
 	} GPUDescriptors{};
 
-	Raytracing(ID3D12Device* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
+	explicit Raytracing(ID3D12Device* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Raytracing_dxil, size(g_Raytracing_dxil) };
 		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
@@ -78,8 +100,17 @@ export struct Raytracing {
 		pCommandList->SetComputeRootDescriptorTable(10, GPUDescriptors.OutBaseColorMetalness);
 		pCommandList->SetComputeRootDescriptorTable(11, GPUDescriptors.OutEmissiveColor);
 		pCommandList->SetComputeRootDescriptorTable(12, GPUDescriptors.OutNormalRoughness);
-		pCommandList->SetComputeRootDescriptorTable(13, GPUDescriptors.OutNoisyDiffuse);
-		pCommandList->SetComputeRootDescriptorTable(14, GPUDescriptors.OutNoisySpecular);
+		pCommandList->SetComputeRootDescriptorTable(13, GPUDescriptors.OutGeometricNormals);
+		pCommandList->SetComputeRootDescriptorTable(14, GPUDescriptors.OutNoisyDiffuse);
+		pCommandList->SetComputeRootDescriptorTable(15, GPUDescriptors.OutNoisySpecular);
+		pCommandList->SetComputeRootDescriptorTable(16, GPUDescriptors.InPreviousLinearDepth);
+		pCommandList->SetComputeRootDescriptorTable(17, GPUDescriptors.InPreviousBaseColorMetalness);
+		pCommandList->SetComputeRootDescriptorTable(18, GPUDescriptors.InPreviousNormalRoughness);
+		pCommandList->SetComputeRootDescriptorTable(19, GPUDescriptors.InPreviousGeometricNormals);
+		pCommandList->SetComputeRootShaderResourceView(20, GPUBuffers.InLightInfo ? GPUBuffers.InLightInfo->GetResource()->GetGPUVirtualAddress() : NULL);
+		pCommandList->SetComputeRootShaderResourceView(21, GPUBuffers.InLightIndices ? GPUBuffers.InLightIndices->GetResource()->GetGPUVirtualAddress() : NULL);
+		pCommandList->SetComputeRootDescriptorTable(22, GPUDescriptors.InNeighborOffsets);
+		pCommandList->SetComputeRootUnorderedAccessView(23, GPUBuffers.OutDIReservoir ? GPUBuffers.OutDIReservoir->GetResource()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetPipelineState(m_pipelineState.Get());
 		const auto renderSize = m_GPUBuffers.GraphicsSettings.GetData().RenderSize;
 		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);

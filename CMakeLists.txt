@@ -24,6 +24,8 @@ add_subdirectory("${NVIDIA_library_path}NRD")
 
 add_subdirectory("${NVIDIA_library_path}NRI")
 
+add_subdirectory("${NVIDIA_library_path}RTXDI/rtxdi-sdk")
+
 set(RTXMU_WITH_D3D12 ON CACHE BOOL "")
 set(RTXMU_WITH_VULKAN OFF CACHE BOOL "")
 add_subdirectory("${NVIDIA_library_path}RTXMU")
@@ -45,13 +47,14 @@ set(cxx_include_directories
 	"MathLib"
 	"NRD/Include" "NRD/Integration"
 	"NRI/Include"
+	"RTXDI/rtxdi-sdk/include"
 	"RTXMU/include"
 	"Streamline/include")
 list(TRANSFORM cxx_include_directories PREPEND ${NVIDIA_library_path})
 target_include_directories(${project} PRIVATE ${cxx_include_directories} "${AMD_library_path}FSR2/src/ffx-fsr2-api" ${CMAKE_CURRENT_BINARY_DIR})
 
 include(ShaderCompilation.cmake)
-set(shader_include_directories "MathLib" "NRD/Shaders/Include")
+set(shader_include_directories "MathLib" "NRD/Shaders/Include" "RTXDI/rtxdi-sdk/include")
 list(TRANSFORM shader_include_directories PREPEND ${NVIDIA_library_path})
 file(GLOB shaders "Shaders/*.hlsl")
 CompileShaders(target ${project}_Shaders
@@ -63,7 +66,7 @@ CompileShaders(target ${project}_Shaders
 	additional_options "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
-target_link_libraries(${project} PRIVATE ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64 NRD NRI rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
+target_link_libraries(${project} PRIVATE ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64 NRD NRI rtxdi-sdk rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
 
 set(packages
 	directxtex

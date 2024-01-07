@@ -60,25 +60,12 @@ DeviceResources::DeviceResources(
     D3D_FEATURE_LEVEL minFeatureLevel,
     D3D12_RAYTRACING_TIER minRaytracingTier,
     unsigned int flags) noexcept(false) :
-        m_backBufferIndex(0),
-        m_fenceValues{},
-        m_rtvDescriptorSize(0),
-        m_screenViewport{},
-        m_scissorRect{},
         m_backBufferFormat(backBufferFormat),
         m_depthBufferFormat(depthBufferFormat),
         m_backBufferCount(backBufferCount),
         m_d3dMinFeatureLevel(minFeatureLevel),
         m_minRaytracingTier(minRaytracingTier),
-        m_window(nullptr),
-        m_d3dFeatureLevel(D3D_FEATURE_LEVEL_12_0),
-        m_raytracingTier(D3D12_RAYTRACING_TIER_NOT_SUPPORTED),
-        m_dxgiFactoryFlags(0),
-        m_outputSize{1, 1},
-        m_colorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709),
-        m_options(flags),
-        m_isVSyncEnabled(true),
-        m_deviceNotify(nullptr)
+        m_options(flags)
 {
     if (backBufferCount < 2 || backBufferCount > MAX_BACK_BUFFER_COUNT)
     {

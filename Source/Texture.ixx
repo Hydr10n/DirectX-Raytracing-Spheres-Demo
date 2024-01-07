@@ -5,6 +5,7 @@ module;
 #include "directxtk12/WICTextureLoader.h"
 
 #include <filesystem>
+#include <stacktrace>
 
 export module Texture;
 
@@ -30,8 +31,13 @@ export {
 		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
 
 		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
-			bool isCubeMap = false;
-			const auto extension = filePath.extension().c_str() + 1;
+			if (empty(filePath)) throw_std_system_error(ERROR_BAD_PATHNAME);
+
+			const auto filePathExtension = filePath.extension();
+			if (empty(filePathExtension)) throw runtime_error(format("{}: Unknown file format\n\n{}", filePath.string(), to_string(stacktrace::current())));
+
+			auto isCubeMap = false;
+			const auto extension = filePathExtension.c_str() + 1;
 			ThrowIfFailed(
 				!lstrcmpiW(extension, L"dds") ?
 				CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap) :

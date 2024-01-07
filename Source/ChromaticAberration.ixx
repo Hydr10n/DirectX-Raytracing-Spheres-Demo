@@ -25,7 +25,7 @@ export namespace PostProcessing {
 
 		struct { D3D12_GPU_DESCRIPTOR_HANDLE InColor, OutColor; } GPUDescriptors{};
 
-		ChromaticAberration(ID3D12Device* pDevice) noexcept(false) {
+		explicit ChromaticAberration(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil) };
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };

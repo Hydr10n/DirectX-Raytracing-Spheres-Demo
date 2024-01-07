@@ -15,6 +15,8 @@ module;
 
 #include "pix.h"
 
+#include "rtxdi/ReSTIRDI.h"
+
 #include "sl_helpers.h"
 
 #include "NRD.h"
@@ -32,18 +34,21 @@ module;
 module App;
 
 import Camera;
+import CommandList;
 import CommonShaderData;
 import DescriptorHeap;
 import DeviceResources;
 import ErrorHelpers;
 import GPUBuffer;
 import HaltonSamplePattern;
+import LightPreparation;
 import Material;
 import MyScene;
 import PostProcessing.ChromaticAberration;
 import PostProcessing.DenoisedComposition;
 import Raytracing;
 import RenderTexture;
+import RTXDIResources;
 import Scene;
 import SharedData;
 import StepTimer;
@@ -58,6 +63,7 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace nrd;
 using namespace PostProcessing;
+using namespace rtxdi;
 using namespace SharedData;
 using namespace sl;
 using namespace std;
@@ -254,17 +260,23 @@ private:
 		enum {
 			InColor, OutColor,
 			InFinalColor, OutFinalColor,
+			InPreviousLinearDepth, OutPreviousLinearDepth,
 			InLinearDepth, OutLinearDepth,
 			InNormalizedDepth, OutNormalizedDepth,
 			InMotionVectors, OutMotionVectors,
+			InPreviousBaseColorMetalness, OutPreviousBaseColorMetalness,
 			InBaseColorMetalness, OutBaseColorMetalness,
 			InEmissiveColor, OutEmissiveColor,
+			InPreviousNormalRoughness, OutPreviousNormalRoughness,
 			InNormalRoughness, OutNormalRoughness,
+			InPreviousGeometricNormals, OutPreviousGeometricNormals,
+			InGeometricNormals, OutGeometricNormals,
 			OutNoisyDiffuse, OutNoisySpecular,
 			InDenoisedDiffuse, OutDenoisedDiffuse,
 			InDenoisedSpecular, OutDenoisedSpecular,
 			InValidation, OutValidation,
 			InBlur1, InBlur2,
+			InNeighborOffsets,
 			InFont,
 			Reserve,
 			Count = 1 << 16
@@ -318,12 +330,17 @@ private:
 	struct RenderTextureNames {
 		MAKE_NAME(Color);
 		MAKE_NAME(FinalColor);
+		MAKE_NAME(PreviousLinearDepth);
 		MAKE_NAME(LinearDepth);
 		MAKE_NAME(NormalizedDepth);
 		MAKE_NAME(MotionVectors);
+		MAKE_NAME(PreviousBaseColorMetalness);
 		MAKE_NAME(BaseColorMetalness);
 		MAKE_NAME(EmissiveColor);
+		MAKE_NAME(PreviousNormalRoughness);
 		MAKE_NAME(NormalRoughness);
+		MAKE_NAME(PreviousGeometricNormals);
+		MAKE_NAME(GeometricNormals);
 		MAKE_NAME(NoisyDiffuse);
 		MAKE_NAME(NoisySpecular);
 		MAKE_NAME(DenoisedDiffuse);
@@ -344,6 +361,9 @@ private:
 	CameraController m_cameraController;
 
 	shared_ptr<Scene> m_scene;
+
+	RTXDIResources m_RTXDIResources;
+	unique_ptr<LightPreparation> m_lightPreparation;
 
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
 
@@ -378,13 +398,21 @@ private:
 
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Color, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalColor, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
+			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::PreviousLinearDepth, ResourceDescriptorHeapIndex::InPreviousLinearDepth, ResourceDescriptorHeapIndex::OutPreviousLinearDepth);
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth);
 			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::NormalizedDepth, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth);
 			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
+			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::PreviousBaseColorMetalness, ResourceDescriptorHeapIndex::InPreviousBaseColorMetalness, ResourceDescriptorHeapIndex::OutPreviousBaseColorMetalness);
 			CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
 			CreateTexture1(DXGI_FORMAT_R11G11B10_FLOAT, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
 
-			CreateTexture1(NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
+			{
+				const auto normalFormat = NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding);
+				CreateTexture1(normalFormat, RenderTextureNames::PreviousNormalRoughness, ResourceDescriptorHeapIndex::InPreviousNormalRoughness, ResourceDescriptorHeapIndex::OutPreviousNormalRoughness);
+				CreateTexture1(normalFormat, RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
+				CreateTexture1(normalFormat, RenderTextureNames::PreviousGeometricNormals, ResourceDescriptorHeapIndex::InPreviousGeometricNormals, ResourceDescriptorHeapIndex::OutPreviousGeometricNormals);
+				CreateTexture1(normalFormat, RenderTextureNames::GeometricNormals, ResourceDescriptorHeapIndex::InGeometricNormals, ResourceDescriptorHeapIndex::OutGeometricNormals);
+			}
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -483,7 +511,13 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 		if (IsSceneReady()) {
-			if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
+			const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount();
+			if (!m_scene->IsStatic()) {
+				m_scene->CreateAccelerationStructures(true);
+
+				if (emissiveTriangleCount) m_lightPreparation->Process(commandList, true);
+			}
+			if (emissiveTriangleCount) m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
 
 			RenderScene();
 
@@ -511,30 +545,70 @@ private:
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
 			try {
-				{
-					UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-					m_scene = make_shared<MyScene>(m_deviceResources->GetDevice(), m_deviceResources->GetCommandQueue());
-					m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
+			const auto device = m_deviceResources->GetDevice();
+			const auto commandQueue = m_deviceResources->GetCommandQueue();
+
+			{
+				UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
+				m_scene = make_shared<MyScene>(device, commandQueue);
+				m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
+			}
+
+			CreateStructuredBuffers();
+
+			ResetCamera();
+
+			{
+				const auto IsCubeMap = [](ID3D12Resource* pResource) {
+					if (pResource == nullptr) return false;
+					const auto desc = pResource->GetDesc();
+					return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
+				};
+				auto& sceneData = m_GPUBuffers.SceneData->GetData();
+				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
+				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
+				sceneData.ResourceDescriptorHeapIndices = {
+					.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV,
+					.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
+				};
+			}
+
+			{
+				m_lightPreparation = make_unique<LightPreparation>(device, m_scene);
+
+				m_lightPreparation->CountLights();
+
+				if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
+					m_RTXDIResources.Initialize(device, emissiveTriangleCount, m_scene->GetObjectCount());
+
+					{
+						ResourceUploadBatch resourceUploadBatch(device);
+						resourceUploadBatch.Begin();
+
+						m_lightPreparation->PrepareResources(resourceUploadBatch, *m_RTXDIResources.LightIndices);
+
+						resourceUploadBatch.End(commandQueue).get();
+					}
+
+					{
+						CommandList commandList(device);
+						commandList.Begin();
+
+						const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+						commandList->SetDescriptorHeaps(1, &descriptorHeap);
+
+						m_lightPreparation->GPUBuffers = {
+							.InInstanceData = m_GPUBuffers.InstanceData,
+							.InObjectData = m_GPUBuffers.ObjectData,
+							.OutLightInfo = m_RTXDIResources.LightInfo
+						};
+
+						m_lightPreparation->Process(commandList.GetNative(), false);
+
+						commandList.End(commandQueue).get();
+					}
 				}
-
-				CreateStructuredBuffers();
-
-				ResetCamera();
-
-				{
-					const auto IsCubeMap = [](ID3D12Resource* pResource) {
-						if (pResource == nullptr) return false;
-						const auto desc = pResource->GetDesc();
-						return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
-					};
-					auto& sceneData = m_GPUBuffers.SceneData->GetData();
-					sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
-					sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
-					sceneData.ResourceDescriptorHeapIndices = {
-						.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV,
-						.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
-					};
-				}
+			}
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -785,13 +859,31 @@ private:
 	}
 
 	void RenderScene() {
+		const auto commandList = m_deviceResources->GetCommandList();
+
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
+		const auto& RTXDISettings = raytracingSettings.RTXDI;
+		const auto& reSTIRDIContext = *m_RTXDIResources.ReSTIRDIContext;
 		m_raytracing->SetConstants({
 			.RenderSize = m_renderSize,
 			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
 			.MaxNumberOfBounces = raytracingSettings.MaxNumberOfBounces,
 			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
 			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+			.RTXDI{
+				.IsEnabled = RTXDISettings.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount(),
+				.LocalLightSamples = RTXDISettings.LocalLightSamples,
+				.BRDFSamples = RTXDISettings.BRDFSamples,
+				.SpatioTemporalSamples = RTXDISettings.SpatioTemporalSamples,
+				.InputBufferIndex = !(reSTIRDIContext.getFrameIndex() & 1),
+				.OutputBufferIndex = reSTIRDIContext.getFrameIndex() & 1,
+				.UniformRandomNumber = reSTIRDIContext.getTemporalResamplingParameters().uniformRandomNumber,
+				.LightBufferParameters = m_lightPreparation->GetLightBufferParameters(),
+				.RuntimeParameters{
+					.neighborOffsetMask = reSTIRDIContext.getStaticParameters().NeighborOffsetCount - 1
+				},
+				.ReservoirBufferParameters = reSTIRDIContext.getReservoirBufferParameters()
+			},
 			.NRD{
 				.Denoiser = g_graphicsSettings.PostProcessing.NRD.Denoiser,
 				.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
@@ -802,9 +894,29 @@ private:
 			.InSceneData = m_GPUBuffers.SceneData,
 			.InCamera = m_GPUBuffers.Camera,
 			.InInstanceData = m_GPUBuffers.InstanceData,
-			.InObjectData = m_GPUBuffers.ObjectData
+			.InObjectData = m_GPUBuffers.ObjectData,
+			.InLightInfo = m_RTXDIResources.LightInfo,
+			.InLightIndices = m_RTXDIResources.LightIndices,
+			.OutDIReservoir = m_RTXDIResources.DIReservoir
 		};
 
+		const auto
+			& previousLinearDepth = *m_renderTextures.at(RenderTextureNames::PreviousLinearDepth),
+			& previousBaseColorMetalness = *m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness),
+			& previousNormalRoughness = *m_renderTextures.at(RenderTextureNames::PreviousNormalRoughness),
+			& previousGeometricNormals = *m_renderTextures.at(RenderTextureNames::PreviousGeometricNormals);
+
+		const ScopedBarrier scopedBarrier(
+			commandList,
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(previousLinearDepth.GetResource(), previousLinearDepth.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(previousBaseColorMetalness.GetResource(), previousBaseColorMetalness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(previousNormalRoughness.GetResource(), previousNormalRoughness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(previousGeometricNormals.GetResource(), previousGeometricNormals.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+			}
+		);
+
+		const auto GetSRV = [&](const RenderTexture& texture) { return m_resourceDescriptorHeap->GetGpuHandle(texture.GetSrvDescriptorHeapIndex()); };
 		const auto GetUAV = [&](LPCSTR name) { return m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(name)->GetUavDescriptorHeapIndex()); };
 		m_raytracing->GPUDescriptors = {
 			.OutColor = GetUAV(RenderTextureNames::Color),
@@ -814,11 +926,17 @@ private:
 			.OutBaseColorMetalness = GetUAV(RenderTextureNames::BaseColorMetalness),
 			.OutEmissiveColor = GetUAV(RenderTextureNames::EmissiveColor),
 			.OutNormalRoughness = GetUAV(RenderTextureNames::NormalRoughness),
+			.OutGeometricNormals = GetUAV(RenderTextureNames::GeometricNormals),
 			.OutNoisyDiffuse = GetUAV(RenderTextureNames::NoisyDiffuse),
-			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular)
+			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular),
+			.InPreviousLinearDepth = GetSRV(previousLinearDepth),
+			.InPreviousBaseColorMetalness = GetSRV(previousBaseColorMetalness),
+			.InPreviousNormalRoughness = GetSRV(previousNormalRoughness),
+			.InPreviousGeometricNormals = GetSRV(previousGeometricNormals),
+			.InNeighborOffsets = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::InNeighborOffsets)
 		};
 
-		m_raytracing->Render(m_deviceResources->GetCommandList(), m_scene->GetTopLevelAccelerationStructure());
+		m_raytracing->Render(commandList, m_scene->GetTopLevelAccelerationStructure());
 	}
 
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
@@ -921,9 +1039,21 @@ private:
 
 	void OnRenderSizeChanged() {
 		const auto outputSize = GetOutputSize();
-		m_haltonSamplePattern = static_cast<UINT>(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y)));
+		m_haltonSamplePattern = HaltonSamplePattern(static_cast<UINT>(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y))));
 
 		ResetTemporalAccumulation();
+
+		{
+			const auto device = m_deviceResources->GetDevice();
+
+			ResourceUploadBatch resourceUploadBatch(device);
+			resourceUploadBatch.Begin();
+
+			m_RTXDIResources.ReSTIRDIContext = make_unique<ReSTIRDIContext>(ReSTIRDIStaticParameters{ .RenderWidth = m_renderSize.x, .RenderHeight = m_renderSize.y });
+			m_RTXDIResources.Initialize(device, resourceUploadBatch, m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::InNeighborOffsets));
+
+			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+		}
 	}
 
 	void PostProcessGraphics() {
@@ -1416,6 +1546,26 @@ private:
 					isChanged |= ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 0, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+					if (ImGui::TreeNodeEx("NVIDIA RTX Direct Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& RTXDISettings = raytracingSettings.RTXDI;
+
+						{
+							const ImGuiEx::ScopedID scopedID("Enable NVIDIA RTX Direct Illumination");
+
+							isChanged |= ImGui::Checkbox("Enable", &RTXDISettings.IsEnabled);
+						}
+
+						if (RTXDISettings.IsEnabled) {
+							isChanged |= ImGui::SliderInt("Local Light Samples", reinterpret_cast<int*>(&RTXDISettings.LocalLightSamples), 1, RTXDISettings.MaxLocalLightSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+							isChanged |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&RTXDISettings.BRDFSamples), 0, RTXDISettings.MaxBRDFSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+							isChanged |= ImGui::SliderInt("Spatio-Temporal Samples", reinterpret_cast<int*>(&RTXDISettings.SpatioTemporalSamples), 0, RTXDISettings.MaxSpatioTemporalSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+						}
+
+						ImGui::TreePop();
+					}
 
 					if (isChanged) ResetTemporalAccumulation();
 

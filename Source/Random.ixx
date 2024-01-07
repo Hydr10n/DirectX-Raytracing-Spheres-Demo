@@ -10,7 +10,7 @@ using namespace DirectX;
 using namespace std;
 
 export struct Random {
-	Random(unsigned int seed = random_device()()) : m_generator(seed) {}
+	explicit Random(unsigned int seed = random_device()()) : m_generator(seed) {}
 
 	float Float(float min = 0, float max = 1) const { return min + (max - min) * m_distribution(m_generator); }
 

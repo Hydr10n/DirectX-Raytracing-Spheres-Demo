@@ -1,8 +1,8 @@
 #include "IndirectRay.hlsli"
 
-#define NRD_HEADER_ONLY
-#include "NRDEncoding.hlsli"
-#include "NRD.hlsli"
+#include "RTXDIAppBridge.hlsli"
+#include "rtxdi/DIResamplingFunctions.hlsli"
+#include "rtxdi/InitialSamplingFunctions.hlsli"
 
 [RootSignature(
 	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
@@ -21,7 +21,16 @@
 	"DescriptorTable(UAV(u5)),"
 	"DescriptorTable(UAV(u6)),"
 	"DescriptorTable(UAV(u7)),"
-	"DescriptorTable(UAV(u8))"
+	"DescriptorTable(UAV(u8)),"
+	"DescriptorTable(UAV(u9)),"
+	"DescriptorTable(SRV(t3)),"
+	"DescriptorTable(SRV(t4)),"
+	"DescriptorTable(SRV(t5)),"
+	"DescriptorTable(SRV(t6)),"
+	"SRV(t7),"
+	"SRV(t8),"
+	"DescriptorTable(SRV(t9)),"
+	"UAV(u10)"
 )]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID) {
@@ -33,7 +42,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	float3 motionVector = 0;
 	float4 baseColorMetalness = 0;
 	float3 emissiveColor = 0;
-	float4 normalRoughness = 0;
+	float4 normalRoughness = 0, geometricNormal = 0;
 
 	HitInfo hitInfo;
 	float NoV;
@@ -57,6 +66,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 		emissiveColor = material.EmissiveColor;
 		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, diffuseProbability == 0);
+		geometricNormal = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.GeometricNormal, 0, 0);
 	}
 
 	g_linearDepth[pixelPosition] = linearDepth;
@@ -65,9 +75,13 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	g_baseColorMetalness[pixelPosition] = baseColorMetalness;
 	g_emissiveColor[pixelPosition] = emissiveColor;
 	g_normalRoughness[pixelPosition] = normalRoughness;
+	g_geometricNormals[pixelPosition] = geometricNormal;
 
 	float3 radiance = 0;
 	float4 noisyDiffuse = 0, noisySpecular = 0;
+
+	const RTXDISettings RTXDISettings = g_graphicsSettings.RTXDI;
+	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 
 	if (hit) {
 		bool isDiffuse = true;
@@ -85,10 +99,68 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
+		float3 directDiffuse = 0, directSpecular = 0;
+		if (RTXDISettings.IsEnabled) {
+			RAB_Surface surface;
+			surface.Position = hitInfo.Position;
+			surface.Normal = hitInfo.Normal;
+			surface.GeometricNormal = hitInfo.GeometricNormal;
+			surface.Albedo = albedo;
+			surface.Rf0 = Rf0;
+			surface.Roughness = material.Roughness;
+			surface.DiffuseProbability = diffuseProbability;
+			surface.ViewDirection = V;
+			surface.LinearDepth = linearDepth;
+
+			RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelPosition, 1);
+
+			RAB_LightSample lightSample = RAB_EmptyLightSample(), BRDFSample = RAB_EmptyLightSample();
+			const RTXDI_SampleParameters sampleParameters = RTXDI_InitSampleParameters(RTXDISettings.LocalLightSamples, 0, 0, RTXDISettings.BRDFSamples);
+			const RTXDI_DIReservoir
+				localReservoir = RTXDI_SampleLocalLights(rng, rng, surface, sampleParameters, ReSTIRDI_LocalLightSamplingMode_UNIFORM, RTXDISettings.LightBufferParameters.localLightBufferRegion, lightSample),
+				BRDFReservoir = RTXDI_SampleBrdf(rng, surface, sampleParameters, RTXDISettings.LightBufferParameters, BRDFSample);
+			RTXDI_CombineDIReservoirs(reservoir, localReservoir, 0.5f, localReservoir.targetPdf);
+			const bool BRDFSelected = RTXDI_CombineDIReservoirs(reservoir, BRDFReservoir, RAB_GetNextRandom(rng), BRDFReservoir.targetPdf);
+			if (BRDFSelected) lightSample = BRDFSample;
+
+			RTXDI_FinalizeResampling(reservoir, 1, 1);
+			reservoir.M = 1;
+
+			if (RTXDI_IsValidDIReservoir(reservoir) && !BRDFSelected && !RAB_GetConservativeVisibility(surface, lightSample)) RTXDI_StoreVisibilityInDIReservoir(reservoir, 0, true);
+
+			RTXDI_DISpatioTemporalResamplingParameters parameters;
+			parameters.screenSpaceMotion = motionVector;
+			parameters.sourceBufferIndex = RTXDISettings.InputBufferIndex;
+			parameters.maxHistoryLength = 20;
+			parameters.biasCorrectionMode = RTXDI_BIAS_CORRECTION_BASIC;
+			parameters.depthThreshold = 0.1f;
+			parameters.normalThreshold = 0.5f;
+			parameters.numSamples = RTXDISettings.SpatioTemporalSamples;
+			parameters.numDisocclusionBoostSamples = 0;
+			parameters.samplingRadius = 32;
+			parameters.enableVisibilityShortcut = true;
+			parameters.enablePermutationSampling = true;
+			parameters.discountNaiveSamples = false;
+			parameters.uniformRandomNumber = RTXDISettings.UniformRandomNumber;
+
+			int2 temporalSamplePixelPos = -1;
+			reservoir = RTXDI_DISpatioTemporalResampling(pixelPosition, surface, reservoir, rng, RTXDISettings.RuntimeParameters, RTXDISettings.ReservoirBufferParameters, parameters, temporalSamplePixelPos, lightSample);
+
+			if (RTXDI_IsValidDIReservoir(reservoir)) {
+				if (RAB_GetConservativeVisibility(surface, lightSample)) {
+					ShadeSurface(lightSample, surface, directDiffuse, directSpecular);
+					const float invPDF = RTXDI_GetDIReservoirInvPdf(reservoir);
+					directDiffuse *= invPDF;
+					directSpecular *= invPDF;
+				}
+				else RTXDI_StoreVisibilityInDIReservoir(reservoir, 0, true);
+			}
+		}
+
 		const NRDSettings NRDSettings = g_graphicsSettings.NRD;
 		if (NRDSettings.Denoiser != NRDDenoiser::None) {
 			const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
-			const float3 diffuse = (isDiffuse ? radiance : 0) / lerp((1 - Fenvironment) * albedo, 1, 0.01f), specular = (isDiffuse ? 0 : radiance) / lerp(Fenvironment, 1, 0.01f);
+			const float3 diffuse = ((isDiffuse ? radiance : 0) + directDiffuse) / lerp((1 - Fenvironment) * albedo, 1, 0.01f), specular = ((isDiffuse ? 0 : radiance) + directSpecular) / lerp(Fenvironment, 1, 0.01f);
 			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
 				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, NRDSettings.HitDistanceParameters, isDiffuse ? 1 : material.Roughness);
 				noisyDiffuse = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, normalizedHitDistance, true);
@@ -100,11 +172,13 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 			}
 		}
 
-		radiance += material.EmissiveColor;
+		radiance += material.EmissiveColor + directDiffuse + directSpecular;
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
 
 	g_color[pixelPosition] = radiance;
 	g_noisyDiffuse[pixelPosition] = noisyDiffuse;
 	g_noisySpecular[pixelPosition] = noisySpecular;
+
+	if (RTXDISettings.IsEnabled) RTXDI_StoreDIReservoir(reservoir, RTXDISettings.ReservoirBufferParameters, pixelPosition, RTXDISettings.OutputBufferIndex);
 }

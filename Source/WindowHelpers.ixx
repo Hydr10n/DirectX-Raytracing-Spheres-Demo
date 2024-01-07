@@ -35,7 +35,7 @@ export namespace WindowHelpers {
 	public:
 		const HWND hWnd;
 
-		WindowModeHelper(HWND hWnd) : hWnd(hWnd) {}
+		explicit WindowModeHelper(HWND hWnd) : hWnd(hWnd) {}
 
 		bool IsFullscreenResolutionHandledByWindow() const { return m_isFullscreenResolutionHandledByWindow; }
 

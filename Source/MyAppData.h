@@ -128,7 +128,17 @@ public:
 
 				UINT MaxNumberOfBounces = 8, SamplesPerPixel = 1;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, MaxNumberOfBounces, SamplesPerPixel);
+				struct RTXDI {
+					static constexpr UINT MaxLocalLightSamples = 32, MaxBRDFSamples = 16, MaxSpatioTemporalSamples = 4;
+
+					bool IsEnabled = true;
+
+					UINT LocalLightSamples = 8, BRDFSamples = 1, SpatioTemporalSamples = 2;
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, IsEnabled, LocalLightSamples, BRDFSamples, SpatioTemporalSamples);
+				} RTXDI;
+
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, MaxNumberOfBounces, SamplesPerPixel, RTXDI);
 			} Raytracing;
 
 			struct PostProcessing {
@@ -191,6 +201,12 @@ public:
 				{
 					Raytracing.MaxNumberOfBounces = clamp(Raytracing.MaxNumberOfBounces, 0u, Raytracing.MaxMaxNumberOfBounces);
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
+
+					{
+						Raytracing.RTXDI.LocalLightSamples = clamp(Raytracing.RTXDI.LocalLightSamples, 1u, Raytracing.RTXDI.MaxLocalLightSamples);
+						Raytracing.RTXDI.BRDFSamples = clamp(Raytracing.RTXDI.BRDFSamples, 0u, Raytracing.RTXDI.MaxBRDFSamples);
+						Raytracing.RTXDI.SpatioTemporalSamples = clamp(Raytracing.RTXDI.SpatioTemporalSamples, 0u, Raytracing.RTXDI.MaxSpatioTemporalSamples);
+					}
 				}
 
 				{
