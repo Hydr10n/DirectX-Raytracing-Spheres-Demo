@@ -19,3 +19,7 @@
 [submodule "External/AMD/FSR2"]
 	path = External/AMD/FSR2
 	url = https://github.com/GPUOpen-Effects/FidelityFX-FSR2
+[submodule "External/NVIDIA/RTXDI"]
+	path = External/NVIDIA/RTXDI
+	url = https://github.com/NVIDIAGameWorks/RTXDI
+	branch = sdk-only
