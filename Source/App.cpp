@@ -1159,13 +1159,13 @@ private:
 			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.Jitter;
 
 			const auto outputSize = GetOutputSize();
-			ranges::copy(m_NRDCommonSettings.resourceSize, m_NRDCommonSettings.resourceSizePrev);
 			m_NRDCommonSettings.resourceSize[0] = static_cast<uint16_t>(outputSize.cx);
 			m_NRDCommonSettings.resourceSize[1] = static_cast<uint16_t>(outputSize.cy);
+			ranges::copy(m_NRDCommonSettings.resourceSize, m_NRDCommonSettings.resourceSizePrev);
 
-			ranges::copy(m_NRDCommonSettings.rectSize, m_NRDCommonSettings.rectSizePrev);
 			m_NRDCommonSettings.rectSize[0] = static_cast<uint16_t>(m_renderSize.x);
 			m_NRDCommonSettings.rectSize[1] = static_cast<uint16_t>(m_renderSize.y);
+			ranges::copy(m_NRDCommonSettings.rectSize, m_NRDCommonSettings.rectSizePrev);
 
 			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
 
