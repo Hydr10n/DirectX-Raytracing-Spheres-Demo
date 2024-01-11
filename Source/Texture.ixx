@@ -31,7 +31,7 @@ export {
 		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
 
 		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
-			if (empty(filePath)) throw_std_system_error(ERROR_BAD_PATHNAME);
+			if (empty(filePath)) throw invalid_argument("Texture file path cannot be empty");
 
 			const auto filePathExtension = filePath.extension();
 			if (empty(filePathExtension)) throw runtime_error(format("{}: Unknown file format\n\n{}", filePath.string(), to_string(stacktrace::current())));

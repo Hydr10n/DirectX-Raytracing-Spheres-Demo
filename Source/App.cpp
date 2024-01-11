@@ -186,6 +186,9 @@ struct App::Impl : IDeviceNotify {
 	void OnDeviceLost() override {
 		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
+		m_RTXDIResources = {};
+		m_lightPreparation.reset();
+
 		m_scene.reset();
 
 		m_GPUBuffers = {};
@@ -717,7 +720,7 @@ private:
 						case TextureType::TransmissionMap: indices.TransmissionMap = index; break;
 						case TextureType::OpacityMap: indices.OpacityMap = index; break;
 						case TextureType::NormalMap: indices.NormalMap = index; break;
-						default: throw out_of_range("Unsupported texture type");
+						default: throw_std_exception<out_of_range>("Unsupported texture type");
 					}
 				}
 			}
@@ -1519,9 +1522,9 @@ private:
 				}
 
 				{
-					const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->GetDeviceOptions() & DeviceResources::c_AllowTearing);
-
-					if (auto isEnabled = m_deviceResources->IsVSyncEnabled(); ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) g_graphicsSettings.IsVSyncEnabled = isEnabled;
+					auto isEnabled = m_deviceResources->IsVSyncEnabled();
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->GetDeviceOptions() & DeviceResources::c_AllowTearing);
+						ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) g_graphicsSettings.IsVSyncEnabled = isEnabled;
 				}
 
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1545,7 +1548,7 @@ private:
 
 					isChanged |= ImGui::SliderInt("Max Number of Bounces", reinterpret_cast<int*>(&raytracingSettings.MaxNumberOfBounces), 0, raytracingSettings.MaxMaxNumberOfBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
 
-					isChanged |= ImGui::SliderInt("Samples Per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+					isChanged |= ImGui::SliderInt("Samples per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					if (ImGui::TreeNodeEx("NVIDIA RTX Direct Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& RTXDISettings = raytracingSettings.RTXDI;
@@ -1575,32 +1578,29 @@ private:
 				if (ImGui::TreeNodeEx("Post-Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& postProcessingSetttings = g_graphicsSettings.PostProcessing;
 
-					{
-						const ImGuiEx::ScopedEnablement scopedEnablement(m_NRD->IsAvailable());
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_NRD->IsAvailable());
+						ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& NRDSettings = postProcessingSetttings.NRD;
 
-						if (ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", ImGuiTreeNodeFlags_DefaultOpen)) {
-							auto& NRDSettings = postProcessingSetttings.NRD;
+						if (ImGui::BeginCombo("Denoiser", ToString(NRDSettings.Denoiser))) {
+							for (const auto Denoiser : { NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX }) {
+								const auto isSelected = NRDSettings.Denoiser == Denoiser;
 
-							if (ImGui::BeginCombo("Denoiser", ToString(NRDSettings.Denoiser))) {
-								for (const auto Denoiser : { NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX }) {
-									const auto isSelected = NRDSettings.Denoiser == Denoiser;
+								if (ImGui::Selectable(ToString(Denoiser), isSelected)) {
+									NRDSettings.Denoiser = Denoiser;
 
-									if (ImGui::Selectable(ToString(Denoiser), isSelected)) {
-										NRDSettings.Denoiser = Denoiser;
-
-										ResetTemporalAccumulation();
-									}
-
-									if (isSelected) ImGui::SetItemDefaultFocus();
+									ResetTemporalAccumulation();
 								}
 
-								ImGui::EndCombo();
+								if (isSelected) ImGui::SetItemDefaultFocus();
 							}
 
-							if (NRDSettings.Denoiser != NRDDenoiser::None) ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
-
-							ImGui::TreePop();
+							ImGui::EndCombo();
 						}
+
+						if (NRDSettings.Denoiser != NRDDenoiser::None) ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
+
+						ImGui::TreePop();
 					}
 
 					if (ImGui::TreeNodeEx("Super Resolution", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1650,24 +1650,18 @@ private:
 						ImGui::TreePop();
 					}
 
-					{
-						const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureNIS));
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureNIS));
+						ImGui::TreeNodeEx("NVIDIA Image Scaling", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& NISSettings = postProcessingSetttings.NIS;
 
-						if (ImGui::TreeNodeEx("NVIDIA Image Scaling", ImGuiTreeNodeFlags_DefaultOpen)) {
-							auto& NISSettings = postProcessingSetttings.NIS;
+						auto isEnabled = IsNISEnabled();
 
-							auto isEnabled = IsNISEnabled();
+						if (const ImGuiEx::ScopedID scopedID("Enable NVIDIA Image Scaling");
+							ImGui::Checkbox("Enable", &isEnabled)) NISSettings.IsEnabled = isEnabled;
 
-							{
-								const ImGuiEx::ScopedID scopedID("Enable NVIDIA Image Scaling");
+						if (isEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-								if (ImGui::Checkbox("Enable", &isEnabled)) NISSettings.IsEnabled = isEnabled;
-							}
-
-							if (isEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-
-							ImGui::TreePop();
-						}
+						ImGui::TreePop();
 					}
 
 					ImGui::Checkbox("Chromatic Aberration", &postProcessingSetttings.IsChromaticAberrationEnabled);

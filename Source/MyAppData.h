@@ -173,7 +173,7 @@ public:
 
 					bool IsEnabled = true;
 
-					float Threshold = 0.5f, BlurSize = 5;
+					float Threshold = 1, BlurSize = 3;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(Bloom, IsEnabled, Threshold, BlurSize);
 				} Bloom;

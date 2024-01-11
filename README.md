@@ -34,7 +34,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - Raytracing
 	- Russian Roulette
 	- Max Number of Bounces
-	- Samples Per Pixel
+	- Samples per Pixel
 	- NVIDIA RTX Direct Illumination
 		- Local Light Samples
 		- BRDF Samples

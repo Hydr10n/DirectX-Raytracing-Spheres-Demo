@@ -188,7 +188,7 @@ export {
 						else {
 							renderObject.Material = {
 								.BaseColor = RandomFloat4(0.1f),
-								.EmissiveColor = random.Float3(0.2f),
+								.EmissiveColor = random.Float3(0.2f, 2),
 								.Metallic = random.Float(0.4f),
 								.Roughness = random.Float(0.3f)
 							};

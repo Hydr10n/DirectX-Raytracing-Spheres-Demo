@@ -270,7 +270,7 @@ export namespace DirectX {
 		}
 
 		const T& operator[](size_t index) const {
-			if (index >= this->m_count) throw out_of_range("");
+			if (index >= this->m_count) throw out_of_range("Index out of range");
 			return *reinterpret_cast<const T*>(m_data + this->ItemSize * index);
 		}
 		T& operator[](size_t index) { return const_cast<T&>(as_const(*this)[index]); }
