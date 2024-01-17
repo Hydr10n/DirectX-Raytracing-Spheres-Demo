@@ -34,6 +34,7 @@ export namespace DirectX {
 
 		T* GetNative() const noexcept { return m_commandList.Get(); }
 		T* operator->() const noexcept { return m_commandList.Get(); }
+		operator T* () const noexcept { return m_commandList.Get(); }
 
 		void Begin() { ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr)); }
 

@@ -130,8 +130,8 @@ int WINAPI wWinMain(
 		error = e.what();
 	}
 	catch (...) {
-		ret = static_cast<int>(GetLastError());
-		if (ret != ERROR_SUCCESS) error = system_category().message(ret);
+		ret = ERROR_CAN_NOT_COMPLETE;
+		error = "Unknown exception";
 	}
 
 	g_app.reset();

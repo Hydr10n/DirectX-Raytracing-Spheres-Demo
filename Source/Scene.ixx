@@ -185,8 +185,6 @@ export {
 		const auto& GetTopLevelAccelerationStructure() const { return *m_topLevelAccelerationStructure; }
 
 		void CreateAccelerationStructures(bool updateOnly = true) {
-			const auto commandList = m_commandList.GetNative();
-
 			vector<uint64_t> newBottomLevelAccelerationStructureIDs;
 
 			{
@@ -220,10 +218,10 @@ export {
 				m_objectCount = static_cast<UINT>(size(RenderObjects));
 
 				if (!empty(newBuildBottomLevelAccelerationStructureInputs)) {
-					m_accelerationStructureManager->PopulateBuildCommandList(commandList, data(newBuildBottomLevelAccelerationStructureInputs), size(newBuildBottomLevelAccelerationStructureInputs), newBottomLevelAccelerationStructureIDs);
+					m_accelerationStructureManager->PopulateBuildCommandList(m_commandList, data(newBuildBottomLevelAccelerationStructureInputs), size(newBuildBottomLevelAccelerationStructureInputs), newBottomLevelAccelerationStructureIDs);
 					for (UINT i = 0; const auto & meshNode : newMeshes) m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
-					m_accelerationStructureManager->PopulateUAVBarriersCommandList(commandList, newBottomLevelAccelerationStructureIDs);
-					m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(commandList, newBottomLevelAccelerationStructureIDs);
+					m_accelerationStructureManager->PopulateUAVBarriersCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
+					m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
 				}
 
 				m_commandList.End(m_commandQueue).get();
@@ -232,7 +230,7 @@ export {
 			{
 				m_commandList.Begin();
 
-				if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->PopulateCompactionCommandList(commandList, newBottomLevelAccelerationStructureIDs);
+				if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->PopulateCompactionCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
 
 				if (!updateOnly) {
 					m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(m_device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
@@ -247,7 +245,7 @@ export {
 						});
 					reinterpret_cast<XMFLOAT3X4&>(instanceDesc.Transform) = m_instanceData[instanceIndex++].ObjectToWorld;
 				}
-				m_topLevelAccelerationStructure->Build(commandList, instanceDescs, updateOnly);
+				m_topLevelAccelerationStructure->Build(m_commandList, instanceDescs, updateOnly);
 
 				m_commandList.End(m_commandQueue).get();
 			}

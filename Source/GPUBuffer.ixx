@@ -44,9 +44,9 @@ export namespace DirectX {
 		}
 
 		GPUBuffer(GPUBuffer&& source) noexcept { Swap(*this, source); }
-		GPUBuffer&& operator=(GPUBuffer&& source) noexcept {
+		GPUBuffer& operator=(GPUBuffer&& source) noexcept {
 			Swap(source);
-			return move(*this);
+			return *this;
 		}
 
 		ID3D12Resource* GetResource() const noexcept { return m_resource.Get(); }
@@ -243,9 +243,9 @@ export namespace DirectX {
 		}
 
 		MappableBuffer(MappableBuffer&& source) noexcept { Swap(source); }
-		MappableBuffer&& operator=(MappableBuffer&& source) noexcept {
+		MappableBuffer& operator=(MappableBuffer&& source) noexcept {
 			Swap(source);
-			return move(*this);
+			return *this;
 		}
 
 		void Upload(span<const T> data) {

@@ -110,7 +110,7 @@ export namespace DirectX::RaytracingHelpers {
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 	) {
 		const auto vertexCount = vertices.GetCount(), indexCount = indices.GetCount();
-		if (indexCount % 3 != 0) throw_std_exception<invalid_argument>("Triangle index count must be divisible by 3");
+		if (indexCount % 3 != 0) Throw<invalid_argument>("Triangle index count must be divisible by 3");
 		return {
 			.Flags = flags,
 			.Triangles{

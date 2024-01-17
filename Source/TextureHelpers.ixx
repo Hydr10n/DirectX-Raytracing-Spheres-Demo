@@ -16,11 +16,11 @@ using namespace std::filesystem;
 
 #define Load(Loader, ...) \
 	HRESULT ret; \
-	if (ScratchImage image; SUCCEEDED(ret = Loader(__VA_ARGS__, nullptr, image))) ret = LoadFromMemory(pDevice, resourceUploadBatch, image, ppResource); \
+	if (ScratchImage image; SUCCEEDED(ret = Loader(__VA_ARGS__, nullptr, image))) ret = LoadTexture(pDevice, resourceUploadBatch, image, ppResource); \
 	return ret;
 
 export namespace TextureHelpers {
-	HRESULT LoadFromMemory(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const ScratchImage& image, ID3D12Resource** ppResource) {
+	HRESULT LoadTexture(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const ScratchImage& image, ID3D12Resource** ppResource) {
 		HRESULT ret;
 		if (vector<D3D12_SUBRESOURCE_DATA> subresources;
 			SUCCEEDED(ret = CreateTexture(pDevice, image.GetMetadata(), ppResource))
@@ -31,17 +31,17 @@ export namespace TextureHelpers {
 		return ret;
 	}
 
-	HRESULT LoadFromHDRMemory(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource) { Load(LoadFromHDRMemory, pData, size); }
+	HRESULT LoadHDR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource) { Load(LoadFromHDRMemory, pData, size); }
 
-	HRESULT LoadFromHDRFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromHDRFile, filePath.c_str()); }
+	HRESULT LoadHDR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromHDRFile, filePath.c_str()); }
 
-	HRESULT LoadFromEXRFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromEXRFile, filePath.c_str()); }
+	HRESULT LoadEXR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromEXRFile, filePath.c_str()); }
 
-	HRESULT LoadFromTGAMemory(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
+	HRESULT LoadTGA(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
 		Load(LoadFromTGAMemory, pData, size, flags);
 	}
 
-	HRESULT LoadFromTGAFile(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
+	HRESULT LoadTGA(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
 		Load(LoadFromTGAFile, filePath.c_str(), flags);
 	}
 }

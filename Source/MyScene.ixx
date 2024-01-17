@@ -30,7 +30,7 @@ using namespace std::filesystem;
 using GamepadButtonState = GamePad::ButtonStateTracker::ButtonState;
 using Key = Keyboard::Keys;
 
-#define MAKE_NAME(name) static constexpr const char* name = #name;
+#define MAKE_NAME(name) static constexpr LPCSTR name = #name;
 
 struct ObjectNames {
 	MAKE_NAME(AlienMetal);
@@ -85,7 +85,7 @@ export {
 
 			{
 				const struct {
-					const char* Name;
+					LPCSTR Name;
 					PxVec3 Position;
 					Material Material;
 				} objects[]{

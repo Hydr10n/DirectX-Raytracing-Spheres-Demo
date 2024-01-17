@@ -606,7 +606,7 @@ private:
 							.OutLightInfo = m_RTXDIResources.LightInfo
 						};
 
-						m_lightPreparation->Process(commandList.GetNative(), false);
+						m_lightPreparation->Process(commandList, false);
 
 						commandList.End(commandQueue).get();
 					}
@@ -720,7 +720,7 @@ private:
 						case TextureType::TransmissionMap: indices.TransmissionMap = index; break;
 						case TextureType::OpacityMap: indices.OpacityMap = index; break;
 						case TextureType::NormalMap: indices.NormalMap = index; break;
-						default: throw_std_exception<out_of_range>("Unsupported texture type");
+						default: Throw<out_of_range>("Unsupported texture type");
 					}
 				}
 			}
@@ -835,7 +835,7 @@ private:
 		}
 		else if (const auto angle = XM_PIDIV2 - abs(-m_cameraController.GetRotation().ToEuler().x + pitch); angle <= 0) pitch = copysign(max(0.0f, angle - 0.1f), pitch);
 
-		m_cameraController.Move(m_cameraController.GetNormalizedRightDirection() * displacement.x + m_cameraController.GetNormalizedUpDirection() * displacement.y + m_cameraController.GetNormalizedForwardDirection() * displacement.z);
+		m_cameraController.Translate(m_cameraController.GetNormalizedRightDirection() * displacement.x + m_cameraController.GetNormalizedUpDirection() * displacement.y + m_cameraController.GetNormalizedForwardDirection() * displacement.z);
 		m_cameraController.Rotate(yaw, pitch);
 	}
 
@@ -1744,7 +1744,7 @@ private:
 		ImGui::End();
 	}
 
-	void RenderPopupModalWindow(const string& popupModalName) {
+	void RenderPopupModalWindow(string_view popupModalName) {
 		const auto PopupModal = [&](LPCSTR name, const auto& lambda) {
 			if (name == popupModalName) ImGui::OpenPopup(name);
 
