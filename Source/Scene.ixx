@@ -120,9 +120,7 @@ export {
 			}
 
 			{
-				for (const auto& [URI, Mesh] : sceneDesc.Meshes) {
-					Meshes[URI] = Mesh::Create(Mesh.first, Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
-				}
+				for (const auto& [URI, Mesh] : sceneDesc.Meshes) Meshes[URI] = Mesh::Create(Mesh.first, Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
 
 				for (const auto& renderObjectDesc : sceneDesc.RenderObjects) {
 					RenderObject renderObject;

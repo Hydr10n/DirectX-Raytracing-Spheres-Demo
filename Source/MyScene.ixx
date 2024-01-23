@@ -149,7 +149,7 @@ export {
 						position.y = Spring::PositionY + SimpleHarmonicMotion::Spring::CalculateDisplacement(A, omega, 0.0f, position.x);
 						position.z = static_cast<float>(j) - 0.7f * random.Float();
 
-						bool isOverlapping = false;
+						auto isOverlapping = false;
 						for (const auto& [_, Position, Material] : objects) {
 							if ((position - Position).magnitude() < 1) {
 								isOverlapping = true;

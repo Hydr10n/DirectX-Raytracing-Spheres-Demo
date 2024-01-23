@@ -28,21 +28,21 @@ export {
 		shared_ptr<DefaultBuffer<UINT16>> NeighborOffsets;
 		shared_ptr<DefaultBuffer<RTXDI_PackedDIReservoir>> DIReservoir;
 
-		void Initialize(ID3D12Device* pDevice, UINT emissiveTriangleCount, UINT objectCount) {
+		void CreateLightBuffers(ID3D12Device* pDevice, UINT emissiveTriangleCount, UINT objectCount) {
 			LightInfo = make_shared<DefaultBuffer<RAB_LightInfo>>(pDevice, emissiveTriangleCount);
 
 			LightIndices = make_shared<DefaultBuffer<UINT>>(pDevice, objectCount);
 		}
 
-		void Initialize(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, D3D12_CPU_DESCRIPTOR_HANDLE neighborOffsetsDescriptor) {
-			{
-				const auto neighborOffsetCount = ReSTIRDIContext->getStaticParameters().NeighborOffsetCount;
-				vector<UINT16> offsets(neighborOffsetCount);
-				FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
-				NeighborOffsets = make_shared<DefaultBuffer<UINT16>>(pDevice, resourceUploadBatch, offsets);
-				NeighborOffsets->CreateTypedSRV(neighborOffsetsDescriptor, DXGI_FORMAT_R8G8_SNORM);
-			}
+		void CreateNeighborOffsets(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, D3D12_CPU_DESCRIPTOR_HANDLE neighborOffsetsDescriptor) {
+			const auto neighborOffsetCount = ReSTIRDIContext->getStaticParameters().NeighborOffsetCount;
+			vector<UINT16> offsets(neighborOffsetCount);
+			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
+			NeighborOffsets = make_shared<DefaultBuffer<UINT16>>(pDevice, resourceUploadBatch, offsets);
+			NeighborOffsets->CreateTypedSRV(neighborOffsetsDescriptor, DXGI_FORMAT_R8G8_SNORM);
+		}
 
+		void CreateDIReservoir(ID3D12Device* pDevice) {
 			DIReservoir = make_shared<DefaultBuffer<RTXDI_PackedDIReservoir>>(pDevice, ReSTIRDIContext->getReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);
 		}
 	};

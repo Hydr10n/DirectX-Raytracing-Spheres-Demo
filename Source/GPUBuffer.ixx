@@ -33,6 +33,9 @@ export namespace DirectX {
 
 		GPUBuffer& operator=(const GPUBuffer&) = delete;
 
+		GPUBuffer(GPUBuffer&& source) noexcept = default;
+		GPUBuffer& operator=(GPUBuffer&& source) noexcept = default;
+
 		GPUBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
@@ -41,12 +44,6 @@ export namespace DirectX {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * capacity, flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
-		}
-
-		GPUBuffer(GPUBuffer&& source) noexcept { Swap(*this, source); }
-		GPUBuffer& operator=(GPUBuffer&& source) noexcept {
-			Swap(source);
-			return *this;
 		}
 
 		ID3D12Resource* GetResource() const noexcept { return m_resource.Get(); }
@@ -154,13 +151,6 @@ export namespace DirectX {
 			const auto resourceDesc = source.m_resource->GetDesc();
 			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, source.m_state, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
-
-		void Swap(GPUBuffer& source) {
-			swap(m_capacity, source.m_capacity);
-			swap(m_count, source.m_count);
-			swap(m_state, source.m_state);
-			swap(m_resource, source.m_resource);
-		}
 	};
 
 	template <typename T>
@@ -222,6 +212,9 @@ export namespace DirectX {
 	template <typename T, bool IsUpload = true, size_t Alignment = 2>
 	class MappableBuffer : public GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment> {
 	public:
+		MappableBuffer(MappableBuffer&& source) noexcept = default;
+		MappableBuffer& operator=(MappableBuffer&& source) noexcept = default;
+
 		MappableBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
@@ -240,12 +233,6 @@ export namespace DirectX {
 		MappableBuffer(const MappableBuffer& source) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source) {
 			Map();
 			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
-		}
-
-		MappableBuffer(MappableBuffer&& source) noexcept { Swap(source); }
-		MappableBuffer& operator=(MappableBuffer&& source) noexcept {
-			Swap(source);
-			return *this;
 		}
 
 		void Upload(span<const T> data) {
@@ -280,11 +267,6 @@ export namespace DirectX {
 
 	protected:
 		uint8_t* m_data{};
-
-		void Swap(MappableBuffer& source) {
-			GPUBuffer<T, MappableBuffer::HeapType, Alignment>::Swap(source);
-			swap(m_data, source.m_data);
-		}
 	};
 
 	template <typename T, size_t Alignment = 2>

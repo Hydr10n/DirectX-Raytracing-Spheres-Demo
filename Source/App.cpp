@@ -256,8 +256,8 @@ private:
 	};
 	map<string, future<void>, less<>> m_futures;
 
-	mutex m_exceptionMutex;
 	exception_ptr m_exception;
+	mutex m_exceptionMutex;
 
 	struct ResourceDescriptorHeapIndex {
 		enum {
@@ -366,6 +366,8 @@ private:
 	shared_ptr<Scene> m_scene;
 
 	RTXDIResources m_RTXDIResources;
+	atomic_bool m_RTXDIResourcesLock;
+
 	unique_ptr<LightPreparation> m_lightPreparation;
 
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
@@ -582,7 +584,8 @@ private:
 				m_lightPreparation->CountLights();
 
 				if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
-					m_RTXDIResources.Initialize(device, emissiveTriangleCount, m_scene->GetObjectCount());
+					m_RTXDIResources.CreateLightBuffers(device, emissiveTriangleCount, m_scene->GetObjectCount());
+					if (!m_RTXDIResourcesLock) m_RTXDIResources.CreateDIReservoir(device);
 
 					{
 						ResourceUploadBatch resourceUploadBatch(device);
@@ -825,7 +828,7 @@ private:
 			if (keyboardState.W) displacement.z += movementSpeed;
 			if (keyboardState.S) displacement.z -= movementSpeed;
 
-			const auto rotationSpeed = XM_2PI * 4e-4f * speedSettings.Rotation;
+			const auto rotationSpeed = 4e-4f * XM_2PI * speedSettings.Rotation;
 			yaw += static_cast<float>(mouseState.x) * rotationSpeed;
 			pitch += static_cast<float>(-mouseState.y) * rotationSpeed;
 		}
@@ -1047,13 +1050,20 @@ private:
 		ResetTemporalAccumulation();
 
 		{
+			const struct ScopedAtomic {
+				atomic_bool& Value;
+				ScopedAtomic(atomic_bool& value) : Value(value) { Value = true; }
+				~ScopedAtomic() { Value = false; }
+			} lock = m_RTXDIResourcesLock;
+
 			const auto device = m_deviceResources->GetDevice();
 
 			ResourceUploadBatch resourceUploadBatch(device);
 			resourceUploadBatch.Begin();
 
 			m_RTXDIResources.ReSTIRDIContext = make_unique<ReSTIRDIContext>(ReSTIRDIStaticParameters{ .RenderWidth = m_renderSize.x, .RenderHeight = m_renderSize.y });
-			m_RTXDIResources.Initialize(device, resourceUploadBatch, m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::InNeighborOffsets));
+			m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::InNeighborOffsets));
+			m_RTXDIResources.CreateDIReservoir(device);
 
 			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
 		}
