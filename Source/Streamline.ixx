@@ -34,13 +34,14 @@ export {
 
 		auto IsFeatureAvailable(Feature feature) const { return m_features.contains(feature); }
 
-		auto NewFrame(const uint32_t* index = nullptr) { return slGetNewFrameToken(m_currentFrame, index); }
+		const auto& GetFrameToken() const { return *m_frameToken; }
+		auto NewFrame(const uint32_t* index = nullptr) { return slGetNewFrameToken(m_frameToken, index); }
 
 		auto Tag(span<const ResourceTag> resourceTags) const { return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandBuffer); }
 
 		template <typename T>
 		auto SetConstants(const T& constants) const {
-			if constexpr (is_same_v<T, Constants>) return slSetConstants(constants, *m_currentFrame, m_viewport);
+			if constexpr (is_same_v<T, Constants>) return slSetConstants(constants, *m_frameToken, m_viewport);
 			if constexpr (is_same_v<T, DLSSOptions>) return slDLSSSetOptions(m_viewport, constants);
 			if constexpr (is_same_v<T, NISOptions>) return slNISSetOptions(m_viewport, constants);
 			throw;
@@ -49,7 +50,7 @@ export {
 		auto EvaluateFeature(Feature feature, span<const ResourceTag> resourceTags = {}) const {
 			vector<const BaseStructure*> inputs{ &m_viewport };
 			for (const auto& resourceTag : resourceTags) inputs.emplace_back(&resourceTag);
-			return slEvaluateFeature(feature, *m_currentFrame, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandBuffer);
+			return slEvaluateFeature(feature, *m_frameToken, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandBuffer);
 		}
 
 	private:
@@ -77,7 +78,7 @@ export {
 
 		set<Feature> m_features;
 
-		FrameToken* m_currentFrame{};
+		FrameToken* m_frameToken{};
 	};
 
 	struct ResourceTagInfo {

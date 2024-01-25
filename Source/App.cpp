@@ -4,6 +4,8 @@ module;
 
 #include "directx/d3dx12.h"
 
+#include "pix.h"
+
 #include "directxtk12/CommonStates.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/GamePad.h"
@@ -12,8 +14,6 @@ module;
 #include "directxtk12/ResourceUploadBatch.h"
 #include "directxtk12/SimpleMath.h"
 #include "directxtk12/SpriteBatch.h"
-
-#include "pix.h"
 
 #include "rtxdi/ReSTIRDI.h"
 
@@ -136,13 +136,9 @@ struct App::Impl : IDeviceNotify {
 	SIZE GetOutputSize() const noexcept { return m_deviceResources->GetOutputSize(); }
 
 	void Tick() {
-		{
-			const scoped_lock lock(m_exceptionMutex);
-
-			if (m_exception) rethrow_exception(m_exception);
-		}
-
 		if (const auto pFuture = m_futures.find(FutureNames::Scene); pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) m_futures.erase(pFuture);
+
+		ignore = m_streamline->NewFrame();
 
 		m_stepTimer.Tick([&] { Update(); });
 
@@ -160,6 +156,12 @@ struct App::Impl : IDeviceNotify {
 		);
 
 		m_inputDevices.Mouse->EndOfInputFrame();
+
+		{
+			const scoped_lock lock(m_exceptionMutex);
+
+			if (m_exception) rethrow_exception(m_exception);
+		}
 	}
 
 	void OnWindowSizeChanged() { if (m_deviceResources->ResizeWindow(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
@@ -170,7 +172,6 @@ struct App::Impl : IDeviceNotify {
 		m_stepTimer.ResetElapsedTime();
 
 		m_inputDevices.Gamepad->Resume();
-
 		m_inputDeviceStateTrackers = {};
 	}
 
@@ -445,7 +446,7 @@ private:
 			}
 
 			SelectSuperResolutionUpscaler();
-			SetSuperResolutionOptimalSettings();
+			SetSuperResolutionOptions();
 		}
 
 		m_cameraController.SetLens(XMConvertToRadians(g_graphicsSettings.Camera.HorizontalFieldOfView), static_cast<float>(outputSize.cx) / static_cast<float>(outputSize.cy));
@@ -462,8 +463,6 @@ private:
 	}
 
 	void Update() {
-		PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
-
 		{
 			auto& camera = m_GPUBuffers.Camera->GetData();
 
@@ -486,8 +485,6 @@ private:
 		}
 
 		if (IsSceneReady()) UpdateScene();
-
-		PIXEndEvent();
 	}
 
 	void Render() {
@@ -496,8 +493,6 @@ private:
 		m_deviceResources->Prepare();
 
 		const auto commandList = m_deviceResources->GetCommandList();
-
-		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Clear");
 
 		const auto renderTargetView = m_deviceResources->GetRenderTargetView();
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
@@ -508,32 +503,28 @@ private:
 		commandList->RSSetViewports(1, &viewport);
 		commandList->RSSetScissorRects(1, &scissorRect);
 
-		PIXEndEvent(commandList);
+		{
+			const ScopedPixEvent scopedPixEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
-		PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
+			const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+			if (IsSceneReady()) {
+				const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount();
+				if (!m_scene->IsStatic()) {
+					m_scene->CreateAccelerationStructures(true);
 
-		if (IsSceneReady()) {
-			const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount();
-			if (!m_scene->IsStatic()) {
-				m_scene->CreateAccelerationStructures(true);
+					if (emissiveTriangleCount) m_lightPreparation->Process(commandList, true);
+				}
+				if (emissiveTriangleCount) m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
 
-				if (emissiveTriangleCount) m_lightPreparation->Process(commandList, true);
+				RenderScene();
+
+				PostProcessGraphics();
 			}
-			if (emissiveTriangleCount) m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
 
-			RenderScene();
-
-			PostProcessGraphics();
+			if (m_UIStates.IsVisible) RenderUI();
 		}
-
-		if (m_UIStates.IsVisible) RenderUI();
-
-		PIXEndEvent(commandList);
-
-		PIXBeginEvent(PIX_COLOR_DEFAULT, L"Present");
 
 		m_deviceResources->Present();
 
@@ -541,7 +532,12 @@ private:
 
 		m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 
-		PIXEndEvent();
+		{
+			swap(m_renderTextures.at(RenderTextureNames::PreviousLinearDepth), m_renderTextures.at(RenderTextureNames::LinearDepth));
+			swap(m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness), m_renderTextures.at(RenderTextureNames::BaseColorMetalness));
+			swap(m_renderTextures.at(RenderTextureNames::PreviousNormalRoughness), m_renderTextures.at(RenderTextureNames::NormalRoughness));
+			swap(m_renderTextures.at(RenderTextureNames::PreviousGeometricNormals), m_renderTextures.at(RenderTextureNames::GeometricNormals));
+		}
 	}
 
 	bool IsSceneLoading() const { return m_futures.contains(FutureNames::Scene); }
@@ -945,6 +941,11 @@ private:
 		m_raytracing->Render(commandList, m_scene->GetTopLevelAccelerationStructure());
 	}
 
+	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
+	bool IsFSRSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::FSR && m_FSR->IsAvailable(); }
+	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
+	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
+
 	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
 		ResourceTagInfo resourceTagInfo{
 			.Type = type,
@@ -954,11 +955,6 @@ private:
 		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
 		return resourceTagInfo;
 	}
-
-	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
-	bool IsFSRSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::FSR && m_FSR->IsAvailable(); }
-	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
-	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 
 	void SelectSuperResolutionUpscaler() {
 		if (auto& upscaler = g_graphicsSettings.PostProcessing.SuperResolution.Upscaler;
@@ -976,7 +972,7 @@ private:
 		}
 	}
 
-	void SetSuperResolutionOptimalSettings() {
+	void SetSuperResolutionOptions() {
 		const auto outputSize = m_deviceResources->GetOutputSize();
 
 		const auto SelectSuperResolutionMode = [&] {
@@ -1115,8 +1111,6 @@ private:
 	}
 
 	void PrepareStreamline() {
-		ignore = m_streamline->NewFrame();
-
 		const auto& camera = m_GPUBuffers.Camera->GetData();
 		m_slConstants.jitterOffset = { -camera.Jitter.x, -camera.Jitter.y };
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraPos) = m_cameraController.GetPosition();
@@ -1655,7 +1649,7 @@ private:
 							ImGui::EndCombo();
 						}
 
-						if (isChanged) m_futures["SuperResolutionSetting"] = async(launch::deferred, [&] { SetSuperResolutionOptimalSettings(); });
+						if (isChanged) m_futures["SuperResolutionSetting"] = async(launch::deferred, [&] { SetSuperResolutionOptions(); });
 
 						ImGui::TreePop();
 					}
