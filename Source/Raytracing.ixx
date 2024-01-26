@@ -50,13 +50,13 @@ export struct Raytracing {
 	};
 
 	struct {
-		shared_ptr<ConstantBuffer<SceneData>> InSceneData;
-		shared_ptr<ConstantBuffer<Camera>> InCamera;
-		shared_ptr<UploadBuffer<InstanceData>> InInstanceData;
-		shared_ptr<UploadBuffer<ObjectData>> InObjectData;
-		shared_ptr<DefaultBuffer<RAB_LightInfo>> InLightInfo;
-		shared_ptr<DefaultBuffer<UINT>> InLightIndices;
-		shared_ptr<DefaultBuffer<RTXDI_PackedDIReservoir>> OutDIReservoir;
+		ConstantBuffer<SceneData>* InSceneData;
+		ConstantBuffer<Camera>* InCamera;
+		UploadBuffer<InstanceData>* InInstanceData;
+		UploadBuffer<ObjectData>* InObjectData;
+		DefaultBuffer<RAB_LightInfo>* InLightInfo;
+		DefaultBuffer<UINT>* InLightIndices;
+		DefaultBuffer<RTXDI_PackedDIReservoir>* OutDIReservoir;
 	} GPUBuffers;
 
 	struct {

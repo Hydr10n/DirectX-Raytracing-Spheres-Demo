@@ -12,7 +12,7 @@ using namespace WindowHelpers;
 using namespace std;
 
 export struct App {
-	explicit App(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false);
+	explicit App(WindowModeHelper& windowModeHelper) noexcept(false);
 	~App();
 
 	SIZE GetOutputSize() const noexcept;

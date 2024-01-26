@@ -82,7 +82,7 @@ namespace {
 #define MAKE_NAME(name) static constexpr LPCSTR name = #name;
 
 struct App::Impl : IDeviceNotify {
-	Impl(const shared_ptr<WindowModeHelper>& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
+	Impl(WindowModeHelper& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
 		{
 			ImGui::CreateContext();
 
@@ -95,7 +95,7 @@ struct App::Impl : IDeviceNotify {
 			IO.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard;
 			IO.BackendFlags |= ImGuiBackendFlags_HasGamepad;
 
-			ImGui_ImplWin32_Init(m_windowModeHelper->hWnd);
+			ImGui_ImplWin32_Init(m_windowModeHelper.hWnd);
 
 			m_UIStates.IsVisible = g_UISettings.ShowOnStartup;
 		}
@@ -103,7 +103,7 @@ struct App::Impl : IDeviceNotify {
 		{
 			m_deviceResources->RegisterDeviceNotify(this);
 
-			m_deviceResources->SetWindow(windowModeHelper->hWnd, windowModeHelper->GetResolution());
+			m_deviceResources->SetWindow(windowModeHelper.hWnd, windowModeHelper.GetResolution());
 
 			m_deviceResources->EnableVSync(g_graphicsSettings.IsVSyncEnabled);
 
@@ -114,9 +114,9 @@ struct App::Impl : IDeviceNotify {
 			CreateWindowSizeDependentResources();
 		}
 
-		m_inputDevices.Mouse->SetWindow(windowModeHelper->hWnd);
+		m_inputDevices.Mouse->SetWindow(windowModeHelper.hWnd);
 
-		windowModeHelper->SetFullscreenResolutionHandledByWindow(false);
+		windowModeHelper.SetFullscreenResolutionHandledByWindow(false);
 
 		LoadScene();
 	}
@@ -164,7 +164,7 @@ struct App::Impl : IDeviceNotify {
 		}
 	}
 
-	void OnWindowSizeChanged() { if (m_deviceResources->ResizeWindow(m_windowModeHelper->GetResolution())) CreateWindowSizeDependentResources(); }
+	void OnWindowSizeChanged() { if (m_deviceResources->ResizeWindow(m_windowModeHelper.GetResolution())) CreateWindowSizeDependentResources(); }
 
 	void OnDisplayChanged() { m_deviceResources->UpdateColorSpace(); }
 
@@ -187,8 +187,9 @@ struct App::Impl : IDeviceNotify {
 	void OnDeviceLost() override {
 		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
-		m_RTXDIResources = {};
 		m_lightPreparation.reset();
+
+		m_RTXDIResources = {};
 
 		m_scene.reset();
 
@@ -228,7 +229,7 @@ struct App::Impl : IDeviceNotify {
 	}
 
 private:
-	const shared_ptr<WindowModeHelper> m_windowModeHelper;
+	WindowModeHelper& m_windowModeHelper;
 
 	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing);
 
@@ -575,7 +576,7 @@ private:
 			}
 
 			{
-				m_lightPreparation = make_unique<LightPreparation>(device, m_scene);
+				m_lightPreparation = make_unique<LightPreparation>(device, *m_scene);
 
 				m_lightPreparation->CountLights();
 
@@ -600,9 +601,9 @@ private:
 						commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 						m_lightPreparation->GPUBuffers = {
-							.InInstanceData = m_GPUBuffers.InstanceData,
-							.InObjectData = m_GPUBuffers.ObjectData,
-							.OutLightInfo = m_RTXDIResources.LightInfo
+							.InInstanceData = m_GPUBuffers.InstanceData.get(),
+							.InObjectData = m_GPUBuffers.ObjectData.get(),
+							.OutLightInfo = m_RTXDIResources.LightInfo.get()
 						};
 
 						m_lightPreparation->Process(commandList, false);
@@ -893,13 +894,13 @@ private:
 			});
 
 		m_raytracing->GPUBuffers = {
-			.InSceneData = m_GPUBuffers.SceneData,
-			.InCamera = m_GPUBuffers.Camera,
-			.InInstanceData = m_GPUBuffers.InstanceData,
-			.InObjectData = m_GPUBuffers.ObjectData,
-			.InLightInfo = m_RTXDIResources.LightInfo,
-			.InLightIndices = m_RTXDIResources.LightIndices,
-			.OutDIReservoir = m_RTXDIResources.DIReservoir
+			.InSceneData = m_GPUBuffers.SceneData.get(),
+			.InCamera = m_GPUBuffers.Camera.get(),
+			.InInstanceData = m_GPUBuffers.InstanceData.get(),
+			.InObjectData = m_GPUBuffers.ObjectData.get(),
+			.InLightInfo = m_RTXDIResources.LightInfo.get(),
+			.InLightIndices = m_RTXDIResources.LightIndices.get(),
+			.OutDIReservoir = m_RTXDIResources.DIReservoir.get()
 		};
 
 		const auto
@@ -1197,7 +1198,7 @@ private:
 				.NRDDenoiser = NRDSettings.Denoiser
 			};
 
-			m_denoisedComposition->GPUBuffers = { .InCamera = m_GPUBuffers.Camera };
+			m_denoisedComposition->GPUBuffers = { .InCamera = m_GPUBuffers.Camera.get() };
 
 			const auto& emissiveColor = *m_renderTextures.at(RenderTextureNames::EmissiveColor);
 
@@ -1492,7 +1493,7 @@ private:
 							if (ImGui::Selectable(ToString(WindowMode), isSelected)) {
 								g_graphicsSettings.WindowMode = WindowMode;
 
-								m_windowModeHelper->SetMode(WindowMode);
+								m_windowModeHelper.SetMode(WindowMode);
 
 								isChanged = true;
 							}
@@ -1511,7 +1512,7 @@ private:
 							if (ImGui::Selectable(ToString(resolution).c_str(), isSelected)) {
 								g_graphicsSettings.Resolution = resolution;
 
-								m_windowModeHelper->SetResolution(resolution);
+								m_windowModeHelper.SetResolution(resolution);
 
 								isChanged = true;
 							}
@@ -1522,7 +1523,7 @@ private:
 						ImGui::EndCombo();
 					}
 
-					if (isChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper->Apply()); });
+					if (isChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper.Apply()); });
 				}
 
 				{
@@ -1868,7 +1869,7 @@ private:
 	}
 };
 
-App::App(const shared_ptr<WindowModeHelper>& windowModeHelper) : m_impl(make_unique<Impl>(windowModeHelper)) {}
+App::App(WindowModeHelper& windowModeHelper) : m_impl(make_unique<Impl>(windowModeHelper)) {}
 
 App::~App() = default;
 

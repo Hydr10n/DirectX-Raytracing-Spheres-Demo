@@ -100,7 +100,7 @@ int WINAPI wWinMain(
 		AdjustWindowRectExForDpi(&clientRect, GetWindowStyle(window), GetMenu(window) != nullptr, GetWindowExStyle(window), GetDpiForWindow(window));
 		SetWindowPos(window, nullptr, static_cast<int>(clientRect.left), static_cast<int>(clientRect.top), static_cast<int>(clientRect.right - clientRect.left), static_cast<int>(clientRect.bottom - clientRect.top), SWP_NOZORDER);
 
-		g_app = make_unique<App>(g_windowModeHelper);
+		g_app = make_unique<App>(*g_windowModeHelper);
 
 		// HACK: Fix missing icon on title bar when initial WindowMode != Windowed
 		ThrowIfFailed(g_windowModeHelper->Apply());

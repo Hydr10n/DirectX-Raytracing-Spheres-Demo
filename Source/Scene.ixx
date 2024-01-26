@@ -145,7 +145,7 @@ export {
 			CreateAccelerationStructures(false);
 		}
 
-		const auto& GetInstanceData() noexcept { return m_instanceData; }
+		const auto& GetInstanceData() const noexcept { return m_instanceData; }
 
 		auto GetObjectCount() const noexcept { return m_objectCount; }
 

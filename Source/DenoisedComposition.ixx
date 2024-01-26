@@ -25,7 +25,7 @@ export namespace PostProcessing {
 			NRDDenoiser NRDDenoiser;
 		} Constants{};
 
-		struct { shared_ptr<ConstantBuffer<Camera>> InCamera; } GPUBuffers;
+		struct { ConstantBuffer<Camera>* InCamera; } GPUBuffers;
 
 		struct { D3D12_GPU_DESCRIPTOR_HANDLE InLinearDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, OutColor; } GPUDescriptors{};
 
