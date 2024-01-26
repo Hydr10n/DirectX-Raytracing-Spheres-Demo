@@ -187,8 +187,6 @@ struct App::Impl : IDeviceNotify {
 	void OnDeviceLost() override {
 		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
-		m_lightPreparation.reset();
-
 		m_RTXDIResources = {};
 
 		m_scene.reset();
@@ -211,6 +209,8 @@ struct App::Impl : IDeviceNotify {
 		m_NRD.reset();
 
 		m_streamline.reset();
+
+		m_lightPreparation.reset();
 
 		m_raytracing.reset();
 
@@ -301,6 +301,8 @@ private:
 
 	unique_ptr<Raytracing> m_raytracing;
 
+	unique_ptr<LightPreparation> m_lightPreparation;
+
 	Constants m_slConstants = [] {
 		Constants constants;
 		constants.cameraPinholeOffset = { 0, 0 };
@@ -369,8 +371,6 @@ private:
 
 	RTXDIResources m_RTXDIResources;
 	atomic_bool m_RTXDIResourcesLock;
-
-	unique_ptr<LightPreparation> m_lightPreparation;
 
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
 
@@ -575,41 +575,37 @@ private:
 				};
 			}
 
-			{
-				m_lightPreparation = make_unique<LightPreparation>(device, *m_scene);
+			m_lightPreparation->SetScene(m_scene.get());
 
-				m_lightPreparation->CountLights();
+			if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
+				m_RTXDIResources.CreateLightBuffers(device, emissiveTriangleCount, m_scene->GetObjectCount());
+				if (!m_RTXDIResourcesLock) m_RTXDIResources.CreateDIReservoir(device);
 
-				if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
-					m_RTXDIResources.CreateLightBuffers(device, emissiveTriangleCount, m_scene->GetObjectCount());
-					if (!m_RTXDIResourcesLock) m_RTXDIResources.CreateDIReservoir(device);
+				{
+					ResourceUploadBatch resourceUploadBatch(device);
+					resourceUploadBatch.Begin();
 
-					{
-						ResourceUploadBatch resourceUploadBatch(device);
-						resourceUploadBatch.Begin();
+					m_lightPreparation->PrepareResources(resourceUploadBatch, *m_RTXDIResources.LightIndices);
 
-						m_lightPreparation->PrepareResources(resourceUploadBatch, *m_RTXDIResources.LightIndices);
+					resourceUploadBatch.End(commandQueue).get();
+				}
 
-						resourceUploadBatch.End(commandQueue).get();
-					}
+				{
+					CommandList commandList(device);
+					commandList.Begin();
 
-					{
-						CommandList commandList(device);
-						commandList.Begin();
+					const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+					commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-						const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-						commandList->SetDescriptorHeaps(1, &descriptorHeap);
+					m_lightPreparation->GPUBuffers = {
+						.InInstanceData = m_GPUBuffers.InstanceData.get(),
+						.InObjectData = m_GPUBuffers.ObjectData.get(),
+						.OutLightInfo = m_RTXDIResources.LightInfo.get()
+					};
 
-						m_lightPreparation->GPUBuffers = {
-							.InInstanceData = m_GPUBuffers.InstanceData.get(),
-							.InObjectData = m_GPUBuffers.ObjectData.get(),
-							.OutLightInfo = m_RTXDIResources.LightInfo.get()
-						};
+					m_lightPreparation->Process(commandList, false);
 
-						m_lightPreparation->Process(commandList, false);
-
-						commandList.End(commandQueue).get();
-					}
+					commandList.End(commandQueue).get();
 				}
 			}
 		}
@@ -639,6 +635,8 @@ private:
 
 	void CreatePostProcessing() {
 		const auto device = m_deviceResources->GetDevice();
+
+		m_lightPreparation = make_unique<LightPreparation>(device);
 
 		{
 			ignore = slSetD3DDevice(device);

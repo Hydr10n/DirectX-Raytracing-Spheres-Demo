@@ -40,11 +40,16 @@ export struct LightPreparation {
 		DefaultBuffer<RAB_LightInfo>* OutLightInfo;
 	} GPUBuffers{};
 
-	LightPreparation(ID3D12Device* pDevice, const Scene& scene) noexcept(false) : m_device(pDevice), m_scene(scene) {
+	LightPreparation(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice) {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LightPreparation_dxil, size(g_LightPreparation_dxil) };
 		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
 		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
+	}
+
+	void SetScene(const Scene* pScene) {
+		m_scene = pScene;
+		CountLights();
 	}
 
 	auto GetEmissiveMeshCount() const noexcept { return m_emissiveMeshCount; }
@@ -53,7 +58,7 @@ export struct LightPreparation {
 
 	void CountLights() {
 		UINT emissiveMeshCount = 0, emissiveTriangleCount = 0;
-		for (const auto& renderObject : m_scene.RenderObjects) {
+		for (const auto& renderObject : m_scene->RenderObjects) {
 			if (IsEmissive(renderObject)) {
 				emissiveMeshCount++;
 				emissiveTriangleCount += static_cast<UINT>(renderObject.Mesh->Indices->GetCount() / 3);
@@ -72,12 +77,12 @@ export struct LightPreparation {
 	}
 
 	void PrepareResources(ResourceUploadBatch& resourceUploadBatch, DefaultBuffer<UINT>& lightIndices) {
-		vector _lightIndices(m_scene.GetObjectCount(), RTXDI_INVALID_LIGHT_INDEX);
+		vector _lightIndices(m_scene->GetObjectCount(), RTXDI_INVALID_LIGHT_INDEX);
 		vector<Task> tasks;
-		for (UINT instanceIndex = 0, lightBufferOffset = 0; const auto & renderObject : m_scene.RenderObjects) {
+		for (UINT instanceIndex = 0, lightBufferOffset = 0; const auto & renderObject : m_scene->RenderObjects) {
 			UINT geometryIndex = 0;
 			if (IsEmissive(renderObject)) {
-				_lightIndices[m_scene.GetInstanceData()[instanceIndex].FirstGeometryIndex + geometryIndex] = lightBufferOffset;
+				_lightIndices[m_scene->GetInstanceData()[instanceIndex].FirstGeometryIndex + geometryIndex] = lightBufferOffset;
 				const auto triangleCount = static_cast<UINT>(renderObject.Mesh->Indices->GetCount() / 3);
 				tasks.emplace_back(Task{
 					.InstanceIndex = instanceIndex,
@@ -112,7 +117,7 @@ export struct LightPreparation {
 private:
 	ID3D12Device* m_device;
 
-	const Scene& m_scene;
+	const Scene* m_scene{};
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineStateObject;

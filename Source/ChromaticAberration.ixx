@@ -2,7 +2,7 @@ module;
 
 #include "directx/d3dx12.h"
 
-#include "directxtk12/PostProcess.h"
+#include <DirectXMath.h>
 
 #include "Shaders/ChromaticAberration.dxil.h"
 
@@ -16,7 +16,7 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace PostProcessing {
-	struct ChromaticAberration : IPostProcess {
+	struct ChromaticAberration {
 		struct {
 			XMUINT2 RenderSize{};
 			XMFLOAT2 FocusUV{ 0.5f, 0.5f };
@@ -32,13 +32,13 @@ export namespace PostProcessing {
 			ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
 		}
 
-		void Process(ID3D12GraphicsCommandList* commandList) override {
-			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRoot32BitConstants(0, 7, &Constants.RenderSize, 0);
-			commandList->SetComputeRootDescriptorTable(1, GPUDescriptors.InColor);
-			commandList->SetComputeRootDescriptorTable(2, GPUDescriptors.OutColor);
-			commandList->SetPipelineState(m_pipelineStateObject.Get());
-			commandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
+		void Process(ID3D12GraphicsCommandList* pCommandList) {
+			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
+			pCommandList->SetComputeRoot32BitConstants(0, 7, &Constants.RenderSize, 0);
+			pCommandList->SetComputeRootDescriptorTable(1, GPUDescriptors.InColor);
+			pCommandList->SetComputeRootDescriptorTable(2, GPUDescriptors.OutColor);
+			pCommandList->SetPipelineState(m_pipelineStateObject.Get());
+			pCommandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}
 
 	private:

@@ -2,7 +2,7 @@ module;
 
 #include "directx/d3dx12.h"
 
-#include "directxtk12/PostProcess.h"
+#include <DirectXMath.h>
 
 #include "Shaders/DenoisedComposition.dxil.h"
 
@@ -19,7 +19,7 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace PostProcessing {
-	struct DenoisedComposition : IPostProcess {
+	struct DenoisedComposition {
 		struct {
 			XMUINT2 RenderSize;
 			NRDDenoiser NRDDenoiser;
@@ -36,19 +36,19 @@ export namespace PostProcessing {
 			ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
 		}
 
-		void Process(ID3D12GraphicsCommandList* commandList) override {
-			commandList->SetComputeRootSignature(m_rootSignature.Get());
-			commandList->SetComputeRoot32BitConstants(0, 3, &Constants, 0);
-			commandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
-			commandList->SetComputeRootDescriptorTable(2, GPUDescriptors.InLinearDepth);
-			commandList->SetComputeRootDescriptorTable(3, GPUDescriptors.InBaseColorMetalness);
-			commandList->SetComputeRootDescriptorTable(4, GPUDescriptors.InEmissiveColor);
-			commandList->SetComputeRootDescriptorTable(5, GPUDescriptors.InNormalRoughness);
-			commandList->SetComputeRootDescriptorTable(6, GPUDescriptors.InDenoisedDiffuse);
-			commandList->SetComputeRootDescriptorTable(7, GPUDescriptors.InDenoisedSpecular);
-			commandList->SetComputeRootDescriptorTable(8, GPUDescriptors.OutColor);
-			commandList->SetPipelineState(m_pipelineStateObject.Get());
-			commandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
+		void Process(ID3D12GraphicsCommandList* pCommandList) {
+			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
+			pCommandList->SetComputeRoot32BitConstants(0, 3, &Constants, 0);
+			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootDescriptorTable(2, GPUDescriptors.InLinearDepth);
+			pCommandList->SetComputeRootDescriptorTable(3, GPUDescriptors.InBaseColorMetalness);
+			pCommandList->SetComputeRootDescriptorTable(4, GPUDescriptors.InEmissiveColor);
+			pCommandList->SetComputeRootDescriptorTable(5, GPUDescriptors.InNormalRoughness);
+			pCommandList->SetComputeRootDescriptorTable(6, GPUDescriptors.InDenoisedDiffuse);
+			pCommandList->SetComputeRootDescriptorTable(7, GPUDescriptors.InDenoisedSpecular);
+			pCommandList->SetComputeRootDescriptorTable(8, GPUDescriptors.OutColor);
+			pCommandList->SetPipelineState(m_pipelineStateObject.Get());
+			pCommandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}
 
 	private:
