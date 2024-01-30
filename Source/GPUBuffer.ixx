@@ -19,8 +19,10 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
+#define DefaultAlignment size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
+
 export namespace DirectX {
-	template <typename T, D3D12_HEAP_TYPE Type, size_t Alignment = 2>
+	template <typename T, D3D12_HEAP_TYPE Type, DefaultAlignment>
 	class GPUBuffer {
 	public:
 		static_assert(IsPowerOf2(Alignment));
@@ -42,7 +44,7 @@ export namespace DirectX {
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : m_capacity(capacity), m_count(capacity), m_state(initialState) {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
-			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(ItemSize * capacity, flags);
+			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(ItemSize * capacity, 16), flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
 
@@ -144,35 +146,36 @@ export namespace DirectX {
 		D3D12_RESOURCE_STATES m_state{};
 		ComPtr<ID3D12Resource> m_resource;
 
-		GPUBuffer(const GPUBuffer& source) noexcept(false) : m_capacity(source.m_capacity), m_count(source.m_count), m_state(source.m_state) {
+		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : m_capacity(source.m_capacity), m_count(source.m_count), m_state(initialState) {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
 			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
 			const auto resourceDesc = source.m_resource->GetDesc();
-			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, source.m_state, nullptr, IID_PPV_ARGS(&m_resource)));
+			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
 	};
 
-	template <typename T>
-	struct DefaultBuffer : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT> {
-		using GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>::GPUBuffer;
+	template <typename T, DefaultAlignment>
+	struct DefaultBuffer : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment> {
+		using GPUBuffer<T, DefaultBuffer::HeapType, Alignment>::GPUBuffer;
 
 		DefaultBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
+		) noexcept(false) : GPUBuffer<T, DefaultBuffer::HeapType, Alignment>(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
 
 		DefaultBuffer(
 			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
+		) noexcept(false) : GPUBuffer<T, DefaultBuffer::HeapType, Alignment>(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
 			Upload(resourceUploadBatch, data);
-			resourceUploadBatch.Transition(this->m_resource.Get(), D3D12_RESOURCE_STATE_COMMON, afterState);
+			resourceUploadBatch.Transition(this->m_resource.Get(), this->m_state, afterState);
+			this->m_state = afterState;
 		}
 
-		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT>(source) {
+		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : GPUBuffer<T, DefaultBuffer::HeapType, Alignment>(source) {
 			if (pCommandList != nullptr) {
 				const ScopedBarrier scopedBarrier(
 					pCommandList,
@@ -186,30 +189,29 @@ export namespace DirectX {
 		}
 
 		void Upload(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
-			const auto state = this->m_state;
 			const auto count = size(data);
-			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->ItemSize * count) };
 			if (count > this->m_capacity) {
 				ComPtr<ID3D12Device> device;
 				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
 				*this = DefaultBuffer(device.Get(), count);
 			}
 			else this->m_count = count;
+			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->ItemSize * count) };
 			vector<uint8_t> newData;
-			if (sizeof(T) % 2 == 0) subresourceData.pData = ::data(data);
+			if (sizeof(T) % Alignment == 0) subresourceData.pData = ::data(data);
 			else {
 				newData = vector<uint8_t>(this->ItemSize * count);
 				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
 				subresourceData.pData = ::data(newData);
 			}
 			const auto resource = this->m_resource.Get();
-			resourceUploadBatch.Transition(resource, state, D3D12_RESOURCE_STATE_COPY_DEST);
+			resourceUploadBatch.Transition(resource, this->m_state, D3D12_RESOURCE_STATE_COPY_DEST);
 			resourceUploadBatch.Upload(resource, 0, &subresourceData, 1);
-			resourceUploadBatch.Transition(resource, D3D12_RESOURCE_STATE_COPY_DEST, state);
+			resourceUploadBatch.Transition(resource, D3D12_RESOURCE_STATE_COPY_DEST, this->m_state);
 		}
 	};
 
-	template <typename T, bool IsUpload = true, size_t Alignment = 2>
+	template <typename T, bool IsUpload = true, DefaultAlignment>
 	class MappableBuffer : public GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment> {
 	public:
 		MappableBuffer(MappableBuffer&& source) noexcept = default;
@@ -227,23 +229,25 @@ export namespace DirectX {
 			D3D12_RESOURCE_STATES initialState = IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, size(data), initialState, flags) {
 			Map();
-			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = data[i];
+			Upload(data);
 		}
 
-		MappableBuffer(const MappableBuffer& source) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source) {
+		MappableBuffer(const MappableBuffer& source) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source, IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST) {
 			Map();
 			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
 		}
 
 		void Upload(span<const T> data) {
-			if (const auto count = size(data); count > this->m_capacity) {
+			const auto count = size(data);
+			if (count > this->m_capacity) {
 				ComPtr<ID3D12Device> device;
 				ThrowIfFailed(this->m_resource->GetDevice(IID_PPV_ARGS(&device)));
-				*this = MappableBuffer(device.Get(), data);
+				*this = MappableBuffer(device.Get(), count);
 			}
+			else this->m_count = count;
+			if (sizeof(T) % Alignment == 0) ranges::copy(data, reinterpret_cast<T*>(m_data));
 			else {
 				for (const auto i : views::iota(static_cast<size_t>(0), count)) (*this)[i] = data[i];
-				this->m_count = count;
 			}
 		}
 
@@ -256,23 +260,23 @@ export namespace DirectX {
 			}
 		}
 
-		const T& operator[](size_t index) const {
-			if (index >= this->m_count) throw out_of_range("Index out of range");
-			return *reinterpret_cast<const T*>(m_data + this->ItemSize * index);
-		}
+		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + this->ItemSize * index); }
 		T& operator[](size_t index) { return const_cast<T&>(as_const(*this)[index]); }
 
-		const T& GetData(size_t index = 0) const { return (*this)[index]; }
-		T& GetData(size_t index = 0) { return (*this)[index]; }
+		const T& At(size_t index) const {
+			if (index >= this->m_count) throw out_of_range("Index out of range");
+			return (*this)[index];
+		}
+		T& At(size_t index) { return const_cast<T&>(as_const(*this).At(index)); }
 
 	protected:
 		uint8_t* m_data{};
 	};
 
-	template <typename T, size_t Alignment = 2>
+	template <typename T, DefaultAlignment>
 	using UploadBuffer = MappableBuffer<T, true, Alignment>;
 
-	template <typename T, size_t Alignment = 2>
+	template <typename T, DefaultAlignment>
 	using ReadBackBuffer = MappableBuffer<T, false, Alignment>;
 
 	template <typename T>

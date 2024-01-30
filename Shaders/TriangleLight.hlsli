@@ -2,7 +2,7 @@
 
 #include "Math.hlsli"
 
-struct RAB_LightInfo { float3 Base, Edge1, Edge2, Radiance; };
+struct RAB_LightInfo { float3 Base, Edges[2], Radiance; };
 
 inline RAB_LightInfo RAB_EmptyLightInfo() { return (RAB_LightInfo)0; }
 
@@ -16,15 +16,14 @@ inline bool RAB_IsAnalyticLightSample(RAB_LightSample lightSample) { return fals
 inline float RAB_LightSampleSolidAnglePdf(RAB_LightSample lightSample) { return lightSample.SolidAnglePDF; }
 
 struct TriangleLight {
-	float3 Base, Edge1, Edge2, Normal, Radiance;
+	float3 Base, Edges[2], Normal, Radiance;
 	float Area;
 
 	void Load(RAB_LightInfo lightInfo) {
 		Base = lightInfo.Base;
-		Edge1 = lightInfo.Edge1;
-		Edge2 = lightInfo.Edge2;
+		Edges = lightInfo.Edges;
 		Radiance = lightInfo.Radiance;
-		const float3 normal = cross(lightInfo.Edge1, lightInfo.Edge2);
+		const float3 normal = cross(lightInfo.Edges[0], lightInfo.Edges[1]);
 		const float normalLength = length(normal);
 		if (normalLength > 0) {
 			Normal = normal / normalLength;
@@ -39,8 +38,7 @@ struct TriangleLight {
 	RAB_LightInfo Store() {
 		RAB_LightInfo lightInfo;
 		lightInfo.Base = Base;
-		lightInfo.Edge1 = Edge2;
-		lightInfo.Edge2 = Edge2;
+		lightInfo.Edges = Edges;
 		lightInfo.Radiance = Radiance;
 		return lightInfo;
 	}
@@ -54,7 +52,7 @@ struct TriangleLight {
 	RAB_LightSample CalculateSample(float2 randomValue, float3 viewPosition) {
 		RAB_LightSample lightSample;
 		const float3 barycentrics = Math::SampleTriangle(randomValue);
-		lightSample.Position = Base + Edge1 * barycentrics.y + Edge2 * barycentrics.z;
+		lightSample.Position = Base + Edges[0] * barycentrics.y + Edges[1] * barycentrics.z;
 		lightSample.Normal = Normal;
 		lightSample.Radiance = Radiance;
 		lightSample.SolidAnglePDF = CalculateSolidAnglePDF(viewPosition, lightSample.Position, lightSample.Normal);

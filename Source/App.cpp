@@ -417,9 +417,10 @@ private:
 				const auto normalFormat = NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding);
 				CreateTexture1(normalFormat, RenderTextureNames::PreviousNormalRoughness, ResourceDescriptorHeapIndex::InPreviousNormalRoughness, ResourceDescriptorHeapIndex::OutPreviousNormalRoughness);
 				CreateTexture1(normalFormat, RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
-				CreateTexture1(normalFormat, RenderTextureNames::PreviousGeometricNormals, ResourceDescriptorHeapIndex::InPreviousGeometricNormals, ResourceDescriptorHeapIndex::OutPreviousGeometricNormals);
-				CreateTexture1(normalFormat, RenderTextureNames::GeometricNormals, ResourceDescriptorHeapIndex::InGeometricNormals, ResourceDescriptorHeapIndex::OutGeometricNormals);
 			}
+
+			CreateTexture1(DXGI_FORMAT_R16G16_SNORM, RenderTextureNames::PreviousGeometricNormals, ResourceDescriptorHeapIndex::InPreviousGeometricNormals, ResourceDescriptorHeapIndex::OutPreviousGeometricNormals);
+			CreateTexture1(DXGI_FORMAT_R16G16_SNORM, RenderTextureNames::GeometricNormals, ResourceDescriptorHeapIndex::InGeometricNormals, ResourceDescriptorHeapIndex::OutGeometricNormals);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -465,7 +466,7 @@ private:
 
 	void Update() {
 		{
-			auto& camera = m_GPUBuffers.Camera->GetData();
+			auto& camera = m_GPUBuffers.Camera->At(0);
 
 			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
@@ -515,9 +516,9 @@ private:
 				if (!m_scene->IsStatic()) {
 					m_scene->CreateAccelerationStructures(true);
 
-					if (emissiveTriangleCount) m_lightPreparation->Process(commandList, true);
+					if (g_graphicsSettings.Raytracing.RTXDI.IsEnabled && emissiveTriangleCount) m_lightPreparation->Process(commandList, true);
 				}
-				if (emissiveTriangleCount) m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
+				if (g_graphicsSettings.Raytracing.RTXDI.IsEnabled && emissiveTriangleCount) m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
 
 				RenderScene();
 
@@ -566,7 +567,7 @@ private:
 					const auto desc = pResource->GetDesc();
 					return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
 				};
-				auto& sceneData = m_GPUBuffers.SceneData->GetData();
+				auto& sceneData = m_GPUBuffers.SceneData->At(0);
 				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
 				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
 				sceneData.ResourceDescriptorHeapIndices = {
@@ -688,14 +689,14 @@ private:
 
 			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
 				const auto& instanceData = m_scene->GetInstanceData()[instanceIndex];
-				m_GPUBuffers.InstanceData->GetData(instanceIndex) = {
+				m_GPUBuffers.InstanceData->At(instanceIndex) = {
 					.FirstGeometryIndex = instanceData.FirstGeometryIndex,
-					.PreviousObjectToWorld = instanceData.ObjectToWorld,
+					.PreviousObjectToWorld = instanceData.PreviousObjectToWorld,
 					.ObjectToWorld = instanceData.ObjectToWorld
 				};
 				instanceIndex++;
 
-				auto& objectData = m_GPUBuffers.ObjectData->GetData(instanceData.FirstGeometryIndex);
+				auto& objectData = m_GPUBuffers.ObjectData->At(instanceData.FirstGeometryIndex);
 
 				objectData.Material = renderObject.Material;
 
@@ -842,15 +843,18 @@ private:
 
 		if (!m_scene->IsStatic()) {
 			for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
-				auto& instanceData = m_GPUBuffers.InstanceData->GetData(instanceIndex);
-				instanceData.PreviousObjectToWorld = instanceData.ObjectToWorld;
-				instanceData.ObjectToWorld = m_scene->GetInstanceData()[instanceIndex].ObjectToWorld;
+				const auto& instanceData = m_scene->GetInstanceData()[instanceIndex];
+				m_GPUBuffers.InstanceData->At(instanceIndex) = {
+					.FirstGeometryIndex = instanceData.FirstGeometryIndex,
+					.PreviousObjectToWorld = instanceData.PreviousObjectToWorld,
+					.ObjectToWorld = instanceData.ObjectToWorld
+				};
 				instanceIndex++;
 			}
 		}
 
 		{
-			auto& sceneData = m_GPUBuffers.SceneData->GetData();
+			auto& sceneData = m_GPUBuffers.SceneData->At(0);
 			sceneData.IsStatic = m_scene->IsStatic();
 			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
 			sceneData.EnvironmentColor = m_scene->EnvironmentColor;
@@ -920,6 +924,10 @@ private:
 		const auto GetSRV = [&](const RenderTexture& texture) { return m_resourceDescriptorHeap->GetGpuHandle(texture.GetSrvDescriptorHeapIndex()); };
 		const auto GetUAV = [&](LPCSTR name) { return m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(name)->GetUavDescriptorHeapIndex()); };
 		m_raytracing->GPUDescriptors = {
+			.InPreviousLinearDepth = GetSRV(previousLinearDepth),
+			.InPreviousBaseColorMetalness = GetSRV(previousBaseColorMetalness),
+			.InPreviousNormalRoughness = GetSRV(previousNormalRoughness),
+			.InPreviousGeometricNormals = GetSRV(previousGeometricNormals),
 			.OutColor = GetUAV(RenderTextureNames::Color),
 			.OutLinearDepth = GetUAV(RenderTextureNames::LinearDepth),
 			.OutNormalizedDepth = GetUAV(RenderTextureNames::NormalizedDepth),
@@ -930,10 +938,6 @@ private:
 			.OutGeometricNormals = GetUAV(RenderTextureNames::GeometricNormals),
 			.OutNoisyDiffuse = GetUAV(RenderTextureNames::NoisyDiffuse),
 			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular),
-			.InPreviousLinearDepth = GetSRV(previousLinearDepth),
-			.InPreviousBaseColorMetalness = GetSRV(previousBaseColorMetalness),
-			.InPreviousNormalRoughness = GetSRV(previousNormalRoughness),
-			.InPreviousGeometricNormals = GetSRV(previousGeometricNormals),
 			.InNeighborOffsets = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::InNeighborOffsets)
 		};
 
@@ -1110,7 +1114,7 @@ private:
 	}
 
 	void PrepareStreamline() {
-		const auto& camera = m_GPUBuffers.Camera->GetData();
+		const auto& camera = m_GPUBuffers.Camera->At(0);
 		m_slConstants.jitterOffset = { -camera.Jitter.x, -camera.Jitter.y };
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraPos) = m_cameraController.GetPosition();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraUp) = m_cameraController.GetUpDirection();
@@ -1156,7 +1160,7 @@ private:
 			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
 			Tag(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
 
-			const auto& camera = m_GPUBuffers.Camera->GetData();
+			const auto& camera = m_GPUBuffers.Camera->At(0);
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = camera.PreviousWorldToView;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = camera.PreviousViewToProjection;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
@@ -1244,7 +1248,7 @@ private:
 
 		reinterpret_cast<XMUINT2&>(m_FSRSettings.RenderSize) = m_renderSize;
 
-		const auto jitter = m_GPUBuffers.Camera->GetData().Jitter;
+		const auto jitter = m_GPUBuffers.Camera->At(0).Jitter;
 		const auto farDepth = m_cameraController.GetFarDepth();
 		m_FSRSettings.Camera = {
 			.Jitter{ -jitter.x, -jitter.y },

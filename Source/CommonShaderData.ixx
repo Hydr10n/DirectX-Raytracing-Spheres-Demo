@@ -24,11 +24,12 @@ export {
 
 	struct InstanceData {
 		UINT FirstGeometryIndex;
+		XMUINT3 _;
 		XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 	};
 
 	struct ObjectResourceDescriptorHeapIndices {
-		struct { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u; } Mesh;
+		struct { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u, _; } Mesh;
 		struct { UINT BaseColorMap = ~0u, EmissiveColorMap = ~0u, MetallicMap = ~0u, RoughnessMap = ~0u, AmbientOcclusionMap = ~0u, TransmissionMap = ~0u, OpacityMap = ~0u, NormalMap = ~0u; } Textures;
 	};
 

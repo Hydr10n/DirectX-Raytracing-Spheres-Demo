@@ -13,6 +13,10 @@
 	"CBV(b2),"
 	"SRV(t1),"
 	"SRV(t2),"
+	"DescriptorTable(SRV(t3)),"
+	"DescriptorTable(SRV(t4)),"
+	"DescriptorTable(SRV(t5)),"
+	"DescriptorTable(SRV(t6)),"
 	"DescriptorTable(UAV(u0)),"
 	"DescriptorTable(UAV(u1)),"
 	"DescriptorTable(UAV(u2)),"
@@ -23,10 +27,6 @@
 	"DescriptorTable(UAV(u7)),"
 	"DescriptorTable(UAV(u8)),"
 	"DescriptorTable(UAV(u9)),"
-	"DescriptorTable(SRV(t3)),"
-	"DescriptorTable(SRV(t4)),"
-	"DescriptorTable(SRV(t5)),"
-	"DescriptorTable(SRV(t6)),"
 	"SRV(t7),"
 	"SRV(t8),"
 	"DescriptorTable(SRV(t9)),"
@@ -42,7 +42,8 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	float3 motionVector = 0;
 	float4 baseColorMetalness = 0;
 	float3 emissiveColor = 0;
-	float4 normalRoughness = 0, geometricNormal = 0;
+	float4 normalRoughness = 0;
+	float2 geometricNormal = 0;
 
 	HitInfo hitInfo;
 	float NoV;
@@ -66,7 +67,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 		emissiveColor = material.EmissiveColor;
 		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, diffuseProbability == 0);
-		geometricNormal = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.GeometricNormal, 0, 0);
+		geometricNormal = STL::Packing::EncodeUnitVector(hitInfo.GeometricNormal);
 	}
 
 	g_linearDepth[pixelPosition] = linearDepth;

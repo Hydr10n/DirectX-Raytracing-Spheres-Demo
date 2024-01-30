@@ -4,10 +4,6 @@
 
 #include "TriangleLight.hlsli"
 
-Texture2D<float> g_previousLinearDepth : register(t3);
-Texture2D<float4> g_previousBaseColorMetalness : register(t4);
-Texture2D<float4> g_previousNormalRoughness : register(t5);
-Texture2D<float4> g_previousGeometricNormals : register(t6);
 StructuredBuffer<RAB_LightInfo> g_lightInfo : register(t7);
 StructuredBuffer<uint> g_lightIndices : register(t8);
 Buffer<float2> g_neighborOffsets : register(t9);
@@ -46,7 +42,7 @@ inline RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 	surface.Position = g_camera.ReconstructPreviousWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize)), surface.LinearDepth);
 	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_previousNormalRoughness[pixelPosition]);
 	surface.Normal = normalRoughness.xyz;
-	surface.GeometricNormal = NRD_FrontEnd_UnpackNormalAndRoughness(g_previousGeometricNormals[pixelPosition]).xyz;
+	surface.GeometricNormal = STL::Packing::DecodeUnitVector(g_previousGeometricNormals[pixelPosition]);
 	surface.Roughness = max(normalRoughness.w, MinRoughness);
 	const float4 baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
 	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, surface.Albedo, surface.Rf0);

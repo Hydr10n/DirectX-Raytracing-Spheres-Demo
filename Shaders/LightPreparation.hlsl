@@ -65,37 +65,36 @@ void main(uint dispatchThreadID : SV_DispatchThreadID) {
 	float3 emissiveColor;
 	if (resourceDescriptorHeapIndices.Textures.EmissiveColorMap == ~0u) emissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
 	else {
-		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
-		const float2 edges[3] = { textureCoordinates[1] - textureCoordinates[0], textureCoordinates[2] - textureCoordinates[1], textureCoordinates[0] - textureCoordinates[2] };
+		const float2
+			textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate },
+			edges[] = { textureCoordinates[1] - textureCoordinates[0], textureCoordinates[2] - textureCoordinates[1], textureCoordinates[0] - textureCoordinates[2] };
 		const float3 edgeLengths = float3(length(edges[0]), length(edges[1]), length(edges[2]));
 
-		float2 shortEdge;
-		float2 longEdge1;
-		float2 longEdge2;
+		float2 shortEdge, longEdges[2];
 		if (edgeLengths[0] < edgeLengths[1] && edgeLengths[0] < edgeLengths[2]) {
 			shortEdge = edges[0];
-			longEdge1 = edges[1];
-			longEdge2 = edges[2];
+			longEdges[0] = edges[1];
+			longEdges[1] = edges[2];
 		}
 		else if (edgeLengths[1] < edgeLengths[2]) {
 			shortEdge = edges[1];
-			longEdge1 = edges[2];
-			longEdge2 = edges[0];
+			longEdges[0] = edges[2];
+			longEdges[1] = edges[0];
 		}
 		else {
 			shortEdge = edges[2];
-			longEdge1 = edges[0];
-			longEdge2 = edges[1];
+			longEdges[0] = edges[0];
+			longEdges[1] = edges[1];
 		}
 
 		const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Textures.EmissiveColorMap];
-		emissiveColor = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdge1 + longEdge2) / 3).rgb;
+		emissiveColor = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3).rgb;
 	}
 
 	RAB_LightInfo lightInfo;
 	lightInfo.Base = positions[0];
-	lightInfo.Edge1 = positions[1] - positions[0];
-	lightInfo.Edge2 = positions[2] - positions[0];
+	lightInfo.Edges[0] = positions[1] - positions[0];
+	lightInfo.Edges[1] = positions[2] - positions[0];
 	lightInfo.Radiance = emissiveColor;
 	g_lightInfo[dispatchThreadID] = lightInfo;
 }

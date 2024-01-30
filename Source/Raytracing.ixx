@@ -61,6 +61,10 @@ export struct Raytracing {
 
 	struct {
 		D3D12_GPU_DESCRIPTOR_HANDLE
+			InPreviousLinearDepth,
+			InPreviousBaseColorMetalness,
+			InPreviousNormalRoughness,
+			InPreviousGeometricNormals,
 			OutColor,
 			OutLinearDepth, OutNormalizedDepth,
 			OutMotionVectors,
@@ -69,10 +73,6 @@ export struct Raytracing {
 			OutNormalRoughness,
 			OutGeometricNormals,
 			OutNoisyDiffuse, OutNoisySpecular,
-			InPreviousLinearDepth,
-			InPreviousBaseColorMetalness,
-			InPreviousNormalRoughness,
-			InPreviousGeometricNormals,
 			InNeighborOffsets;
 	} GPUDescriptors{};
 
@@ -83,7 +83,7 @@ export struct Raytracing {
 		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.GetData() = graphicsSettings; }
+	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings; }
 
 	void Render(ID3D12GraphicsCommandList* pCommandList, const TopLevelAccelerationStructure& topLevelAccelerationStructure) {
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
@@ -93,26 +93,26 @@ export struct Raytracing {
 		pCommandList->SetComputeRootConstantBufferView(3, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(4, GPUBuffers.InInstanceData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(5, GPUBuffers.InObjectData->GetResource()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootDescriptorTable(6, GPUDescriptors.OutColor);
-		pCommandList->SetComputeRootDescriptorTable(7, GPUDescriptors.OutLinearDepth);
-		pCommandList->SetComputeRootDescriptorTable(8, GPUDescriptors.OutNormalizedDepth);
-		pCommandList->SetComputeRootDescriptorTable(9, GPUDescriptors.OutMotionVectors);
-		pCommandList->SetComputeRootDescriptorTable(10, GPUDescriptors.OutBaseColorMetalness);
-		pCommandList->SetComputeRootDescriptorTable(11, GPUDescriptors.OutEmissiveColor);
-		pCommandList->SetComputeRootDescriptorTable(12, GPUDescriptors.OutNormalRoughness);
-		pCommandList->SetComputeRootDescriptorTable(13, GPUDescriptors.OutGeometricNormals);
-		pCommandList->SetComputeRootDescriptorTable(14, GPUDescriptors.OutNoisyDiffuse);
-		pCommandList->SetComputeRootDescriptorTable(15, GPUDescriptors.OutNoisySpecular);
-		pCommandList->SetComputeRootDescriptorTable(16, GPUDescriptors.InPreviousLinearDepth);
-		pCommandList->SetComputeRootDescriptorTable(17, GPUDescriptors.InPreviousBaseColorMetalness);
-		pCommandList->SetComputeRootDescriptorTable(18, GPUDescriptors.InPreviousNormalRoughness);
-		pCommandList->SetComputeRootDescriptorTable(19, GPUDescriptors.InPreviousGeometricNormals);
+		pCommandList->SetComputeRootDescriptorTable(6, GPUDescriptors.InPreviousLinearDepth);
+		pCommandList->SetComputeRootDescriptorTable(7, GPUDescriptors.InPreviousBaseColorMetalness);
+		pCommandList->SetComputeRootDescriptorTable(8, GPUDescriptors.InPreviousNormalRoughness);
+		pCommandList->SetComputeRootDescriptorTable(9, GPUDescriptors.InPreviousGeometricNormals);
+		pCommandList->SetComputeRootDescriptorTable(10, GPUDescriptors.OutColor);
+		pCommandList->SetComputeRootDescriptorTable(11, GPUDescriptors.OutLinearDepth);
+		pCommandList->SetComputeRootDescriptorTable(12, GPUDescriptors.OutNormalizedDepth);
+		pCommandList->SetComputeRootDescriptorTable(13, GPUDescriptors.OutMotionVectors);
+		pCommandList->SetComputeRootDescriptorTable(14, GPUDescriptors.OutBaseColorMetalness);
+		pCommandList->SetComputeRootDescriptorTable(15, GPUDescriptors.OutEmissiveColor);
+		pCommandList->SetComputeRootDescriptorTable(16, GPUDescriptors.OutNormalRoughness);
+		pCommandList->SetComputeRootDescriptorTable(17, GPUDescriptors.OutGeometricNormals);
+		pCommandList->SetComputeRootDescriptorTable(18, GPUDescriptors.OutNoisyDiffuse);
+		pCommandList->SetComputeRootDescriptorTable(19, GPUDescriptors.OutNoisySpecular);
 		pCommandList->SetComputeRootShaderResourceView(20, GPUBuffers.InLightInfo ? GPUBuffers.InLightInfo->GetResource()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetComputeRootShaderResourceView(21, GPUBuffers.InLightIndices ? GPUBuffers.InLightIndices->GetResource()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetComputeRootDescriptorTable(22, GPUDescriptors.InNeighborOffsets);
 		pCommandList->SetComputeRootUnorderedAccessView(23, GPUBuffers.OutDIReservoir ? GPUBuffers.OutDIReservoir->GetResource()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetPipelineState(m_pipelineState.Get());
-		const auto renderSize = m_GPUBuffers.GraphicsSettings.GetData().RenderSize;
+		const auto renderSize = m_GPUBuffers.GraphicsSettings.At(0).RenderSize;
 		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);
 	}
 

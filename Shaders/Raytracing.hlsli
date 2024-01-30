@@ -52,6 +52,11 @@ ConstantBuffer<Camera> g_camera : register(b2);
 StructuredBuffer<InstanceData> g_instanceData : register(t1);
 StructuredBuffer<ObjectData> g_objectData : register(t2);
 
+Texture2D<float> g_previousLinearDepth : register(t3);
+Texture2D<float4> g_previousBaseColorMetalness : register(t4);
+Texture2D<float4> g_previousNormalRoughness : register(t5);
+Texture2D<float2> g_previousGeometricNormals : register(t6);
+
 RWTexture2D<float3> g_color : register(u0);
 RWTexture2D<float> g_linearDepth : register(u1);
 RWTexture2D<float> g_normalizedDepth : register(u2);
@@ -59,7 +64,7 @@ RWTexture2D<float3> g_motionVectors : register(u3);
 RWTexture2D<float4> g_baseColorMetalness : register(u4);
 RWTexture2D<float3> g_emissiveColor : register(u5);
 RWTexture2D<float4> g_normalRoughness : register(u6);
-RWTexture2D<float4> g_geometricNormals : register(u7);
+RWTexture2D<float2> g_geometricNormals : register(u7);
 RWTexture2D<float4> g_noisyDiffuse : register(u8);
 RWTexture2D<float4> g_noisySpecular : register(u9);
 

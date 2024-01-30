@@ -18,7 +18,7 @@ using namespace rtxdi;
 using namespace std;
 
 export {
-	struct RAB_LightInfo { XMFLOAT3 Base, Edge1, Edge2, Radiance; };
+	struct RAB_LightInfo { XMFLOAT3 Base, Edges[2], Radiance; };
 
 	struct RTXDIResources {
 		unique_ptr<ReSTIRDIContext> ReSTIRDIContext;
@@ -30,7 +30,6 @@ export {
 
 		void CreateLightBuffers(ID3D12Device* pDevice, UINT emissiveTriangleCount, UINT objectCount) {
 			LightInfo = make_shared<DefaultBuffer<RAB_LightInfo>>(pDevice, emissiveTriangleCount);
-
 			LightIndices = make_shared<DefaultBuffer<UINT>>(pDevice, objectCount);
 		}
 

@@ -86,7 +86,7 @@ export {
 	struct Scene : SceneBase {
 		struct InstanceData {
 			UINT FirstGeometryIndex;
-			XMFLOAT3X4 ObjectToWorld;
+			XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 		};
 
 		struct : Texture { Transform Transform; } EnvironmentLightTexture, EnvironmentTexture;
@@ -168,12 +168,17 @@ export {
 					XMStoreFloat3x4(&transform, reinterpret_cast<const XMMATRIX&>(*world.front()));
 					return transform;
 				};
-				const InstanceData instanceData{
-					.FirstGeometryIndex = objectIndex,
-					.ObjectToWorld = Transform()
-				};
-				if (instanceIndex >= size(m_instanceData)) m_instanceData.emplace_back(instanceData);
-				else m_instanceData[instanceIndex] = instanceData;
+				InstanceData instanceData;
+				instanceData.FirstGeometryIndex = objectIndex;
+				if (instanceIndex >= size(m_instanceData)) {
+					instanceData.PreviousObjectToWorld = instanceData.ObjectToWorld = Transform();
+					m_instanceData.emplace_back(instanceData);
+				}
+				else {
+					instanceData.PreviousObjectToWorld = m_instanceData[instanceIndex].ObjectToWorld;
+					instanceData.ObjectToWorld = Transform();
+					m_instanceData[instanceIndex] = instanceData;
+				}
 				instanceIndex++;
 				objectIndex++;
 			}

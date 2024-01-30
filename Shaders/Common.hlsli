@@ -17,11 +17,12 @@ struct SceneData {
 
 struct InstanceData {
 	uint FirstGeometryIndex;
+	uint3 _;
 	row_major float3x4 PreviousObjectToWorld, ObjectToWorld;
 };
 
 struct ObjectResourceDescriptorHeapIndices {
-	struct { uint Vertices, Indices, MotionVectors; } Mesh;
+	struct { uint Vertices, Indices, MotionVectors, _; } Mesh;
 	struct { uint BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, TransmissionMap, OpacityMap, NormalMap; } Textures;
 };
 

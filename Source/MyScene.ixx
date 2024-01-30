@@ -22,8 +22,8 @@ import Texture;
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
-using namespace physx;
 using namespace PhysicsHelpers;
+using namespace physx;
 using namespace std;
 using namespace std::filesystem;
 
