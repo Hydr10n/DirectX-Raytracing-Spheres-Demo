@@ -22,11 +22,12 @@ set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "")
 file(GLOB NRD_integration_headers "${NVIDIA_library_path}*")
 add_subdirectory("${NVIDIA_library_path}NRD")
 
+set(NRI_BACKEND_D3D11 OFF CACHE BOOL "")
+set(NRI_BACKEND_VK OFF CACHE BOOL "")
 add_subdirectory("${NVIDIA_library_path}NRI")
 
 add_subdirectory("${NVIDIA_library_path}RTXDI/rtxdi-sdk")
 
-set(RTXMU_WITH_D3D12 ON CACHE BOOL "")
 set(RTXMU_WITH_VULKAN OFF CACHE BOOL "")
 add_subdirectory("${NVIDIA_library_path}RTXMU")
 
