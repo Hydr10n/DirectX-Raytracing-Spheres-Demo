@@ -103,9 +103,9 @@ inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 
 inline float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 barycentrics) {
 	const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[objectIndex].ResourceDescriptorHeapIndices;
-	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
 	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], primitiveIndex);
-	const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
+	float2 textureCoordinates[3];
+	g_objectData[objectIndex].VertexDesc.LoadTextureCoordinates(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices], indices, textureCoordinates);
 	return Vertex::Interpolate(textureCoordinates, barycentrics);
 }
 
@@ -227,16 +227,24 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
 
 		const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorHeapIndices;
-		const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
 		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
-		const float3
-			positions[] = { vertices[indices[0]].Position, vertices[indices[1]].Position, vertices[indices[2]].Position },
-			normals[] = { vertices[indices[0]].Normal, vertices[indices[1]].Normal, vertices[indices[2]].Normal };
-		const float2 textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate };
+		const ByteAddressBuffer vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
+		const VertexDesc vertexDesc = g_objectData[hitInfo.ObjectIndex].VertexDesc;
+		float3 positions[3], normals[3];
+		float2 textureCoordinates[3];
+		vertexDesc.LoadPositions(vertices, indices, positions);
+		vertexDesc.LoadNormals(vertices, indices, normals);
+		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
 		hitInfo.Initialize(positions, normals, textureCoordinates, q.CommittedTriangleBarycentrics(), q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(), rayDesc.Origin, rayDesc.Direction, q.CommittedRayT());
 		if (resourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
 			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Textures.NormalMap];
-			const float3 T = normalize(Math::CalculateTangent(positions, textureCoordinates));
+			float3 T;
+			if (vertexDesc.Offsets.Tangent == ~0u) T = normalize(Math::CalculateTangent(positions, textureCoordinates));
+			else {
+				float3 tangents[3];
+				vertexDesc.LoadTangents(vertices, indices, tangents);
+				T = normalize(Vertex::Interpolate(tangents, hitInfo.Barycentrics));
+			}
 			const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
 			hitInfo.Normal = normalize(STL::Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
 		}

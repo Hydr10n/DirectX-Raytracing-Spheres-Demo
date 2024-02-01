@@ -57,7 +57,7 @@ export struct Raytracing {
 		DefaultBuffer<RAB_LightInfo>* InLightInfo;
 		DefaultBuffer<UINT>* InLightIndices;
 		DefaultBuffer<RTXDI_PackedDIReservoir>* OutDIReservoir;
-	} GPUBuffers;
+	} GPUBuffers{};
 
 	struct {
 		D3D12_GPU_DESCRIPTOR_HANDLE

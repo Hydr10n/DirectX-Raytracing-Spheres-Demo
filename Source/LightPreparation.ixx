@@ -105,7 +105,7 @@ export struct LightPreparation {
 			BOOL IgnoreStatic;
 			UINT TaskCount;
 		} constants{ ignoreStatic, m_emissiveMeshCount };
-		pCommandList->SetComputeRoot32BitConstants(0, 2, &constants, 0);
+		pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 		pCommandList->SetComputeRootShaderResourceView(1, m_GPUBuffers.Tasks->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InInstanceData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.InObjectData->GetResource()->GetGPUVirtualAddress());

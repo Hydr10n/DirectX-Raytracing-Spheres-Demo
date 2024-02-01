@@ -5,6 +5,7 @@ module;
 export module CommonShaderData;
 
 import Material;
+import Vertex;
 
 using namespace DirectX;
 
@@ -34,6 +35,7 @@ export {
 	};
 
 	struct ObjectData {
+		VertexDesc VertexDesc;
 		Material Material;
 		ObjectResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
 	};

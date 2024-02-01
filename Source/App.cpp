@@ -43,6 +43,7 @@ import GPUBuffer;
 import HaltonSamplePattern;
 import LightPreparation;
 import Material;
+import Model;
 import MyScene;
 import PostProcessing.ChromaticAberration;
 import PostProcessing.DenoisedComposition;
@@ -697,6 +698,8 @@ private:
 				instanceIndex++;
 
 				auto& objectData = m_GPUBuffers.ObjectData->At(instanceData.FirstGeometryIndex);
+
+				objectData.VertexDesc = Mesh::VertexDesc;
 
 				objectData.Material = renderObject.Material;
 

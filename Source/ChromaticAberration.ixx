@@ -34,7 +34,7 @@ export namespace PostProcessing {
 
 		void Process(ID3D12GraphicsCommandList* pCommandList) {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-			pCommandList->SetComputeRoot32BitConstants(0, 7, &Constants.RenderSize, 0);
+			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootDescriptorTable(1, GPUDescriptors.InColor);
 			pCommandList->SetComputeRootDescriptorTable(2, GPUDescriptors.OutColor);
 			pCommandList->SetPipelineState(m_pipelineStateObject.Get());

@@ -25,7 +25,7 @@ export namespace PostProcessing {
 			NRDDenoiser NRDDenoiser;
 		} Constants{};
 
-		struct { ConstantBuffer<Camera>* InCamera; } GPUBuffers;
+		struct { ConstantBuffer<Camera>* InCamera; } GPUBuffers{};
 
 		struct { D3D12_GPU_DESCRIPTOR_HANDLE InLinearDepth, InBaseColorMetalness, InEmissiveColor, InNormalRoughness, InDenoisedDiffuse, InDenoisedSpecular, OutColor; } GPUDescriptors{};
 
@@ -38,7 +38,7 @@ export namespace PostProcessing {
 
 		void Process(ID3D12GraphicsCommandList* pCommandList) {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-			pCommandList->SetComputeRoot32BitConstants(0, 3, &Constants, 0);
+			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
 			pCommandList->SetComputeRootDescriptorTable(2, GPUDescriptors.InLinearDepth);
 			pCommandList->SetComputeRootDescriptorTable(3, GPUDescriptors.InBaseColorMetalness);

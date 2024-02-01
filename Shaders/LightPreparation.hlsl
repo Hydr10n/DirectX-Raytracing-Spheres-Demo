@@ -47,28 +47,22 @@ void main(uint dispatchThreadID : SV_DispatchThreadID) {
 	if (!FindTask(dispatchThreadID, task)) return;
 
 	const InstanceData instanceData = g_instanceData[task.InstanceIndex];
-
 	if (g_constants.IgnoreStatic && all(instanceData.PreviousObjectToWorld == instanceData.ObjectToWorld)) return;
 
 	const uint objectIndex = g_instanceData[task.InstanceIndex].FirstGeometryIndex + task.GeometryIndex;
-
 	const ObjectResourceDescriptorHeapIndices resourceDescriptorHeapIndices = g_objectData[objectIndex].ResourceDescriptorHeapIndices;
-
-	const StructuredBuffer<VertexPositionNormalTexture> vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
 	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Indices], dispatchThreadID - task.LightBufferOffset);
-	const float3 positions[] = {
-		STL::Geometry::AffineTransform(instanceData.ObjectToWorld, vertices[indices[0]].Position),
-		STL::Geometry::AffineTransform(instanceData.ObjectToWorld, vertices[indices[1]].Position),
-		STL::Geometry::AffineTransform(instanceData.ObjectToWorld, vertices[indices[2]].Position)
-	};
+	const ByteAddressBuffer vertices = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Mesh.Vertices];
+	const VertexDesc vertexDesc = g_objectData[objectIndex].VertexDesc;
 
 	float3 emissiveColor;
 	if (resourceDescriptorHeapIndices.Textures.EmissiveColorMap == ~0u) emissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
 	else {
-		const float2
-			textureCoordinates[] = { vertices[indices[0]].TextureCoordinate, vertices[indices[1]].TextureCoordinate, vertices[indices[2]].TextureCoordinate },
-			edges[] = { textureCoordinates[1] - textureCoordinates[0], textureCoordinates[2] - textureCoordinates[1], textureCoordinates[0] - textureCoordinates[2] };
-		const float3 edgeLengths = float3(length(edges[0]), length(edges[1]), length(edges[2]));
+		float2 textureCoordinates[3];
+		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
+
+		const float2 edges[] = { textureCoordinates[1] - textureCoordinates[0], textureCoordinates[2] - textureCoordinates[1], textureCoordinates[0] - textureCoordinates[2] };
+		const float edgeLengths[] = { length(edges[0]), length(edges[1]), length(edges[2]) };
 
 		float2 shortEdge, longEdges[2];
 		if (edgeLengths[0] < edgeLengths[1] && edgeLengths[0] < edgeLengths[2]) {
@@ -90,6 +84,12 @@ void main(uint dispatchThreadID : SV_DispatchThreadID) {
 		const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Textures.EmissiveColorMap];
 		emissiveColor = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3).rgb;
 	}
+
+	float3 positions[3];
+	vertexDesc.LoadPositions(vertices, indices, positions);
+	positions[0] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[0]);
+	positions[1] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[1]);
+	positions[2] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	RAB_LightInfo lightInfo;
 	lightInfo.Base = positions[0];

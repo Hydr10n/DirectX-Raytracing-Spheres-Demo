@@ -2,6 +2,8 @@
 
 #include "Material.hlsli"
 
+#include "Vertex.hlsli"
+
 struct SceneResourceDescriptorHeapIndices {
 	uint InEnvironmentLightTexture, InEnvironmentTexture;
 	uint2 _;
@@ -27,6 +29,7 @@ struct ObjectResourceDescriptorHeapIndices {
 };
 
 struct ObjectData {
+	VertexDesc VertexDesc;
 	Material Material;
 	ObjectResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
 };
