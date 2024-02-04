@@ -40,7 +40,7 @@ export struct LightPreparation {
 		DefaultBuffer<RAB_LightInfo>* OutLightInfo;
 	} GPUBuffers{};
 
-	LightPreparation(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice) {
+	explicit LightPreparation(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice) {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LightPreparation_dxil, size(g_LightPreparation_dxil) };
 		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
@@ -99,28 +99,26 @@ export struct LightPreparation {
 		else m_GPUBuffers.Tasks = make_unique<DefaultBuffer<Task>>(m_device, resourceUploadBatch, tasks);
 	}
 
-	void Process(ID3D12GraphicsCommandList* pCommandList, bool ignoreStatic) {
+	void Process(ID3D12GraphicsCommandList* pCommandList) {
+		pCommandList->SetPipelineState(m_pipelineStateObject.Get());
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		const struct {
-			BOOL IgnoreStatic;
-			UINT TaskCount;
-		} constants{ ignoreStatic, m_emissiveMeshCount };
-		pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
+		pCommandList->SetComputeRoot32BitConstants(0, 1, &m_emissiveMeshCount, 0);
 		pCommandList->SetComputeRootShaderResourceView(1, m_GPUBuffers.Tasks->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InInstanceData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.InObjectData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.OutLightInfo->GetResource()->GetGPUVirtualAddress());
-		pCommandList->SetPipelineState(m_pipelineStateObject.Get());
 		pCommandList->Dispatch((m_emissiveTriangleCount + 255) / 256, 1, 1);
+		const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GPUBuffers.OutLightInfo->GetResource());
+		pCommandList->ResourceBarrier(1, &barrier);
 	}
 
 private:
 	ID3D12Device* m_device;
 
-	const Scene* m_scene{};
-
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineStateObject;
+
+	const Scene* m_scene{};
 
 	UINT m_emissiveMeshCount{}, m_emissiveTriangleCount{};
 	RTXDI_LightBufferParameters m_lightBufferParameters{};

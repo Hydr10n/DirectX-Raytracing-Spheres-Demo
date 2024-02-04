@@ -29,10 +29,8 @@ export struct Mesh {
 
 	static constexpr VertexDesc VertexDesc{
 		.Stride = sizeof(VertexType),
-		.Offsets{
-			.Normal = offsetof(VertexType, normal),
-			.TextureCoordinate = offsetof(VertexType, textureCoordinate)
-		}
+		.NormalOffset = offsetof(VertexType, normal),
+		.TextureCoordinateOffset = offsetof(VertexType, textureCoordinate)
 	};
 
 	static shared_ptr<Mesh> Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {

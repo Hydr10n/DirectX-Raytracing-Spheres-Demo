@@ -15,11 +15,10 @@ import CommonShaderData;
 import ErrorHelpers;
 import GPUBuffer;
 import NRD;
-import RaytracingHelpers;
 import RTXDIResources;
+import Scene;
 
 using namespace DirectX;
-using namespace DirectX::RaytracingHelpers;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
@@ -83,11 +82,14 @@ export struct Raytracing {
 		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 	}
 
+	void SetScene(const Scene* pScene) { m_scene = pScene; }
+
 	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings; }
 
-	void Render(ID3D12GraphicsCommandList* pCommandList, const TopLevelAccelerationStructure& topLevelAccelerationStructure) {
+	void Render(ID3D12GraphicsCommandList* pCommandList) {
+		pCommandList->SetPipelineState(m_pipelineState.Get());
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		pCommandList->SetComputeRootShaderResourceView(0, topLevelAccelerationStructure.GetBuffer()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(0, m_scene->GetTopLevelAccelerationStructure().GetBuffer()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(1, m_GPUBuffers.GraphicsSettings.GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(2, GPUBuffers.InSceneData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(3, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
@@ -111,7 +113,6 @@ export struct Raytracing {
 		pCommandList->SetComputeRootShaderResourceView(21, GPUBuffers.InLightIndices ? GPUBuffers.InLightIndices->GetResource()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetComputeRootDescriptorTable(22, GPUDescriptors.InNeighborOffsets);
 		pCommandList->SetComputeRootUnorderedAccessView(23, GPUBuffers.OutDIReservoir ? GPUBuffers.OutDIReservoir->GetResource()->GetGPUVirtualAddress() : NULL);
-		pCommandList->SetPipelineState(m_pipelineState.Get());
 		const auto renderSize = m_GPUBuffers.GraphicsSettings.At(0).RenderSize;
 		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);
 	}
@@ -121,4 +122,6 @@ private:
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineState;
+
+	const Scene* m_scene{};
 };

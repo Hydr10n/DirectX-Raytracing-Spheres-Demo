@@ -19,17 +19,18 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
+#define DefaultBufferBase GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
+#define MappableBufferBase GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
+#define MappableBufferInitialState IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST
 #define DefaultAlignment size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
 
 export namespace DirectX {
-	template <typename T, D3D12_HEAP_TYPE Type, DefaultAlignment>
+	template <typename T, D3D12_HEAP_TYPE HeapType, DefaultAlignment>
 	class GPUBuffer {
 	public:
 		static_assert(IsPowerOf2(Alignment));
 
 		using ItemType = T;
-
-		static constexpr D3D12_HEAP_TYPE HeapType = Type;
 
 		static constexpr size_t ItemSize = (sizeof(T) + Alignment - 1) & ~(Alignment - 1);
 
@@ -43,7 +44,7 @@ export namespace DirectX {
 			size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : m_capacity(capacity), m_count(capacity), m_state(initialState) {
-			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
+			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(ItemSize * capacity, 16), flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
@@ -149,42 +150,38 @@ export namespace DirectX {
 		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : m_capacity(source.m_capacity), m_count(source.m_count), m_state(initialState) {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const CD3DX12_HEAP_PROPERTIES heapProperties(Type);
+			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
 			const auto resourceDesc = source.m_resource->GetDesc();
 			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
 	};
 
 	template <typename T, DefaultAlignment>
-	struct DefaultBuffer : GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment> {
-		using GPUBuffer<T, DefaultBuffer::HeapType, Alignment>::GPUBuffer;
+	struct DefaultBuffer : DefaultBufferBase {
+		using DefaultBufferBase::GPUBuffer;
 
 		DefaultBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, DefaultBuffer::HeapType, Alignment>(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
+		) noexcept(false) : DefaultBufferBase(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
 
 		DefaultBuffer(
 			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, DefaultBuffer::HeapType, Alignment>(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
+		) noexcept(false) : DefaultBufferBase(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
 			Upload(resourceUploadBatch, data);
 			resourceUploadBatch.Transition(this->m_resource.Get(), this->m_state, afterState);
 			this->m_state = afterState;
 		}
 
-		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : GPUBuffer<T, DefaultBuffer::HeapType, Alignment>(source) {
+		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : DefaultBufferBase(source) {
 			if (pCommandList != nullptr) {
-				const ScopedBarrier scopedBarrier(
-					pCommandList,
-					{
-						CD3DX12_RESOURCE_BARRIER::Transition(this->m_resource.Get(), this->m_state, D3D12_RESOURCE_STATE_COPY_DEST),
-						CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE)
-					}
-				);
+				const ScopedBarrier scopedBarrier(pCommandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
+				this->TransitionTo(pCommandList, D3D12_RESOURCE_STATE_COPY_DEST);
 				pCommandList->CopyBufferRegion(this->m_resource.Get(), 0, source.m_resource.Get(), 0, this->ItemSize * source.m_count);
+				this->TransitionTo(pCommandList, source.m_state);
 			}
 		}
 
@@ -212,7 +209,7 @@ export namespace DirectX {
 	};
 
 	template <typename T, bool IsUpload = true, DefaultAlignment>
-	class MappableBuffer : public GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment> {
+	class MappableBuffer : public MappableBufferBase {
 	public:
 		MappableBuffer(MappableBuffer&& source) noexcept = default;
 		MappableBuffer& operator=(MappableBuffer&& source) noexcept = default;
@@ -220,19 +217,21 @@ export namespace DirectX {
 		MappableBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, capacity, initialState, flags) { Map(); }
+			D3D12_RESOURCE_STATES initialState = MappableBufferInitialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : MappableBufferBase(pDevice, capacity, initialState, flags) {
+			Map();
+		}
 
 		MappableBuffer(
 			ID3D12Device* pDevice,
 			span<const T> data,
-			D3D12_RESOURCE_STATES initialState = IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(pDevice, size(data), initialState, flags) {
+			D3D12_RESOURCE_STATES initialState = MappableBufferInitialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : MappableBufferBase(pDevice, size(data), initialState, flags) {
 			Map();
 			Upload(data);
 		}
 
-		MappableBuffer(const MappableBuffer& source) noexcept(false) : GPUBuffer<T, MappableBuffer::HeapType, Alignment>(source, IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST) {
+		MappableBuffer(const MappableBuffer& source) noexcept(false) : MappableBufferBase(source, MappableBufferInitialState) {
 			Map();
 			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
 		}

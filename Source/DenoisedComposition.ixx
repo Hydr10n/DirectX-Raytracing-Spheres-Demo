@@ -37,6 +37,7 @@ export namespace PostProcessing {
 		}
 
 		void Process(ID3D12GraphicsCommandList* pCommandList) {
+			pCommandList->SetPipelineState(m_pipelineStateObject.Get());
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
@@ -47,7 +48,6 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootDescriptorTable(6, GPUDescriptors.InDenoisedDiffuse);
 			pCommandList->SetComputeRootDescriptorTable(7, GPUDescriptors.InDenoisedSpecular);
 			pCommandList->SetComputeRootDescriptorTable(8, GPUDescriptors.OutColor);
-			pCommandList->SetPipelineState(m_pipelineStateObject.Get());
 			pCommandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}
 

@@ -239,7 +239,7 @@ inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 		if (resourceDescriptorHeapIndices.Textures.NormalMap != ~0u) {
 			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorHeapIndices.Textures.NormalMap];
 			float3 T;
-			if (vertexDesc.Offsets.Tangent == ~0u) T = normalize(Math::CalculateTangent(positions, textureCoordinates));
+			if (vertexDesc.TangentOffset == ~0u) T = normalize(Math::CalculateTangent(positions, textureCoordinates));
 			else {
 				float3 tangents[3];
 				vertexDesc.LoadTangents(vertices, indices, tangents);

@@ -7,9 +7,5 @@ export module Vertex;
 using namespace DirectX;
 
 export {
-	struct VertexDesc {
-		UINT Stride;
-		XMUINT3 _;
-		struct { UINT Normal = ~0u, TextureCoordinate = ~0u, Tangent = ~0u, _; } Offsets;
-	};
+	struct VertexDesc { UINT Stride{}, NormalOffset = ~0u, TextureCoordinateOffset = ~0u, TangentOffset = ~0u; };
 }
