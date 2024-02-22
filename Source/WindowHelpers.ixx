@@ -1,13 +1,13 @@
 module;
 
+#include <algorithm>
+
 #define NOMINMAX
 
 #include <Windows.h>
 #include <windowsx.h>
 
 #include <dwmapi.h>
-
-#include <algorithm>
 
 export module WindowHelpers;
 

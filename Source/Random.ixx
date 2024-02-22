@@ -1,8 +1,8 @@
 module;
 
-#include <DirectXMath.h>
-
 #include <random>
+
+#include <DirectXMath.h>
 
 export module Random;
 

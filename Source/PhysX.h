@@ -3,11 +3,11 @@
 #pragma warning(push)
 #pragma warning(disable: 4996 26451 26495 26812 33010)
 
-#include "physx/PxPhysicsAPI.h"
-
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
+
+#include "physx/PxPhysicsAPI.h"
 
 namespace PhysicsHelpers {
 	namespace UniversalGravitation {

@@ -1,10 +1,10 @@
 module;
 
-#include "directx/d3dx12.h"
+#include <future>
 
 #include <wrl.h>
 
-#include <future>
+#include "directx/d3dx12.h"
 
 export module CommandList;
 

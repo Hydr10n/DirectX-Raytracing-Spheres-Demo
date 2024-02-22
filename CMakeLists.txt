@@ -22,8 +22,8 @@ set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "")
 file(GLOB NRD_integration_headers "${NVIDIA_library_path}*")
 add_subdirectory("${NVIDIA_library_path}NRD")
 
-set(NRI_BACKEND_D3D11 OFF CACHE BOOL "")
-set(NRI_BACKEND_VK OFF CACHE BOOL "")
+set(NRI_ENABLE_D3D11_SUPPORT OFF CACHE BOOL "")
+set(NRI_ENABLE_VK_SUPPORT OFF CACHE BOOL "")
 add_subdirectory("${NVIDIA_library_path}NRI")
 
 add_subdirectory("${NVIDIA_library_path}RTXDI/rtxdi-sdk")

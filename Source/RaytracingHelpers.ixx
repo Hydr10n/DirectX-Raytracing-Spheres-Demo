@@ -1,11 +1,11 @@
 module;
 
+#include <span>
+#include <stdexcept>
+
 #include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
-
-#include <span>
-#include <stdexcept>
 
 export module RaytracingHelpers;
 
@@ -57,7 +57,7 @@ export namespace DirectX::RaytracingHelpers {
 				desc.Inputs.pGeometryDescs = data(descs);
 			}
 
-			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result != nullptr) {
+			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result) {
 				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
 				desc.SourceAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
 			}
@@ -71,7 +71,7 @@ export namespace DirectX::RaytracingHelpers {
 			}
 
 			if constexpr (IsTop) {
-				if (m_buffers.InstanceDescs != nullptr) {
+				if (m_buffers.InstanceDescs) {
 					D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
 					ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
 					ranges::copy(descs, pInstanceDescs);
@@ -122,7 +122,7 @@ export namespace DirectX::RaytracingHelpers {
 				.IndexBuffer = indices.GetResource()->GetGPUVirtualAddress(),
 				.VertexBuffer{
 					.StartAddress = vertices.GetResource()->GetGPUVirtualAddress(),
-					.StrideInBytes = vertices.ItemSize
+					.StrideInBytes = vertices.ElementSize
 				}
 			}
 		};

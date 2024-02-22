@@ -4,6 +4,8 @@ module;
 
 #include "directx/d3dx12.h"
 
+#include <shellapi.h>
+
 #include "pix.h"
 
 #include "directxtk12/CommonStates.h"
@@ -28,8 +30,6 @@ module;
 #include "ImGuiEx.h"
 
 #include "MyAppData.h"
-
-#include <shellapi.h>
 
 module App;
 
@@ -232,7 +232,7 @@ struct App::Impl : IDeviceNotify {
 private:
 	WindowModeHelper& m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing | DeviceResources::c_DisableGpuTimeout);
 
 	StepTimer m_stepTimer;
 
@@ -548,14 +548,9 @@ private:
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
 			try {
-			const auto device = m_deviceResources->GetDevice();
-			const auto commandQueue = m_deviceResources->GetCommandQueue();
-
-			{
-				UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
-				m_scene = make_shared<MyScene>(device, commandQueue);
-				m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
-			}
+			UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
+			m_scene = make_shared<MyScene>(m_deviceResources->GetDevice(), m_deviceResources->GetCommandQueue());
+			m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
 
 			CreateStructuredBuffers();
 

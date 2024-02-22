@@ -1,8 +1,8 @@
 module;
 
-#include <Windows.h>
-
 #include <memory>
+
+#include <Windows.h>
 
 export module App;
 

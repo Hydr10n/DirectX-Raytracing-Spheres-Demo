@@ -1,5 +1,8 @@
 module;
 
+#include <filesystem>
+#include <ranges>
+
 #define NOMINMAX
 
 #include "directxtk12/GamePad.h"
@@ -9,9 +12,6 @@ module;
 #include "directxtk12/SimpleMath.h"
 
 #include "PhysX.h"
-
-#include <filesystem>
-#include <ranges>
 
 export module MyScene;
 

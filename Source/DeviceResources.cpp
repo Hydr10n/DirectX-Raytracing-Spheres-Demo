@@ -4,6 +4,8 @@
 
 module;
 
+#include <format>
+
 #define NOMINMAX
 
 #include "directx/d3dx12.h"
@@ -12,8 +14,6 @@ module;
 #ifdef _DEBUG
 #include <dxgidebug.h>
 #endif
-
-#include <format>
 
 module DeviceResources;
 
@@ -201,7 +201,7 @@ void DeviceResources::CreateDeviceResources()
 
     // Create the command queue.
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    queueDesc.Flags = m_options & c_DisableGpuTimeout ? D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT : D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
     ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));

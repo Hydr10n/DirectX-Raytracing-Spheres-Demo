@@ -1,14 +1,13 @@
 module;
 
+#include <ranges>
+
 #include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
 #include "FormatHelpers.h"
-
-#include <ranges>
-#include <stdexcept>
 
 export module GPUBuffer;
 
@@ -19,20 +18,20 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
-#define DefaultBufferBase GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
-#define MappableBufferBase GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
-#define MappableBufferInitialState IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST
-#define DefaultAlignment size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
+#define DEFAULT_BUFFER_BASE GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
+#define MAPPABLE_BUFFER_BASE GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
+#define MAPPABLE_BUFFER_INITIAL_STATE IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST
+#define DEFAULT_ALIGNMENT size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
 
 export namespace DirectX {
-	template <typename T, D3D12_HEAP_TYPE HeapType, DefaultAlignment>
+	template <typename T, D3D12_HEAP_TYPE HeapType, DEFAULT_ALIGNMENT>
 	class GPUBuffer {
 	public:
 		static_assert(IsPowerOf2(Alignment));
 
-		using ItemType = T;
+		using ElementType = T;
 
-		static constexpr size_t ItemSize = (sizeof(T) + Alignment - 1) & ~(Alignment - 1);
+		static constexpr size_t ElementSize = (sizeof(T) + Alignment - 1) & ~(Alignment - 1);
 
 		GPUBuffer& operator=(const GPUBuffer&) = delete;
 
@@ -45,7 +44,7 @@ export namespace DirectX {
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : m_capacity(capacity), m_count(capacity), m_state(initialState) {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
-			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(ItemSize * capacity, 16), flags);
+			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(ElementSize * capacity, 16), flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
 
@@ -73,7 +72,7 @@ export namespace DirectX {
 		void CreateStructuredSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferShaderResourceView(device.Get(), m_resource.Get(), descriptor, ItemSize);
+			CreateBufferShaderResourceView(device.Get(), m_resource.Get(), descriptor, ElementSize);
 		}
 
 		void CreateRawSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
@@ -84,7 +83,7 @@ export namespace DirectX {
 				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
 				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_count + 3) / 4),
+					.NumElements = static_cast<UINT>((ElementSize * m_count + 3) / 4),
 					.Flags = D3D12_BUFFER_SRV_FLAG_RAW
 				}
 			};
@@ -93,7 +92,7 @@ export namespace DirectX {
 
 		void CreateTypedSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format) const {
 			const auto size = GetBits(format) / 8;
-			if (ItemSize != size) throw invalid_argument("Format size doesn't match");
+			if (ElementSize != size) throw invalid_argument("Format size doesn't match");
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
 			const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
@@ -101,7 +100,7 @@ export namespace DirectX {
 				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
 				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_count + size - 1) / size)
+					.NumElements = static_cast<UINT>((ElementSize * m_count + size - 1) / size)
 				}
 			};
 			device->CreateShaderResourceView(m_resource.Get(), &shaderResourceViewDesc, descriptor);
@@ -110,7 +109,7 @@ export namespace DirectX {
 		void CreateStructuredUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferUnorderedAccessView(device.Get(), m_resource.Get(), descriptor, ItemSize);
+			CreateBufferUnorderedAccessView(device.Get(), m_resource.Get(), descriptor, ElementSize);
 		}
 
 		void CreateRawUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
@@ -120,7 +119,7 @@ export namespace DirectX {
 				.Format = DXGI_FORMAT_R32_TYPELESS,
 				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_count + 3) / 4),
+					.NumElements = static_cast<UINT>((ElementSize * m_count + 3) / 4),
 					.Flags = D3D12_BUFFER_UAV_FLAG_RAW
 				}
 			};
@@ -129,14 +128,14 @@ export namespace DirectX {
 
 		void CreateTypedUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format) const {
 			const auto size = GetBits(format) / 8;
-			if (ItemSize != size) throw invalid_argument("Format size doesn't match");
+			if (ElementSize != size) throw invalid_argument("Format size doesn't match");
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
 			const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{
 				.Format = format,
 				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
 				.Buffer{
-					.NumElements = static_cast<UINT>((ItemSize * m_count + size - 1) / size)
+					.NumElements = static_cast<UINT>((ElementSize * m_count + size - 1) / size)
 				}
 			};
 			device->CreateUnorderedAccessView(m_resource.Get(), nullptr, &unorderedAccessViewDesc, descriptor);
@@ -156,31 +155,31 @@ export namespace DirectX {
 		}
 	};
 
-	template <typename T, DefaultAlignment>
-	struct DefaultBuffer : DefaultBufferBase {
-		using DefaultBufferBase::GPUBuffer;
+	template <typename T, DEFAULT_ALIGNMENT>
+	struct DefaultBuffer : DEFAULT_BUFFER_BASE {
+		using DEFAULT_BUFFER_BASE::GPUBuffer;
 
 		DefaultBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : DefaultBufferBase(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
+		) noexcept(false) : DEFAULT_BUFFER_BASE(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
 
 		DefaultBuffer(
 			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : DefaultBufferBase(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
+		) noexcept(false) : DEFAULT_BUFFER_BASE(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
 			Upload(resourceUploadBatch, data);
 			resourceUploadBatch.Transition(this->m_resource.Get(), this->m_state, afterState);
 			this->m_state = afterState;
 		}
 
-		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : DefaultBufferBase(source) {
+		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : DEFAULT_BUFFER_BASE(source) {
 			if (pCommandList != nullptr) {
 				const ScopedBarrier scopedBarrier(pCommandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
 				this->TransitionTo(pCommandList, D3D12_RESOURCE_STATE_COPY_DEST);
-				pCommandList->CopyBufferRegion(this->m_resource.Get(), 0, source.m_resource.Get(), 0, this->ItemSize * source.m_count);
+				pCommandList->CopyBufferRegion(this->m_resource.Get(), 0, source.m_resource.Get(), 0, this->ElementSize * source.m_count);
 				this->TransitionTo(pCommandList, source.m_state);
 			}
 		}
@@ -193,12 +192,12 @@ export namespace DirectX {
 				*this = DefaultBuffer(device.Get(), count);
 			}
 			else this->m_count = count;
-			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->ItemSize * count) };
+			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->ElementSize * count) };
 			vector<uint8_t> newData;
 			if (sizeof(T) % Alignment == 0) subresourceData.pData = ::data(data);
 			else {
-				newData = vector<uint8_t>(this->ItemSize * count);
-				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ItemSize * i) = data[i];
+				newData = vector<uint8_t>(this->ElementSize * count);
+				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ElementSize * i) = data[i];
 				subresourceData.pData = ::data(newData);
 			}
 			const auto resource = this->m_resource.Get();
@@ -208,8 +207,8 @@ export namespace DirectX {
 		}
 	};
 
-	template <typename T, bool IsUpload = true, DefaultAlignment>
-	class MappableBuffer : public MappableBufferBase {
+	template <typename T, bool IsUpload = true, DEFAULT_ALIGNMENT>
+	class MappableBuffer : public MAPPABLE_BUFFER_BASE {
 	public:
 		MappableBuffer(MappableBuffer&& source) noexcept = default;
 		MappableBuffer& operator=(MappableBuffer&& source) noexcept = default;
@@ -217,21 +216,21 @@ export namespace DirectX {
 		MappableBuffer(
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = MappableBufferInitialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : MappableBufferBase(pDevice, capacity, initialState, flags) {
+			D3D12_RESOURCE_STATES initialState = MAPPABLE_BUFFER_INITIAL_STATE, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : MAPPABLE_BUFFER_BASE(pDevice, capacity, initialState, flags) {
 			Map();
 		}
 
 		MappableBuffer(
 			ID3D12Device* pDevice,
 			span<const T> data,
-			D3D12_RESOURCE_STATES initialState = MappableBufferInitialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : MappableBufferBase(pDevice, size(data), initialState, flags) {
+			D3D12_RESOURCE_STATES initialState = MAPPABLE_BUFFER_INITIAL_STATE, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : MAPPABLE_BUFFER_BASE(pDevice, size(data), initialState, flags) {
 			Map();
 			Upload(data);
 		}
 
-		MappableBuffer(const MappableBuffer& source) noexcept(false) : MappableBufferBase(source, MappableBufferInitialState) {
+		MappableBuffer(const MappableBuffer& source) noexcept(false) : MAPPABLE_BUFFER_BASE(source, MAPPABLE_BUFFER_INITIAL_STATE) {
 			Map();
 			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
 		}
@@ -259,7 +258,7 @@ export namespace DirectX {
 			}
 		}
 
-		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + this->ItemSize * index); }
+		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + this->ElementSize * index); }
 		T& operator[](size_t index) { return const_cast<T&>(as_const(*this)[index]); }
 
 		const T& At(size_t index) const {
@@ -272,10 +271,10 @@ export namespace DirectX {
 		uint8_t* m_data{};
 	};
 
-	template <typename T, DefaultAlignment>
+	template <typename T, DEFAULT_ALIGNMENT>
 	using UploadBuffer = MappableBuffer<T, true, Alignment>;
 
-	template <typename T, DefaultAlignment>
+	template <typename T, DEFAULT_ALIGNMENT>
 	using ReadBackBuffer = MappableBuffer<T, false, Alignment>;
 
 	template <typename T>

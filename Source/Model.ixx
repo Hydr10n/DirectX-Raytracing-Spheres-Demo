@@ -1,11 +1,11 @@
 module;
 
-#include "directxtk12/ResourceUploadBatch.h"
-#include "directxtk12/VertexTypes.h"
-
 #include <memory>
 #include <span>
 #include <string>
+
+#include "directxtk12/ResourceUploadBatch.h"
+#include "directxtk12/VertexTypes.h"
 
 export module Model;
 

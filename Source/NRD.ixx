@@ -1,15 +1,16 @@
 module;
 
+#include <ranges>
+
+#define NOMINMAX
+#include <d3d12.h>
+
 #include "NRD.h"
 #include "NRI.h"
 #include "NRIDescs.h"
 #include "Extensions/NRIHelper.h"
 #include "Extensions/NRIWrapperD3D12.h"
 #include "NRDIntegration.hpp"
-
-#include <d3d12.h>
-
-#include <ranges>
 
 export module NRD;
 
@@ -36,15 +37,15 @@ export {
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList }, m_commandBuffer) == nri::Result::SUCCESS) {
 				m_isAvailable = m_NRD.Initialize(resourceWidth, resourceHeight, { .denoisers = data(denoiserDescs), .denoisersNum = static_cast<uint32_t>(size(denoiserDescs)) }, *m_device, m_NRI, m_NRI);
-				if (m_isAvailable) m_textureTransitionBarrierDescs.resize(NrdUserPool().max_size());
+				if (m_isAvailable) m_textureBarrierDescs.resize(NrdUserPool().max_size());
 			}
 		}
 
 		~NRD() {
 			if (m_isAvailable) m_NRD.Destroy();
 
-			for (const auto& textureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
-				if (textureTransitionBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureTransitionBarrierDesc.texture));
+			for (const auto& textureBarrierDesc : m_textureBarrierDescs) {
+				if (textureBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureBarrierDesc.texture));
 			}
 
 			if (m_commandBuffer != nullptr) m_NRI.DestroyCommandBuffer(*m_commandBuffer);
@@ -60,35 +61,35 @@ export {
 			if (!m_isAvailable || pResource == nullptr) return false;
 
 			AccessBits accessBits;
-			TextureLayout textureLayout;
+			Layout layout;
 			if (state & D3D12_RESOURCE_STATE_RENDER_TARGET) {
 				accessBits = AccessBits::COLOR_ATTACHMENT;
-				textureLayout = TextureLayout::COLOR_ATTACHMENT;
+				layout = Layout::COLOR_ATTACHMENT;
 			}
 			else if (state & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
 				accessBits = AccessBits::SHADER_RESOURCE_STORAGE;
-				textureLayout = TextureLayout::GENERAL;
+				layout = Layout::UNKNOWN;
 			}
 			else if (state & D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) {
 				accessBits = AccessBits::SHADER_RESOURCE;
-				textureLayout = TextureLayout::SHADER_RESOURCE;
+				layout = Layout::SHADER_RESOURCE;
 			}
 			else return false;
 
-			auto& textureTransitionBarrierDesc = m_textureTransitionBarrierDescs[static_cast<size_t>(type)];
+			auto& textureBarrierDesc = m_textureBarrierDescs[static_cast<size_t>(type)];
 
-			textureTransitionBarrierDesc.initialState = textureTransitionBarrierDesc.nextState = { accessBits, textureLayout };
+			textureBarrierDesc.initial = textureBarrierDesc.after = { accessBits, layout };
 
-			if (textureTransitionBarrierDesc.resource == pResource) return true;
+			if (textureBarrierDesc.resource == pResource) return true;
 
 			Texture* texture;
 			if (m_NRI.CreateTextureD3D12(*m_device, { pResource }, texture) != nri::Result::SUCCESS) return false;
-			if (textureTransitionBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureTransitionBarrierDesc.texture));
-			textureTransitionBarrierDesc.texture = texture;
+			if (textureBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureBarrierDesc.texture));
+			textureBarrierDesc.texture = texture;
 
-			NrdIntegration_SetResource(m_userPool, type, { &textureTransitionBarrierDesc, nriConvertDXGIFormatToNRI(pResource->GetDesc().Format) });
+			NrdIntegration_SetResource(m_userPool, type, { &textureBarrierDesc, nriConvertDXGIFormatToNRI(pResource->GetDesc().Format) });
 
-			textureTransitionBarrierDesc.resource = pResource;
+			textureBarrierDesc.resource = pResource;
 
 			return true;
 		}
@@ -101,18 +102,17 @@ export {
 		void Denoise(span<const Identifier> denoisers) {
 			m_NRD.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool);
 
-			vector<TextureTransitionBarrierDesc> textureTransitionBarrierDescs;
-			for (auto& textureTransitionBarrierDesc : m_textureTransitionBarrierDescs) {
+			vector<TextureBarrierDesc> textureBarrierDescs;
+			for (auto& textureTransitionBarrierDesc : m_textureBarrierDescs) {
 				if (textureTransitionBarrierDesc.texture != nullptr
-					&& (textureTransitionBarrierDesc.nextState.acessBits != textureTransitionBarrierDesc.initialState.acessBits
-						|| textureTransitionBarrierDesc.nextState.layout != textureTransitionBarrierDesc.initialState.layout)) {
-					textureTransitionBarrierDesc.prevState = textureTransitionBarrierDesc.nextState;
-					textureTransitionBarrierDesc.nextState = textureTransitionBarrierDesc.initialState;
-					textureTransitionBarrierDescs.emplace_back(textureTransitionBarrierDesc);
+					&& (textureTransitionBarrierDesc.after.access != textureTransitionBarrierDesc.initial.access
+						|| textureTransitionBarrierDesc.after.layout != textureTransitionBarrierDesc.initial.layout)) {
+					textureTransitionBarrierDesc.before = textureTransitionBarrierDesc.after;
+					textureTransitionBarrierDesc.after = textureTransitionBarrierDesc.initial;
+					textureBarrierDescs.emplace_back(textureTransitionBarrierDesc);
 				}
 			}
-			const TransitionBarrierDesc transitionBarrierDesc{ .textures = data(textureTransitionBarrierDescs), .textureNum = static_cast<uint32_t>(size(textureTransitionBarrierDescs)) };
-			m_NRI.CmdPipelineBarrier(*m_commandBuffer, &transitionBarrierDesc, nullptr, BarrierDependency::ALL_STAGES);
+			m_NRI.CmdBarrier(*m_commandBuffer, BarrierGroupDesc{ .textures = data(textureBarrierDescs), .textureNum = static_cast<uint16_t>(size(textureBarrierDescs)) });
 		}
 
 		auto GetTotalMemoryUsageInMb() const { return m_NRD.GetTotalMemoryUsageInMb(); }
@@ -139,10 +139,10 @@ export {
 		CommandBuffer* m_commandBuffer{};
 		struct NriInterface : CoreInterface, HelperInterface, WrapperD3D12Interface {} m_NRI{};
 
-		struct TextureTransitionBarrierDescEx : TextureTransitionBarrierDesc {
+		struct TextureBarrierDescEx : TextureBarrierDesc {
 			ID3D12Resource* resource;
-			AccessAndLayout initialState;
+			AccessLayoutStage initial;
 		};
-		vector<TextureTransitionBarrierDescEx> m_textureTransitionBarrierDescs;
+		vector<TextureBarrierDescEx> m_textureBarrierDescs;
 	};
 }

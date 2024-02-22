@@ -1,12 +1,12 @@
 module;
 
+#include <filesystem>
+
 #include "directx/d3d12.h"
 
 #include "DirectXTexEXR.h"
 
 #include "directxtk12/ResourceUploadBatch.h"
-
-#include <filesystem>
 
 export module TextureHelpers;
 

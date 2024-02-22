@@ -1,10 +1,10 @@
 module;
 
+#include <DirectXMath.h>
+
 #define NOMINMAX
 
 #include "directx/d3dx12.h"
-
-#include <DirectXMath.h>
 
 #include "directxtk12/ResourceUploadBatch.h"
 

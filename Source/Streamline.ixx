@@ -1,11 +1,11 @@
 module;
 
-#include "sl_helpers.h"
-#include "sl_matrix_helpers.h"
-
 #include <ranges>
 #include <set>
 #include <vector>
+
+#include "sl_helpers.h"
+#include "sl_matrix_helpers.h"
 
 export module Streamline;
 

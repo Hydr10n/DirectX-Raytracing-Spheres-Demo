@@ -1,5 +1,8 @@
 module;
 
+#include <filesystem>
+#include <map>
+
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
@@ -9,9 +12,6 @@ module;
 #include "rtxmu/D3D12AccelStructManager.h"
 
 #include "PhysX.h"
-
-#include <filesystem>
-#include <map>
 
 export module Scene;
 
@@ -187,7 +187,7 @@ export {
 
 		const auto& GetTopLevelAccelerationStructure() const { return *m_topLevelAccelerationStructure; }
 
-		void CreateAccelerationStructures(bool updateOnly = true) {
+		void CreateAccelerationStructures(bool updateOnly) {
 			vector<uint64_t> newBottomLevelAccelerationStructureIDs;
 
 			{

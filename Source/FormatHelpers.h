@@ -1,8 +1,8 @@
 #pragma once
 
-#include <dxgiformat.h>
-
 #include <cstdint>
+
+#include <dxgiformat.h>
 
 namespace DirectX::FormatHelpers {
 	constexpr uint32_t GetBits(DXGI_FORMAT format) {

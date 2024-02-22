@@ -1,3 +1,5 @@
+#include <set>
+
 #include <Windows.h>
 #include <windowsx.h>
 
@@ -9,8 +11,6 @@
 #include "imgui_impl_win32.h"
 
 #include "MyAppData.h"
-
-#include <set>
 
 #include "resource.h"
 

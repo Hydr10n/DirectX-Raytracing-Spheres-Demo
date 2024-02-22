@@ -1,8 +1,8 @@
 module;
 
-#include <DirectXMath.h>
-
 #include <stdexcept>
+
+#include <DirectXMath.h>
 
 export module HaltonSamplePattern;
 

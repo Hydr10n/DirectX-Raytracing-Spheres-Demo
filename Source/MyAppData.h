@@ -1,12 +1,12 @@
 #pragma once
 
-#include "JsonHelpers.h"
-
-#include "directxtk12/PostProcess.h"
+#include <fstream>
 
 #include <Windows.h>
 
-#include <fstream>
+#include "JsonHelpers.h"
+
+#include "directxtk12/PostProcess.h"
 
 import DisplayHelpers;
 import FSR;

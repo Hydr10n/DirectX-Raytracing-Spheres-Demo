@@ -1,10 +1,10 @@
 module;
 
+#include <filesystem>
+
 #include "directxtk12/DDSTextureLoader.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/WICTextureLoader.h"
-
-#include <filesystem>
 
 export module Texture;
 

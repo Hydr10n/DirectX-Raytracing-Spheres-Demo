@@ -1,9 +1,9 @@
 module;
 
-#include <Windows.h>
-
 #include <format>
 #include <stacktrace>
+
+#include <Windows.h>
 
 export module ErrorHelpers;
 

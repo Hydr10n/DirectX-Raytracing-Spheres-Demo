@@ -1,8 +1,8 @@
 module;
 
-#include "directx/d3dx12.h"
-
 #include <DirectXMath.h>
+
+#include "directx/d3dx12.h"
 
 #include "rtxdi/RtxdiParameters.h"
 

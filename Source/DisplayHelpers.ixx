@@ -1,8 +1,8 @@
 module;
 
-#include <Windows.h>
-
 #include <set>
+
+#include <Windows.h>
 
 export module DisplayHelpers;
 
