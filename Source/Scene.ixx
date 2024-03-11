@@ -17,6 +17,7 @@ export module Scene;
 
 import CommandList;
 import DescriptorHeap;
+import Event;
 import Math;
 import Material;
 import Model;
@@ -78,7 +79,7 @@ export {
 			Transform Transform;
 		} EnvironmentLightTexture, EnvironmentTexture;
 
-		unordered_map<string, pair<vector<Mesh::VertexType>, vector<Mesh::IndexType>>> Meshes;
+		unordered_map<string, pair<shared_ptr<vector<Mesh::VertexType>>, shared_ptr<vector<Mesh::IndexType>>>> Meshes;
 
 		vector<RenderObjectDesc> RenderObjects;
 	};
@@ -95,11 +96,11 @@ export {
 
 		vector<RenderObject> RenderObjects;
 
-		Scene(ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue) : m_device(pDevice), m_commandQueue(pCommandQueue), m_commandList(pDevice) {}
+		Scene(ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue) : m_device(pDevice), m_commandQueue(pCommandQueue), m_commandList(pDevice), m_observer(*this) {}
 
-		virtual bool IsStatic() const = 0;
+		virtual bool IsStatic() const { return false; }
 
-		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) = 0;
+		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) {}
 
 		void Load(const SceneDesc& sceneDesc, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {
 			reinterpret_cast<SceneBase&>(*this) = sceneDesc;
@@ -120,7 +121,7 @@ export {
 			}
 
 			{
-				for (const auto& [URI, Mesh] : sceneDesc.Meshes) Meshes[URI] = Mesh::Create(Mesh.first, Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+				for (const auto& [URI, Mesh] : sceneDesc.Meshes) Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
 
 				for (const auto& renderObjectDesc : sceneDesc.RenderObjects) {
 					RenderObject renderObject;
@@ -202,10 +203,10 @@ export {
 
 				vector<vector<D3D12_RAYTRACING_GEOMETRY_DESC>> geometryDescs;
 				vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> newBuildBottomLevelAccelerationStructureInputs;
-				vector<shared_ptr<Mesh>> newMeshes;
+				vector<const Mesh*> newMeshes;
 
 				for (const auto& renderObject : RenderObjects) {
-					const auto& mesh = renderObject.Mesh;
+					const auto mesh = renderObject.Mesh.get();
 					if (const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh); second) {
 						auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(*mesh->Vertices, *mesh->Indices, renderObject.Material.AlphaMode == AlphaMode::Opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE) });
 						newBuildBottomLevelAccelerationStructureInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
@@ -244,7 +245,7 @@ export {
 					auto& instanceDesc = instanceDescs.emplace_back(D3D12_RAYTRACING_INSTANCE_DESC{
 						.InstanceMask = renderObject.IsVisible ? ~0u : 0,
 						.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,
-						.AccelerationStructure = m_accelerationStructureManager->GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh))
+						.AccelerationStructure = m_accelerationStructureManager->GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh.get()))
 						});
 					reinterpret_cast<XMFLOAT3X4&>(instanceDesc.Transform) = m_instanceData[instanceIndex++].ObjectToWorld;
 				}
@@ -265,7 +266,21 @@ export {
 		UINT m_objectCount{};
 
 		unique_ptr<DxAccelStructManager> m_accelerationStructureManager;
-		unordered_map<shared_ptr<Mesh>, uint64_t> m_bottomLevelAccelerationStructureIDs;
+		unordered_map<const Mesh*, uint64_t> m_bottomLevelAccelerationStructureIDs;
 		unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
+
+		struct Observer {
+			Observer(Scene& scene) : m_scene(scene) {
+				m_meshDelete = Mesh::DeleteEvent += [&](const Mesh* ptr) {
+					scene.m_bottomLevelAccelerationStructureIDs.erase(ptr);
+				};
+			}
+
+			~Observer() { Mesh::DeleteEvent -= m_meshDelete; }
+
+		private:
+			Scene& m_scene;
+			EventHandle m_meshDelete{};
+		} m_observer;
 	};
 }

@@ -1,7 +1,5 @@
 module;
 
-#define NOMINMAX
-
 #include "directx/d3dx12.h"
 
 #include <shellapi.h>
@@ -20,6 +18,7 @@ module;
 #include "rtxdi/ReSTIRDI.h"
 
 #include "sl_helpers.h"
+#include "sl_dlss_g.h"
 
 #include "NRD.h"
 
@@ -34,7 +33,6 @@ module;
 module App;
 
 import Camera;
-import CommandList;
 import CommonShaderData;
 import DescriptorHeap;
 import DeviceResources;
@@ -61,7 +59,6 @@ using namespace DirectX;
 using namespace DirectX::SimpleMath;
 using namespace DX;
 using namespace ErrorHelpers;
-using namespace Microsoft::WRL;
 using namespace nrd;
 using namespace PostProcessing;
 using namespace rtxdi;
@@ -315,6 +312,8 @@ private:
 	}();
 	unique_ptr<Streamline> m_streamline;
 
+	DLSSGOptions m_DLSSGOptions;
+
 	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
 	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
 	RelaxSettings m_NRDRelaxSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
@@ -461,11 +460,15 @@ private:
 			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::InFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::InFont));
 
 			IO.Fonts->Clear();
-			IO.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\segoeui.ttf)", static_cast<float>(outputSize.cy) * 0.022f);
+			IO.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", static_cast<float>(outputSize.cy) * 0.022f);
 		}
 	}
 
 	void Update() {
+		const auto isReflexAvailable = m_streamline->IsFeatureAvailable(kFeatureReflex);
+
+		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::eSimulationStart);
+
 		{
 			auto& camera = m_GPUBuffers.Camera->At(0);
 
@@ -488,6 +491,8 @@ private:
 		}
 
 		if (IsSceneReady()) UpdateScene();
+
+		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::eSimulationEnd);
 	}
 
 	void Render() {
@@ -496,6 +501,10 @@ private:
 		m_deviceResources->Prepare();
 
 		const auto commandList = m_deviceResources->GetCommandList();
+
+		const auto isReflexAvailable = m_streamline->IsFeatureAvailable(kFeatureReflex);
+
+		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::eRenderSubmitStart);
 
 		const auto renderTargetView = m_deviceResources->GetRenderTargetView();
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
@@ -513,6 +522,11 @@ private:
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 			if (IsSceneReady()) {
+				if ((m_DLSSGOptions.mode == DLSSGMode::eOff && IsDLSSFrameGenerationEnabled()) ||
+					(m_DLSSGOptions.mode != DLSSGMode::eOff && !IsReflexEnabled())) {
+					SetFrameGenerationOptions();
+				}
+
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
 				if (g_graphicsSettings.Raytracing.RTXDI.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount()) {
@@ -524,11 +538,18 @@ private:
 
 				PostProcessGraphics();
 			}
+			else if (m_DLSSGOptions.mode != DLSSGMode::eOff) SetFrameGenerationOptions(false);
 
 			if (m_UIStates.IsVisible) RenderUI();
 		}
 
+		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::eRenderSubmitEnd);
+
+		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::ePresentStart);
+
 		m_deviceResources->Present();
+
+		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::ePresentEnd);
 
 		m_deviceResources->WaitForGpu();
 
@@ -595,6 +616,8 @@ private:
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
 			m_streamline = make_unique<Streamline>(m_deviceResources->GetCommandList(), &adapterDesc.AdapterLuid, sizeof(adapterDesc.AdapterLuid), 0);
+
+			if (m_streamline->IsFeatureAvailable(kFeatureReflex)) SetReflexOptions();
 		}
 
 		m_denoisedComposition = make_unique<DenoisedComposition>(device);
@@ -817,17 +840,19 @@ private:
 			};
 			instanceIndex++;
 
+			const auto& mesh = renderObject.Mesh;
+
 			auto& objectData = m_GPUBuffers.ObjectData->At(instanceData.FirstGeometryIndex);
 
-			objectData.VertexDesc = Mesh::VertexDesc;
+			objectData.VertexDesc = mesh->GetVertexDesc();
 
 			objectData.Material = renderObject.Material;
 
 			auto& resourceDescriptorHeapIndices = objectData.ResourceDescriptorHeapIndices;
 			resourceDescriptorHeapIndices = {
 				.Mesh{
-					.Vertices = renderObject.Mesh->DescriptorHeapIndices.Vertices,
-					.Indices = renderObject.Mesh->DescriptorHeapIndices.Indices
+					.Vertices = mesh->DescriptorHeapIndices.Vertices,
+					.Indices = mesh->DescriptorHeapIndices.Indices
 				}
 			};
 
@@ -930,11 +955,19 @@ private:
 	}
 
 	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
+	bool IsDLSSFrameGenerationEnabled() const { return g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS_G) && IsReflexEnabled(); }
 	bool IsFSRSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::FSR && m_FSR->IsAvailable(); }
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
+	bool IsReflexEnabled() const { return g_graphicsSettings.ReflexMode != ReflexMode::eOff && m_streamline->IsFeatureAvailable(kFeatureReflex); }
 
-	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilEvaluate) const {
+	static void SetReflexOptions() {
+		ReflexOptions options;
+		options.mode = g_graphicsSettings.ReflexMode;
+		ignore = slReflexSetOptions(options);
+	}
+
+	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilPresent) const {
 		ResourceTagInfo resourceTagInfo{
 			.Type = type,
 			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetState()),
@@ -1019,6 +1052,11 @@ private:
 		OnRenderSizeChanged();
 	}
 
+	void SetFrameGenerationOptions(bool enable = g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && g_graphicsSettings.ReflexMode != ReflexMode::eOff) {
+		m_DLSSGOptions.mode = enable ? DLSSGMode::eAuto : DLSSGMode::eOff;
+		ignore = m_streamline->SetConstants(m_DLSSGOptions);
+	}
+
 	void ResetTemporalAccumulation() {
 		m_slConstants.reset = Boolean::eTrue;
 
@@ -1094,6 +1132,8 @@ private:
 		}
 
 		ProcessToneMapping(*inColor);
+
+		if (IsDLSSFrameGenerationEnabled()) ProcessDLSSFrameGeneration(*inColor);
 
 		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationOverlayEnabled) ProcessAlphaBlending(*m_renderTextures.at(RenderTextureNames::Validation));
 	}
@@ -1229,6 +1269,15 @@ private:
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
+	}
+
+	void ProcessDLSSFrameGeneration(RenderTexture& inColor) {
+		ResourceTagInfo resourceTagInfos[]{
+			CreateResourceTagInfo(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
+			CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
+			CreateResourceTagInfo(kBufferTypeHUDLessColor, inColor, false)
+		};
+		ignore = m_streamline->Tag(CreateResourceTags(resourceTagInfos));
 	}
 
 	void ProcessFSRSuperResolution() {
@@ -1522,6 +1571,28 @@ private:
 						ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) g_graphicsSettings.IsVSyncEnabled = isEnabled;
 				}
 
+				{
+					ReflexState state;
+					ignore = slReflexGetState(state);
+					const auto isAvailable = m_streamline->IsFeatureAvailable(kFeatureReflex) && state.lowLatencyAvailable;
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(isAvailable);
+						ImGui::BeginCombo("NVIDIA Reflex", ToString(isAvailable ? g_graphicsSettings.ReflexMode : ReflexMode::eOff))) {
+						for (const auto ReflexMode : { ReflexMode::eOff, ReflexMode::eLowLatency, ReflexMode::eLowLatencyWithBoost }) {
+							const auto isSelected = g_graphicsSettings.ReflexMode == ReflexMode;
+
+							if (ImGui::Selectable(ToString(ReflexMode), isSelected)) {
+								g_graphicsSettings.ReflexMode = ReflexMode;
+
+								SetReflexOptions();
+							}
+
+							if (isSelected) ImGui::SetItemDefaultFocus();
+						}
+
+						ImGui::EndCombo();
+					}
+				}
+
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& cameraSettings = g_graphicsSettings.Camera;
 
@@ -1573,29 +1644,32 @@ private:
 				if (ImGui::TreeNodeEx("Post-Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& postProcessingSetttings = g_graphicsSettings.PostProcessing;
 
-					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_NRD->IsAvailable());
-						ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", ImGuiTreeNodeFlags_DefaultOpen)) {
-						auto& NRDSettings = postProcessingSetttings.NRD;
+					{
+						const auto isAvailable = m_NRD->IsAvailable();
+						if (const ImGuiEx::ScopedEnablement scopedEnablement(isAvailable);
+							ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", isAvailable ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None)) {
+							auto& NRDSettings = postProcessingSetttings.NRD;
 
-						if (ImGui::BeginCombo("Denoiser", ToString(NRDSettings.Denoiser))) {
-							for (const auto Denoiser : { NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX }) {
-								const auto isSelected = NRDSettings.Denoiser == Denoiser;
+							if (ImGui::BeginCombo("Denoiser", ToString(NRDSettings.Denoiser))) {
+								for (const auto Denoiser : { NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX }) {
+									const auto isSelected = NRDSettings.Denoiser == Denoiser;
 
-								if (ImGui::Selectable(ToString(Denoiser), isSelected)) {
-									NRDSettings.Denoiser = Denoiser;
+									if (ImGui::Selectable(ToString(Denoiser), isSelected)) {
+										NRDSettings.Denoiser = Denoiser;
 
-									ResetTemporalAccumulation();
+										ResetTemporalAccumulation();
+									}
+
+									if (isSelected) ImGui::SetItemDefaultFocus();
 								}
 
-								if (isSelected) ImGui::SetItemDefaultFocus();
+								ImGui::EndCombo();
 							}
 
-							ImGui::EndCombo();
+							if (NRDSettings.Denoiser != NRDDenoiser::None) ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
+
+							ImGui::TreePop();
 						}
-
-						if (NRDSettings.Denoiser != NRDDenoiser::None) ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
-
-						ImGui::TreePop();
 					}
 
 					if (ImGui::TreeNodeEx("Super Resolution", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1645,18 +1719,32 @@ private:
 						ImGui::TreePop();
 					}
 
-					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureNIS));
-						ImGui::TreeNodeEx("NVIDIA Image Scaling", ImGuiTreeNodeFlags_DefaultOpen)) {
-						auto& NISSettings = postProcessingSetttings.NIS;
+					if (IsReflexEnabled()) {
+						auto isEnabled = IsDLSSFrameGenerationEnabled();
+						if (const ImGuiEx::ScopedEnablement scopedEnablement(m_streamline->IsFeatureAvailable(kFeatureDLSS_G));
+							ImGui::Checkbox("NVIDIA DLSS Frame Generation", &isEnabled)) {
+							postProcessingSetttings.IsDLSSFrameGenerationEnabled = isEnabled;
 
-						auto isEnabled = IsNISEnabled();
+							SetFrameGenerationOptions();
+						}
+					}
 
-						if (const ImGuiEx::ScopedID scopedID("Enable NVIDIA Image Scaling");
-							ImGui::Checkbox("Enable", &isEnabled)) NISSettings.IsEnabled = isEnabled;
+					{
+						const auto isAvailable = m_streamline->IsFeatureAvailable(kFeatureNIS);
+						if (const ImGuiEx::ScopedEnablement scopedEnablement(isAvailable);
+							ImGui::TreeNodeEx("NVIDIA Image Scaling", isAvailable ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None)) {
+							auto& NISSettings = postProcessingSetttings.NIS;
 
-						if (isEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							{
+								const ImGuiEx::ScopedID scopedID("Enable NVIDIA Image Scaling");
 
-						ImGui::TreePop();
+								ImGui::Checkbox("Enable", &NISSettings.IsEnabled);
+							}
+
+							if (NISSettings.IsEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+							ImGui::TreePop();
+						}
 					}
 
 					ImGui::Checkbox("Chromatic Aberration", &postProcessingSetttings.IsChromaticAberrationEnabled);

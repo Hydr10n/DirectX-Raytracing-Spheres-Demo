@@ -6,6 +6,8 @@
 
 #include "JsonHelpers.h"
 
+#include "sl_helpers.h"
+
 #include "directxtk12/PostProcess.h"
 
 import DisplayHelpers;
@@ -23,6 +25,17 @@ namespace WindowHelpers {
 			{ WindowMode::Windowed, "Windowed" },
 			{ WindowMode::Borderless, "Borderless" },
 			{ WindowMode::Fullscreen, "Fullscreen" }
+		}
+	);
+}
+
+namespace sl {
+	NLOHMANN_JSON_SERIALIZE_ENUM(
+		ReflexMode,
+		{
+			{ ReflexMode::eOff, "Off" },
+			{ ReflexMode::eLowLatency, "LowLatency" },
+			{ ReflexMode::eLowLatencyWithBoost, "LowLatencyWithBoost" }
 		}
 	);
 }
@@ -109,7 +122,9 @@ public:
 
 			DisplayHelpers::Resolution Resolution{};
 
-			bool IsVSyncEnabled = true;
+			bool IsVSyncEnabled{};
+
+			sl::ReflexMode ReflexMode = sl::ReflexMode::eLowLatency;
 
 			struct Camera {
 				static constexpr float MinHorizontalFieldOfView = 30, MaxHorizontalFieldOfView = 120;
@@ -158,6 +173,8 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(SuperResolution, Upscaler, Mode);
 				} SuperResolution;
 
+				bool IsDLSSFrameGenerationEnabled = true;
+
 				struct NIS {
 					bool IsEnabled{};
 
@@ -188,10 +205,10 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure);
 				} ToneMapping;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
 			} PostProcessing;
 
-			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, Camera, Raytracing, PostProcessing);
+			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, ReflexMode, Camera, Raytracing, PostProcessing);
 
 			void Check() override {
 				using namespace std;

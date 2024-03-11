@@ -5,6 +5,7 @@ module;
 #include <vector>
 
 #include "sl_helpers.h"
+#include "sl_dlss_g.h"
 #include "sl_matrix_helpers.h"
 
 export module Streamline;
@@ -14,7 +15,7 @@ using namespace std;
 
 export {
 	struct Streamline {
-		static constexpr Feature Features[]{ kFeatureDLSS, kFeatureNIS };
+		static constexpr Feature Features[]{ kFeatureDLSS, kFeatureDLSS_G, kFeatureReflex, kFeatureNIS };
 
 		Streamline(const Streamline&) = delete;
 		Streamline& operator=(const Streamline&) = delete;
@@ -39,10 +40,13 @@ export {
 
 		auto Tag(span<const ResourceTag> resourceTags) const { return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandBuffer); }
 
+		auto SetReflexMarker(ReflexMarker marker) const { return slReflexSetMarker(marker, *m_frameToken); }
+
 		template <typename T>
 		auto SetConstants(const T& constants) const {
 			if constexpr (is_same_v<T, Constants>) return slSetConstants(constants, *m_frameToken, m_viewport);
 			if constexpr (is_same_v<T, DLSSOptions>) return slDLSSSetOptions(m_viewport, constants);
+			if constexpr (is_same_v<T, DLSSGOptions>) return slDLSSGSetOptions(m_viewport, constants);
 			if constexpr (is_same_v<T, NISOptions>) return slNISSetOptions(m_viewport, constants);
 			throw;
 		}

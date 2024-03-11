@@ -3,8 +3,6 @@ module;
 #include <filesystem>
 #include <ranges>
 
-#define NOMINMAX
-
 #include "directxtk12/GamePad.h"
 #include "directxtk12/GeometricPrimitive.h"
 #include "directxtk12/Keyboard.h"
@@ -16,6 +14,7 @@ module;
 export module MyScene;
 
 import Material;
+import Model;
 import Random;
 import Scene;
 import Texture;
@@ -50,12 +49,12 @@ export {
 				GeometricPrimitive::VertexCollection vertices;
 				GeometricPrimitive::IndexCollection indices;
 				GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
-				Meshes[ObjectNames::Sphere] = { vertices, indices };
+				Meshes[ObjectNames::Sphere] = { make_shared<vector<Mesh::VertexType>>(vertices), make_shared<vector<Mesh::IndexType>>(indices) };
 			}
 
 			Camera.Position.z = -15;
 
-			const path directoryPath = LR"(Assets\Textures)";
+			const path directoryPath = L"Assets/Textures";
 
 			EnvironmentLightTexture = {
 				.FilePath = directoryPath / L"141_hdrmaps_com_free.exr",

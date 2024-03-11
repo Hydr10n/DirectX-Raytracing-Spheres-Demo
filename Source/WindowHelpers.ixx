@@ -2,8 +2,6 @@ module;
 
 #include <algorithm>
 
-#define NOMINMAX
-
 #include <Windows.h>
 #include <windowsx.h>
 

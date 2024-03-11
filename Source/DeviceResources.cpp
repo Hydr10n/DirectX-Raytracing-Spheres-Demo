@@ -6,8 +6,6 @@ module;
 
 #include <format>
 
-#define NOMINMAX
-
 #include "directx/d3dx12.h"
 #include <dxgi1_6.h>
 

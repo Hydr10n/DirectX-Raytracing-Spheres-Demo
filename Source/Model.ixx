@@ -10,6 +10,7 @@ module;
 export module Model;
 
 import DescriptorHeap;
+import Event;
 import GPUBuffer;
 import Vertex;
 
@@ -27,13 +28,19 @@ export struct Mesh {
 
 	struct { UINT Vertices = ~0u, Indices = ~0u; } DescriptorHeapIndices;
 
-	static constexpr VertexDesc VertexDesc{
-		.Stride = sizeof(VertexType),
-		.NormalOffset = offsetof(VertexType, normal),
-		.TextureCoordinateOffset = offsetof(VertexType, textureCoordinate)
-	};
+	inline static Event<const Mesh*> DeleteEvent;
 
-	static shared_ptr<Mesh> Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {
+	static constexpr VertexDesc GetVertexDesc() {
+		return {
+			.Stride = sizeof(VertexType),
+			.NormalOffset = offsetof(VertexType, normal),
+			.TextureCoordinateOffset = offsetof(VertexType, textureCoordinate)
+		};
+	}
+
+	~Mesh() { DeleteEvent.Raise(this); }
+
+	static auto Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, UINT & srvDescriptorHeapIndex, bool isVertex) {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);
 			descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex);

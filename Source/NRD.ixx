@@ -2,7 +2,6 @@ module;
 
 #include <ranges>
 
-#define NOMINMAX
 #include <d3d12.h>
 
 #include "NRD.h"

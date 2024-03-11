@@ -44,6 +44,8 @@ set_target_properties(${project} PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 set_target_properties(${project} PROPERTIES FOLDER ${project})
 
+target_compile_definitions(${project} PRIVATE NOMINMAX)
+
 set(cxx_include_directories
 	"MathLib"
 	"NRD/Include" "NRD/Integration"
@@ -87,10 +89,13 @@ target_link_libraries(${project} PRIVATE
 
 set(DLL
 	"nvngx_dlss.dll"
+	"nvngx_dlssg.dll"
 	"sl.common.dll"
 	"sl.dlss.dll"
+	"sl.dlss_g.dll"
 	"sl.interposer.dll"
-	"sl.nis.dll")
+	"sl.nis.dll"
+	"sl.reflex.dll")
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} COMMAND_EXPAND_LISTS
 	-E copy_if_different
 	"$<LIST:TRANSFORM,${DLL},PREPEND,${NVIDIA_library_path}Streamline/bin/x64/$<IF:$<CONFIG:Debug>,development/,>>"
