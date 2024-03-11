@@ -522,10 +522,7 @@ private:
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 			if (IsSceneReady()) {
-				if ((m_DLSSGOptions.mode == DLSSGMode::eOff && IsDLSSFrameGenerationEnabled()) ||
-					(m_DLSSGOptions.mode != DLSSGMode::eOff && !IsReflexEnabled())) {
-					SetFrameGenerationOptions();
-				}
+				if (m_DLSSGOptions.mode == DLSSGMode::eOff && IsDLSSFrameGenerationEnabled()) SetFrameGenerationOptions();
 
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
@@ -642,7 +639,7 @@ private:
 			ResourceUploadBatch resourceUploadBatch(device);
 			resourceUploadBatch.Begin();
 
-			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(RenderTargetState(m_deviceResources->GetBackBufferFormat(), m_deviceResources->GetDepthBufferFormat()), &CommonStates::NonPremultiplied));
+			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(RenderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN), &CommonStates::NonPremultiplied));
 
 			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
 		}
@@ -1131,9 +1128,9 @@ private:
 			swap(inColor, outColor);
 		}
 
-		ProcessToneMapping(*inColor);
-
 		if (IsDLSSFrameGenerationEnabled()) ProcessDLSSFrameGeneration(*inColor);
+
+		ProcessToneMapping(*inColor);
 
 		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationOverlayEnabled) ProcessAlphaBlending(*m_renderTextures.at(RenderTextureNames::Validation));
 	}
@@ -1420,7 +1417,6 @@ private:
 		Combination->SetBloomCombineParameters(1.25f, 1, 1, 1);
 
 		auto renderTargetView = m_renderDescriptorHeap->GetCpuHandle(outColor.GetRtvDescriptorHeapIndex());
-
 		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 
 		commandList->RSSetViewports(1, &viewPort);
@@ -1584,6 +1580,7 @@ private:
 								g_graphicsSettings.ReflexMode = ReflexMode;
 
 								SetReflexOptions();
+								SetFrameGenerationOptions();
 							}
 
 							if (isSelected) ImGui::SetItemDefaultFocus();
