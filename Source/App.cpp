@@ -7,6 +7,7 @@ module;
 #include "pix.h"
 
 #include "directxtk12/CommonStates.h"
+#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"
@@ -43,6 +44,7 @@ import LightPreparation;
 import Material;
 import Model;
 import MyScene;
+import PostProcessing.Bloom;
 import PostProcessing.ChromaticAberration;
 import PostProcessing.DenoisedComposition;
 import Raytracing;
@@ -78,6 +80,7 @@ namespace {
 }
 
 #define MAKE_NAME(name) static constexpr LPCSTR name = #name;
+#define MAKE_NAMEW(name) static constexpr LPCWSTR name = L#name;
 
 struct App::Impl : IDeviceNotify {
 	Impl(WindowModeHelper& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -197,7 +200,7 @@ struct App::Impl : IDeviceNotify {
 
 		for (auto& toneMapping : m_toneMapping) toneMapping.reset();
 
-		m_bloom = {};
+		m_bloom.reset();
 
 		m_chromaticAberration.reset();
 
@@ -278,7 +281,6 @@ private:
 			InDenoisedDiffuse, OutDenoisedDiffuse,
 			InDenoisedSpecular, OutDenoisedSpecular,
 			InValidation, OutValidation,
-			InBlur1, InBlur2,
 			InNeighborOffsets,
 			InFont,
 			Reserve,
@@ -291,7 +293,6 @@ private:
 		enum {
 			Color,
 			FinalColor,
-			Blur1, Blur2,
 			Count
 		};
 	};
@@ -325,38 +326,33 @@ private:
 
 	unique_ptr<ChromaticAberration> m_chromaticAberration;
 
-	struct {
-		unique_ptr<BasicPostProcess> Extraction, Blur;
-		unique_ptr<DualPostProcess> Combination;
-	} m_bloom;
+	unique_ptr<Bloom> m_bloom;
 
 	unique_ptr<ToneMapPostProcess> m_toneMapping[ToneMapPostProcess::Operator_Max];
 
 	unique_ptr<SpriteBatch> m_alphaBlending;
 
 	struct RenderTextureNames {
-		MAKE_NAME(Color);
-		MAKE_NAME(FinalColor);
-		MAKE_NAME(PreviousLinearDepth);
-		MAKE_NAME(LinearDepth);
-		MAKE_NAME(NormalizedDepth);
-		MAKE_NAME(MotionVectors);
-		MAKE_NAME(PreviousBaseColorMetalness);
-		MAKE_NAME(BaseColorMetalness);
-		MAKE_NAME(EmissiveColor);
-		MAKE_NAME(PreviousNormalRoughness);
-		MAKE_NAME(NormalRoughness);
-		MAKE_NAME(PreviousGeometricNormals);
-		MAKE_NAME(GeometricNormals);
-		MAKE_NAME(NoisyDiffuse);
-		MAKE_NAME(NoisySpecular);
-		MAKE_NAME(DenoisedDiffuse);
-		MAKE_NAME(DenoisedSpecular);
-		MAKE_NAME(Validation);
-		MAKE_NAME(Blur1);
-		MAKE_NAME(Blur2);
+		MAKE_NAMEW(Color);
+		MAKE_NAMEW(FinalColor);
+		MAKE_NAMEW(PreviousLinearDepth);
+		MAKE_NAMEW(LinearDepth);
+		MAKE_NAMEW(NormalizedDepth);
+		MAKE_NAMEW(MotionVectors);
+		MAKE_NAMEW(PreviousBaseColorMetalness);
+		MAKE_NAMEW(BaseColorMetalness);
+		MAKE_NAMEW(EmissiveColor);
+		MAKE_NAMEW(PreviousNormalRoughness);
+		MAKE_NAMEW(NormalRoughness);
+		MAKE_NAMEW(PreviousGeometricNormals);
+		MAKE_NAMEW(GeometricNormals);
+		MAKE_NAMEW(NoisyDiffuse);
+		MAKE_NAMEW(NoisySpecular);
+		MAKE_NAMEW(DenoisedDiffuse);
+		MAKE_NAMEW(DenoisedSpecular);
+		MAKE_NAMEW(Validation);
 	};
-	map<string, shared_ptr<RenderTexture>, less<>> m_renderTextures;
+	map<wstring, shared_ptr<RenderTexture>, less<>> m_renderTextures;
 
 	struct {
 		shared_ptr<ConstantBuffer<Camera>> Camera;
@@ -393,34 +389,33 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateTexture = [&](DXGI_FORMAT format, SIZE size, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u, UINT rtvDescriptorHeapIndex = ~0u) {
-				auto& texture = m_renderTextures[textureName];
-				texture = make_shared<RenderTexture>(format);
-				texture->SetDevice(device, m_resourceDescriptorHeap.get(), srvDescriptorHeapIndex, uavDescriptorHeapIndex, m_renderDescriptorHeap.get(), rtvDescriptorHeapIndex);
-				texture->CreateResource(size.cx, size.cy);
-			};
-			const auto CreateTexture1 = [&](DXGI_FORMAT format, LPCSTR textureName, UINT srvDescriptorHeapIndex = ~0u, UINT uavDescriptorHeapIndex = ~0u, UINT rtvDescriptorHeapIndex = ~0u) {
-				CreateTexture(format, outputSize, textureName, srvDescriptorHeapIndex, uavDescriptorHeapIndex, rtvDescriptorHeapIndex);
+			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, UINT SRVDescriptorHeapIndex = ~0u, UINT UAVDescriptorHeapIndex = ~0u, UINT RTVDescriptorHeapIndex = ~0u) {
+				auto& texture = m_renderTextures[name];
+				texture = make_shared<RenderTexture>(device, format, XMUINT2(outputSize.cx, outputSize.cy));
+				texture->GetResource()->SetName(name);
+				if (SRVDescriptorHeapIndex != ~0u) texture->CreateSRV(*m_resourceDescriptorHeap, SRVDescriptorHeapIndex);
+				if (UAVDescriptorHeapIndex != ~0u) texture->CreateUAV(*m_resourceDescriptorHeap, UAVDescriptorHeapIndex);
+				if (RTVDescriptorHeapIndex != ~0u) texture->CreateRTV(*m_renderDescriptorHeap, RTVDescriptorHeapIndex);
 			};
 
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::Color, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::FinalColor, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
-			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::PreviousLinearDepth, ResourceDescriptorHeapIndex::InPreviousLinearDepth, ResourceDescriptorHeapIndex::OutPreviousLinearDepth);
-			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::LinearDepth, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth);
-			CreateTexture1(DXGI_FORMAT_R32_FLOAT, RenderTextureNames::NormalizedDepth, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth);
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::MotionVectors, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
-			CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::PreviousBaseColorMetalness, ResourceDescriptorHeapIndex::InPreviousBaseColorMetalness, ResourceDescriptorHeapIndex::OutPreviousBaseColorMetalness);
-			CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::BaseColorMetalness, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
-			CreateTexture1(DXGI_FORMAT_R11G11B10_FLOAT, RenderTextureNames::EmissiveColor, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
+			CreateTexture(RenderTextureNames::Color, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
+			CreateTexture(RenderTextureNames::FinalColor, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
+			CreateTexture(RenderTextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorHeapIndex::InPreviousLinearDepth, ResourceDescriptorHeapIndex::OutPreviousLinearDepth);
+			CreateTexture(RenderTextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth);
+			CreateTexture(RenderTextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth);
+			CreateTexture(RenderTextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
+			CreateTexture(RenderTextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InPreviousBaseColorMetalness, ResourceDescriptorHeapIndex::OutPreviousBaseColorMetalness);
+			CreateTexture(RenderTextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
+			CreateTexture(RenderTextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
 
 			{
 				const auto normalFormat = NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding);
-				CreateTexture1(normalFormat, RenderTextureNames::PreviousNormalRoughness, ResourceDescriptorHeapIndex::InPreviousNormalRoughness, ResourceDescriptorHeapIndex::OutPreviousNormalRoughness);
-				CreateTexture1(normalFormat, RenderTextureNames::NormalRoughness, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
+				CreateTexture(RenderTextureNames::PreviousNormalRoughness, normalFormat, ResourceDescriptorHeapIndex::InPreviousNormalRoughness, ResourceDescriptorHeapIndex::OutPreviousNormalRoughness);
+				CreateTexture(RenderTextureNames::NormalRoughness, normalFormat, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
 			}
 
-			CreateTexture1(DXGI_FORMAT_R16G16_SNORM, RenderTextureNames::PreviousGeometricNormals, ResourceDescriptorHeapIndex::InPreviousGeometricNormals, ResourceDescriptorHeapIndex::OutPreviousGeometricNormals);
-			CreateTexture1(DXGI_FORMAT_R16G16_SNORM, RenderTextureNames::GeometricNormals, ResourceDescriptorHeapIndex::InGeometricNormals, ResourceDescriptorHeapIndex::OutGeometricNormals);
+			CreateTexture(RenderTextureNames::PreviousGeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorHeapIndex::InPreviousGeometricNormals, ResourceDescriptorHeapIndex::OutPreviousGeometricNormals);
+			CreateTexture(RenderTextureNames::GeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorHeapIndex::InGeometricNormals, ResourceDescriptorHeapIndex::OutGeometricNormals);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -432,20 +427,14 @@ private:
 			}
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisyDiffuse, ~0u, ResourceDescriptorHeapIndex::OutNoisyDiffuse);
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::NoisySpecular, ~0u, ResourceDescriptorHeapIndex::OutNoisySpecular);
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedDiffuse, ResourceDescriptorHeapIndex::InDenoisedDiffuse, ResourceDescriptorHeapIndex::OutDenoisedDiffuse);
-				CreateTexture1(DXGI_FORMAT_R16G16B16A16_FLOAT, RenderTextureNames::DenoisedSpecular, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
-				CreateTexture1(DXGI_FORMAT_R8G8B8A8_UNORM, RenderTextureNames::Validation, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
+				CreateTexture(RenderTextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorHeapIndex::OutNoisyDiffuse);
+				CreateTexture(RenderTextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorHeapIndex::OutNoisySpecular);
+				CreateTexture(RenderTextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InDenoisedDiffuse, ResourceDescriptorHeapIndex::OutDenoisedDiffuse);
+				CreateTexture(RenderTextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
+				CreateTexture(RenderTextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
 			}
 
 			m_FSR = make_unique<FSR>(device, commandList, FfxDimensions2D{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED | FFX_FSR2_ENABLE_DEPTH_INFINITE | FFX_FSR2_ENABLE_AUTO_EXPOSURE);
-
-			{
-				const SIZE size{ outputSize.cx / 2, outputSize.cy / 2 };
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur1, ResourceDescriptorHeapIndex::InBlur1, ~0u, RenderDescriptorHeapIndex::Blur1);
-				CreateTexture(DXGI_FORMAT_R16G16B16A16_FLOAT, size, RenderTextureNames::Blur2, ResourceDescriptorHeapIndex::InBlur2, ~0u, RenderDescriptorHeapIndex::Blur2);
-			}
 
 			SelectSuperResolutionUpscaler();
 			SetSuperResolutionOptions();
@@ -599,13 +588,13 @@ private:
 
 		m_raytracing = make_unique<Raytracing>(device);
 
+		m_lightPreparation = make_unique<LightPreparation>(device);
+
 		CreatePostProcessing();
 	}
 
 	void CreatePostProcessing() {
 		const auto device = m_deviceResources->GetDevice();
-
-		m_lightPreparation = make_unique<LightPreparation>(device);
 
 		{
 			ignore = slSetD3DDevice(device);
@@ -621,27 +610,23 @@ private:
 
 		m_chromaticAberration = make_unique<ChromaticAberration>(device);
 
-		{
-			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
-
-			m_bloom = {
-				.Extraction = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::BloomExtract),
-				.Blur = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::BloomBlur),
-				.Combination = make_unique<DualPostProcess>(device, renderTargetState, DualPostProcess::BloomCombine),
-			};
-		}
-
-		for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
-			m_toneMapping[toneMappingOperator] = make_unique<ToneMapPostProcess>(device, RenderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN), toneMappingOperator, toneMappingOperator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB);
-		}
+		m_bloom = make_unique<Bloom>(device);
 
 		{
-			ResourceUploadBatch resourceUploadBatch(device);
-			resourceUploadBatch.Begin();
+			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN);
 
-			m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(RenderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN), &CommonStates::NonPremultiplied));
+			for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+				m_toneMapping[toneMappingOperator] = make_unique<ToneMapPostProcess>(device, renderTargetState, toneMappingOperator, toneMappingOperator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB);
+			}
 
-			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+			{
+				ResourceUploadBatch resourceUploadBatch(device);
+				resourceUploadBatch.Begin();
+
+				m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
+
+				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+			}
 		}
 	}
 
@@ -811,17 +796,17 @@ private:
 				const auto desc = pResource->GetDesc();
 				return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
 			};
-			if (m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV != ~0u) {
+			if (m_scene->EnvironmentLightTexture.SRVDescriptorHeapIndex != ~0u) {
 				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
 				XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
 			}
-			if (m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV) {
+			if (m_scene->EnvironmentTexture.SRVDescriptorHeapIndex != ~0u) {
 				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
 				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 			}
 			sceneData.ResourceDescriptorHeapIndices = {
-				.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.DescriptorHeapIndices.SRV,
-				.InEnvironmentTexture = m_scene->EnvironmentTexture.DescriptorHeapIndices.SRV
+				.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.SRVDescriptorHeapIndex,
+				.InEnvironmentTexture = m_scene->EnvironmentTexture.SRVDescriptorHeapIndex
 			};
 
 			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
@@ -854,7 +839,7 @@ private:
 			};
 
 			for (const auto& [TextureType, Texture] : renderObject.Textures) {
-				const auto index = Texture.DescriptorHeapIndices.SRV;
+				const auto index = Texture.SRVDescriptorHeapIndex;
 				switch (auto& indices = resourceDescriptorHeapIndices.Textures; TextureType) {
 					case TextureType::BaseColorMap: indices.BaseColorMap = index; break;
 					case TextureType::EmissiveColorMap: indices.EmissiveColorMap = index; break;
@@ -912,40 +897,25 @@ private:
 			.OutDIReservoir = m_RTXDIResources.DIReservoir.get()
 		};
 
-		const auto
-			& previousLinearDepth = *m_renderTextures.at(RenderTextureNames::PreviousLinearDepth),
-			& previousBaseColorMetalness = *m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness),
-			& previousNormalRoughness = *m_renderTextures.at(RenderTextureNames::PreviousNormalRoughness),
-			& previousGeometricNormals = *m_renderTextures.at(RenderTextureNames::PreviousGeometricNormals);
-
-		const ScopedBarrier scopedBarrier(
-			commandList,
-			{
-				CD3DX12_RESOURCE_BARRIER::Transition(previousLinearDepth.GetResource(), previousLinearDepth.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(previousBaseColorMetalness.GetResource(), previousBaseColorMetalness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(previousNormalRoughness.GetResource(), previousNormalRoughness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(previousGeometricNormals.GetResource(), previousGeometricNormals.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
-			}
-		);
-
-		const auto GetSRV = [&](const RenderTexture& texture) { return m_resourceDescriptorHeap->GetGpuHandle(texture.GetSrvDescriptorHeapIndex()); };
-		const auto GetUAV = [&](LPCSTR name) { return m_resourceDescriptorHeap->GetGpuHandle(m_renderTextures.at(name)->GetUavDescriptorHeapIndex()); };
-		m_raytracing->GPUDescriptors = {
-			.InPreviousLinearDepth = GetSRV(previousLinearDepth),
-			.InPreviousBaseColorMetalness = GetSRV(previousBaseColorMetalness),
-			.InPreviousNormalRoughness = GetSRV(previousNormalRoughness),
-			.InPreviousGeometricNormals = GetSRV(previousGeometricNormals),
-			.OutColor = GetUAV(RenderTextureNames::Color),
-			.OutLinearDepth = GetUAV(RenderTextureNames::LinearDepth),
-			.OutNormalizedDepth = GetUAV(RenderTextureNames::NormalizedDepth),
-			.OutMotionVectors = GetUAV(RenderTextureNames::MotionVectors),
-			.OutBaseColorMetalness = GetUAV(RenderTextureNames::BaseColorMetalness),
-			.OutEmissiveColor = GetUAV(RenderTextureNames::EmissiveColor),
-			.OutNormalRoughness = GetUAV(RenderTextureNames::NormalRoughness),
-			.OutGeometricNormals = GetUAV(RenderTextureNames::GeometricNormals),
-			.OutNoisyDiffuse = GetUAV(RenderTextureNames::NoisyDiffuse),
-			.OutNoisySpecular = GetUAV(RenderTextureNames::NoisySpecular),
+		m_raytracing->GPUDescriptorHandles = {
 			.InNeighborOffsets = m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::InNeighborOffsets)
+		};
+
+		m_raytracing->RenderTextures = {
+			.InPreviousLinearDepth = m_renderTextures.at(RenderTextureNames::PreviousLinearDepth).get(),
+			.InPreviousBaseColorMetalness = m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness).get(),
+			.InPreviousNormalRoughness = m_renderTextures.at(RenderTextureNames::PreviousNormalRoughness).get(),
+			.InPreviousGeometricNormals = m_renderTextures.at(RenderTextureNames::PreviousGeometricNormals).get(),
+			.OutColor = m_renderTextures.at(RenderTextureNames::Color).get(),
+			.OutLinearDepth = m_renderTextures.at(RenderTextureNames::LinearDepth).get(),
+			.OutNormalizedDepth = m_renderTextures.at(RenderTextureNames::NormalizedDepth).get(),
+			.OutMotionVectors = m_renderTextures.at(RenderTextureNames::MotionVectors).get(),
+			.OutBaseColorMetalness = m_renderTextures.at(RenderTextureNames::BaseColorMetalness).get(),
+			.OutEmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
+			.OutNormalRoughness = m_renderTextures.at(RenderTextureNames::NormalRoughness).get(),
+			.OutGeometricNormals = m_renderTextures.at(RenderTextureNames::GeometricNormals).get(),
+			.OutNoisyDiffuse = m_renderTextures.at(RenderTextureNames::NoisyDiffuse).get(),
+			.OutNoisySpecular = m_renderTextures.at(RenderTextureNames::NoisySpecular).get()
 		};
 
 		m_raytracing->Render(commandList);
@@ -964,14 +934,14 @@ private:
 		ignore = slReflexSetOptions(options);
 	}
 
-	auto CreateResourceTagInfo(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilPresent) const {
-		ResourceTagInfo resourceTagInfo{
+	auto CreateResourceTagDesc(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilPresent) const {
+		ResourceTagDesc resourceTagDesc{
 			.Type = type,
 			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetState()),
 			.Lifecycle = lifecycle
 		};
-		if (isRenderSize) resourceTagInfo.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
-		return resourceTagInfo;
+		if (isRenderSize) resourceTagDesc.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
+		return resourceTagDesc;
 	}
 
 	void SelectSuperResolutionUpscaler() {
@@ -1161,7 +1131,7 @@ private:
 
 		const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
 
-		const auto
+		auto
 			& linearDepth = *m_renderTextures.at(RenderTextureNames::LinearDepth),
 			& baseColorMetalness = *m_renderTextures.at(RenderTextureNames::BaseColorMetalness),
 			& normalRoughness = *m_renderTextures.at(RenderTextureNames::NormalRoughness),
@@ -1224,31 +1194,14 @@ private:
 
 			m_denoisedComposition->GPUBuffers = { .InCamera = m_GPUBuffers.Camera.get() };
 
-			const auto& emissiveColor = *m_renderTextures.at(RenderTextureNames::EmissiveColor), & color = *m_renderTextures.at(RenderTextureNames::Color);
-
-			const ScopedBarrier scopedBarrier(
-				commandList,
-				{
-					CD3DX12_RESOURCE_BARRIER::Transition(linearDepth.GetResource(), linearDepth.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(baseColorMetalness.GetResource(), baseColorMetalness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(emissiveColor.GetResource(), emissiveColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(normalRoughness.GetResource(), normalRoughness.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(denoisedDiffuse.GetResource(), denoisedDiffuse.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(denoisedSpecular.GetResource(), denoisedSpecular.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
-				}
-			);
-
-			const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(color.GetResource());
-			commandList->ResourceBarrier(1, &barrier);
-
-			m_denoisedComposition->GPUDescriptors = {
-				.InLinearDepth = m_resourceDescriptorHeap->GetGpuHandle(linearDepth.GetSrvDescriptorHeapIndex()),
-				.InBaseColorMetalness = m_resourceDescriptorHeap->GetGpuHandle(baseColorMetalness.GetSrvDescriptorHeapIndex()),
-				.InEmissiveColor = m_resourceDescriptorHeap->GetGpuHandle(emissiveColor.GetSrvDescriptorHeapIndex()),
-				.InNormalRoughness = m_resourceDescriptorHeap->GetGpuHandle(normalRoughness.GetSrvDescriptorHeapIndex()),
-				.InDenoisedDiffuse = m_resourceDescriptorHeap->GetGpuHandle(denoisedDiffuse.GetSrvDescriptorHeapIndex()),
-				.InDenoisedSpecular = m_resourceDescriptorHeap->GetGpuHandle(denoisedSpecular.GetSrvDescriptorHeapIndex()),
-				.OutColor = m_resourceDescriptorHeap->GetGpuHandle(color.GetUavDescriptorHeapIndex())
+			m_denoisedComposition->RenderTextures = {
+				.InLinearDepth = &linearDepth,
+				.InBaseColorMetalness = &baseColorMetalness,
+				.InEmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
+				.InNormalRoughness = &normalRoughness,
+				.InDenoisedDiffuse = &denoisedDiffuse,
+				.InDenoisedSpecular = &denoisedSpecular,
+				.OutColor = m_renderTextures.at(RenderTextureNames::Color).get()
 			};
 
 			m_denoisedComposition->Process(commandList);
@@ -1256,25 +1209,25 @@ private:
 	}
 
 	void ProcessDLSSSuperResolution() {
-		ResourceTagInfo resourceTagInfos[]{
-			CreateResourceTagInfo(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
-			CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
-			CreateResourceTagInfo(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Color)),
-			CreateResourceTagInfo(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalColor), false)
+		ResourceTagDesc resourceTagDescs[]{
+			CreateResourceTagDesc(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
+			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
+			CreateResourceTagDesc(kBufferTypeScalingInputColor, *m_renderTextures.at(RenderTextureNames::Color)),
+			CreateResourceTagDesc(kBufferTypeScalingOutputColor, *m_renderTextures.at(RenderTextureNames::FinalColor), false)
 		};
-		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagInfos));
+		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagDescs));
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ProcessDLSSFrameGeneration(RenderTexture& inColor) {
-		ResourceTagInfo resourceTagInfos[]{
-			CreateResourceTagInfo(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
-			CreateResourceTagInfo(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
-			CreateResourceTagInfo(kBufferTypeHUDLessColor, inColor, false)
+		ResourceTagDesc resourceTagDescs[]{
+			CreateResourceTagDesc(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
+			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
+			CreateResourceTagDesc(kBufferTypeHUDLessColor, inColor, false)
 		};
-		ignore = m_streamline->Tag(CreateResourceTags(resourceTagInfos));
+		ignore = m_streamline->Tag(CreateResourceTags(resourceTagDescs));
 	}
 
 	void ProcessFSRSuperResolution() {
@@ -1329,106 +1282,36 @@ private:
 		NISOptions.sharpness = g_graphicsSettings.PostProcessing.NIS.Sharpness;
 		ignore = m_streamline->SetConstants(NISOptions);
 
-		ResourceTagInfo resourceTagInfos[]{
-			CreateResourceTagInfo(kBufferTypeScalingInputColor, inColor, false),
-			CreateResourceTagInfo(kBufferTypeScalingOutputColor, outColor, false)
+		ResourceTagDesc resourceTagDescs[]{
+			CreateResourceTagDesc(kBufferTypeScalingInputColor, inColor, false),
+			CreateResourceTagDesc(kBufferTypeScalingOutputColor, outColor, false)
 		};
-		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagInfos));
+		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagDescs));
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ProcessChromaticAberration(RenderTexture& inColor, RenderTexture& outColor) {
-		const auto commandList = m_deviceResources->GetCommandList();
-
-		const auto outputSize = GetOutputSize();
-		m_chromaticAberration->Constants = { .RenderSize = XMUINT2(outputSize.cx, outputSize.cy) };
-
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
-
-		m_chromaticAberration->GPUDescriptors = {
-			.InColor = m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()),
-			.OutColor = m_resourceDescriptorHeap->GetGpuHandle(outColor.GetUavDescriptorHeapIndex())
+		m_chromaticAberration->RenderTextures = {
+			.Input = &inColor,
+			.Output = &outColor
 		};
 
-		m_chromaticAberration->Process(commandList);
+		m_chromaticAberration->Process(m_deviceResources->GetCommandList());
 	}
 
 	void ProcessBloom(RenderTexture& inColor, RenderTexture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& bloomSettings = g_graphicsSettings.PostProcessing.Bloom;
+		m_bloom->Constants.Strength = g_graphicsSettings.PostProcessing.Bloom.Strength;
 
-		const auto& [Extraction, Blur, Combination] = m_bloom;
+		m_bloom->SetTextures(inColor, outColor);
 
-		auto& blur1 = *m_renderTextures.at(RenderTextureNames::Blur1), & blur2 = *m_renderTextures.at(RenderTextureNames::Blur2);
+		m_bloom->Process(commandList);
 
-		const auto inColorState = inColor.GetState(), blur1State = blur1.GetState(), blur2State = blur2.GetState();
-
-		const auto
-			inColorSRV = m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()),
-			blur1SRV = m_resourceDescriptorHeap->GetGpuHandle(blur1.GetSrvDescriptorHeapIndex()),
-			blur2SRV = m_resourceDescriptorHeap->GetGpuHandle(blur2.GetSrvDescriptorHeapIndex());
-
-		const auto
-			blur1RTV = m_renderDescriptorHeap->GetCpuHandle(blur1.GetRtvDescriptorHeapIndex()),
-			blur2RTV = m_renderDescriptorHeap->GetCpuHandle(blur2.GetRtvDescriptorHeapIndex());
-
-		inColor.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-
-		Extraction->SetSourceTexture(inColorSRV, inColor.GetResource());
-		Extraction->SetBloomExtractParameter(bloomSettings.Threshold);
-
-		commandList->OMSetRenderTargets(1, &blur1RTV, FALSE, nullptr);
-
-		const auto viewPort = m_deviceResources->GetScreenViewport();
-
-		auto halfViewPort = viewPort;
-		halfViewPort.Height /= 2;
-		halfViewPort.Width /= 2;
-		commandList->RSSetViewports(1, &halfViewPort);
-
-		Extraction->Process(commandList);
-
-		blur1.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-
-		Blur->SetSourceTexture(blur1SRV, blur1.GetResource());
-		Blur->SetBloomBlurParameters(true, bloomSettings.BlurSize, 1);
-
-		commandList->OMSetRenderTargets(1, &blur2RTV, FALSE, nullptr);
-
-		Blur->Process(commandList);
-
-		blur1.TransitionTo(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		blur2.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-
-		Blur->SetSourceTexture(blur2SRV, blur2.GetResource());
-		Blur->SetBloomBlurParameters(false, bloomSettings.BlurSize, 1);
-
-		commandList->OMSetRenderTargets(1, &blur1RTV, FALSE, nullptr);
-
-		Blur->Process(commandList);
-
-		blur1.TransitionTo(commandList, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-
-		Combination->SetSourceTexture(inColorSRV);
-		Combination->SetSourceTexture2(blur1SRV);
-		Combination->SetBloomCombineParameters(1.25f, 1, 1, 1);
-
-		auto renderTargetView = m_renderDescriptorHeap->GetCpuHandle(outColor.GetRtvDescriptorHeapIndex());
-		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
-
-		commandList->RSSetViewports(1, &viewPort);
-
-		Combination->Process(commandList);
-
-		inColor.TransitionTo(commandList, inColorState);
-		blur1.TransitionTo(commandList, blur1State);
-		blur2.TransitionTo(commandList, blur2State);
-
-		renderTargetView = m_deviceResources->GetRenderTargetView();
-		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
+		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
+		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ProcessToneMapping(RenderTexture& inColor) {
@@ -1438,7 +1321,7 @@ private:
 
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
 		auto& toneMapping = *m_toneMapping[toneMappingSettings.Operator];
-		toneMapping.SetHDRSourceTexture(m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()));
+		toneMapping.SetHDRSourceTexture(inColor.GetSRVDescriptor().GPUHandle);
 		toneMapping.SetExposure(toneMappingSettings.Exposure);
 		toneMapping.Process(commandList);
 	}
@@ -1450,7 +1333,7 @@ private:
 
 		m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		m_alphaBlending->Begin(commandList);
-		m_alphaBlending->Draw(m_resourceDescriptorHeap->GetGpuHandle(inColor.GetSrvDescriptorHeapIndex()), GetTextureSize(inColor.GetResource()), XMFLOAT2());
+		m_alphaBlending->Draw(inColor.GetSRVDescriptor().GPUHandle, GetTextureSize(inColor.GetResource()), XMFLOAT2());
 		m_alphaBlending->End();
 	}
 
@@ -1755,11 +1638,7 @@ private:
 							ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
 						}
 
-						if (bloomSettings.IsEnabled) {
-							ImGui::SliderFloat("Threshold", &bloomSettings.Threshold, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-
-							ImGui::SliderFloat("Blur size", &bloomSettings.BlurSize, 1, bloomSettings.MaxBlurSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-						}
+						if (bloomSettings.IsEnabled) ImGui::SliderFloat("Strength", &bloomSettings.Strength, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
 						ImGui::TreePop();
 					}

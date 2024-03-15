@@ -50,8 +50,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 		- Sharpness
 	- Chromatic Aberration
 	- Bloom
-		- Threshold
-		- Blur Size
+		- Strength
 	- Tone Mapping
 		- Operator: Saturate | Reinhard | ACES Filmic
 		- Exposure

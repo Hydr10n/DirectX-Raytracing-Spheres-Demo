@@ -12,6 +12,7 @@ module;
 export module GPUBuffer;
 
 import ErrorHelpers;
+import GPUResource;
 
 using namespace DirectX::FormatHelpers;
 using namespace ErrorHelpers;
@@ -25,15 +26,13 @@ using namespace std;
 
 export namespace DirectX {
 	template <typename T, D3D12_HEAP_TYPE HeapType, DEFAULT_ALIGNMENT>
-	class GPUBuffer {
+	class GPUBuffer : public GPUResource {
 	public:
 		static_assert(IsPowerOf2(Alignment));
 
 		using ElementType = T;
 
 		static constexpr size_t ElementSize = (sizeof(T) + Alignment - 1) & ~(Alignment - 1);
-
-		GPUBuffer& operator=(const GPUBuffer&) = delete;
 
 		GPUBuffer(GPUBuffer&& source) noexcept = default;
 		GPUBuffer& operator=(GPUBuffer&& source) noexcept = default;
@@ -42,22 +41,14 @@ export namespace DirectX {
 			ID3D12Device* pDevice,
 			size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : m_capacity(capacity), m_count(capacity), m_state(initialState) {
+		) noexcept(false) : GPUResource(initialState), m_capacity(capacity), m_count(capacity) {
 			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
 			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(ElementSize * capacity, 16), flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
 
-		ID3D12Resource* GetResource() const noexcept { return m_resource.Get(); }
-
 		size_t GetCapacity() const noexcept { return m_capacity; }
 		size_t GetCount() const noexcept { return m_count; }
-
-		D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
-		void TransitionTo(ID3D12GraphicsCommandList* pCommandList, D3D12_RESOURCE_STATES state) {
-			TransitionResource(pCommandList, m_resource.Get(), m_state, state);
-			m_state = state;
-		}
 
 		void CreateCBV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
 			ComPtr<ID3D12Device> device;
@@ -143,10 +134,8 @@ export namespace DirectX {
 
 	protected:
 		size_t m_capacity{}, m_count{};
-		D3D12_RESOURCE_STATES m_state{};
-		ComPtr<ID3D12Resource> m_resource;
 
-		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : m_capacity(source.m_capacity), m_count(source.m_count), m_state(initialState) {
+		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : GPUResource(initialState), m_capacity(source.m_capacity), m_count(source.m_count) {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
 			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
@@ -267,7 +256,7 @@ export namespace DirectX {
 		}
 		T& At(size_t index) { return const_cast<T&>(as_const(*this).At(index)); }
 
-	protected:
+	private:
 		uint8_t* m_data{};
 	};
 

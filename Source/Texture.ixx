@@ -24,8 +24,8 @@ using namespace TextureHelpers;
 	ThrowIfFailed(__VA_ARGS__); \
 	if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap; \
 	descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex); \
-	DescriptorHeapIndices.SRV = descriptorHeapIndex - 1; \
-	CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(DescriptorHeapIndices.SRV), isCubeMap);
+	SRVDescriptorHeapIndex = descriptorHeapIndex - 1; \
+	CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(SRVDescriptorHeapIndex), isCubeMap);
 
 export {
 	enum class TextureType { Unknown, BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, TransmissionMap, OpacityMap, NormalMap, CubeMap };
@@ -35,7 +35,7 @@ export {
 
 		ComPtr<ID3D12Resource> Resource;
 
-		struct { UINT SRV = ~0u, UAV = ~0u, RTV = ~0u; } DescriptorHeapIndices;
+		UINT SRVDescriptorHeapIndex = ~0u;
 
 		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
 			if (empty(filePath)) throw invalid_argument("Texture file path cannot be empty");

@@ -85,7 +85,7 @@ export {
 		FrameToken* m_frameToken{};
 	};
 
-	struct ResourceTagInfo {
+	struct ResourceTagDesc {
 		BufferType Type;
 		Resource Resource;
 		Extent Extent;
@@ -94,9 +94,9 @@ export {
 		operator ResourceTag() { return ResourceTag(&Resource, Type, Lifecycle, &Extent); }
 	};
 
-	auto CreateResourceTags(span<ResourceTagInfo> resourceTagInfos) {
+	auto CreateResourceTags(span<ResourceTagDesc> resourceTagDescs) {
 		vector<ResourceTag> resourceTags;
-		for (auto& resourceTagInfo : resourceTagInfos) resourceTags.emplace_back(resourceTagInfo);
+		for (auto& resourceTagDesc : resourceTagDescs) resourceTags.emplace_back(resourceTagDesc);
 		return resourceTags;
 	}
 

@@ -186,13 +186,11 @@ public:
 				bool IsChromaticAberrationEnabled = true;
 
 				struct Bloom {
-					static constexpr float MaxBlurSize = 5;
-
 					bool IsEnabled = true;
 
-					float Threshold = 1, BlurSize = 3;
+					float Strength = 0.05f;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(Bloom, IsEnabled, Threshold, BlurSize);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(Bloom, IsEnabled, Strength);
 				} Bloom;
 
 				struct ToneMapping {
@@ -229,10 +227,7 @@ public:
 				{
 					PostProcessing.NIS.Sharpness = clamp(PostProcessing.NIS.Sharpness, 0.0f, 1.0f);
 
-					{
-						PostProcessing.Bloom.Threshold = clamp(PostProcessing.Bloom.Threshold, 0.0f, 1.0f);
-						PostProcessing.Bloom.BlurSize = clamp(PostProcessing.Bloom.BlurSize, 1.0f, PostProcessing.Bloom.MaxBlurSize);
-					}
+					PostProcessing.Bloom.Strength = clamp(PostProcessing.Bloom.Strength, 0.0f, 1.0f);
 
 					PostProcessing.ToneMapping.Exposure = clamp(PostProcessing.ToneMapping.Exposure, PostProcessing.ToneMapping.MinExposure, PostProcessing.ToneMapping.MaxExposure);
 				}

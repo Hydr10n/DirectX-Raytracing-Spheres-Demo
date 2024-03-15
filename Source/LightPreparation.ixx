@@ -42,7 +42,8 @@ export struct LightPreparation {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LightPreparation_dxil, size(g_LightPreparation_dxil) };
 		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 		const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineStateObject)));
+		ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
+		m_pipelineState->SetName(L"LightPreparation");
 	}
 
 	void SetScene(const Scene* pScene) {
@@ -98,9 +99,9 @@ export struct LightPreparation {
 	}
 
 	void Process(ID3D12GraphicsCommandList* pCommandList) {
-		pCommandList->SetPipelineState(m_pipelineStateObject.Get());
+		pCommandList->SetPipelineState(m_pipelineState.Get());
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		pCommandList->SetComputeRoot32BitConstants(0, 1, &m_emissiveMeshCount, 0);
+		pCommandList->SetComputeRoot32BitConstant(0, m_emissiveMeshCount, 0);
 		pCommandList->SetComputeRootShaderResourceView(1, m_GPUBuffers.Tasks->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InInstanceData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.InObjectData->GetResource()->GetGPUVirtualAddress());
@@ -114,7 +115,7 @@ private:
 	ID3D12Device* m_device;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
-	ComPtr<ID3D12PipelineState> m_pipelineStateObject;
+	ComPtr<ID3D12PipelineState> m_pipelineState;
 
 	const Scene* m_scene{};
 

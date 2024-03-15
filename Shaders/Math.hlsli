@@ -3,7 +3,7 @@
 #include "STL.hlsli"
 
 namespace Math {
-	inline float2 CalculateUV(uint2 pixelPosition, uint2 pixelDimensions, float2 cameraJitter = 0) { return (pixelPosition + 0.5f + cameraJitter) / pixelDimensions; }
+	inline float2 CalculateUV(float2 pixelPosition, float2 pixelDimensions, float2 cameraJitter = 0) { return (pixelPosition + 0.5f + cameraJitter) / pixelDimensions; }
 
 	inline float2 CalculateNDC(float2 UV) { return UV * float2(2, -2) + float2(-1, 1); }
 

@@ -41,12 +41,12 @@ export struct Mesh {
 	~Mesh() { DeleteEvent.Raise(this); }
 
 	static auto Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {
-		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, UINT & srvDescriptorHeapIndex, bool isVertex) {
+		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, UINT & SRVDescriptorHeapIndex, bool isVertex) {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);
 			descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex);
-			srvDescriptorHeapIndex = descriptorHeapIndex - 1;
-			if (isVertex) buffer->CreateRawSRV(descriptorHeap.GetCpuHandle(srvDescriptorHeapIndex));
-			else buffer->CreateStructuredSRV(descriptorHeap.GetCpuHandle(srvDescriptorHeapIndex));
+			SRVDescriptorHeapIndex = descriptorHeapIndex - 1;
+			if (isVertex) buffer->CreateRawSRV(descriptorHeap.GetCpuHandle(SRVDescriptorHeapIndex));
+			else buffer->CreateStructuredSRV(descriptorHeap.GetCpuHandle(SRVDescriptorHeapIndex));
 		};
 		const auto mesh = make_shared<Mesh>();
 		CreateBuffer(mesh->Vertices, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, mesh->DescriptorHeapIndices.Vertices, true);
