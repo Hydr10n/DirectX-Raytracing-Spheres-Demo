@@ -529,9 +529,11 @@ private:
 			if (m_UIStates.IsVisible) RenderUI();
 		}
 
-		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::eRenderSubmitEnd);
+		if (isReflexAvailable) {
+			ignore = m_streamline->SetReflexMarker(ReflexMarker::eRenderSubmitEnd);
 
-		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::ePresentStart);
+			ignore = m_streamline->SetReflexMarker(ReflexMarker::ePresentStart);
+		}
 
 		m_deviceResources->Present();
 
@@ -1021,7 +1023,7 @@ private:
 
 	void SetFrameGenerationOptions(bool enable = g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && g_graphicsSettings.ReflexMode != ReflexMode::eOff) {
 		m_DLSSGOptions.mode = enable ? DLSSGMode::eAuto : DLSSGMode::eOff;
-		ignore = m_streamline->SetConstants(m_DLSSGOptions);
+		if (!enable || IsSceneReady()) ignore = m_streamline->SetConstants(m_DLSSGOptions);
 	}
 
 	void ResetTemporalAccumulation() {
