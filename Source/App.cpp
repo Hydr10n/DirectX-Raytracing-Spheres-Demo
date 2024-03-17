@@ -106,13 +106,14 @@ struct App::Impl : IDeviceNotify {
 
 			m_deviceResources->SetWindow(windowModeHelper.hWnd, windowModeHelper.GetResolution());
 
-			m_deviceResources->EnableVSync(g_graphicsSettings.IsVSyncEnabled);
-
 			m_deviceResources->CreateDeviceResources();
 			CreateDeviceDependentResources();
 
 			m_deviceResources->CreateWindowSizeDependentResources();
 			CreateWindowSizeDependentResources();
+
+			m_deviceResources->EnableVSync(g_graphicsSettings.IsVSyncEnabled);
+			m_deviceResources->RequestHDR(g_graphicsSettings.IsHDREnabled);
 		}
 
 		m_inputDevices.Mouse->SetWindow(windowModeHelper.hWnd);
@@ -232,7 +233,7 @@ struct App::Impl : IDeviceNotify {
 private:
 	WindowModeHelper& m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_AllowTearing | DeviceResources::c_DisableGpuTimeout);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_DisableGpuTimeout);
 
 	StepTimer m_stepTimer;
 
@@ -313,6 +314,8 @@ private:
 	}();
 	unique_ptr<Streamline> m_streamline;
 
+	bool m_isReflexLowLatencyAvailable{};
+
 	DLSSGOptions m_DLSSGOptions;
 
 	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
@@ -328,7 +331,7 @@ private:
 
 	unique_ptr<Bloom> m_bloom;
 
-	unique_ptr<ToneMapPostProcess> m_toneMapping[ToneMapPostProcess::Operator_Max];
+	unique_ptr<ToneMapPostProcess> m_toneMapping[ToneMapPostProcess::Operator_Max + 1];
 
 	unique_ptr<SpriteBatch> m_alphaBlending;
 
@@ -592,12 +595,6 @@ private:
 
 		m_lightPreparation = make_unique<LightPreparation>(device);
 
-		CreatePostProcessing();
-	}
-
-	void CreatePostProcessing() {
-		const auto device = m_deviceResources->GetDevice();
-
 		{
 			ignore = slSetD3DDevice(device);
 
@@ -605,8 +602,20 @@ private:
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
 			m_streamline = make_unique<Streamline>(m_deviceResources->GetCommandList(), &adapterDesc.AdapterLuid, sizeof(adapterDesc.AdapterLuid), 0);
 
-			if (m_streamline->IsFeatureAvailable(kFeatureReflex)) SetReflexOptions();
+			if (m_streamline->IsFeatureAvailable(kFeatureReflex)) {
+				ReflexState state;
+				ignore = slReflexGetState(state);
+				m_isReflexLowLatencyAvailable = state.lowLatencyAvailable;
+
+				SetReflexOptions();
+			}
 		}
+
+		CreatePostProcessing();
+	}
+
+	void CreatePostProcessing() {
+		const auto device = m_deviceResources->GetDevice();
 
 		m_denoisedComposition = make_unique<DenoisedComposition>(device);
 
@@ -617,8 +626,14 @@ private:
 		{
 			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN);
 
-			for (const auto toneMappingOperator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
-				m_toneMapping[toneMappingOperator] = make_unique<ToneMapPostProcess>(device, renderTargetState, toneMappingOperator, toneMappingOperator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB);
+			for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic, ToneMapPostProcess::Operator_Max }) {
+				m_toneMapping[Operator] = make_unique<ToneMapPostProcess>(
+					device,
+					renderTargetState,
+					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::None : Operator,
+					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::ST2084 :
+					Operator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB
+					);
 			}
 
 			{
@@ -1321,10 +1336,19 @@ private:
 
 		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
+		const auto isHDREnabled = m_deviceResources->IsHDREnabled();
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
-		auto& toneMapping = *m_toneMapping[toneMappingSettings.Operator];
+
+		auto& toneMapping = *m_toneMapping[isHDREnabled ? ToneMapPostProcess::Operator_Max : toneMappingSettings.Operator];
+
+		if (isHDREnabled) {
+			toneMapping.SetST2084Parameter(toneMappingSettings.PaperWhiteNits);
+			toneMapping.SetColorRotation(toneMappingSettings.ColorPrimaryRotation);
+		}
+		else toneMapping.SetExposure(toneMappingSettings.Exposure);
+
 		toneMapping.SetHDRSourceTexture(inColor.GetSRVDescriptor().GPUHandle);
-		toneMapping.SetExposure(toneMappingSettings.Exposure);
+
 		toneMapping.Process(commandList);
 	}
 
@@ -1447,17 +1471,28 @@ private:
 				}
 
 				{
-					auto isEnabled = m_deviceResources->IsVSyncEnabled();
-					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->GetDeviceOptions() & DeviceResources::c_AllowTearing);
-						ImGui::Checkbox("V-Sync", &isEnabled) && m_deviceResources->EnableVSync(isEnabled)) g_graphicsSettings.IsVSyncEnabled = isEnabled;
+					auto isEnabled = m_deviceResources->IsHDREnabled();
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->IsHDRSupported());
+						ImGui::Checkbox("HDR", &isEnabled)) {
+						g_graphicsSettings.IsHDREnabled = isEnabled;
+
+						m_futures["HDRSetting"] = async(launch::deferred, [&] { m_deviceResources->RequestHDR(g_graphicsSettings.IsHDREnabled); });
+					}
 				}
 
 				{
-					ReflexState state;
-					ignore = slReflexGetState(state);
-					const auto isAvailable = m_streamline->IsFeatureAvailable(kFeatureReflex) && state.lowLatencyAvailable;
-					if (const ImGuiEx::ScopedEnablement scopedEnablement(isAvailable);
-						ImGui::BeginCombo("NVIDIA Reflex", ToString(isAvailable ? g_graphicsSettings.ReflexMode : ReflexMode::eOff))) {
+					auto isEnabled = m_deviceResources->IsVSyncEnabled();
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_deviceResources->IsTearingSupported());
+						ImGui::Checkbox("V-Sync", &isEnabled)) {
+						g_graphicsSettings.IsVSyncEnabled = isEnabled;
+
+						m_deviceResources->EnableVSync(isEnabled);
+					}
+				}
+
+				{
+					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_isReflexLowLatencyAvailable);
+						ImGui::BeginCombo("NVIDIA Reflex", ToString(m_isReflexLowLatencyAvailable ? g_graphicsSettings.ReflexMode : ReflexMode::eOff))) {
 						for (const auto ReflexMode : { ReflexMode::eOff, ReflexMode::eLowLatency, ReflexMode::eLowLatencyWithBoost }) {
 							const auto isSelected = g_graphicsSettings.ReflexMode == ReflexMode;
 
@@ -1648,20 +1683,39 @@ private:
 					if (ImGui::TreeNodeEx("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& toneMappingSettings = postProcessingSetttings.ToneMapping;
 
-						if (ImGui::BeginCombo("Operator", ToString(toneMappingSettings.Operator))) {
-							for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
-								const auto isSelected = toneMappingSettings.Operator == Operator;
+						if (m_deviceResources->IsHDREnabled()) {
+							ImGui::SliderFloat("Paper White Nits", &toneMappingSettings.PaperWhiteNits, toneMappingSettings.MinPaperWhiteNits, toneMappingSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
-								if (ImGui::Selectable(ToString(Operator), isSelected)) toneMappingSettings.Operator = Operator;
+							if (ImGui::BeginCombo("Color Primary Rotation", ToString(toneMappingSettings.ColorPrimaryRotation))) {
+								for (const auto ColorPrimaryRotation : { ToneMapPostProcess::HDTV_to_UHDTV, ToneMapPostProcess::DCI_P3_D65_to_UHDTV, ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
+									const auto isSelected = toneMappingSettings.ColorPrimaryRotation == ColorPrimaryRotation;
 
-								if (isSelected) ImGui::SetItemDefaultFocus();
+									if (ImGui::Selectable(ToString(ColorPrimaryRotation), isSelected)) {
+										toneMappingSettings.ColorPrimaryRotation = ColorPrimaryRotation;
+									}
+
+									if (isSelected) ImGui::SetItemDefaultFocus();
+								}
+
+								ImGui::EndCombo();
+							}
+						}
+						else {
+							if (ImGui::BeginCombo("Operator", ToString(toneMappingSettings.Operator))) {
+								for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+									const auto isSelected = toneMappingSettings.Operator == Operator;
+
+									if (ImGui::Selectable(ToString(Operator), isSelected)) toneMappingSettings.Operator = Operator;
+
+									if (isSelected) ImGui::SetItemDefaultFocus();
+								}
+
+								ImGui::EndCombo();
 							}
 
-							ImGui::EndCombo();
-						}
-
-						if (toneMappingSettings.Operator != ToneMapPostProcess::None) {
-							ImGui::SliderFloat("Exposure", &toneMappingSettings.Exposure, toneMappingSettings.MinExposure, toneMappingSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							if (toneMappingSettings.Operator != ToneMapPostProcess::None) {
+								ImGui::SliderFloat("Exposure", &toneMappingSettings.Exposure, toneMappingSettings.MinExposure, toneMappingSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							}
 						}
 
 						ImGui::TreePop();

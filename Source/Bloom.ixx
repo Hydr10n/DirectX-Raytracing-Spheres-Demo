@@ -92,7 +92,7 @@ export namespace PostProcessing {
 
 			struct {
 				UINT InputMipLevel;
-				float FilterRadius;
+				float UpsamplingFilterRadius;
 			} constants{};
 			auto outputMipLevel = 0;
 
@@ -119,7 +119,7 @@ export namespace PostProcessing {
 				if (i < BlurMipLevels - 1) outputMipLevel++;
 				else {
 					outputMipLevel--;
-					constants.FilterRadius = 5e-3f;
+					constants.UpsamplingFilterRadius = 5e-3f;
 				}
 
 				Dispatch(*blur1, *blur2);

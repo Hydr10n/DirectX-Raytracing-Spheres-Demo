@@ -9,7 +9,7 @@ SamplerState g_linearSampler : register(s0);
 
 struct Constants {
 	uint InputMipLevel;
-	float FilterRadius;
+	float UpsamplingFilterRadius;
 };
 ConstantBuffer<Constants> g_constants : register(b0);
 
@@ -74,7 +74,7 @@ float3 Downsample() {
 		groups[2] *= KarisAverage(groups[2]);
 		groups[3] *= KarisAverage(groups[3]);
 		groups[4] *= KarisAverage(groups[4]);
-		return groups[0] + groups[1] + groups[2] + groups[3] + groups[4];
+		return max(groups[0] + groups[1] + groups[2] + groups[3] + groups[4], 1e-4f);
 	}
 }
 
@@ -114,8 +114,8 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	g_UV = Math::CalculateUV(pixelPosition, pixelDimensions);
 
 	float3 ret;
-	if (g_constants.FilterRadius > 0) {
-		g_size = g_constants.FilterRadius;
+	if (g_constants.UpsamplingFilterRadius > 0) {
+		g_size = g_constants.UpsamplingFilterRadius;
 		ret = Upsample();
 	}
 	else {

@@ -66,4 +66,13 @@ export {
 			default: throw;
 		}
 	}
+
+	constexpr auto ToString(ToneMapPostProcess::ColorPrimaryRotation value) {
+		switch (value) {
+			case ToneMapPostProcess::HDTV_to_UHDTV: return "Rec.709 to Rec.2020";
+			case ToneMapPostProcess::DCI_P3_D65_to_UHDTV: return "DCI-P3-D65 to Rec.2020";
+			case ToneMapPostProcess::HDTV_to_DCI_P3_D65: return "Rec.709 to DCI-P3-D65";
+			default: throw;
+		}
+	}
 }

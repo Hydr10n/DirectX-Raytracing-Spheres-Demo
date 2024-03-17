@@ -84,6 +84,15 @@ namespace DirectX {
 			{ ToneMapPostProcess::ACESFilmic, "ACESFilmic" }
 		}
 	);
+
+	NLOHMANN_JSON_SERIALIZE_ENUM(
+		ToneMapPostProcess::ColorPrimaryRotation,
+		{
+			{ ToneMapPostProcess::HDTV_to_UHDTV, "HDTV_to_UHDTV" },
+			{ ToneMapPostProcess::DCI_P3_D65_to_UHDTV, "DCI_P3_D65_to_UHDTV" },
+			{ ToneMapPostProcess::HDTV_to_DCI_P3_D65, "HDTV_to_DCI_P3_D65" }
+		}
+	);
 }
 
 class MyAppData {
@@ -122,7 +131,7 @@ public:
 
 			DisplayHelpers::Resolution Resolution{};
 
-			bool IsVSyncEnabled{};
+			bool IsHDREnabled = true, IsVSyncEnabled{};
 
 			sl::ReflexMode ReflexMode = sl::ReflexMode::eLowLatency;
 
@@ -194,19 +203,21 @@ public:
 				} Bloom;
 
 				struct ToneMapping {
-					static constexpr float MinExposure = -10, MaxExposure = 10;
+					static constexpr float MinExposure = -10, MaxExposure = 10, MinPaperWhiteNits = 50, MaxPaperWhiteNits = 10000;
 
 					DirectX::ToneMapPostProcess::Operator Operator = DirectX::ToneMapPostProcess::ACESFilmic;
 
-					float Exposure{};
+					float Exposure{}, PaperWhiteNits = 200;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure);
+					DirectX::ToneMapPostProcess::ColorPrimaryRotation ColorPrimaryRotation = DirectX::ToneMapPostProcess::HDTV_to_UHDTV;
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure, PaperWhiteNits, ColorPrimaryRotation);
 				} ToneMapping;
 
 				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
 			} PostProcessing;
 
-			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsVSyncEnabled, ReflexMode, Camera, Raytracing, PostProcessing);
+			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsHDREnabled, IsVSyncEnabled, ReflexMode, Camera, Raytracing, PostProcessing);
 
 			void Check() override {
 				using namespace std;
@@ -230,6 +241,7 @@ public:
 					PostProcessing.Bloom.Strength = clamp(PostProcessing.Bloom.Strength, 0.0f, 1.0f);
 
 					PostProcessing.ToneMapping.Exposure = clamp(PostProcessing.ToneMapping.Exposure, PostProcessing.ToneMapping.MinExposure, PostProcessing.ToneMapping.MaxExposure);
+					PostProcessing.ToneMapping.PaperWhiteNits = clamp(PostProcessing.ToneMapping.PaperWhiteNits, PostProcessing.ToneMapping.MinPaperWhiteNits, PostProcessing.ToneMapping.MaxPaperWhiteNits);
 				}
 			}
 		} Graphics;

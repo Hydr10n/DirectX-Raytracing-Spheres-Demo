@@ -1,5 +1,5 @@
 //
-// DeviceResources.ixx - A wrapper for the Direct3D 12 device and swapchain
+// A wrapper for the Direct3D 12 device and swapchain
 //
 
 module;
@@ -13,7 +13,6 @@ export module DeviceResources;
 
 export namespace DX
 {
-    // Provides an interface for an application that owns DeviceResources to be notified of the device being lost or created.
     class IDeviceNotify
     {
     public:
@@ -24,14 +23,11 @@ export namespace DX
         ~IDeviceNotify() = default;
     };
 
-    // Controls all the DirectX device resources.
     class DeviceResources
     {
     public:
-        static constexpr unsigned int c_AllowTearing      = 0x1;
-        static constexpr unsigned int c_EnableHDR         = 0x2;
-        static constexpr unsigned int c_ReverseDepth      = 0x4;
-        static constexpr unsigned int c_DisableGpuTimeout = 0x8;
+        static constexpr unsigned int c_ReverseDepth      = 0x1;
+        static constexpr unsigned int c_DisableGpuTimeout = 0x2;
 
         DeviceResources(DXGI_FORMAT backBufferFormat = DXGI_FORMAT_B8G8R8A8_UNORM,
                         DXGI_FORMAT depthBufferFormat = DXGI_FORMAT_D32_FLOAT,
@@ -50,7 +46,8 @@ export namespace DX
         void CreateDeviceResources();
         void CreateWindowSizeDependentResources();
         void SetWindow(HWND window, SIZE size) noexcept;
-        bool EnableVSync(bool enable) noexcept;
+        bool EnableVSync(bool value) noexcept;
+        void RequestHDR(bool value) noexcept;
         bool ResizeWindow(SIZE size);
         void HandleDeviceLost();
         void RegisterDeviceNotify(IDeviceNotify* deviceNotify) noexcept { m_deviceNotify = deviceNotify; }
@@ -84,7 +81,10 @@ export namespace DX
         UINT                        GetBackBufferCount() const noexcept      { return m_backBufferCount; }
         DXGI_COLOR_SPACE_TYPE       GetColorSpace() const noexcept           { return m_colorSpace; }
         unsigned int                GetDeviceOptions() const noexcept        { return m_options; }
+        bool                        IsTearingSupported() const noexcept      { return m_isTearingSupported; }
         bool                        IsVSyncEnabled() const noexcept          { return m_isVSyncEnabled; }
+        bool                        IsHDRSupported() const noexcept          { return m_isHDRSupported; }
+        bool                        IsHDREnabled() const noexcept            { return m_isHDRRequested && m_isHDRSupported; }
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView() const noexcept
         {
@@ -98,9 +98,6 @@ export namespace DX
         }
 
     private:
-        void MoveToNextFrame();
-        void CreateDevice();
-
         static constexpr size_t MAX_BACK_BUFFER_COUNT = 3;
 
         UINT                                                m_backBufferIndex{};
@@ -144,14 +141,21 @@ export namespace DX
         DWORD                                               m_dxgiFactoryFlags{};
         SIZE                                                m_outputSize{};
 
-        // HDR Support
-        DXGI_COLOR_SPACE_TYPE                               m_colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-
         // DeviceResources options (see flags above)
         unsigned int                                        m_options;
+
+        bool                                                m_isTearingSupported{};
         bool                                                m_isVSyncEnabled = true;
+
+        // HDR Support
+        bool                                                m_isHDRRequested{};
+        bool                                                m_isHDRSupported{};
+        DXGI_COLOR_SPACE_TYPE                               m_colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 
         // The IDeviceNotify can be held directly as it owns the DeviceResources.
         IDeviceNotify*                                      m_deviceNotify{};
+
+        void MoveToNextFrame();
+        void CreateDevice();
     };
 }
