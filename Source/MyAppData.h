@@ -203,15 +203,27 @@ public:
 				} Bloom;
 
 				struct ToneMapping {
-					static constexpr float MinExposure = -10, MaxExposure = 10, MinPaperWhiteNits = 50, MaxPaperWhiteNits = 10000;
+					struct HDR {
+						static constexpr float MinPaperWhiteNits = 50, MaxPaperWhiteNits = 10000;
 
-					DirectX::ToneMapPostProcess::Operator Operator = DirectX::ToneMapPostProcess::ACESFilmic;
+						float PaperWhiteNits = 200;
 
-					float Exposure{}, PaperWhiteNits = 200;
+						DirectX::ToneMapPostProcess::ColorPrimaryRotation ColorPrimaryRotation = DirectX::ToneMapPostProcess::HDTV_to_UHDTV;
 
-					DirectX::ToneMapPostProcess::ColorPrimaryRotation ColorPrimaryRotation = DirectX::ToneMapPostProcess::HDTV_to_UHDTV;
+						FRIEND_JSON_CONVERSION_FUNCTIONS(HDR, PaperWhiteNits, ColorPrimaryRotation);
+					} HDR;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, Operator, Exposure, PaperWhiteNits, ColorPrimaryRotation);
+					struct NonHDR {
+						static constexpr float MinExposure = -10, MaxExposure = 10;
+
+						DirectX::ToneMapPostProcess::Operator Operator = DirectX::ToneMapPostProcess::ACESFilmic;
+
+						float Exposure{};
+
+						FRIEND_JSON_CONVERSION_FUNCTIONS(NonHDR, Operator, Exposure);
+					} NonHDR;
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, HDR, NonHDR);
 				} ToneMapping;
 
 				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
@@ -228,11 +240,9 @@ public:
 					Raytracing.MaxNumberOfBounces = clamp(Raytracing.MaxNumberOfBounces, 0u, Raytracing.MaxMaxNumberOfBounces);
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
 
-					{
-						Raytracing.RTXDI.LocalLightSamples = clamp(Raytracing.RTXDI.LocalLightSamples, 1u, Raytracing.RTXDI.MaxLocalLightSamples);
-						Raytracing.RTXDI.BRDFSamples = clamp(Raytracing.RTXDI.BRDFSamples, 0u, Raytracing.RTXDI.MaxBRDFSamples);
-						Raytracing.RTXDI.SpatioTemporalSamples = clamp(Raytracing.RTXDI.SpatioTemporalSamples, 0u, Raytracing.RTXDI.MaxSpatioTemporalSamples);
-					}
+					Raytracing.RTXDI.LocalLightSamples = clamp(Raytracing.RTXDI.LocalLightSamples, 1u, Raytracing.RTXDI.MaxLocalLightSamples);
+					Raytracing.RTXDI.BRDFSamples = clamp(Raytracing.RTXDI.BRDFSamples, 0u, Raytracing.RTXDI.MaxBRDFSamples);
+					Raytracing.RTXDI.SpatioTemporalSamples = clamp(Raytracing.RTXDI.SpatioTemporalSamples, 0u, Raytracing.RTXDI.MaxSpatioTemporalSamples);
 				}
 
 				{
@@ -240,8 +250,8 @@ public:
 
 					PostProcessing.Bloom.Strength = clamp(PostProcessing.Bloom.Strength, 0.0f, 1.0f);
 
-					PostProcessing.ToneMapping.Exposure = clamp(PostProcessing.ToneMapping.Exposure, PostProcessing.ToneMapping.MinExposure, PostProcessing.ToneMapping.MaxExposure);
-					PostProcessing.ToneMapping.PaperWhiteNits = clamp(PostProcessing.ToneMapping.PaperWhiteNits, PostProcessing.ToneMapping.MinPaperWhiteNits, PostProcessing.ToneMapping.MaxPaperWhiteNits);
+					PostProcessing.ToneMapping.HDR.PaperWhiteNits = clamp(PostProcessing.ToneMapping.HDR.PaperWhiteNits, PostProcessing.ToneMapping.HDR.MinPaperWhiteNits, PostProcessing.ToneMapping.HDR.MaxPaperWhiteNits);
+					PostProcessing.ToneMapping.NonHDR.Exposure = clamp(PostProcessing.ToneMapping.NonHDR.Exposure, PostProcessing.ToneMapping.NonHDR.MinExposure, PostProcessing.ToneMapping.NonHDR.MaxExposure);
 				}
 			}
 		} Graphics;

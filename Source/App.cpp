@@ -1339,13 +1339,13 @@ private:
 		const auto isHDREnabled = m_deviceResources->IsHDREnabled();
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
 
-		auto& toneMapping = *m_toneMapping[isHDREnabled ? ToneMapPostProcess::Operator_Max : toneMappingSettings.Operator];
+		auto& toneMapping = *m_toneMapping[isHDREnabled ? ToneMapPostProcess::Operator_Max : toneMappingSettings.NonHDR.Operator];
 
 		if (isHDREnabled) {
-			toneMapping.SetST2084Parameter(toneMappingSettings.PaperWhiteNits);
-			toneMapping.SetColorRotation(toneMappingSettings.ColorPrimaryRotation);
+			toneMapping.SetST2084Parameter(toneMappingSettings.HDR.PaperWhiteNits);
+			toneMapping.SetColorRotation(toneMappingSettings.HDR.ColorPrimaryRotation);
 		}
-		else toneMapping.SetExposure(toneMappingSettings.Exposure);
+		else toneMapping.SetExposure(toneMappingSettings.NonHDR.Exposure);
 
 		toneMapping.SetHDRSourceTexture(inColor.GetSRVDescriptor().GPUHandle);
 
@@ -1684,14 +1684,16 @@ private:
 						auto& toneMappingSettings = postProcessingSetttings.ToneMapping;
 
 						if (m_deviceResources->IsHDREnabled()) {
-							ImGui::SliderFloat("Paper White Nits", &toneMappingSettings.PaperWhiteNits, toneMappingSettings.MinPaperWhiteNits, toneMappingSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+							auto& HDRSettings = toneMappingSettings.HDR;
 
-							if (ImGui::BeginCombo("Color Primary Rotation", ToString(toneMappingSettings.ColorPrimaryRotation))) {
+							ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+
+							if (ImGui::BeginCombo("Color Primary Rotation", ToString(HDRSettings.ColorPrimaryRotation))) {
 								for (const auto ColorPrimaryRotation : { ToneMapPostProcess::HDTV_to_UHDTV, ToneMapPostProcess::DCI_P3_D65_to_UHDTV, ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
-									const auto isSelected = toneMappingSettings.ColorPrimaryRotation == ColorPrimaryRotation;
+									const auto isSelected = HDRSettings.ColorPrimaryRotation == ColorPrimaryRotation;
 
 									if (ImGui::Selectable(ToString(ColorPrimaryRotation), isSelected)) {
-										toneMappingSettings.ColorPrimaryRotation = ColorPrimaryRotation;
+										HDRSettings.ColorPrimaryRotation = ColorPrimaryRotation;
 									}
 
 									if (isSelected) ImGui::SetItemDefaultFocus();
@@ -1701,11 +1703,13 @@ private:
 							}
 						}
 						else {
-							if (ImGui::BeginCombo("Operator", ToString(toneMappingSettings.Operator))) {
-								for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
-									const auto isSelected = toneMappingSettings.Operator == Operator;
+							auto& nonHDRSettings = toneMappingSettings.NonHDR;
 
-									if (ImGui::Selectable(ToString(Operator), isSelected)) toneMappingSettings.Operator = Operator;
+							if (ImGui::BeginCombo("Operator", ToString(nonHDRSettings.Operator))) {
+								for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+									const auto isSelected = nonHDRSettings.Operator == Operator;
+
+									if (ImGui::Selectable(ToString(Operator), isSelected)) nonHDRSettings.Operator = Operator;
 
 									if (isSelected) ImGui::SetItemDefaultFocus();
 								}
@@ -1713,8 +1717,8 @@ private:
 								ImGui::EndCombo();
 							}
 
-							if (toneMappingSettings.Operator != ToneMapPostProcess::None) {
-								ImGui::SliderFloat("Exposure", &toneMappingSettings.Exposure, toneMappingSettings.MinExposure, toneMappingSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							if (nonHDRSettings.Operator != ToneMapPostProcess::None) {
+								ImGui::SliderFloat("Exposure", &nonHDRSettings.Exposure, nonHDRSettings.MinExposure, nonHDRSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 							}
 						}
 

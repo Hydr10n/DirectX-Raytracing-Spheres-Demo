@@ -27,6 +27,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ### Graphics Settings
 - Window Mode: Windowed | Borderless | Fullscreen
 - Resolution
+- HDR
 - V-Sync
 - NVIDIA Reflex
 - Camera
@@ -52,8 +53,12 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Bloom
 		- Strength
 	- Tone Mapping
-		- Operator: Saturate | Reinhard | ACES Filmic
-		- Exposure
+		- HDR
+			- Paper White Nits
+			- Color Rotation: Rec.709 to Rec.2020 | DCI-P3-D65 to Rec.2020 | Rec.709 to DCI-P3-D65
+		- Non-HDR
+			- Operator: Saturate | Reinhard | ACES Filmic
+			- Exposure
 
 ### Supported Input Devices
 - Xbox Controller
