@@ -35,9 +35,9 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Horizontal Field of View
 - Raytracing
 	- Russian Roulette
-	- Max Number of Bounces
+	- Bounces
 	- Samples per Pixel
-	- NVIDIA RTX Direct Illumination
+	- NVIDIA RTX Dynamic Illumination
 		- Local Light Samples
 		- BRDF Samples
 		- Spatio-Temporal Samples
@@ -93,6 +93,9 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 
 ## Minimum System Requirements
 - OS: Microsoft Windows 10 64-bit, version 2004
-- Graphics: Any GPU supporting DirectX Raytracing Tier 1.1
-	- NVIDIA GeForce RTX Series
-	- AMD Radeon RX 6000 Series
+- Graphics:
+	- Basic: Any GPU capable of DirectX Raytracing Tier 1.1
+	- NVIDIA
+		- DLSS
+			- Super Resolution: GeForce RTX 20 Series
+			- Frame Generation: GeForce RTX 40 Series

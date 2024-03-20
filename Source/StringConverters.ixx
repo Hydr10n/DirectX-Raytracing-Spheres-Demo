@@ -18,20 +18,20 @@ export {
 		}
 	}
 
-	constexpr auto ToString(NRDDenoiser value) {
-		switch (value) {
-			case NRDDenoiser::None: return "None";
-			case NRDDenoiser::ReBLUR: return "ReBLUR";
-			case NRDDenoiser::ReLAX: return "ReLAX";
-			default: throw;
-		}
-	}
-
 	constexpr auto ToString(ReflexMode value) {
 		switch (value) {
 			case ReflexMode::eOff: return "Off";
 			case ReflexMode::eLowLatency: return "On";
 			case ReflexMode::eLowLatencyWithBoost: return "On + Boost";
+			default: throw;
+		}
+	}
+
+	constexpr auto ToString(NRDDenoiser value) {
+		switch (value) {
+			case NRDDenoiser::None: return "None";
+			case NRDDenoiser::ReBLUR: return "ReBLUR";
+			case NRDDenoiser::ReLAX: return "ReLAX";
 			default: throw;
 		}
 	}

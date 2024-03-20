@@ -30,7 +30,16 @@ export namespace PostProcessing {
 
 		struct { ConstantBuffer<Camera>* InCamera; } GPUBuffers{};
 
-		struct { RenderTexture* InLinearDepth, * InBaseColorMetalness, * InEmissiveColor, * InNormalRoughness, * InDenoisedDiffuse, * InDenoisedSpecular, * OutColor; } RenderTextures{};
+		struct {
+			RenderTexture
+				* InLinearDepth,
+				* InBaseColorMetalness,
+				* InEmissiveColor,
+				* InNormalRoughness,
+				* InDenoisedDiffuse,
+				* InDenoisedSpecular,
+				* OutColor;
+		} RenderTextures{};
 
 		explicit DenoisedComposition(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DenoisedComposition_dxil, size(g_DenoisedComposition_dxil) };

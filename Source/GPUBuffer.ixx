@@ -4,6 +4,7 @@ module;
 
 #include "directx/d3dx12.h"
 
+#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
@@ -11,6 +12,7 @@ module;
 
 export module GPUBuffer;
 
+import DescriptorHeap;
 import ErrorHelpers;
 import GPUResource;
 
@@ -19,12 +21,88 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
+namespace {
+	auto GetDevice(ID3D12Resource* pResource) {
+		ComPtr<ID3D12Device> device;
+		ThrowIfFailed(pResource->GetDevice(IID_PPV_ARGS(&device)));
+		return device;
+	}
+
+	void CreateSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count, UINT stride = 0, D3D12_BUFFER_SRV_FLAGS flags = D3D12_BUFFER_SRV_FLAG_NONE) {
+		const D3D12_SHADER_RESOURCE_VIEW_DESC desc{
+			.Format = format,
+			.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+			.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+			.Buffer{
+				.NumElements = count,
+				.StructureByteStride = stride,
+				.Flags = flags
+			}
+		};
+		GetDevice(pResource)->CreateShaderResourceView(pResource, &desc, descriptor);
+	}
+
+	void CreateUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count, UINT stride = 0, D3D12_BUFFER_UAV_FLAGS flags = D3D12_BUFFER_UAV_FLAG_NONE) {
+		const D3D12_UNORDERED_ACCESS_VIEW_DESC desc{
+			.Format = format,
+			.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+			.Buffer{
+				.NumElements = count,
+				.StructureByteStride = stride,
+				.Flags = flags
+			}
+		};
+		GetDevice(pResource)->CreateUnorderedAccessView(pResource, nullptr, &desc, descriptor);
+	}
+}
+
 #define DEFAULT_BUFFER_BASE GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
 #define MAPPABLE_BUFFER_BASE GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
 #define MAPPABLE_BUFFER_INITIAL_STATE IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST
 #define DEFAULT_ALIGNMENT size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
 
+#define DESCRIPTOR(descriptor) \
+	m_descriptors.descriptor = { \
+		.HeapIndex = index, \
+		.CPUHandle = descriptorHeap.GetCpuHandle(index), \
+		.GPUHandle = descriptorHeap.GetGpuHandle(index) \
+	}
+
 export namespace DirectX {
+	void CreateCBV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
+		const D3D12_CONSTANT_BUFFER_VIEW_DESC desc{
+			.BufferLocation = pResource->GetGPUVirtualAddress(),
+			.SizeInBytes = size ? size : static_cast<UINT>(pResource->GetDesc().Width)
+		};
+		GetDevice(pResource)->CreateConstantBufferView(&desc, descriptor);
+	}
+
+	void CreateStructuredSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT stride, UINT count) {
+		CreateSRV(pResource, descriptor, DXGI_FORMAT_UNKNOWN, count, stride);
+	}
+
+	void CreateRawSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
+		CreateSRV(pResource, descriptor, DXGI_FORMAT_R32_TYPELESS, ((size ? size : static_cast<UINT>(pResource->GetDesc().Width)) + 3) / 4, 0, D3D12_BUFFER_SRV_FLAG_RAW);
+	}
+
+	void CreateTypedSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count) {
+		const auto size = GetBits(format) / 8;
+		CreateSRV(pResource, descriptor, format, (size * count + size - 1) / size);
+	}
+
+	void CreateStructuredUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT stride, UINT count) {
+		CreateUAV(pResource, descriptor, DXGI_FORMAT_UNKNOWN, count, stride);
+	}
+
+	void CreateRawUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
+		CreateUAV(pResource, descriptor, DXGI_FORMAT_R32_TYPELESS, ((size ? size : static_cast<UINT>(pResource->GetDesc().Width)) + 3) / 4, 0, D3D12_BUFFER_UAV_FLAG_RAW);
+	}
+
+	void CreateTypedUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count) {
+		const auto size = GetBits(format) / 8;
+		CreateUAV(pResource, descriptor, format, (size * count + size - 1) / size);
+	}
+
 	template <typename T, D3D12_HEAP_TYPE HeapType, DEFAULT_ALIGNMENT>
 	class GPUBuffer : public GPUResource {
 	public:
@@ -50,86 +128,60 @@ export namespace DirectX {
 		size_t GetCapacity() const noexcept { return m_capacity; }
 		size_t GetCount() const noexcept { return m_count; }
 
-		void CreateCBV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferViewDesc{
-				.BufferLocation = m_resource->GetGPUVirtualAddress(),
-				.SizeInBytes = static_cast<UINT>(m_resource->GetDesc().Width)
-			};
-			device->CreateConstantBufferView(&constantBufferViewDesc, descriptor);
+		const Descriptor& GetCBVDescriptor() const noexcept { return m_descriptors.CBV; }
+		Descriptor& GetCBVDescriptor() noexcept { return m_descriptors.CBV; }
+
+		const Descriptor& GetStructuredSRVDescriptor() const noexcept { return m_descriptors.SRV.Structured; }
+		Descriptor& GetStructuredSRVDescriptor() noexcept { return m_descriptors.SRV.Structured; }
+
+		const Descriptor& GetRawSRVDescriptor() const noexcept { return m_descriptors.SRV.Raw; }
+		Descriptor& GetRawSRVDescriptor() noexcept { return m_descriptors.SRV.Raw; }
+
+		const Descriptor& GetTypedSRVDescriptor() const noexcept { return m_descriptors.SRV.Typed; }
+		Descriptor& GetTypedSRVDescriptor() noexcept { return m_descriptors.SRV.Typed; }
+
+		const Descriptor& GetStructuredUAVDescriptor() const noexcept { return m_descriptors.UAV.Structured; }
+		Descriptor& GetStructuredUAVDescriptor() noexcept { return m_descriptors.UAV.Structured; }
+
+		const Descriptor& GetRawUAVDescriptor() const noexcept { return m_descriptors.UAV.Raw; }
+		Descriptor& GetRawUAVDescriptor() noexcept { return m_descriptors.UAV.Raw; }
+
+		const Descriptor& GetTypedUAVDescriptor() const noexcept { return m_descriptors.UAV.Typed; }
+		Descriptor& GetTypedUAVDescriptor() noexcept { return m_descriptors.UAV.Typed; }
+
+		void CreateCBV(const DescriptorHeap& descriptorHeap, UINT index) {
+			DESCRIPTOR(CBV);
+			::CreateCBV(m_resource.Get(), m_descriptors.CBV.CPUHandle, static_cast<UINT>(ElementSize * m_count));
 		}
 
-		void CreateStructuredSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferShaderResourceView(device.Get(), m_resource.Get(), descriptor, ElementSize);
+		void CreateStructuredSRV(const DescriptorHeap& descriptorHeap, UINT index) {
+			DESCRIPTOR(SRV.Structured);
+			::CreateStructuredSRV(m_resource.Get(), m_descriptors.SRV.Structured.CPUHandle, static_cast<UINT>(ElementSize), static_cast<UINT>(m_count));
 		}
 
-		void CreateRawSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
-				.Format = DXGI_FORMAT_R32_TYPELESS,
-				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-				.Buffer{
-					.NumElements = static_cast<UINT>((ElementSize * m_count + 3) / 4),
-					.Flags = D3D12_BUFFER_SRV_FLAG_RAW
-				}
-			};
-			device->CreateShaderResourceView(m_resource.Get(), &shaderResourceViewDesc, descriptor);
+		void CreateRawSRV(const DescriptorHeap& descriptorHeap, UINT index) {
+			DESCRIPTOR(SRV.Raw);
+			::CreateRawSRV(m_resource.Get(), m_descriptors.SRV.Raw.CPUHandle, static_cast<UINT>(ElementSize * m_count));
 		}
 
-		void CreateTypedSRV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format) const {
-			const auto size = GetBits(format) / 8;
-			if (ElementSize != size) throw invalid_argument("Format size doesn't match");
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const D3D12_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc{
-				.Format = format,
-				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-				.Buffer{
-					.NumElements = static_cast<UINT>((ElementSize * m_count + size - 1) / size)
-				}
-			};
-			device->CreateShaderResourceView(m_resource.Get(), &shaderResourceViewDesc, descriptor);
+		void CreateTypedSRV(const DescriptorHeap& descriptorHeap, UINT index, DXGI_FORMAT format) {
+			DESCRIPTOR(SRV.Typed);
+			::CreateTypedSRV(m_resource.Get(), m_descriptors.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
-		void CreateStructuredUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateBufferUnorderedAccessView(device.Get(), m_resource.Get(), descriptor, ElementSize);
+		void CreateStructuredUAV(const DescriptorHeap& descriptorHeap, UINT index) {
+			DESCRIPTOR(UAV.Structured);
+			::CreateStructuredUAV(m_resource.Get(), m_descriptors.UAV.Structured.CPUHandle, static_cast<UINT>(ElementSize), static_cast<UINT>(m_count));
 		}
 
-		void CreateRawUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor) const {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{
-				.Format = DXGI_FORMAT_R32_TYPELESS,
-				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-				.Buffer{
-					.NumElements = static_cast<UINT>((ElementSize * m_count + 3) / 4),
-					.Flags = D3D12_BUFFER_UAV_FLAG_RAW
-				}
-			};
-			device->CreateUnorderedAccessView(m_resource.Get(), nullptr, &unorderedAccessViewDesc, descriptor);
+		void CreateRawUAV(const DescriptorHeap& descriptorHeap, UINT index) {
+			DESCRIPTOR(UAV.Raw);
+			::CreateRawUAV(m_resource.Get(), m_descriptors.UAV.Raw.CPUHandle, static_cast<UINT>(ElementSize * m_count));
 		}
 
-		void CreateTypedUAV(D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format) const {
-			const auto size = GetBits(format) / 8;
-			if (ElementSize != size) throw invalid_argument("Format size doesn't match");
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const D3D12_UNORDERED_ACCESS_VIEW_DESC unorderedAccessViewDesc{
-				.Format = format,
-				.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-				.Buffer{
-					.NumElements = static_cast<UINT>((ElementSize * m_count + size - 1) / size)
-				}
-			};
-			device->CreateUnorderedAccessView(m_resource.Get(), nullptr, &unorderedAccessViewDesc, descriptor);
+		void CreateTypedUAV(const DescriptorHeap& descriptorHeap, UINT index, DXGI_FORMAT format) {
+			DESCRIPTOR(UAV.Typed);
+			::CreateTypedUAV(m_resource.Get(), m_descriptors.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
 	protected:
@@ -142,6 +194,12 @@ export namespace DirectX {
 			const auto resourceDesc = source.m_resource->GetDesc();
 			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
+
+	private:
+		struct {
+			Descriptor CBV;
+			struct { Descriptor Structured, Raw, Typed; } SRV, UAV;
+		} m_descriptors;
 	};
 
 	template <typename T, DEFAULT_ALIGNMENT>

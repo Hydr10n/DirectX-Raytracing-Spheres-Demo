@@ -11,10 +11,7 @@
 #define RTXDI_ENABLE_PRESAMPLING 0
 #include "rtxdi/RtxdiParameters.h"
 
-#define NRD_HEADER_ONLY
-#include "NRDEncoding.hlsli"
-#include "NRD.hlsli"
-#include "NRDDenoiser.hlsli"
+#include "Denoiser.hlsli"
 
 SamplerState g_anisotropicSampler : register(s0);
 
@@ -37,7 +34,7 @@ struct NRDSettings {
 
 struct GraphicsSettings {
 	uint2 RenderSize;
-	uint FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
+	uint FrameIndex, Bounces, SamplesPerPixel;
 	bool IsRussianRouletteEnabled;
 	uint2 _;
 	RTXDISettings RTXDI;

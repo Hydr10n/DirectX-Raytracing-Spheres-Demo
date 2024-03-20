@@ -44,7 +44,7 @@ export struct Raytracing {
 
 	struct GraphicsSettings {
 		XMUINT2 RenderSize;
-		UINT FrameIndex, MaxNumberOfBounces, SamplesPerPixel;
+		UINT FrameIndex, Bounces, SamplesPerPixel;
 		BOOL IsRussianRouletteEnabled;
 		XMUINT2 _;
 		RTXDISettings RTXDI;
@@ -58,10 +58,9 @@ export struct Raytracing {
 		UploadBuffer<ObjectData>* InObjectData;
 		DefaultBuffer<RAB_LightInfo>* InLightInfo;
 		DefaultBuffer<UINT>* InLightIndices;
+		DefaultBuffer<UINT16>* InNeighborOffsets;
 		DefaultBuffer<RTXDI_PackedDIReservoir>* OutDIReservoir;
 	} GPUBuffers{};
-
-	struct { D3D12_GPU_DESCRIPTOR_HANDLE InNeighborOffsets; } GPUDescriptorHandles{};
 
 	struct {
 		RenderTexture
@@ -97,6 +96,7 @@ export struct Raytracing {
 		const ScopedBarrier scopedBarrier(
 			pCommandList,
 			{
+				CD3DX12_RESOURCE_BARRIER::Transition(GPUBuffers.InLightIndices->GetResource(), GPUBuffers.InLightIndices->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InPreviousLinearDepth->GetResource(), RenderTextures.InPreviousLinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InPreviousBaseColorMetalness->GetResource(), RenderTextures.InPreviousBaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InPreviousNormalRoughness->GetResource(), RenderTextures.InPreviousNormalRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
@@ -137,7 +137,7 @@ export struct Raytracing {
 		pCommandList->SetComputeRootDescriptorTable(19, RenderTextures.OutNoisySpecular->GetUAVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootShaderResourceView(20, GPUBuffers.InLightInfo ? GPUBuffers.InLightInfo->GetResource()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetComputeRootShaderResourceView(21, GPUBuffers.InLightIndices ? GPUBuffers.InLightIndices->GetResource()->GetGPUVirtualAddress() : NULL);
-		pCommandList->SetComputeRootDescriptorTable(22, GPUDescriptorHandles.InNeighborOffsets);
+		pCommandList->SetComputeRootDescriptorTable(22, GPUBuffers.InNeighborOffsets->GetTypedSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootUnorderedAccessView(23, GPUBuffers.OutDIReservoir ? GPUBuffers.OutDIReservoir->GetResource()->GetGPUVirtualAddress() : NULL);
 		const auto renderSize = m_GPUBuffers.GraphicsSettings.At(0).RenderSize;
 		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);

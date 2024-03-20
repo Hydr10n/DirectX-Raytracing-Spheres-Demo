@@ -33,59 +33,61 @@ export namespace DirectX {
 
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &desc, m_state, &clearValue, IID_PPV_ARGS(&m_resource)));
 
-			m_UAVDescriptors.resize(mipLevels);
-			m_RTVDescriptors.resize(mipLevels);
+			m_descriptors.UAV.resize(mipLevels);
+			m_descriptors.RTV.resize(mipLevels);
 		}
 
 		const Color& GetClearColor() const noexcept { return m_clearColor; }
 		void SetClearColor(const Color& color) noexcept { m_clearColor = color; }
-		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT16 mipLevel = 0) { pCommandList->ClearRenderTargetView(m_RTVDescriptors[mipLevel].CPUHandle, reinterpret_cast<const float*>(&m_clearColor), 0, nullptr); }
+		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT16 mipLevel = 0) { pCommandList->ClearRenderTargetView(m_descriptors.RTV[mipLevel].CPUHandle, reinterpret_cast<const float*>(&m_clearColor), 0, nullptr); }
 
-		const Descriptor& GetSRVDescriptor() const noexcept { return m_SRVDescriptor; }
-		Descriptor& GetSRVDescriptor() noexcept { return m_SRVDescriptor; }
+		const Descriptor& GetSRVDescriptor() const noexcept { return m_descriptors.SRV; }
+		Descriptor& GetSRVDescriptor() noexcept { return m_descriptors.SRV; }
 
-		const Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_UAVDescriptors[mipLevel]; }
-		Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) noexcept { return m_UAVDescriptors[mipLevel]; }
+		const Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.UAV[mipLevel]; }
+		Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.UAV[mipLevel]; }
 
-		const Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_RTVDescriptors[mipLevel]; }
-		Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_RTVDescriptors[mipLevel]; }
+		const Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.RTV[mipLevel]; }
+		Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.RTV[mipLevel]; }
 
 		void CreateSRV(const DescriptorHeap& resourceDescriptorHeap, UINT index) {
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			m_SRVDescriptor = {
+			m_descriptors.SRV = {
 				.HeapIndex = index,
 				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
 				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
 			};
-			CreateShaderResourceView(device.Get(), m_resource.Get(), m_SRVDescriptor.CPUHandle);
+			CreateShaderResourceView(device.Get(), m_resource.Get(), m_descriptors.SRV.CPUHandle);
 		}
 
 		void CreateUAV(const DescriptorHeap& resourceDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
-			m_UAVDescriptors[mipLevel] = {
+			m_descriptors.UAV[mipLevel] = {
 				.HeapIndex = index,
 				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
 				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
 			};
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateUnorderedAccessView(device.Get(), m_resource.Get(), m_UAVDescriptors[mipLevel].CPUHandle, mipLevel);
+			CreateUnorderedAccessView(device.Get(), m_resource.Get(), m_descriptors.UAV[mipLevel].CPUHandle, mipLevel);
 		}
 
 		void CreateRTV(const DescriptorHeap& renderDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
-			m_RTVDescriptors[mipLevel] = {
+			m_descriptors.RTV[mipLevel] = {
 				.HeapIndex = index,
 				.CPUHandle = renderDescriptorHeap.GetCpuHandle(index)
 			};
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateRenderTargetView(device.Get(), m_resource.Get(), m_RTVDescriptors[mipLevel].CPUHandle, mipLevel);
+			CreateRenderTargetView(device.Get(), m_resource.Get(), m_descriptors.RTV[mipLevel].CPUHandle, mipLevel);
 		}
 
 	private:
 		Color m_clearColor;
 
-		Descriptor m_SRVDescriptor;
-		vector<Descriptor> m_UAVDescriptors, m_RTVDescriptors;
+		struct {
+			Descriptor SRV;
+			vector<Descriptor> UAV, RTV;
+		} m_descriptors;
 	};
 }

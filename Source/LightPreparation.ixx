@@ -107,8 +107,6 @@ export struct LightPreparation {
 		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.InObjectData->GetResource()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.OutLightInfo->GetResource()->GetGPUVirtualAddress());
 		pCommandList->Dispatch((m_emissiveTriangleCount + 255) / 256, 1, 1);
-		const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GPUBuffers.OutLightInfo->GetResource());
-		pCommandList->ResourceBarrier(1, &barrier);
 	}
 
 private:

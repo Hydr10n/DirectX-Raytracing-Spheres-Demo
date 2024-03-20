@@ -28,7 +28,7 @@ namespace {
 
 export namespace PostProcessing {
 	struct Bloom {
-		struct { float Strength = 4e-2f; } Constants;
+		struct { float Strength; } Constants{};
 
 		explicit Bloom(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice), m_descriptorHeap(pDevice, DescriptorHeapIndex::Reserve + (1 + BlurMipLevels) * 2), m_merge(pDevice) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Bloom_dxil, size(g_Bloom_dxil) };

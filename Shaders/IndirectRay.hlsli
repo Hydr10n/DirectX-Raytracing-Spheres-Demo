@@ -17,7 +17,7 @@ struct IndirectRay {
 		ScatterResult scatterResult;
 		scatterResult.Direction = worldRayDirection;
 
-		for (uint bounce = 1; bounce <= g_graphicsSettings.MaxNumberOfBounces; bounce++) {
+		for (uint bounce = 1; bounce <= g_graphicsSettings.Bounces; bounce++) {
 			const RayDesc rayDesc = { hitInfo.GetSafeWorldRayOrigin(scatterResult.Direction), 0, scatterResult.Direction, 1.#INFf };
 			if (CastRay(rayDesc, hitInfo)) {
 				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);

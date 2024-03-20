@@ -4,6 +4,7 @@ module;
 
 #include "directx/d3d12.h"
 
+#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
 #include "rtxdi/ReSTIRDI.h"
@@ -33,12 +34,12 @@ export {
 			LightIndices = make_shared<DefaultBuffer<UINT>>(pDevice, objectCount);
 		}
 
-		void CreateNeighborOffsets(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, D3D12_CPU_DESCRIPTOR_HANDLE neighborOffsetsDescriptor) {
+		void CreateNeighborOffsets(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeap& descriptorHeap, UINT neighborOffsetsDescriptorHeapIndex) {
 			const auto neighborOffsetCount = ReSTIRDIContext->getStaticParameters().NeighborOffsetCount;
 			vector<UINT16> offsets(neighborOffsetCount);
 			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
 			NeighborOffsets = make_shared<DefaultBuffer<UINT16>>(pDevice, resourceUploadBatch, offsets);
-			NeighborOffsets->CreateTypedSRV(neighborOffsetsDescriptor, DXGI_FORMAT_R8G8_SNORM);
+			NeighborOffsets->CreateTypedSRV(descriptorHeap, neighborOffsetsDescriptorHeapIndex, DXGI_FORMAT_R8G8_SNORM);
 		}
 
 		void CreateDIReservoir(ID3D12Device* pDevice) {
