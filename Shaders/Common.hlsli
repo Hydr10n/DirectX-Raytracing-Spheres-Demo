@@ -4,7 +4,7 @@
 
 #include "Vertex.hlsli"
 
-struct SceneResourceDescriptorHeapIndices {
+struct SceneResourceDescriptorIndices {
 	uint InEnvironmentLightTexture, InEnvironmentTexture;
 	uint2 _;
 };
@@ -12,7 +12,7 @@ struct SceneResourceDescriptorHeapIndices {
 struct SceneData {
 	bool IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 	bool _;
-	SceneResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
+	SceneResourceDescriptorIndices ResourceDescriptorIndices;
 	float4 EnvironmentLightColor, EnvironmentColor;
 	row_major float3x4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
 };
@@ -23,13 +23,13 @@ struct InstanceData {
 	row_major float3x4 PreviousObjectToWorld, ObjectToWorld;
 };
 
-struct ObjectResourceDescriptorHeapIndices {
+struct ObjectResourceDescriptorIndices {
 	struct { uint Vertices, Indices, MotionVectors, _; } Mesh;
-	struct { uint BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, TransmissionMap, OpacityMap, NormalMap; } Textures;
+	struct { uint BaseColor, EmissiveColor, Metallic, Roughness, AmbientOcclusion, Transmission, Opacity, Normal; } TextureMaps;
 };
 
 struct ObjectData {
 	VertexDesc VertexDesc;
 	Material Material;
-	ObjectResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
+	ObjectResourceDescriptorIndices ResourceDescriptorIndices;
 };

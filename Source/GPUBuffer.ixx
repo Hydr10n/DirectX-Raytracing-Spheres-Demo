@@ -56,14 +56,14 @@ namespace {
 	}
 }
 
-#define DEFAULT_BUFFER_BASE GPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
-#define MAPPABLE_BUFFER_BASE GPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
+#define DEFAULT_BUFFER_BASE TypedGPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
+#define MAPPABLE_BUFFER_BASE TypedGPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
 #define MAPPABLE_BUFFER_INITIAL_STATE IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST
 #define DEFAULT_ALIGNMENT size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
 
 #define DESCRIPTOR(descriptor) \
 	m_descriptors.descriptor = { \
-		.HeapIndex = index, \
+		.Index = index, \
 		.CPUHandle = descriptorHeap.GetCpuHandle(index), \
 		.GPUHandle = descriptorHeap.GetGpuHandle(index) \
 	}
@@ -103,27 +103,30 @@ export namespace DirectX {
 		CreateUAV(pResource, descriptor, format, (size * count + size - 1) / size);
 	}
 
-	template <typename T, D3D12_HEAP_TYPE HeapType, DEFAULT_ALIGNMENT>
 	class GPUBuffer : public GPUResource {
 	public:
-		static_assert(IsPowerOf2(Alignment));
-
-		using ElementType = T;
-
-		static constexpr size_t ElementSize = (sizeof(T) + Alignment - 1) & ~(Alignment - 1);
-
 		GPUBuffer(GPUBuffer&& source) noexcept = default;
 		GPUBuffer& operator=(GPUBuffer&& source) noexcept = default;
 
+		GPUBuffer(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state, size_t stride, size_t count = 0) noexcept(false) : GPUResource(pResource, state) {
+			const auto desc = pResource->GetDesc();
+			if (desc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) throw invalid_argument("Resource is not buffer");
+			m_stride = stride;
+			m_capacity = m_count = count ? count : desc.Width / stride;
+		}
+
 		GPUBuffer(
 			ID3D12Device* pDevice,
-			size_t capacity = 1,
+			D3D12_HEAP_TYPE heapType,
+			size_t stride, size_t capacity = 1,
 			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUResource(initialState), m_capacity(capacity), m_count(capacity) {
-			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
-			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(ElementSize * capacity, 16), flags);
+		) noexcept(false) : GPUResource(initialState), m_stride(stride), m_capacity(capacity), m_count(capacity) {
+			const CD3DX12_HEAP_PROPERTIES heapProperties(heapType);
+			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(stride * capacity, 16), flags);
 			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
+
+		size_t GetStride() const noexcept { return m_stride; }
 
 		size_t GetCapacity() const noexcept { return m_capacity; }
 		size_t GetCount() const noexcept { return m_count; }
@@ -151,48 +154,48 @@ export namespace DirectX {
 
 		void CreateCBV(const DescriptorHeap& descriptorHeap, UINT index) {
 			DESCRIPTOR(CBV);
-			::CreateCBV(m_resource.Get(), m_descriptors.CBV.CPUHandle, static_cast<UINT>(ElementSize * m_count));
+			DirectX::CreateCBV(m_resource.Get(), m_descriptors.CBV.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
 		void CreateStructuredSRV(const DescriptorHeap& descriptorHeap, UINT index) {
 			DESCRIPTOR(SRV.Structured);
-			::CreateStructuredSRV(m_resource.Get(), m_descriptors.SRV.Structured.CPUHandle, static_cast<UINT>(ElementSize), static_cast<UINT>(m_count));
+			DirectX::CreateStructuredSRV(m_resource.Get(), m_descriptors.SRV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
 		}
 
 		void CreateRawSRV(const DescriptorHeap& descriptorHeap, UINT index) {
 			DESCRIPTOR(SRV.Raw);
-			::CreateRawSRV(m_resource.Get(), m_descriptors.SRV.Raw.CPUHandle, static_cast<UINT>(ElementSize * m_count));
+			DirectX::CreateRawSRV(m_resource.Get(), m_descriptors.SRV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
 		void CreateTypedSRV(const DescriptorHeap& descriptorHeap, UINT index, DXGI_FORMAT format) {
 			DESCRIPTOR(SRV.Typed);
-			::CreateTypedSRV(m_resource.Get(), m_descriptors.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
+			DirectX::CreateTypedSRV(m_resource.Get(), m_descriptors.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
 		void CreateStructuredUAV(const DescriptorHeap& descriptorHeap, UINT index) {
 			DESCRIPTOR(UAV.Structured);
-			::CreateStructuredUAV(m_resource.Get(), m_descriptors.UAV.Structured.CPUHandle, static_cast<UINT>(ElementSize), static_cast<UINT>(m_count));
+			DirectX::CreateStructuredUAV(m_resource.Get(), m_descriptors.UAV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
 		}
 
 		void CreateRawUAV(const DescriptorHeap& descriptorHeap, UINT index) {
 			DESCRIPTOR(UAV.Raw);
-			::CreateRawUAV(m_resource.Get(), m_descriptors.UAV.Raw.CPUHandle, static_cast<UINT>(ElementSize * m_count));
+			DirectX::CreateRawUAV(m_resource.Get(), m_descriptors.UAV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
 		void CreateTypedUAV(const DescriptorHeap& descriptorHeap, UINT index, DXGI_FORMAT format) {
 			DESCRIPTOR(UAV.Typed);
-			::CreateTypedUAV(m_resource.Get(), m_descriptors.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
+			DirectX::CreateTypedUAV(m_resource.Get(), m_descriptors.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
 	protected:
-		size_t m_capacity{}, m_count{};
+		size_t m_stride{}, m_capacity{}, m_count{};
 
-		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : GPUResource(initialState), m_capacity(source.m_capacity), m_count(source.m_count) {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(source.m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			const CD3DX12_HEAP_PROPERTIES heapProperties(HeapType);
+		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) :
+			GPUResource(initialState), m_stride(source.m_stride), m_capacity(source.m_capacity), m_count(source.m_count) {
+			D3D12_HEAP_PROPERTIES heapProperties;
+			ThrowIfFailed(source.m_resource->GetHeapProperties(&heapProperties, nullptr));
 			const auto resourceDesc = source.m_resource->GetDesc();
-			ThrowIfFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
+			ThrowIfFailed(GetDevice(source.m_resource.Get())->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&m_resource)));
 		}
 
 	private:
@@ -202,9 +205,29 @@ export namespace DirectX {
 		} m_descriptors;
 	};
 
+	template <typename T, D3D12_HEAP_TYPE HeapType, DEFAULT_ALIGNMENT>
+	class TypedGPUBuffer : public GPUBuffer {
+	public:
+		static_assert(IsPowerOf2(Alignment));
+
+		using ElementType = T;
+
+		TypedGPUBuffer(TypedGPUBuffer&& source) noexcept = default;
+		TypedGPUBuffer& operator=(TypedGPUBuffer&& source) noexcept = default;
+
+		explicit TypedGPUBuffer(
+			ID3D12Device* pDevice,
+			size_t capacity = 1,
+			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
+		) noexcept(false) : GPUBuffer(pDevice, HeapType, (sizeof(T) + Alignment - 1) & ~(Alignment - 1), capacity, initialState, flags) {}
+
+	protected:
+		TypedGPUBuffer(const TypedGPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : GPUBuffer(source, initialState) {}
+	};
+
 	template <typename T, DEFAULT_ALIGNMENT>
 	struct DefaultBuffer : DEFAULT_BUFFER_BASE {
-		using DEFAULT_BUFFER_BASE::GPUBuffer;
+		using DEFAULT_BUFFER_BASE::TypedGPUBuffer;
 
 		DefaultBuffer(
 			ID3D12Device* pDevice,
@@ -226,7 +249,7 @@ export namespace DirectX {
 			if (pCommandList != nullptr) {
 				const ScopedBarrier scopedBarrier(pCommandList, { CD3DX12_RESOURCE_BARRIER::Transition(source.m_resource.Get(), source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
 				this->TransitionTo(pCommandList, D3D12_RESOURCE_STATE_COPY_DEST);
-				pCommandList->CopyBufferRegion(this->m_resource.Get(), 0, source.m_resource.Get(), 0, this->ElementSize * source.m_count);
+				pCommandList->CopyBufferRegion(this->m_resource.Get(), 0, source.m_resource.Get(), 0, this->m_stride * source.m_count);
 				this->TransitionTo(pCommandList, source.m_state);
 			}
 		}
@@ -239,12 +262,12 @@ export namespace DirectX {
 				*this = DefaultBuffer(device.Get(), count);
 			}
 			else this->m_count = count;
-			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->ElementSize * count) };
+			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->m_stride * count) };
 			vector<uint8_t> newData;
 			if (sizeof(T) % Alignment == 0) subresourceData.pData = ::data(data);
 			else {
-				newData = vector<uint8_t>(this->ElementSize * count);
-				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->ElementSize * i) = data[i];
+				newData = vector<uint8_t>(this->m_stride * count);
+				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->m_stride * i) = data[i];
 				subresourceData.pData = ::data(newData);
 			}
 			const auto resource = this->m_resource.Get();
@@ -305,7 +328,7 @@ export namespace DirectX {
 			}
 		}
 
-		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + this->ElementSize * index); }
+		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + this->m_stride * index); }
 		T& operator[](size_t index) { return const_cast<T&>(as_const(*this)[index]); }
 
 		const T& At(size_t index) const {

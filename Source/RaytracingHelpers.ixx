@@ -104,7 +104,7 @@ export namespace DirectX::RaytracingHelpers {
 
 	template <typename Vertex, D3D12_HEAP_TYPE VertexHeapType, size_t VertexAlignment, typename Index, D3D12_HEAP_TYPE IndexHeapType> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
-		const GPUBuffer<Vertex, VertexHeapType, VertexAlignment>&vertices, const GPUBuffer<Index, IndexHeapType>&indices,
+		const TypedGPUBuffer<Vertex, VertexHeapType, VertexAlignment>&vertices, const TypedGPUBuffer<Index, IndexHeapType>&indices,
 		D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
@@ -119,10 +119,10 @@ export namespace DirectX::RaytracingHelpers {
 				.VertexFormat = vertexFormat,
 				.IndexCount = static_cast<UINT>(indexCount),
 				.VertexCount = static_cast<UINT>(vertexCount),
-				.IndexBuffer = indices.GetResource()->GetGPUVirtualAddress(),
+				.IndexBuffer = indices->GetGPUVirtualAddress(),
 				.VertexBuffer{
-					.StartAddress = vertices.GetResource()->GetGPUVirtualAddress(),
-					.StrideInBytes = vertices.ElementSize
+					.StartAddress = vertices->GetGPUVirtualAddress(),
+					.StrideInBytes = vertices.GetStride()
 				}
 			}
 		};

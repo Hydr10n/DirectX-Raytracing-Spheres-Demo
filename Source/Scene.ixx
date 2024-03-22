@@ -23,7 +23,7 @@ import Material;
 import Model;
 import RaytracingHelpers;
 import ResourceHelpers;
-import Texture;
+import TextureHelpers;
 
 using namespace DirectX;
 using namespace DirectX::RaytracingHelpers;
@@ -34,6 +34,7 @@ using namespace ResourceHelpers;
 using namespace rtxmu;
 using namespace std;
 using namespace std::filesystem;
+using namespace TextureHelpers;
 
 export {
 	struct RenderObjectBase {
@@ -49,13 +50,13 @@ export {
 	struct RenderObjectDesc : RenderObjectBase {
 		string MeshURI;
 
-		map<TextureType, path> Textures;
+		map<TextureMap, path> Textures;
 	};
 
 	struct RenderObject : RenderObjectBase {
 		shared_ptr<Mesh> Mesh;
 
-		map<TextureType, Texture> Textures;
+		map<TextureMap, shared_ptr<Texture>> Textures;
 	};
 
 	struct SceneBase {
@@ -90,7 +91,10 @@ export {
 			XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 		};
 
-		struct : Texture { Transform Transform; } EnvironmentLightTexture, EnvironmentTexture;
+		struct {
+			shared_ptr<Texture> Texture;
+			Transform Transform;
+		} EnvironmentLightTexture, EnvironmentTexture;
 
 		unordered_map<string, shared_ptr<Mesh>> Meshes;
 
@@ -102,7 +106,7 @@ export {
 
 		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) {}
 
-		void Load(const SceneDesc& sceneDesc, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {
+		void Load(const SceneDesc& sceneDesc, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex) {
 			reinterpret_cast<SceneBase&>(*this) = sceneDesc;
 
 			ResourceUploadBatch resourceUploadBatch(m_device);
@@ -110,18 +114,19 @@ export {
 
 			{
 				if (!empty(sceneDesc.EnvironmentLightTexture.FilePath)) {
-					EnvironmentLightTexture.Load(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+					EnvironmentLightTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
 					EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
 				}
-
 				if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
-					EnvironmentTexture.Load(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+					EnvironmentTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
 					EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 				}
 			}
 
 			{
-				for (const auto& [URI, Mesh] : sceneDesc.Meshes) Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
+				for (const auto& [URI, Mesh] : sceneDesc.Meshes) {
+					Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
+				}
 
 				for (const auto& renderObjectDesc : sceneDesc.RenderObjects) {
 					RenderObject renderObject;
@@ -130,9 +135,7 @@ export {
 					renderObject.Mesh = Meshes.at(renderObjectDesc.MeshURI);
 
 					for (const auto& [TextureType, FilePath] : renderObjectDesc.Textures) {
-						Texture texture;
-						texture.Load(ResolveResourcePath(FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorHeapIndex);
-						renderObject.Textures[TextureType] = texture;
+						renderObject.Textures[TextureType] = LoadTexture(ResolveResourcePath(FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
 					}
 
 					RenderObjects.emplace_back(renderObject);

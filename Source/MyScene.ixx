@@ -13,10 +13,11 @@ module;
 
 export module MyScene;
 
+export import Scene;
+
 import Material;
 import Model;
 import Random;
-import Scene;
 import Texture;
 
 using namespace DirectX;
@@ -129,10 +130,10 @@ export {
 					renderObject.Material = Material;
 
 					if (auto& textures = renderObject.Textures; Name == ObjectNames::AlienMetal) {
-						textures[TextureType::BaseColorMap] = directoryPath / L"Alien-Metal_Albedo.png";
-						textures[TextureType::MetallicMap] = directoryPath / L"Alien-Metal_Metallic.png";
-						textures[TextureType::RoughnessMap] = directoryPath / L"Alien-Metal_Roughness.png";
-						textures[TextureType::NormalMap] = directoryPath / L"Alien-Metal_Normal.png";
+						textures[TextureMap::BaseColor] = directoryPath / L"Alien-Metal_Albedo.png";
+						textures[TextureMap::Metallic] = directoryPath / L"Alien-Metal_Metallic.png";
+						textures[TextureMap::Roughness] = directoryPath / L"Alien-Metal_Roughness.png";
+						textures[TextureMap::Normal] = directoryPath / L"Alien-Metal_Normal.png";
 					}
 
 					AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
@@ -251,15 +252,15 @@ export {
 						rigidDynamic.setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 						rigidDynamic.setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 
-						textures[TextureType::BaseColorMap] = directoryPath / L"Moon_BaseColor.jpg";
-						textures[TextureType::NormalMap] = directoryPath / L"Moon_Normal.jpg";
+						textures[TextureMap::BaseColor] = directoryPath / L"Moon_BaseColor.jpg";
+						textures[TextureMap::Normal] = directoryPath / L"Moon_Normal.jpg";
 					}
 					else if (renderObject.Name == ObjectNames::Earth) {
 						rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
 						PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &Mass, 1);
 
-						textures[TextureType::BaseColorMap] = directoryPath / L"Earth_BaseColor.jpg";
-						textures[TextureType::NormalMap] = directoryPath / L"Earth_Normal.jpg";
+						textures[TextureMap::BaseColor] = directoryPath / L"Earth_BaseColor.jpg";
+						textures[TextureMap::Normal] = directoryPath / L"Earth_Normal.jpg";
 					}
 					else if (renderObject.Name == ObjectNames::Star) rigidDynamic.setMass(0);
 

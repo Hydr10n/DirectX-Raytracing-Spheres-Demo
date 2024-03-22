@@ -10,7 +10,7 @@ import Vertex;
 using namespace DirectX;
 
 export {
-	struct SceneResourceDescriptorHeapIndices {
+	struct SceneResourceDescriptorIndices {
 		UINT InEnvironmentLightTexture = ~0u, InEnvironmentTexture = ~0u;
 		XMUINT2 _;
 	};
@@ -18,7 +18,7 @@ export {
 	struct SceneData {
 		BOOL IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 		BOOL _;
-		SceneResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
+		SceneResourceDescriptorIndices ResourceDescriptorIndices;
 		XMFLOAT4 EnvironmentLightColor, EnvironmentColor;
 		XMFLOAT3X4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
 	};
@@ -29,7 +29,7 @@ export {
 		XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 	};
 
-	struct ObjectResourceDescriptorHeapIndices {
+	struct ObjectResourceDescriptorIndices {
 		struct { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u, _; } Mesh;
 		struct { UINT BaseColorMap = ~0u, EmissiveColorMap = ~0u, MetallicMap = ~0u, RoughnessMap = ~0u, AmbientOcclusionMap = ~0u, TransmissionMap = ~0u, OpacityMap = ~0u, NormalMap = ~0u; } Textures;
 	};
@@ -37,6 +37,6 @@ export {
 	struct ObjectData {
 		VertexDesc VertexDesc;
 		Material Material;
-		ObjectResourceDescriptorHeapIndices ResourceDescriptorHeapIndices;
+		ObjectResourceDescriptorIndices ResourceDescriptorIndices;
 	};
 }

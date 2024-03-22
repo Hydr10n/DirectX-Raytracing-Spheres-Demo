@@ -38,12 +38,12 @@ export struct Mesh {
 
 	~Mesh() { DeleteEvent.Raise(this); }
 
-	static auto Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex) {
+	static auto Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex) {
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);
-			descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex);
-			if (isStructuredSRV) buffer->CreateStructuredSRV(descriptorHeap, descriptorHeapIndex - 1);
-			else buffer->CreateRawSRV(descriptorHeap, descriptorHeapIndex - 1);
+			descriptorIndex = descriptorHeap.Allocate(1, descriptorIndex);
+			if (isStructuredSRV) buffer->CreateStructuredSRV(descriptorHeap, descriptorIndex - 1);
+			else buffer->CreateRawSRV(descriptorHeap, descriptorIndex - 1);
 		};
 		const auto mesh = make_shared<Mesh>();
 		CreateBuffer(mesh->Vertices, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, false);

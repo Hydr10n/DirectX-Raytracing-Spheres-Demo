@@ -2,69 +2,121 @@ module;
 
 #include <filesystem>
 
-#include "directxtk12/DDSTextureLoader.h"
+#include "directx/d3dx12.h"
+
+#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/DirectXHelpers.h"
-#include "directxtk12/WICTextureLoader.h"
+#include "directxtk12/SimpleMath.h"
 
 export module Texture;
 
 import DescriptorHeap;
 import ErrorHelpers;
-import TextureHelpers;
+import GPUResource;
 
 using namespace DirectX;
+using namespace DirectX::SimpleMath;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
-using namespace std::filesystem;
-using namespace TextureHelpers;
 
-#define LoadTexture(...) \
-	auto isCubeMap = false;\
-	ThrowIfFailed(__VA_ARGS__); \
-	if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap; \
-	descriptorHeapIndex = descriptorHeap.Allocate(1, descriptorHeapIndex); \
-	SRVDescriptor = { \
-		.HeapIndex = descriptorHeapIndex - 1, \
-		.CPUHandle = descriptorHeap.GetCpuHandle(descriptorHeapIndex - 1), \
-		.GPUHandle = descriptorHeap.GetGpuHandle(descriptorHeapIndex - 1) \
-	}; \
-	CreateShaderResourceView(pDevice, Resource.Get(), descriptorHeap.GetCpuHandle(descriptorHeapIndex - 1), isCubeMap);
+export namespace DirectX {
+	enum class TextureMap {
+		Unknown,
+		BaseColor,
+		EmissiveColor,
+		Metallic,
+		Roughness,
+		AmbientOcclusion,
+		Transmission,
+		Opacity,
+		Normal,
+		Cube
+	};
 
-export {
-	enum class TextureType { Unknown, BaseColorMap, EmissiveColorMap, MetallicMap, RoughnessMap, AmbientOcclusionMap, TransmissionMap, OpacityMap, NormalMap, CubeMap };
+	class Texture : public GPUResource {
+	public:
+		Texture(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) : GPUResource(pResource, state) {
+			switch (pResource->GetDesc().Dimension) {
+				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:;
+				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:;
+				case D3D12_RESOURCE_DIMENSION_TEXTURE3D: break;
+				default: throw invalid_argument("Resource is not texture");
+			}
 
-	struct Texture {
-		string Name;
-
-		ComPtr<ID3D12Resource> Resource;
-
-		Descriptor SRVDescriptor;
-
-		void Load(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
-			if (empty(filePath)) throw invalid_argument("Texture file path cannot be empty");
-
-			const auto filePathExtension = filePath.extension();
-			if (empty(filePathExtension)) throw invalid_argument(format("{}: Unknown file format", filePath.string()));
-
-			const auto extension = filePathExtension.c_str() + 1;
-			LoadTexture(
-				!_wcsicmp(extension, L"dds") ? CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &Resource, false, 0, nullptr, &isCubeMap) :
-				!_wcsicmp(extension, L"hdr") ? LoadHDR(pDevice, resourceUploadBatch, filePath, &Resource) :
-				!_wcsicmp(extension, L"exr") ? LoadEXR(pDevice, resourceUploadBatch, filePath, &Resource) :
-				!_wcsicmp(extension, L"tga") ? LoadTGA(pDevice, resourceUploadBatch, filePath, &Resource) :
-				CreateWICTextureFromFileEx(pDevice, resourceUploadBatch, filePath.c_str(), 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &Resource),
-				filePath.string()
-			);
+			const auto mipLevels = pResource->GetDesc().MipLevels;
+			m_descriptors.UAV.resize(mipLevels);
+			m_descriptors.RTV.resize(mipLevels);
 		}
 
-		void Load(string_view format, const void* pData, size_t size, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorHeapIndex, bool* pIsCubeMap = nullptr) {
-			LoadTexture(
-				!_stricmp(data(format), "dds") ? CreateDDSTextureFromMemory(pDevice, resourceUploadBatch, static_cast<const uint8_t*>(pData), size, &Resource, false, 0, nullptr, &isCubeMap) :
-				!_stricmp(data(format), "hdr") ? LoadHDR(pDevice, resourceUploadBatch, pData, size, &Resource) :
-				!_stricmp(data(format), "tga") ? LoadTGA(pDevice, resourceUploadBatch, pData, size, &Resource) :
-				CreateWICTextureFromMemoryEx(pDevice, resourceUploadBatch, static_cast<const uint8_t*>(pData), size, 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &Resource)
-			);
+		Texture(ID3D12Device* pDevice, DXGI_FORMAT format, XMUINT2 size, UINT16 mipLevels = 1, const Color& clearColor = {}, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_RENDER_TARGET) noexcept(false) :
+			GPUResource(initialState), m_clearColor(clearColor) {
+			const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+
+			const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, size.x, size.y, 1, mipLevels, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+			D3D12_CLEAR_VALUE clearValue{ format };
+			reinterpret_cast<Color&>(clearValue.Color) = m_clearColor;
+
+			m_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &desc, m_state, &clearValue, IID_PPV_ARGS(&m_resource)));
+
+			m_descriptors.UAV.resize(mipLevels);
+			m_descriptors.RTV.resize(mipLevels);
 		}
+
+		const Color& GetClearColor() const noexcept { return m_clearColor; }
+		void SetClearColor(const Color& color) noexcept { m_clearColor = color; }
+		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT16 mipLevel = 0) { pCommandList->ClearRenderTargetView(m_descriptors.RTV[mipLevel].CPUHandle, reinterpret_cast<const float*>(&m_clearColor), 0, nullptr); }
+
+		const Descriptor& GetSRVDescriptor() const noexcept { return m_descriptors.SRV; }
+		Descriptor& GetSRVDescriptor() noexcept { return m_descriptors.SRV; }
+
+		const Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.UAV[mipLevel]; }
+		Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.UAV[mipLevel]; }
+
+		const Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.RTV[mipLevel]; }
+		Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.RTV[mipLevel]; }
+
+		void CreateSRV(const DescriptorHeap& resourceDescriptorHeap, UINT index, bool isCubeMap = false) {
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			m_descriptors.SRV = {
+				.Index = index,
+				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
+				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
+			};
+			CreateShaderResourceView(device.Get(), m_resource.Get(), m_descriptors.SRV.CPUHandle, isCubeMap);
+		}
+
+		void CreateUAV(const DescriptorHeap& resourceDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
+			m_descriptors.UAV[mipLevel] = {
+				.Index = index,
+				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
+				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
+			};
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			CreateUnorderedAccessView(device.Get(), m_resource.Get(), m_descriptors.UAV[mipLevel].CPUHandle, mipLevel);
+		}
+
+		void CreateRTV(const DescriptorHeap& renderDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
+			m_descriptors.RTV[mipLevel] = {
+				.Index = index,
+				.CPUHandle = renderDescriptorHeap.GetCpuHandle(index)
+			};
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
+			CreateRenderTargetView(device.Get(), m_resource.Get(), m_descriptors.RTV[mipLevel].CPUHandle, mipLevel);
+		}
+
+	private:
+		Color m_clearColor;
+
+		struct {
+			Descriptor SRV;
+			vector<Descriptor> UAV, RTV;
+		} m_descriptors;
 	};
 }

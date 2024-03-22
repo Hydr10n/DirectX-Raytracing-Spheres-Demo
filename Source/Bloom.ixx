@@ -14,7 +14,7 @@ export module PostProcessing.Bloom;
 import DescriptorHeap;
 import ErrorHelpers;
 import PostProcessing.Merge;
-import RenderTexture;
+import Texture;
 
 using namespace DirectX;
 using namespace ErrorHelpers;
@@ -30,7 +30,7 @@ export namespace PostProcessing {
 	struct Bloom {
 		struct { float Strength; } Constants{};
 
-		explicit Bloom(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice), m_descriptorHeap(pDevice, DescriptorHeapIndex::Reserve + (1 + BlurMipLevels) * 2), m_merge(pDevice) {
+		explicit Bloom(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice), m_descriptorHeap(pDevice, DescriptorIndex::Reserve + (1 + BlurMipLevels) * 2), m_merge(pDevice) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Bloom_dxil, size(g_Bloom_dxil) };
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
@@ -38,24 +38,32 @@ export namespace PostProcessing {
 			m_pipelineState->SetName(L"Bloom");
 		}
 
-		void SetTextures(RenderTexture& input, RenderTexture& output) {
-			const auto a = m_renderTextures.Input == &input, b = m_renderTextures.Output == &output;
+		void SetTextures(const Texture& input, const Texture& output) {
+			auto a = false, b = false;
+			if (!m_renderTextures.Input || m_renderTextures.Input->GetNative() != input) {
+				m_renderTextures.Input = make_unique<Texture>(input, input.GetState());
+				m_renderTextures.Input->CreateSRV(m_descriptorHeap, DescriptorIndex::Input);
+			}
+			else if (m_renderTextures.Input && m_renderTextures.Input->GetNative() == input) {
+				m_renderTextures.Input->SetState(input.GetState());
+				a = true;
+			}
+			if (!m_renderTextures.Output || m_renderTextures.Output->GetNative() != output) {
+				m_renderTextures.Output = make_unique<Texture>(output, output.GetState());
+				m_renderTextures.Output->CreateUAV(m_descriptorHeap, DescriptorIndex::Output);
+			}
+			else if (m_renderTextures.Output && m_renderTextures.Output->GetNative() == output) {
+				m_renderTextures.Output->SetState(output.GetState());
+				b = true;
+			}
 			if (a && b) return;
-			if (!a) {
-				CreateShaderResourceView(m_device, input.GetResource(), m_descriptorHeap.GetCpuHandle(DescriptorHeapIndex::Input));
-				m_renderTextures.Input = &input;
-			}
-			if (!b) {
-				CreateUnorderedAccessView(m_device, output.GetResource(), m_descriptorHeap.GetCpuHandle(DescriptorHeapIndex::Output));
-				m_renderTextures.Output = &output;
-			}
 
-			const auto desc = input.GetResource()->GetDesc();
-			const auto size = GetTextureSize(input.GetResource()) / 2;
-			if (!m_renderTextures.Blur1 || desc.Format != m_renderTextures.Blur1->GetResource()->GetDesc().Format || size != GetTextureSize(m_renderTextures.Blur1->GetResource())) {
-				UINT index = DescriptorHeapIndex::Reserve;
-				const auto CreateTexture = [&](unique_ptr<RenderTexture>& texture) {
-					texture = make_unique<RenderTexture>(m_device, desc.Format, size, BlurMipLevels);
+			const auto desc = input->GetDesc();
+			const auto size = GetTextureSize(input) / 2;
+			if (!m_renderTextures.Blur1 || desc.Format != m_renderTextures.Blur1->GetNative()->GetDesc().Format || size != GetTextureSize(*m_renderTextures.Blur1)) {
+				UINT index = DescriptorIndex::Reserve;
+				const auto CreateTexture = [&](unique_ptr<Texture>& texture) {
+					texture = make_unique<Texture>(m_device, desc.Format, size, BlurMipLevels);
 					texture->CreateSRV(m_descriptorHeap, index++);
 					for (const auto i : views::iota(static_cast<UINT16>(0), BlurMipLevels)) texture->CreateUAV(m_descriptorHeap, index++, i);
 				};
@@ -67,22 +75,6 @@ export namespace PostProcessing {
 		void Process(ID3D12GraphicsCommandList* pCommandList) {
 			auto& input = *m_renderTextures.Input, & output = *m_renderTextures.Output;
 			auto blur1 = m_renderTextures.Blur1.get(), blur2 = m_renderTextures.Blur2.get();
-
-			const struct Descriptors {
-				Descriptors(const DescriptorHeap& descriptorHeap, Descriptor& SRVDescriptor, Descriptor& UAVDescriptor) : m_SRVDescriptor(SRVDescriptor), m_UAVDescriptor(UAVDescriptor), m_SRVDescriptorCopy(SRVDescriptor), m_UAVDescriptorCopy(UAVDescriptor) {
-					SRVDescriptor = { .GPUHandle = descriptorHeap.GetGpuHandle(DescriptorHeapIndex::Input) };
-					UAVDescriptor = { .GPUHandle = descriptorHeap.GetGpuHandle(DescriptorHeapIndex::Output) };
-				}
-
-				~Descriptors() {
-					m_SRVDescriptor = m_SRVDescriptorCopy;
-					m_UAVDescriptor = m_UAVDescriptorCopy;
-				}
-
-			private:
-				Descriptor& m_SRVDescriptor, & m_UAVDescriptor;
-				Descriptor m_SRVDescriptorCopy, m_UAVDescriptorCopy;
-			} descriptors(m_descriptorHeap, input.GetSRVDescriptor(), output.GetUAVDescriptor());
 
 			const auto descriptorHeap = m_descriptorHeap.Heap();
 			pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -96,18 +88,18 @@ export namespace PostProcessing {
 			} constants{};
 			auto outputMipLevel = 0;
 
-			const auto Dispatch = [&](RenderTexture& input, RenderTexture& output) {
+			const auto Dispatch = [&](const Texture& input, const Texture& output) {
 				const ScopedBarrier scopedBarrier(
 					pCommandList,
 					{
-						CD3DX12_RESOURCE_BARRIER::Transition(input.GetResource(), input.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(output.GetResource(), output.GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+						CD3DX12_RESOURCE_BARRIER::Transition(input, input.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+						CD3DX12_RESOURCE_BARRIER::Transition(output, output.GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 					}
 				);
 				pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 				pCommandList->SetComputeRootDescriptorTable(1, input.GetSRVDescriptor().GPUHandle);
 				pCommandList->SetComputeRootDescriptorTable(2, output.GetUAVDescriptor(outputMipLevel).GPUHandle);
-				const auto size = GetTextureSize(output.GetResource());
+				const auto size = GetTextureSize(output);
 				const auto scale = 1 << outputMipLevel;
 				pCommandList->Dispatch((size.x / scale + 15) / 16, (size.y / scale + 15) / 16, 1);
 			};
@@ -132,7 +124,7 @@ export namespace PostProcessing {
 				.Weight2 = Constants.Strength
 			};
 
-			m_merge.RenderTextures = {
+			m_merge.Textures = {
 				.Input1 = &input,
 				.Input2 = blur1,
 				.Output = &output
@@ -144,7 +136,7 @@ export namespace PostProcessing {
 	private:
 		static constexpr UINT16 BlurMipLevels = 5;
 
-		struct DescriptorHeapIndex {
+		struct DescriptorIndex {
 			enum {
 				Input,
 				Output,
@@ -161,9 +153,6 @@ export namespace PostProcessing {
 		ComPtr<ID3D12RootSignature> m_rootSignature;
 		ComPtr<ID3D12PipelineState> m_pipelineState;
 
-		struct {
-			RenderTexture* Input, * Output;
-			unique_ptr<RenderTexture> Blur1, Blur2;
-		} m_renderTextures{};
+		struct { unique_ptr<Texture> Input, Output, Blur1, Blur2; } m_renderTextures{};
 	};
 }

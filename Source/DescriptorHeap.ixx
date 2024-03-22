@@ -8,7 +8,7 @@ using namespace std;
 
 export namespace DirectX {
 	struct Descriptor {
-		uint32_t HeapIndex = ~0u;
+		uint32_t Index = ~0u;
 		D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle{};
 		D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle{};
 	};

@@ -14,7 +14,7 @@ import Camera;
 import ErrorHelpers;
 import GPUBuffer;
 import NRD;
-import RenderTexture;
+import Texture;
 
 using namespace DirectX;
 using namespace ErrorHelpers;
@@ -31,7 +31,7 @@ export namespace PostProcessing {
 		struct { ConstantBuffer<Camera>* InCamera; } GPUBuffers{};
 
 		struct {
-			RenderTexture
+			Texture
 				* InLinearDepth,
 				* InBaseColorMetalness,
 				* InEmissiveColor,
@@ -53,19 +53,19 @@ export namespace PostProcessing {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InLinearDepth->GetResource(), RenderTextures.InLinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InBaseColorMetalness->GetResource(), RenderTextures.InBaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InEmissiveColor->GetResource(), RenderTextures.InEmissiveColor->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InNormalRoughness->GetResource(), RenderTextures.InNormalRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InDenoisedDiffuse->GetResource(), RenderTextures.InDenoisedDiffuse->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.InDenoisedSpecular->GetResource(), RenderTextures.InDenoisedSpecular->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.OutColor->GetResource(), RenderTextures.OutColor->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.InLinearDepth, RenderTextures.InLinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.InBaseColorMetalness, RenderTextures.InBaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.InEmissiveColor, RenderTextures.InEmissiveColor->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.InNormalRoughness, RenderTextures.InNormalRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.InDenoisedDiffuse, RenderTextures.InDenoisedDiffuse->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.InDenoisedSpecular, RenderTextures.InDenoisedSpecular->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.OutColor, RenderTextures.OutColor->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
-			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetResource()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetNative()->GetGPUVirtualAddress());
 			pCommandList->SetComputeRootDescriptorTable(2, RenderTextures.InLinearDepth->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(3, RenderTextures.InBaseColorMetalness->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(4, RenderTextures.InEmissiveColor->GetSRVDescriptor().GPUHandle);

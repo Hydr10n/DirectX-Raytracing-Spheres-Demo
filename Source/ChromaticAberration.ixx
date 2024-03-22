@@ -11,7 +11,7 @@ module;
 export module PostProcessing.ChromaticAberration;
 
 import ErrorHelpers;
-import RenderTexture;
+import Texture;
 
 using namespace DirectX;
 using namespace ErrorHelpers;
@@ -25,7 +25,7 @@ export namespace PostProcessing {
 			XMFLOAT3 Offsets{ 3e-3f, 3e-3f, -3e-3f };
 		} Constants;
 
-		struct { RenderTexture* Input, * Output; } RenderTextures{};
+		struct { Texture* Input, * Output; } RenderTextures{};
 
 		explicit ChromaticAberration(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil) };
@@ -39,8 +39,8 @@ export namespace PostProcessing {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.Input->GetResource(), RenderTextures.Input->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(RenderTextures.Output->GetResource(), RenderTextures.Output->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.Input, RenderTextures.Input->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.Output, RenderTextures.Output->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
 			pCommandList->SetPipelineState(m_pipelineState.Get());
@@ -48,7 +48,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootDescriptorTable(1, RenderTextures.Input->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(2, RenderTextures.Output->GetUAVDescriptor().GPUHandle);
-			const auto size = GetTextureSize(RenderTextures.Output->GetResource());
+			const auto size = GetTextureSize(*RenderTextures.Output);
 			pCommandList->Dispatch((size.x + 15) / 16, (size.y + 15) / 16, 1);
 		}
 

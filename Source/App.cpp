@@ -48,9 +48,7 @@ import PostProcessing.Bloom;
 import PostProcessing.ChromaticAberration;
 import PostProcessing.DenoisedComposition;
 import Raytracing;
-import RenderTexture;
 import RTXDIResources;
-import Scene;
 import SharedData;
 import StepTimer;
 import StringConverters;
@@ -138,9 +136,16 @@ struct App::Impl : IDeviceNotify {
 	SIZE GetOutputSize() const noexcept { return m_deviceResources->GetOutputSize(); }
 
 	void Tick() {
-		if (const auto pFuture = m_futures.find(FutureNames::Scene); pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) m_futures.erase(pFuture);
-
 		ignore = m_streamline->NewFrame();
+
+		if (const auto pFuture = m_futures.find(FutureNames::Scene); pFuture != cend(m_futures)) {
+			if (pFuture->second.wait_for(0s) == future_status::ready) {
+				m_futures.erase(pFuture);
+
+				if (m_scene && m_DLSSGOptions.mode == DLSSGMode::eOff && IsDLSSFrameGenerationEnabled()) SetFrameGenerationOptions();
+			}
+			else if (m_DLSSGOptions.mode != DLSSGMode::eOff) SetFrameGenerationOptions(false);
+		}
 
 		m_stepTimer.Tick([&] { Update(); });
 
@@ -263,7 +268,7 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
-	struct ResourceDescriptorHeapIndex {
+	struct ResourceDescriptorIndex {
 		enum {
 			InColor, OutColor,
 			InFinalColor, OutFinalColor,
@@ -290,7 +295,7 @@ private:
 	};
 	unique_ptr<DescriptorHeapEx> m_resourceDescriptorHeap;
 
-	struct RenderDescriptorHeapIndex {
+	struct RenderDescriptorIndex {
 		enum {
 			Color,
 			FinalColor,
@@ -355,7 +360,7 @@ private:
 		MAKE_NAMEW(DenoisedSpecular);
 		MAKE_NAMEW(Validation);
 	};
-	map<wstring, shared_ptr<RenderTexture>, less<>> m_renderTextures;
+	map<wstring, shared_ptr<Texture>, less<>> m_renderTextures;
 
 	struct {
 		shared_ptr<ConstantBuffer<Camera>> Camera;
@@ -392,33 +397,33 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, UINT SRVDescriptorHeapIndex = ~0u, UINT UAVDescriptorHeapIndex = ~0u, UINT RTVDescriptorHeapIndex = ~0u) {
+			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, UINT SRVDescriptorIndex = ~0u, UINT UAVDescriptorIndex = ~0u, UINT RTVDescriptorIndex = ~0u) {
 				auto& texture = m_renderTextures[name];
-				texture = make_shared<RenderTexture>(device, format, XMUINT2(outputSize.cx, outputSize.cy));
-				texture->GetResource()->SetName(name);
-				if (SRVDescriptorHeapIndex != ~0u) texture->CreateSRV(*m_resourceDescriptorHeap, SRVDescriptorHeapIndex);
-				if (UAVDescriptorHeapIndex != ~0u) texture->CreateUAV(*m_resourceDescriptorHeap, UAVDescriptorHeapIndex);
-				if (RTVDescriptorHeapIndex != ~0u) texture->CreateRTV(*m_renderDescriptorHeap, RTVDescriptorHeapIndex);
+				texture = make_shared<Texture>(device, format, XMUINT2(outputSize.cx, outputSize.cy));
+				texture->GetNative()->SetName(name);
+				if (SRVDescriptorIndex != ~0u) texture->CreateSRV(*m_resourceDescriptorHeap, SRVDescriptorIndex);
+				if (UAVDescriptorIndex != ~0u) texture->CreateUAV(*m_resourceDescriptorHeap, UAVDescriptorIndex);
+				if (RTVDescriptorIndex != ~0u) texture->CreateRTV(*m_renderDescriptorHeap, RTVDescriptorIndex);
 			};
 
-			CreateTexture(RenderTextureNames::Color, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InColor, ResourceDescriptorHeapIndex::OutColor, RenderDescriptorHeapIndex::Color);
-			CreateTexture(RenderTextureNames::FinalColor, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InFinalColor, ResourceDescriptorHeapIndex::OutFinalColor, RenderDescriptorHeapIndex::FinalColor);
-			CreateTexture(RenderTextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorHeapIndex::InPreviousLinearDepth, ResourceDescriptorHeapIndex::OutPreviousLinearDepth);
-			CreateTexture(RenderTextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorHeapIndex::InLinearDepth, ResourceDescriptorHeapIndex::OutLinearDepth);
-			CreateTexture(RenderTextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorHeapIndex::InNormalizedDepth, ResourceDescriptorHeapIndex::OutNormalizedDepth);
-			CreateTexture(RenderTextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InMotionVectors, ResourceDescriptorHeapIndex::OutMotionVectors);
-			CreateTexture(RenderTextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InPreviousBaseColorMetalness, ResourceDescriptorHeapIndex::OutPreviousBaseColorMetalness);
-			CreateTexture(RenderTextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorHeapIndex::InBaseColorMetalness, ResourceDescriptorHeapIndex::OutBaseColorMetalness);
-			CreateTexture(RenderTextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorHeapIndex::InEmissiveColor, ResourceDescriptorHeapIndex::OutEmissiveColor);
+			CreateTexture(RenderTextureNames::Color, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InColor, ResourceDescriptorIndex::OutColor, RenderDescriptorIndex::Color);
+			CreateTexture(RenderTextureNames::FinalColor, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InFinalColor, ResourceDescriptorIndex::OutFinalColor, RenderDescriptorIndex::FinalColor);
+			CreateTexture(RenderTextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InPreviousLinearDepth, ResourceDescriptorIndex::OutPreviousLinearDepth);
+			CreateTexture(RenderTextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InLinearDepth, ResourceDescriptorIndex::OutLinearDepth);
+			CreateTexture(RenderTextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InNormalizedDepth, ResourceDescriptorIndex::OutNormalizedDepth);
+			CreateTexture(RenderTextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InMotionVectors, ResourceDescriptorIndex::OutMotionVectors);
+			CreateTexture(RenderTextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InPreviousBaseColorMetalness, ResourceDescriptorIndex::OutPreviousBaseColorMetalness);
+			CreateTexture(RenderTextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InBaseColorMetalness, ResourceDescriptorIndex::OutBaseColorMetalness);
+			CreateTexture(RenderTextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorIndex::InEmissiveColor, ResourceDescriptorIndex::OutEmissiveColor);
 
 			{
 				const auto normalFormat = NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding);
-				CreateTexture(RenderTextureNames::PreviousNormalRoughness, normalFormat, ResourceDescriptorHeapIndex::InPreviousNormalRoughness, ResourceDescriptorHeapIndex::OutPreviousNormalRoughness);
-				CreateTexture(RenderTextureNames::NormalRoughness, normalFormat, ResourceDescriptorHeapIndex::InNormalRoughness, ResourceDescriptorHeapIndex::OutNormalRoughness);
+				CreateTexture(RenderTextureNames::PreviousNormalRoughness, normalFormat, ResourceDescriptorIndex::InPreviousNormalRoughness, ResourceDescriptorIndex::OutPreviousNormalRoughness);
+				CreateTexture(RenderTextureNames::NormalRoughness, normalFormat, ResourceDescriptorIndex::InNormalRoughness, ResourceDescriptorIndex::OutNormalRoughness);
 			}
 
-			CreateTexture(RenderTextureNames::PreviousGeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorHeapIndex::InPreviousGeometricNormals, ResourceDescriptorHeapIndex::OutPreviousGeometricNormals);
-			CreateTexture(RenderTextureNames::GeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorHeapIndex::InGeometricNormals, ResourceDescriptorHeapIndex::OutGeometricNormals);
+			CreateTexture(RenderTextureNames::PreviousGeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorIndex::InPreviousGeometricNormals, ResourceDescriptorIndex::OutPreviousGeometricNormals);
+			CreateTexture(RenderTextureNames::GeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorIndex::InGeometricNormals, ResourceDescriptorIndex::OutGeometricNormals);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -430,11 +435,11 @@ private:
 			}
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture(RenderTextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorHeapIndex::OutNoisyDiffuse);
-				CreateTexture(RenderTextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorHeapIndex::OutNoisySpecular);
-				CreateTexture(RenderTextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InDenoisedDiffuse, ResourceDescriptorHeapIndex::OutDenoisedDiffuse);
-				CreateTexture(RenderTextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorHeapIndex::InDenoisedSpecular, ResourceDescriptorHeapIndex::OutDenoisedSpecular);
-				CreateTexture(RenderTextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorHeapIndex::InValidation, ResourceDescriptorHeapIndex::OutValidation);
+				CreateTexture(RenderTextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::OutNoisyDiffuse);
+				CreateTexture(RenderTextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::OutNoisySpecular);
+				CreateTexture(RenderTextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InDenoisedDiffuse, ResourceDescriptorIndex::OutDenoisedDiffuse);
+				CreateTexture(RenderTextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InDenoisedSpecular, ResourceDescriptorIndex::OutDenoisedSpecular);
+				CreateTexture(RenderTextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InValidation, ResourceDescriptorIndex::OutValidation);
 			}
 
 			m_FSR = make_unique<FSR>(device, commandList, FfxDimensions2D{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED | FFX_FSR2_ENABLE_DEPTH_INFINITE | FFX_FSR2_ENABLE_AUTO_EXPOSURE);
@@ -449,7 +454,7 @@ private:
 			const auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorHeapIndex::InFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorHeapIndex::InFont));
+			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorIndex::InFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorIndex::InFont));
 
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", static_cast<float>(outputSize.cy) * 0.022f);
@@ -514,8 +519,6 @@ private:
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 			if (IsSceneReady()) {
-				if (m_DLSSGOptions.mode == DLSSGMode::eOff && IsDLSSFrameGenerationEnabled()) SetFrameGenerationOptions();
-
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
 				if (g_graphicsSettings.Raytracing.RTXDI.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount()) {
@@ -527,7 +530,6 @@ private:
 
 				PostProcessGraphics();
 			}
-			else if (m_DLSSGOptions.mode != DLSSGMode::eOff) SetFrameGenerationOptions(false);
 
 			if (m_UIStates.IsVisible) RenderUI();
 		}
@@ -560,9 +562,9 @@ private:
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
 			try {
-			UINT descriptorHeapIndex = ResourceDescriptorHeapIndex::Reserve;
+			UINT descriptorIndex = ResourceDescriptorIndex::Reserve;
 			m_scene = make_shared<MyScene>(m_deviceResources->GetDevice(), m_deviceResources->GetCommandQueue());
-			m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorHeapIndex);
+			m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorIndex);
 
 			CreateStructuredBuffers();
 
@@ -583,9 +585,9 @@ private:
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetDevice();
 
-		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorHeapIndex::Count, ResourceDescriptorHeapIndex::Reserve);
+		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorIndex::Count, ResourceDescriptorIndex::Reserve);
 
-		m_renderDescriptorHeap = make_unique<DescriptorHeap>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorHeapIndex::Count);
+		m_renderDescriptorHeap = make_unique<DescriptorHeap>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorIndex::Count);
 	}
 
 	void CreatePipelineStates() {
@@ -808,23 +810,23 @@ private:
 
 			sceneData.IsStatic = m_scene->IsStatic();
 
+			sceneData.ResourceDescriptorIndices = {};
+
 			const auto IsCubeMap = [](ID3D12Resource* pResource) {
 				if (pResource == nullptr) return false;
 				const auto desc = pResource->GetDesc();
 				return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
 			};
-			if (m_scene->EnvironmentLightTexture.SRVDescriptor.HeapIndex != ~0u) {
-				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(m_scene->EnvironmentLightTexture.Resource.Get());
+			if (m_scene->EnvironmentLightTexture.Texture) {
+				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(*m_scene->EnvironmentLightTexture.Texture);
+				sceneData.ResourceDescriptorIndices.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor().Index;
 				XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
 			}
-			if (m_scene->EnvironmentTexture.SRVDescriptor.HeapIndex != ~0u) {
-				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(m_scene->EnvironmentTexture.Resource.Get());
+			if (m_scene->EnvironmentTexture.Texture) {
+				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(*m_scene->EnvironmentTexture.Texture);
+				sceneData.ResourceDescriptorIndices.InEnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor().Index;
 				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 			}
-			sceneData.ResourceDescriptorHeapIndices = {
-				.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.SRVDescriptor.HeapIndex,
-				.InEnvironmentTexture = m_scene->EnvironmentTexture.SRVDescriptor.HeapIndex
-			};
 
 			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
 			sceneData.EnvironmentColor = m_scene->EnvironmentColor;
@@ -847,25 +849,25 @@ private:
 
 			objectData.Material = renderObject.Material;
 
-			auto& resourceDescriptorHeapIndices = objectData.ResourceDescriptorHeapIndices;
-			resourceDescriptorHeapIndices = {
+			auto& resourceDescriptorIndices = objectData.ResourceDescriptorIndices;
+			resourceDescriptorIndices = {
 				.Mesh{
-					.Vertices = mesh->Vertices->GetRawSRVDescriptor().HeapIndex,
-					.Indices = mesh->Indices->GetStructuredSRVDescriptor().HeapIndex
+					.Vertices = mesh->Vertices->GetRawSRVDescriptor().Index,
+					.Indices = mesh->Indices->GetStructuredSRVDescriptor().Index
 				}
 			};
 
 			for (const auto& [TextureType, Texture] : renderObject.Textures) {
-				const auto index = Texture.SRVDescriptor.HeapIndex;
-				switch (auto& indices = resourceDescriptorHeapIndices.Textures; TextureType) {
-					case TextureType::BaseColorMap: indices.BaseColorMap = index; break;
-					case TextureType::EmissiveColorMap: indices.EmissiveColorMap = index; break;
-					case TextureType::MetallicMap: indices.MetallicMap = index; break;
-					case TextureType::RoughnessMap: indices.RoughnessMap = index; break;
-					case TextureType::AmbientOcclusionMap: indices.AmbientOcclusionMap = index; break;
-					case TextureType::TransmissionMap: indices.TransmissionMap = index; break;
-					case TextureType::OpacityMap: indices.OpacityMap = index; break;
-					case TextureType::NormalMap: indices.NormalMap = index; break;
+				const auto index = Texture->GetSRVDescriptor().Index;
+				switch (auto& indices = resourceDescriptorIndices.Textures; TextureType) {
+					case TextureMap::BaseColor: indices.BaseColorMap = index; break;
+					case TextureMap::EmissiveColor: indices.EmissiveColorMap = index; break;
+					case TextureMap::Metallic: indices.MetallicMap = index; break;
+					case TextureMap::Roughness: indices.RoughnessMap = index; break;
+					case TextureMap::AmbientOcclusion: indices.AmbientOcclusionMap = index; break;
+					case TextureMap::Transmission: indices.TransmissionMap = index; break;
+					case TextureMap::Opacity: indices.OpacityMap = index; break;
+					case TextureMap::Normal: indices.NormalMap = index; break;
 					default: Throw<out_of_range>("Unsupported texture type");
 				}
 			}
@@ -948,10 +950,10 @@ private:
 		ignore = slReflexSetOptions(options);
 	}
 
-	auto CreateResourceTagDesc(BufferType type, const RenderTexture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilPresent) const {
+	auto CreateResourceTagDesc(BufferType type, const Texture& texture, bool isRenderSize = true, ResourceLifecycle lifecycle = ResourceLifecycle::eValidUntilPresent) const {
 		ResourceTagDesc resourceTagDesc{
 			.Type = type,
-			.Resource = Resource(sl::ResourceType::eTex2d, texture.GetResource(), texture.GetState()),
+			.Resource = Resource(sl::ResourceType::eTex2d, texture, texture.GetState()),
 			.Lifecycle = lifecycle
 		};
 		if (isRenderSize) resourceTagDesc.Extent = { .width = m_renderSize.x, .height = m_renderSize.y };
@@ -1065,7 +1067,7 @@ private:
 			resourceUploadBatch.Begin();
 
 			m_RTXDIResources.ReSTIRDIContext = make_unique<ReSTIRDIContext>(ReSTIRDIStaticParameters{ .RenderWidth = m_renderSize.x, .RenderHeight = m_renderSize.y });
-			m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorHeapIndex::InNeighborOffsets);
+			m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::InNeighborOffsets);
 			m_RTXDIResources.CreateDIReservoir(device);
 
 			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
@@ -1155,7 +1157,7 @@ private:
 		{
 			m_NRD->NewFrame();
 
-			const auto Tag = [&](nrd::ResourceType resourceType, const RenderTexture& texture) { m_NRD->Tag(resourceType, texture.GetResource(), texture.GetState()); };
+			const auto Tag = [&](nrd::ResourceType resourceType, const Texture& texture) { m_NRD->Tag(resourceType, texture, texture.GetState()); };
 			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
 			Tag(nrd::ResourceType::IN_MV, *m_renderTextures.at(RenderTextureNames::MotionVectors));
 			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
@@ -1235,7 +1237,7 @@ private:
 		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessDLSSFrameGeneration(RenderTexture& inColor) {
+	void ProcessDLSSFrameGeneration(Texture& inColor) {
 		ResourceTagDesc resourceTagDescs[]{
 			CreateResourceTagDesc(kBufferTypeDepth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth)),
 			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors)),
@@ -1266,7 +1268,7 @@ private:
 
 		struct FSRResource {
 			FSRResourceType Type;
-			RenderTexture& Texture;
+			Texture& Texture;
 			D3D12_RESOURCE_STATES State = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 		} resources[]{
 			{ FSRResourceType::Depth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth) },
@@ -1278,7 +1280,7 @@ private:
 		for (auto& [Type, Texture, State] : resources) {
 			const auto state = Texture.GetState();
 			Texture.TransitionTo(commandList, State);
-			m_FSR->Tag(Type, Texture.GetResource(), State);
+			m_FSR->Tag(Type, Texture, State);
 			State = state;
 		}
 
@@ -1290,7 +1292,7 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessNIS(RenderTexture& inColor, RenderTexture& outColor) {
+	void ProcessNIS(Texture& inColor, Texture& outColor) {
 		NISOptions NISOptions;
 		NISOptions.mode = NISMode::eSharpen;
 		NISOptions.sharpness = g_graphicsSettings.PostProcessing.NIS.Sharpness;
@@ -1306,7 +1308,7 @@ private:
 		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessChromaticAberration(RenderTexture& inColor, RenderTexture& outColor) {
+	void ProcessChromaticAberration(Texture& inColor, Texture& outColor) {
 		m_chromaticAberration->RenderTextures = {
 			.Input = &inColor,
 			.Output = &outColor
@@ -1315,7 +1317,7 @@ private:
 		m_chromaticAberration->Process(m_deviceResources->GetCommandList());
 	}
 
-	void ProcessBloom(RenderTexture& inColor, RenderTexture& outColor) {
+	void ProcessBloom(Texture& inColor, Texture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		m_bloom->Constants.Strength = g_graphicsSettings.PostProcessing.Bloom.Strength;
@@ -1328,10 +1330,10 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessToneMapping(RenderTexture& inColor) {
+	void ProcessToneMapping(Texture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor, inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
 		const auto isHDREnabled = m_deviceResources->IsHDREnabled();
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
@@ -1349,14 +1351,14 @@ private:
 		toneMapping.Process(commandList);
 	}
 
-	void ProcessAlphaBlending(RenderTexture& inColor) {
+	void ProcessAlphaBlending(Texture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor.GetResource(), inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor, inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
 		m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		m_alphaBlending->Begin(commandList);
-		m_alphaBlending->Draw(inColor.GetSRVDescriptor().GPUHandle, GetTextureSize(inColor.GetResource()), XMFLOAT2());
+		m_alphaBlending->Draw(inColor.GetSRVDescriptor().GPUHandle, GetTextureSize(inColor), XMFLOAT2());
 		m_alphaBlending->End();
 	}
 
