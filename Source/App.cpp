@@ -369,6 +369,7 @@ private:
 		shared_ptr<UploadBuffer<ObjectData>> ObjectData;
 	} m_GPUBuffers;
 
+	Camera m_camera;
 	CameraController m_cameraController;
 
 	shared_ptr<Scene> m_scene;
@@ -467,24 +468,24 @@ private:
 		if (isReflexAvailable) ignore = m_streamline->SetReflexMarker(ReflexMarker::eSimulationStart);
 
 		{
-			auto& camera = m_GPUBuffers.Camera->At(0);
-
-			camera.PreviousWorldToView = m_cameraController.GetWorldToView();
-			camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
-			camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
-			camera.PreviousProjectionToView = m_cameraController.GetProjectionToView();
-			camera.PreviousViewToWorld = m_cameraController.GetViewToWorld();
+			m_camera.PreviousWorldToView = m_cameraController.GetWorldToView();
+			m_camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
+			m_camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
+			m_camera.PreviousProjectionToView = m_cameraController.GetProjectionToView();
+			m_camera.PreviousViewToWorld = m_cameraController.GetViewToWorld();
 
 			ProcessInput();
 
-			camera.Position = m_cameraController.GetPosition();
-			camera.RightDirection = m_cameraController.GetRightDirection();
-			camera.UpDirection = m_cameraController.GetUpDirection();
-			camera.ForwardDirection = m_cameraController.GetForwardDirection();
-			camera.NearDepth = m_cameraController.GetNearDepth();
-			camera.FarDepth = m_cameraController.GetFarDepth();
-			camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
-			camera.WorldToProjection = m_cameraController.GetWorldToProjection();
+			m_camera.Position = m_cameraController.GetPosition();
+			m_camera.RightDirection = m_cameraController.GetRightDirection();
+			m_camera.UpDirection = m_cameraController.GetUpDirection();
+			m_camera.ForwardDirection = m_cameraController.GetForwardDirection();
+			m_camera.NearDepth = m_cameraController.GetNearDepth();
+			m_camera.FarDepth = m_cameraController.GetFarDepth();
+			m_camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
+			m_camera.WorldToProjection = m_cameraController.GetWorldToProjection();
+
+			m_GPUBuffers.Camera->At(0) = m_camera;
 		}
 
 		if (IsSceneReady()) UpdateScene();
@@ -937,8 +938,8 @@ private:
 		m_raytracing->Render(commandList);
 	}
 
-	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
 	bool IsDLSSFrameGenerationEnabled() const { return g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS_G) && IsReflexEnabled(); }
+	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
 	bool IsFSRSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::FSR && m_FSR->IsAvailable(); }
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
@@ -963,16 +964,10 @@ private:
 	void SelectSuperResolutionUpscaler() {
 		if (auto& upscaler = g_graphicsSettings.PostProcessing.SuperResolution.Upscaler;
 			upscaler == Upscaler::DLSS) {
-			if (!m_streamline->IsFeatureAvailable(kFeatureDLSS)) {
-				if (m_FSR->IsAvailable()) upscaler = Upscaler::FSR;
-				else upscaler = Upscaler::None;
-			}
+			if (!m_streamline->IsFeatureAvailable(kFeatureDLSS)) upscaler = m_FSR->IsAvailable() ? Upscaler::FSR : Upscaler::None;
 		}
 		else if (upscaler == Upscaler::FSR) {
-			if (!m_FSR->IsAvailable()) {
-				if (m_streamline->IsFeatureAvailable(kFeatureDLSS)) upscaler = Upscaler::DLSS;
-				else upscaler = Upscaler::None;
-			}
+			if (!m_FSR->IsAvailable()) upscaler = m_streamline->IsFeatureAvailable(kFeatureDLSS) ? Upscaler::DLSS : Upscaler::None;
 		}
 	}
 
@@ -1122,8 +1117,9 @@ private:
 	}
 
 	void PrepareStreamline() {
-		const auto& camera = m_GPUBuffers.Camera->At(0);
-		m_slConstants.jitterOffset = { -camera.Jitter.x, -camera.Jitter.y };
+		reinterpret_cast<XMFLOAT4X4&>(m_slConstants.cameraViewToClip) = m_cameraController.GetViewToProjection();
+		recalculateCameraMatrices(m_slConstants, reinterpret_cast<const float4x4&>(m_camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(m_camera.PreviousViewToProjection));
+		m_slConstants.jitterOffset = { -m_camera.Jitter.x, -m_camera.Jitter.y };
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraPos) = m_cameraController.GetPosition();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraUp) = m_cameraController.GetUpDirection();
 		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraRight) = m_cameraController.GetRightDirection();
@@ -1132,8 +1128,6 @@ private:
 		m_slConstants.cameraFar = m_cameraController.GetFarDepth();
 		m_slConstants.cameraFOV = m_cameraController.GetVerticalFieldOfView();
 		m_slConstants.cameraAspectRatio = m_cameraController.GetAspectRatio();
-		reinterpret_cast<XMFLOAT4X4&>(m_slConstants.cameraViewToClip) = m_cameraController.GetViewToProjection();
-		recalculateCameraMatrices(m_slConstants, reinterpret_cast<const float4x4&>(camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(camera.PreviousViewToProjection));
 
 		m_slConstants.mvecScale = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y) };
 
@@ -1168,13 +1162,12 @@ private:
 			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
 			Tag(nrd::ResourceType::OUT_VALIDATION, *m_renderTextures.at(RenderTextureNames::Validation));
 
-			const auto& camera = m_GPUBuffers.Camera->At(0);
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = camera.PreviousWorldToView;
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = camera.PreviousViewToProjection;
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = m_camera.PreviousWorldToView;
+			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = m_camera.PreviousViewToProjection;
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
 			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
 			ranges::copy(m_NRDCommonSettings.cameraJitter, m_NRDCommonSettings.cameraJitterPrev);
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = camera.Jitter;
+			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = m_camera.Jitter;
 
 			const auto outputSize = GetOutputSize();
 			m_NRDCommonSettings.resourceSize[0] = static_cast<uint16_t>(outputSize.cx);
@@ -1251,10 +1244,9 @@ private:
 
 		reinterpret_cast<XMUINT2&>(m_FSRSettings.RenderSize) = m_renderSize;
 
-		const auto jitter = m_GPUBuffers.Camera->At(0).Jitter;
 		const auto farDepth = m_cameraController.GetFarDepth();
 		m_FSRSettings.Camera = {
-			.Jitter{ -jitter.x, -jitter.y },
+			.Jitter{ -m_camera.Jitter.x, -m_camera.Jitter.y },
 			.Near = farDepth == numeric_limits<float>::infinity() ? numeric_limits<float>::max() : farDepth,
 			.Far = m_cameraController.GetNearDepth(),
 			.VerticalFOV = m_cameraController.GetVerticalFieldOfView()

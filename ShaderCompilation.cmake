@@ -33,7 +33,7 @@ function(CompileShaders)
 		${include}
 		--config ${args_config}
 		--out ${args_out}
-		--header --binaryBlob
+		--header --headerBlob
 		--platform DXIL
 		${useAPI})
 	separate_arguments(args_additional_options NATIVE_COMMAND ${args_additional_options})

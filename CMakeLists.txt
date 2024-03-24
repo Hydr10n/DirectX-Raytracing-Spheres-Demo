@@ -19,7 +19,6 @@ add_subdirectory("${NVIDIA_library_path}ShaderMake")
 
 set(NRD_EMBEDS_DXBC_SHADERS OFF CACHE BOOL "")
 set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "")
-file(GLOB NRD_integration_headers "${NVIDIA_library_path}*")
 add_subdirectory("${NVIDIA_library_path}NRD")
 
 set(NRI_ENABLE_D3D11_SUPPORT OFF CACHE BOOL "")
@@ -36,7 +35,11 @@ file(GLOB modules "Source/*.ixx")
 file(GLOB source "Source/*.cpp")
 source_group("Include" FILES ${include})
 source_group("Source" FILES ${source} ${modules})
-add_executable(${project} WIN32 ${include} ${source} "Source/App.rc" "Source/App.manifest" ${NRD_integration_headers})
+add_executable(${project} WIN32
+	${source}
+	"Source/App.rc"
+	"Source/App.manifest"
+	"${NVIDIA_library_path}NRD/Integration/NRDIntegration.hpp")
 target_sources(${project} PRIVATE FILE_SET cxx_modules TYPE CXX_MODULES FILES ${modules})
 
 set_target_properties(${project} PROPERTIES CXX_STANDARD 23)
@@ -54,10 +57,16 @@ set(cxx_include_directories
 	"RTXMU/include"
 	"Streamline/include")
 list(TRANSFORM cxx_include_directories PREPEND ${NVIDIA_library_path})
-target_include_directories(${project} PRIVATE ${cxx_include_directories} "${AMD_library_path}FSR2/src/ffx-fsr2-api" ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(${project} PRIVATE
+	${cxx_include_directories}
+	"${AMD_library_path}FSR2/src/ffx-fsr2-api"
+	${CMAKE_CURRENT_BINARY_DIR})
 
 include(ShaderCompilation.cmake)
-set(shader_include_directories "MathLib" "NRD/Shaders/Include" "RTXDI/rtxdi-sdk/include")
+set(shader_include_directories
+	"MathLib"
+	"NRD/Shaders/Include"
+	"RTXDI/rtxdi-sdk/include")
 list(TRANSFORM shader_include_directories PREPEND ${NVIDIA_library_path})
 file(GLOB shaders "Shaders/*.hlsl")
 CompileShaders(target ${project}_Shaders
@@ -69,7 +78,13 @@ CompileShaders(target ${project}_Shaders
 	additional_options "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
-target_link_libraries(${project} PRIVATE ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64 NRD NRI rtxdi-sdk rtxmu "${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
+target_link_libraries(${project} PRIVATE
+	ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64
+	NRD
+	NRI
+	rtxdi-sdk
+	rtxmu
+	"${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
 
 set(packages
 	directxtex

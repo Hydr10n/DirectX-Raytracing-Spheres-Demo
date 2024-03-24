@@ -36,7 +36,7 @@ export namespace DirectX {
 
 	class Texture : public GPUResource {
 	public:
-		Texture(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) : GPUResource(pResource, state) {
+		Texture(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) noexcept(false) : GPUResource(pResource, state) {
 			switch (pResource->GetDesc().Dimension) {
 				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:;
 				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:;

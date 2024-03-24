@@ -88,9 +88,12 @@ export struct Raytracing {
 		m_pipelineState->SetName(L"Raytracing");
 	}
 
-	void SetScene(const Scene* pScene) { m_scene = pScene; }
+	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept {
+		m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings;
+		m_renderSize = graphicsSettings.RenderSize;
+	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept { m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings; }
+	void SetScene(const Scene* pScene) { m_scene = pScene; }
 
 	void Render(ID3D12GraphicsCommandList* pCommandList) {
 		const ScopedBarrier scopedBarrier(
@@ -139,8 +142,7 @@ export struct Raytracing {
 		pCommandList->SetComputeRootShaderResourceView(21, GPUBuffers.InLightIndices ? GPUBuffers.InLightIndices->GetNative()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetComputeRootDescriptorTable(22, GPUBuffers.InNeighborOffsets->GetTypedSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootUnorderedAccessView(23, GPUBuffers.OutDIReservoir ? GPUBuffers.OutDIReservoir->GetNative()->GetGPUVirtualAddress() : NULL);
-		const auto renderSize = m_GPUBuffers.GraphicsSettings.At(0).RenderSize;
-		pCommandList->Dispatch((renderSize.x + 15) / 16, (renderSize.y + 15) / 16, 1);
+		pCommandList->Dispatch((m_renderSize.x + 15) / 16, (m_renderSize.y + 15) / 16, 1);
 	}
 
 private:
@@ -148,6 +150,8 @@ private:
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineState;
+
+	XMUINT2 m_renderSize{};
 
 	const Scene* m_scene{};
 };
