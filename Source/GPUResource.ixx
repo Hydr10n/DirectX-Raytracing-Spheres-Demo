@@ -2,10 +2,13 @@ module;
 
 #include "directxtk12/DirectXHelpers.h"
 
+#include "D3D12MemAlloc.h"
+
 export module GPUResource;
 
 import ErrorHelpers;
 
+using namespace D3D12MA;
 using namespace Microsoft::WRL;
 
 export namespace DirectX {
@@ -34,9 +37,10 @@ export namespace DirectX {
 		}
 
 	protected:
+		ComPtr<Allocation> m_allocation;
 		ComPtr<ID3D12Resource> m_resource;
 
-		D3D12_RESOURCE_STATES m_state{};
+		D3D12_RESOURCE_STATES m_state = D3D12_RESOURCE_STATE_COMMON;
 
 		GPUResource(D3D12_RESOURCE_STATES state) : m_state(state) {}
 	};

@@ -104,7 +104,7 @@ export namespace DirectX::RaytracingHelpers {
 
 	template <typename Vertex, D3D12_HEAP_TYPE VertexHeapType, size_t VertexAlignment, typename Index, D3D12_HEAP_TYPE IndexHeapType> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
-		const TypedGPUBuffer<Vertex, VertexHeapType, VertexAlignment>&vertices, const TypedGPUBuffer<Index, IndexHeapType>&indices,
+		const TGPUBuffer<Vertex, VertexHeapType, VertexAlignment>&vertices, const TGPUBuffer<Index, IndexHeapType>&indices,
 		D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT

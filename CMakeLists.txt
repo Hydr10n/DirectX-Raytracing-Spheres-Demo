@@ -13,6 +13,8 @@ set(AMD_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/AMD/")
 set(FFX_FSR2_API_VK OFF CACHE BOOL "")
 add_subdirectory("${AMD_library_path}FSR2/src/ffx-fsr2-api")
 
+add_subdirectory("${AMD_library_path}MemoryAllocator/D3D12")
+
 set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
 add_subdirectory("${NVIDIA_library_path}ShaderMake")
@@ -49,36 +51,42 @@ set_target_properties(${project} PROPERTIES FOLDER ${project})
 
 target_compile_definitions(${project} PRIVATE NOMINMAX)
 
-set(cxx_include_directories
+set(AMD_CXX_include_directories
+	"FSR2/src/ffx-fsr2-api"
+	"MemoryAllocator/D3D12/include")
+list(TRANSFORM AMD_CXX_include_directories PREPEND ${AMD_library_path})
+
+set(NVIDIA_CXX_include_directories
 	"MathLib"
 	"NRD/Include" "NRD/Integration"
 	"NRI/Include"
 	"RTXDI/rtxdi-sdk/include"
 	"RTXMU/include"
 	"Streamline/include")
-list(TRANSFORM cxx_include_directories PREPEND ${NVIDIA_library_path})
+list(TRANSFORM NVIDIA_CXX_include_directories PREPEND ${NVIDIA_library_path})
 target_include_directories(${project} PRIVATE
-	${cxx_include_directories}
-	"${AMD_library_path}FSR2/src/ffx-fsr2-api"
+	${AMD_CXX_include_directories}
+	${NVIDIA_CXX_include_directories}
 	${CMAKE_CURRENT_BINARY_DIR})
 
 include(ShaderCompilation.cmake)
-set(shader_include_directories
+set(NVIDIA_shader_include_directories
 	"MathLib"
 	"NRD/Shaders/Include"
 	"RTXDI/rtxdi-sdk/include")
-list(TRANSFORM shader_include_directories PREPEND ${NVIDIA_library_path})
+list(TRANSFORM NVIDIA_shader_include_directories PREPEND ${NVIDIA_library_path})
 file(GLOB shaders "Shaders/*.hlsl")
 CompileShaders(target ${project}_Shaders
 	config ${CMAKE_CURRENT_SOURCE_DIR}/Shaders.cfg
 	out ${CMAKE_CURRENT_BINARY_DIR}
-	include_directories ${shader_include_directories}
+	include_directories ${NVIDIA_shader_include_directories}
 	source ${shaders}
 	folder ${project}
 	additional_options "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
 target_link_libraries(${project} PRIVATE
+	D3D12MemoryAllocator
 	ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64
 	NRD
 	NRI
@@ -102,7 +110,7 @@ target_link_libraries(${project} PRIVATE
 	nlohmann_json::nlohmann_json
 	unofficial::omniverse-physx-sdk::sdk)
 
-set(DLL
+set(NVIDIA_Streamline_DLL
 	"nvngx_dlss.dll"
 	"nvngx_dlssg.dll"
 	"sl.common.dll"
@@ -113,7 +121,7 @@ set(DLL
 	"sl.reflex.dll")
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} COMMAND_EXPAND_LISTS
 	-E copy_if_different
-	"$<LIST:TRANSFORM,${DLL},PREPEND,${NVIDIA_library_path}Streamline/bin/x64/$<IF:$<CONFIG:Debug>,development/,>>"
+	"$<LIST:TRANSFORM,${NVIDIA_Streamline_DLL},PREPEND,${NVIDIA_library_path}Streamline/bin/x64/$<IF:$<CONFIG:Debug>,development/,>>"
 	${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")

@@ -8,12 +8,16 @@ module;
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/SimpleMath.h"
 
+#include "D3D12MemAlloc.h"
+
 export module Texture;
 
 import DescriptorHeap;
 import ErrorHelpers;
+import GPUMemoryAllocator;
 import GPUResource;
 
+using namespace D3D12MA;
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 using namespace ErrorHelpers;
@@ -36,10 +40,10 @@ export namespace DirectX {
 
 	class Texture : public GPUResource {
 	public:
-		Texture(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) noexcept(false) : GPUResource(pResource, state) {
+		Texture(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) : GPUResource(pResource, state) {
 			switch (pResource->GetDesc().Dimension) {
-				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:;
-				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:;
+				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
 				case D3D12_RESOURCE_DIMENSION_TEXTURE3D: break;
 				default: throw invalid_argument("Resource is not texture");
 			}
@@ -51,16 +55,11 @@ export namespace DirectX {
 
 		Texture(ID3D12Device* pDevice, DXGI_FORMAT format, XMUINT2 size, UINT16 mipLevels = 1, const Color& clearColor = {}, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_RENDER_TARGET) noexcept(false) :
 			GPUResource(initialState), m_clearColor(clearColor) {
-			const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-
-			const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, size.x, size.y, 1, mipLevels, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-
+			constexpr ALLOCATION_DESC allocationDesc{ .HeapType = D3D12_HEAP_TYPE_DEFAULT };
+			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, size.x, size.y, 1, mipLevels, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 			D3D12_CLEAR_VALUE clearValue{ format };
 			reinterpret_cast<Color&>(clearValue.Color) = m_clearColor;
-
-			m_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
-
-			ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &desc, m_state, &clearValue, IID_PPV_ARGS(&m_resource)));
+			ThrowIfFailed(GPUMemoryAllocator::Get(pDevice)->CreateResource(&allocationDesc, &resourceDesc, initialState, nullptr, &m_allocation, IID_PPV_ARGS(&m_resource)));
 
 			m_descriptors.UAV.resize(mipLevels);
 			m_descriptors.RTV.resize(mipLevels);
@@ -80,14 +79,14 @@ export namespace DirectX {
 		Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.RTV[mipLevel]; }
 
 		void CreateSRV(const DescriptorHeap& resourceDescriptorHeap, UINT index, bool isCubeMap = false) {
-			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
 			m_descriptors.SRV = {
 				.Index = index,
 				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
 				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
 			};
-			CreateShaderResourceView(device.Get(), m_resource.Get(), m_descriptors.SRV.CPUHandle, isCubeMap);
+			ComPtr<ID3D12Device> device;
+			ThrowIfFailed((*this)->GetDevice(IID_PPV_ARGS(&device)));
+			CreateShaderResourceView(device.Get(), *this, m_descriptors.SRV.CPUHandle, isCubeMap);
 		}
 
 		void CreateUAV(const DescriptorHeap& resourceDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
@@ -97,8 +96,8 @@ export namespace DirectX {
 				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
 			};
 			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateUnorderedAccessView(device.Get(), m_resource.Get(), m_descriptors.UAV[mipLevel].CPUHandle, mipLevel);
+			ThrowIfFailed((*this)->GetDevice(IID_PPV_ARGS(&device)));
+			CreateUnorderedAccessView(device.Get(), *this, m_descriptors.UAV[mipLevel].CPUHandle, mipLevel);
 		}
 
 		void CreateRTV(const DescriptorHeap& renderDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
@@ -107,8 +106,8 @@ export namespace DirectX {
 				.CPUHandle = renderDescriptorHeap.GetCpuHandle(index)
 			};
 			ComPtr<ID3D12Device> device;
-			ThrowIfFailed(m_resource->GetDevice(IID_PPV_ARGS(&device)));
-			CreateRenderTargetView(device.Get(), m_resource.Get(), m_descriptors.RTV[mipLevel].CPUHandle, mipLevel);
+			ThrowIfFailed((*this)->GetDevice(IID_PPV_ARGS(&device)));
+			CreateRenderTargetView(device.Get(), *this, m_descriptors.RTV[mipLevel].CPUHandle, mipLevel);
 		}
 
 	private:

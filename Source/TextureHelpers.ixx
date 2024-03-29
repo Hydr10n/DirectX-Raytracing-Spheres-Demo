@@ -31,7 +31,7 @@ using namespace std::filesystem;
 	return ret;
 
 #define Load1(...) \
-	auto isCubeMap = false;\
+	auto isCubeMap = false; \
 	ComPtr<ID3D12Resource> resource; \
 	ThrowIfFailed(__VA_ARGS__); \
 	descriptorIndex = descriptorHeap.Allocate(1, descriptorIndex); \
