@@ -23,3 +23,6 @@
 	path = External/NVIDIA/RTXDI
 	url = https://github.com/NVIDIAGameWorks/RTXDI
 	branch = sdk-only
+[submodule "External/AMD/MemoryAllocator/D3D12"]
+	path = External/AMD/MemoryAllocator/D3D12
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
