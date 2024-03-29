@@ -42,6 +42,6 @@ export namespace DirectX {
 
 		D3D12_RESOURCE_STATES m_state = D3D12_RESOURCE_STATE_COMMON;
 
-		GPUResource(D3D12_RESOURCE_STATES state) : m_state(state) {}
+		explicit GPUResource(D3D12_RESOURCE_STATES state) : m_state(state) {}
 	};
 }
