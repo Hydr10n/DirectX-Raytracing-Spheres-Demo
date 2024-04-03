@@ -10,7 +10,7 @@ project(${project})
 
 set(AMD_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/AMD/")
 
-set(FFX_FSR2_API_VK OFF CACHE BOOL "")
+option(FFX_FSR2_API_VK "" OFF)
 add_subdirectory("${AMD_library_path}FSR2/src/ffx-fsr2-api")
 
 add_subdirectory("${AMD_library_path}MemoryAllocator/D3D12")
@@ -19,18 +19,24 @@ set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
 add_subdirectory("${NVIDIA_library_path}ShaderMake")
 
-set(NRD_EMBEDS_DXBC_SHADERS OFF CACHE BOOL "")
-set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "")
+option(NRD_EMBEDS_DXBC_SHADERS "" OFF)
+option(NRD_EMBEDS_SPIRV_SHADERS "" OFF)
 add_subdirectory("${NVIDIA_library_path}NRD")
 
-set(NRI_ENABLE_D3D11_SUPPORT OFF CACHE BOOL "")
-set(NRI_ENABLE_VK_SUPPORT OFF CACHE BOOL "")
+option(NRI_ENABLE_D3D11_SUPPORT "" OFF)
+option(NRI_ENABLE_VK_SUPPORT "" OFF)
 add_subdirectory("${NVIDIA_library_path}NRI")
 
 add_subdirectory("${NVIDIA_library_path}RTXDI/rtxdi-sdk")
 
-set(RTXMU_WITH_VULKAN OFF CACHE BOOL "")
+option(RTXMU_WITH_VULKAN "" OFF)
 add_subdirectory("${NVIDIA_library_path}RTXMU")
+
+option(STREAMLINE_FEATURE_DLSS_FG "" ON)
+option(STREAMLINE_FEATURE_DLSS_SR "" ON)
+option(STREAMLINE_FEATURE_NIS "" ON)
+option(STREAMLINE_FEATURE_REFLEX "" ON)
+add_subdirectory("${NVIDIA_library_path}Streamline")
 
 file(GLOB include "Source/*.h")
 file(GLOB modules "Source/*.ixx")
@@ -92,7 +98,7 @@ target_link_libraries(${project} PRIVATE
 	NRI
 	rtxdi-sdk
 	rtxmu
-	"${NVIDIA_library_path}Streamline/lib/x64/sl.interposer.lib")
+	streamline)
 
 set(packages
 	directxtex
@@ -109,19 +115,5 @@ target_link_libraries(${project} PRIVATE
 	imgui::imgui
 	nlohmann_json::nlohmann_json
 	unofficial::omniverse-physx-sdk::sdk)
-
-set(NVIDIA_Streamline_DLL
-	"nvngx_dlss.dll"
-	"nvngx_dlssg.dll"
-	"sl.common.dll"
-	"sl.dlss.dll"
-	"sl.dlss_g.dll"
-	"sl.interposer.dll"
-	"sl.nis.dll"
-	"sl.reflex.dll")
-add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} COMMAND_EXPAND_LISTS
-	-E copy_if_different
-	"$<LIST:TRANSFORM,${NVIDIA_Streamline_DLL},PREPEND,${NVIDIA_library_path}Streamline/bin/x64/$<IF:$<CONFIG:Debug>,development/,>>"
-	${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")

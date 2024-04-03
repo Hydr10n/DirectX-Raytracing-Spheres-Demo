@@ -15,7 +15,7 @@ using namespace std;
 
 export {
 	struct Streamline {
-		static constexpr Feature Features[]{ kFeatureDLSS, kFeatureDLSS_G, kFeatureReflex, kFeatureNIS };
+		static constexpr Feature Features[]{ kFeatureDLSS, kFeatureDLSS_G, kFeatureNIS, kFeaturePCL, kFeatureReflex };
 
 		Streamline(const Streamline&) = delete;
 		Streamline& operator=(const Streamline&) = delete;
@@ -40,7 +40,7 @@ export {
 
 		auto Tag(span<const ResourceTag> resourceTags) const { return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandBuffer); }
 
-		auto SetReflexMarker(ReflexMarker marker) const { return slReflexSetMarker(marker, *m_frameToken); }
+		auto SetPCLMarker(PCLMarker marker) const { return slPCLSetMarker(marker, *m_frameToken); }
 
 		template <typename T>
 		auto SetConstants(const T& constants) const {
