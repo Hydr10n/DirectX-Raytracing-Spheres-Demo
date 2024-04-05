@@ -16,9 +16,6 @@
 [submodule "External/NVIDIA/ShaderMake"]
 	path = External/NVIDIA/ShaderMake
 	url = https://github.com/NVIDIAGameWorks/ShaderMake
-[submodule "External/AMD/FSR2"]
-	path = External/AMD/FSR2
-	url = https://github.com/GPUOpen-Effects/FidelityFX-FSR2
 [submodule "External/NVIDIA/RTXDI"]
 	path = External/NVIDIA/RTXDI
 	url = https://github.com/NVIDIAGameWorks/RTXDI
@@ -26,3 +23,6 @@
 [submodule "External/AMD/MemoryAllocator/D3D12"]
 	path = External/AMD/MemoryAllocator/D3D12
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
+[submodule "External/Intel/XeSS"]
+	path = External/Intel/XeSS
+	url = https://github.com/intel/xess
