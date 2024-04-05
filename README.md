@@ -45,7 +45,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- NVIDIA Real-Time Denoisers
 		- Denoiser: ReBLUR | ReLAX
 		- Validation Overlay
-	- Super Resolution: NVIDIA DLSS | AMD FSR
+	- Super Resolution: NVIDIA DLSS | Intel XeSS
 	- Frame Generation: NVIDIA DLSS
 	- NVIDIA Image Scaling
 		- Sharpness

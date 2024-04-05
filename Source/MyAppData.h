@@ -11,10 +11,10 @@
 #include "directxtk12/PostProcess.h"
 
 import DisplayHelpers;
-import FSR;
 import NRD;
 import Streamline;
 import WindowHelpers;
+import XeSS;
 
 JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
 
@@ -49,14 +49,14 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
 	}
 );
 
-enum class Upscaler { None, DLSS, FSR };
+enum class Upscaler { None, DLSS, XeSS };
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
 	Upscaler,
 	{
 		{ Upscaler::None, "None" },
 		{ Upscaler::DLSS, "DLSS" },
-		{ Upscaler::FSR, "FSR" }
+		{ Upscaler::XeSS, "XeSS" }
 	}
 );
 

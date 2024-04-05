@@ -40,7 +40,7 @@ export {
 		switch (value) {
 			case Upscaler::None: return "None";
 			case Upscaler::DLSS: return "NVIDIA DLSS";
-			case Upscaler::FSR: return "AMD FSR";
+			case Upscaler::XeSS: return "Intel XeSS";
 			default: throw;
 		}
 	}

@@ -25,7 +25,7 @@ module;
 
 #include "NRD.h"
 
-#include "ffx_fsr2.h"
+#include "xess/xess.h"
 
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
@@ -212,7 +212,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_chromaticAberration.reset();
 
-		m_FSR.reset();
+		m_XeSS.reset();
 
 		m_denoisedComposition.reset();
 		m_NRD.reset();
@@ -333,8 +333,8 @@ private:
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
-	FSRSettings m_FSRSettings;
-	unique_ptr<FSR> m_FSR;
+	XeSSSettings m_XeSSSettings;
+	unique_ptr<XeSS> m_XeSS;
 
 	unique_ptr<ChromaticAberration> m_chromaticAberration;
 
@@ -449,7 +449,7 @@ private:
 				CreateTexture(RenderTextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InValidation, ResourceDescriptorIndex::OutValidation);
 			}
 
-			m_FSR = make_unique<FSR>(device, commandList, FfxDimensions2D{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED | FFX_FSR2_ENABLE_DEPTH_INFINITE | FFX_FSR2_ENABLE_AUTO_EXPOSURE);
+			m_XeSS = make_unique<XeSS>(device, xess_2d_t{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE);
 
 			SelectSuperResolutionUpscaler();
 			SetSuperResolutionOptions();
@@ -946,10 +946,10 @@ private:
 
 	bool IsDLSSFrameGenerationEnabled() const { return g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS_G) && IsReflexEnabled(); }
 	bool IsDLSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS); }
-	bool IsFSRSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::FSR && m_FSR->IsAvailable(); }
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 	bool IsReflexEnabled() const { return g_graphicsSettings.ReflexMode != ReflexMode::eOff && m_streamline->IsFeatureAvailable(kFeatureReflex); }
+	bool IsXeSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable(); }
 
 	static void SetReflexOptions() {
 		ReflexOptions options;
@@ -970,10 +970,10 @@ private:
 	void SelectSuperResolutionUpscaler() {
 		if (auto& upscaler = g_graphicsSettings.PostProcessing.SuperResolution.Upscaler;
 			upscaler == Upscaler::DLSS) {
-			if (!m_streamline->IsFeatureAvailable(kFeatureDLSS)) upscaler = m_FSR->IsAvailable() ? Upscaler::FSR : Upscaler::None;
+			if (!m_streamline->IsFeatureAvailable(kFeatureDLSS)) upscaler = m_XeSS->IsAvailable() ? Upscaler::XeSS : Upscaler::None;
 		}
-		else if (upscaler == Upscaler::FSR) {
-			if (!m_FSR->IsAvailable()) upscaler = m_streamline->IsFeatureAvailable(kFeatureDLSS) ? Upscaler::DLSS : Upscaler::None;
+		else if (upscaler == Upscaler::XeSS) {
+			if (!m_XeSS->IsAvailable()) upscaler = m_streamline->IsFeatureAvailable(kFeatureDLSS) ? Upscaler::DLSS : Upscaler::None;
 		}
 	}
 
@@ -1006,29 +1006,24 @@ private:
 				options.outputWidth = outputSize.cx;
 				options.outputHeight = outputSize.cy;
 				DLSSOptimalSettings optimalSettings;
-				slDLSSGetOptimalSettings(options, optimalSettings);
+				ignore = slDLSSGetOptimalSettings(options, optimalSettings);
 				ignore = m_streamline->SetConstants(options);
 				m_renderSize = XMUINT2(optimalSettings.optimalRenderWidth, optimalSettings.optimalRenderHeight);
 			}
 			break;
 
-			case Upscaler::FSR:
+			case Upscaler::XeSS:
 			{
-				auto isNative = false;
-				FfxFsr2QualityMode mode;
+				xess_quality_settings_t quality;
 				switch (SelectSuperResolutionMode()) {
-					case SuperResolutionMode::Native: isNative = true; break;
-					case SuperResolutionMode::Quality: mode = FFX_FSR2_QUALITY_MODE_QUALITY; break;
-					case SuperResolutionMode::Balanced: mode = FFX_FSR2_QUALITY_MODE_BALANCED; break;
-					case SuperResolutionMode::Performance: mode = FFX_FSR2_QUALITY_MODE_PERFORMANCE; break;
-					case SuperResolutionMode::UltraPerformance: mode = FFX_FSR2_QUALITY_MODE_ULTRA_PERFORMANCE; break;
+					case SuperResolutionMode::Native: quality = XESS_QUALITY_SETTING_AA; break;
+					case SuperResolutionMode::Quality: quality = XESS_QUALITY_SETTING_QUALITY; break;
+					case SuperResolutionMode::Balanced: quality = XESS_QUALITY_SETTING_BALANCED; break;
+					case SuperResolutionMode::Performance: quality = XESS_QUALITY_SETTING_PERFORMANCE; break;
+					case SuperResolutionMode::UltraPerformance: quality = XESS_QUALITY_SETTING_ULTRA_PERFORMANCE; break;
 					default: throw;
 				}
-				if (isNative) m_renderSize = XMUINT2(outputSize.cx, outputSize.cy);
-				else {
-					ignore = ffxFsr2GetRenderResolutionFromQualityMode(&m_FSRSettings.RenderSize.width, &m_FSRSettings.RenderSize.height, outputSize.cx, outputSize.cy, mode);
-					m_renderSize = XMUINT2(m_FSRSettings.RenderSize.width, m_FSRSettings.RenderSize.height);
-				}
+				ignore = m_XeSS->GetInputResolution(quality, reinterpret_cast<xess_2d_t&>(m_renderSize));
 			}
 			break;
 		}
@@ -1041,7 +1036,7 @@ private:
 
 		m_NRDCommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
 
-		m_FSRSettings.Reset = true;
+		m_XeSSSettings.Reset = true;
 	}
 
 	void OnRenderSizeChanged() {
@@ -1086,8 +1081,8 @@ private:
 
 			swap(inColor, outColor);
 		}
-		else if (IsFSRSuperResolutionEnabled()) {
-			ProcessFSRSuperResolution();
+		else if (IsXeSSSuperResolutionEnabled()) {
+			ProcessXeSSSuperResolution();
 
 			swap(inColor, outColor);
 		}
@@ -1243,44 +1238,36 @@ private:
 		ignore = m_streamline->Tag(CreateResourceTags(resourceTagDescs));
 	}
 
-	void ProcessFSRSuperResolution() {
+	void ProcessXeSSSuperResolution() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		reinterpret_cast<XMUINT2&>(m_FSRSettings.RenderSize) = m_renderSize;
+		reinterpret_cast<XMUINT2&>(m_XeSSSettings.InputSize) = m_renderSize;
 
-		const auto farDepth = m_cameraController.GetFarDepth();
-		m_FSRSettings.Camera = {
-			.Jitter{ -m_camera.Jitter.x, -m_camera.Jitter.y },
-			.Near = farDepth == numeric_limits<float>::infinity() ? numeric_limits<float>::max() : farDepth,
-			.Far = m_cameraController.GetNearDepth(),
-			.VerticalFOV = m_cameraController.GetVerticalFieldOfView()
-		};
+		reinterpret_cast<XMFLOAT2&>(m_XeSSSettings.Jitter) = { -m_camera.Jitter.x, -m_camera.Jitter.y };
 
-		m_FSRSettings.ElapsedMilliseconds = static_cast<float>(m_stepTimer.GetElapsedSeconds() * 1000);
+		m_XeSS->SetConstants(m_XeSSSettings);
 
-		m_FSR->SetConstants(m_FSRSettings);
+		m_XeSSSettings.Reset = false;
 
-		m_FSRSettings.Reset = false;
-
-		struct FSRResource {
-			FSRResourceType Type;
+		struct XeSSResource {
+			XeSSResourceType Type;
 			Texture& Texture;
-			D3D12_RESOURCE_STATES State = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+			D3D12_RESOURCE_STATES State = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 		} resources[]{
-			{ FSRResourceType::Depth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth) },
-			{ FSRResourceType::MotionVectors, *m_renderTextures.at(RenderTextureNames::MotionVectors) },
-			{ FSRResourceType::Color, *m_renderTextures.at(RenderTextureNames::Color) },
-			{ FSRResourceType::Output, *m_renderTextures.at(RenderTextureNames::FinalColor), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
+			{ XeSSResourceType::Depth, *m_renderTextures.at(RenderTextureNames::NormalizedDepth) },
+			{ XeSSResourceType::Velocity, *m_renderTextures.at(RenderTextureNames::MotionVectors) },
+			{ XeSSResourceType::Color, *m_renderTextures.at(RenderTextureNames::Color) },
+			{ XeSSResourceType::Output, *m_renderTextures.at(RenderTextureNames::FinalColor), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
 		};
 
 		for (auto& [Type, Texture, State] : resources) {
 			const auto state = Texture.GetState();
 			Texture.TransitionTo(commandList, State);
-			m_FSR->Tag(Type, Texture, State);
+			m_XeSS->Tag(Type, Texture);
 			State = state;
 		}
 
-		ignore = m_FSR->Dispatch();
+		ignore = m_XeSS->Execute(commandList);
 
 		for (const auto& [_, Texture, State] : resources) Texture.TransitionTo(commandList, State);
 
@@ -1589,11 +1576,11 @@ private:
 						auto isChanged = false;
 
 						if (ImGui::BeginCombo("Upscaler", ToString(superResolutionSettings.Upscaler))) {
-							for (const auto Upscaler : { Upscaler::None, Upscaler::DLSS, Upscaler::FSR }) {
+							for (const auto Upscaler : { Upscaler::None, Upscaler::DLSS, Upscaler::XeSS }) {
 								const auto IsSelectable = [&] {
 									return Upscaler == Upscaler::None
 										|| (Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS))
-										|| (Upscaler == Upscaler::FSR && m_FSR->IsAvailable());
+										|| (Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable());
 								};
 								const auto isSelected = superResolutionSettings.Upscaler == Upscaler;
 

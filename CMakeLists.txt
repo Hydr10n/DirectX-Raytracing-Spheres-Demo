@@ -10,10 +10,9 @@ project(${project})
 
 set(AMD_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/AMD/")
 
-option(FFX_FSR2_API_VK "" OFF)
-add_subdirectory("${AMD_library_path}FSR2/src/ffx-fsr2-api")
-
 add_subdirectory("${AMD_library_path}MemoryAllocator/D3D12")
+
+set(Intel_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/Intel/")
 
 set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
@@ -58,9 +57,12 @@ set_target_properties(${project} PROPERTIES FOLDER ${project})
 target_compile_definitions(${project} PRIVATE NOMINMAX)
 
 set(AMD_CXX_include_directories
-	"FSR2/src/ffx-fsr2-api"
 	"MemoryAllocator/D3D12/include")
 list(TRANSFORM AMD_CXX_include_directories PREPEND ${AMD_library_path})
+
+set(Intel_CXX_include_directories
+	"XeSS/inc")
+list(TRANSFORM Intel_CXX_include_directories PREPEND ${Intel_library_path})
 
 set(NVIDIA_CXX_include_directories
 	"MathLib"
@@ -72,6 +74,7 @@ set(NVIDIA_CXX_include_directories
 list(TRANSFORM NVIDIA_CXX_include_directories PREPEND ${NVIDIA_library_path})
 target_include_directories(${project} PRIVATE
 	${AMD_CXX_include_directories}
+	${Intel_CXX_include_directories}
 	${NVIDIA_CXX_include_directories}
 	${CMAKE_CURRENT_BINARY_DIR})
 
@@ -93,12 +96,12 @@ add_dependencies(${project} ${project}_Shaders)
 
 target_link_libraries(${project} PRIVATE
 	D3D12MemoryAllocator
-	ffx_fsr2_api_x64 ffx_fsr2_api_dx12_x64
 	NRD
 	NRI
 	rtxdi-sdk
 	rtxmu
-	streamline)
+	streamline
+	"${Intel_library_path}XeSS/lib/libxess.lib")
 
 set(packages
 	directxtex
@@ -115,5 +118,7 @@ target_link_libraries(${project} PRIVATE
 	imgui::imgui
 	nlohmann_json::nlohmann_json
 	unofficial::omniverse-physx-sdk::sdk)
+
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${Intel_library_path}XeSS/bin/libxess.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")
