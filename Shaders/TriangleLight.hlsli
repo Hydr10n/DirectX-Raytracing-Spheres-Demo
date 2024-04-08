@@ -4,16 +4,16 @@
 
 struct RAB_LightInfo { float3 Base, Edges[2], Radiance; };
 
-inline RAB_LightInfo RAB_EmptyLightInfo() { return (RAB_LightInfo)0; }
+RAB_LightInfo RAB_EmptyLightInfo() { return (RAB_LightInfo)0; }
 
 struct RAB_LightSample {
 	float3 Position, Normal, Radiance;
 	float SolidAnglePDF;
 };
 
-inline RAB_LightSample RAB_EmptyLightSample() { return (RAB_LightSample)0; }
-inline bool RAB_IsAnalyticLightSample(RAB_LightSample lightSample) { return false; }
-inline float RAB_LightSampleSolidAnglePdf(RAB_LightSample lightSample) { return lightSample.SolidAnglePDF; }
+RAB_LightSample RAB_EmptyLightSample() { return (RAB_LightSample)0; }
+bool RAB_IsAnalyticLightSample(RAB_LightSample lightSample) { return false; }
+float RAB_LightSampleSolidAnglePdf(RAB_LightSample lightSample) { return lightSample.SolidAnglePDF; }
 
 struct TriangleLight {
 	float3 Base, Edges[2], Normal, Radiance;

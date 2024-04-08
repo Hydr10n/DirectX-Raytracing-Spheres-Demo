@@ -32,10 +32,11 @@
  * Solving Self-Intersection Artifacts in DirectX Raytracing
  * https://developer.nvidia.com/blog/solving-self-intersection-artifacts-in-directx-raytracing
  */
-namespace SelfIntersectionAvoidance {
+namespace SelfIntersectionAvoidance
+{
 	// Compute the object and world space position and normal corresponding to a triangle hit point.
 	// Compute a safe spawn point offset along the normal in world space to prevent self intersection of secondary rays.
-	inline void GetSafeTriangleSpawnPoint(
+	void GetSafeTriangleSpawnPoint(
 		out float3     objectPosition,
 		out float3     worldPosition,
 		out float3     objectNormal,
@@ -108,7 +109,7 @@ namespace SelfIntersectionAvoidance {
 	}
 
 	// Offset the world-space position along the world-space normal by the safe offset to obtain the safe spawn point.
-	inline float3 OffsetSpawnPoint(const float3 position, const float3 normal, const float offset)
+	float3 OffsetSpawnPoint(const float3 position, const float3 normal, const float offset)
 	{
 		precise float3 p = mad(offset, normal, position);
 		return p;

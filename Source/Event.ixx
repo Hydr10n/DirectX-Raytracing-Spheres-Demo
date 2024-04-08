@@ -1,7 +1,7 @@
 module;
 
 #include <functional>
-#include <map>
+#include <unordered_map>
 
 export module Event;
 
@@ -29,6 +29,6 @@ export {
 
 	private:
 		EventHandle m_count{};
-		map<EventHandle, function<void(Args...)>> m_handlers;
+		unordered_map<EventHandle, function<void(Args...)>> m_handlers;
 	};
 }

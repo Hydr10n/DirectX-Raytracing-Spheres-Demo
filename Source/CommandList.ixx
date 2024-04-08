@@ -36,19 +36,22 @@ export namespace DirectX {
 		T* operator->() const noexcept { return m_commandList.Get(); }
 		operator T* () const noexcept { return m_commandList.Get(); }
 
-		void Begin() { ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr)); }
+		void Begin() {
+			ThrowIfFailed(m_commandAllocator->Reset());
+			ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
+		}
 
 		future<void> End(ID3D12CommandQueue* pCommandQueue) {
 			return async(launch::async, [=] {
 				ThrowIfFailed(m_commandList->Close());
-				pCommandQueue->ExecuteCommandLists(1, CommandListCast(m_commandList.GetAddressOf()));
+			pCommandQueue->ExecuteCommandLists(1, CommandListCast(m_commandList.GetAddressOf()));
 
-				ThrowIfFailed(pCommandQueue->Signal(m_fence.Get(), ++m_fenceValue));
-				if (m_fence->GetCompletedValue() < m_fenceValue) {
-					ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent.Get()));
-					ignore = WaitForSingleObject(m_fenceEvent.Get(), INFINITE);
-				}
-			});
+			ThrowIfFailed(pCommandQueue->Signal(m_fence.Get(), ++m_fenceValue));
+			if (m_fence->GetCompletedValue() < m_fenceValue) {
+				ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent.Get()));
+				ignore = WaitForSingleObject(m_fenceEvent.Get(), INFINITE);
+			}
+				});
 		}
 
 	private:

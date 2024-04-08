@@ -65,7 +65,7 @@ RWTexture2D<float2> g_geometricNormals : register(u7);
 RWTexture2D<float4> g_noisyDiffuse : register(u8);
 RWTexture2D<float4> g_noisySpecular : register(u9);
 
-inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
+float3 GetEnvironmentLightColor(float3 worldRayDirection) {
 	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
 	if (resourceDescriptorIndices.InEnvironmentLightTexture != ~0u) {
 		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
@@ -80,7 +80,7 @@ inline float3 GetEnvironmentLightColor(float3 worldRayDirection) {
 	return lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f);
 }
 
-inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
+bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
 	bool ret;
 	if ((ret = resourceDescriptorIndices.InEnvironmentTexture != ~0u)) {
@@ -98,7 +98,7 @@ inline bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
 	return ret;
 }
 
-inline float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 barycentrics) {
+float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 barycentrics) {
 	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
 	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Indices], primitiveIndex);
 	float2 textureCoordinates[3];
@@ -106,7 +106,7 @@ inline float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2
 	return Vertex::Interpolate(textureCoordinates, barycentrics);
 }
 
-inline float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBaseColorAlpha = true) {
+float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBaseColorAlpha = true) {
 	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
 
 	uint index;
@@ -128,7 +128,7 @@ inline float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBase
 	return g_objectData[objectIndex].Material.Opacity;
 }
 
-inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
+Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
 
 	Material material;
@@ -184,7 +184,7 @@ inline Material GetMaterial(uint objectIndex, float2 textureCoordinate) {
 	return material;
 }
 
-inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
+float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
 	float3 previousPosition;
 	if (g_sceneData.IsStatic) previousPosition = hitInfo.Position;
 	else {
@@ -214,7 +214,7 @@ inline float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInf
 		} \
 	}
 
-inline bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
+bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
 	TRACE_RAY(q, rayDesc, RAY_FLAG_NONE, ~0u);
 	const bool ret = q.CommittedStatus() != COMMITTED_NOTHING;
