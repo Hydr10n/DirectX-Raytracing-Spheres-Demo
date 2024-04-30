@@ -89,7 +89,7 @@ void DeviceResources::CreateDeviceResources()
         }
         else
         {
-            OutputDebugStringA("WARNING: Direct3D Debug Device is not available\n");
+            OutputDebugStringW(L"WARNING: Direct3D Debug Device is not available\n");
         }
 
         ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
@@ -128,7 +128,7 @@ void DeviceResources::CreateDeviceResources()
         if (FAILED(hr) || !allowTearing)
         {
 #ifdef _DEBUG
-            OutputDebugStringA("WARNING: Variable refresh rate displays not supported");
+            OutputDebugStringW(L"WARNING: Variable refresh rate displays not supported\n");
 #endif
         }
 
@@ -270,10 +270,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
         {
 #ifdef _DEBUG
-            char buff[64] = {};
-            sprintf_s(buff, "Device Lost on ResizeBuffers: Reason code 0x%08X\n",
-                static_cast<unsigned int>((hr == DXGI_ERROR_DEVICE_REMOVED) ? m_device->GetDeviceRemovedReason() : hr));
-            OutputDebugStringA(buff);
+            OutputDebugStringW(std::format(L"Device Lost on Present: Reason code 0x{:08X}\n",
+                static_cast<UINT>(hr == DXGI_ERROR_DEVICE_REMOVED ? m_device->GetDeviceRemovedReason() : hr)).c_str());
 #endif
             HandleDeviceLost();
 
@@ -505,10 +503,8 @@ void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState)
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
     {
 #ifdef _DEBUG
-        char buff[64] = {};
-        sprintf_s(buff, "Device Lost on Present: Reason code 0x%08X\n",
-            static_cast<unsigned int>((hr == DXGI_ERROR_DEVICE_REMOVED) ? m_device->GetDeviceRemovedReason() : hr));
-        OutputDebugStringA(buff);
+        OutputDebugStringW(std::format(L"Device Lost on Present: Reason code 0x{:08X}\n",
+            static_cast<UINT>(hr == DXGI_ERROR_DEVICE_REMOVED ? m_device->GetDeviceRemovedReason() : hr)).c_str());
 #endif
         HandleDeviceLost();
     }
@@ -583,9 +579,8 @@ void DeviceResources::CreateDevice()
         }
 
 #ifdef _DEBUG
-        wchar_t buff[256] = {};
-        swprintf_s(buff, L"Direct3D Adapter (%u): VID:%04X, PID:%04X - %ls\n", adapterIndex, desc.VendorId, desc.DeviceId, desc.Description);
-        OutputDebugStringW(buff);
+        OutputDebugStringW(std::format(L"Direct3D Adapter {}: VID:{:04X}, PID:{:04X} - {}\n",
+            adapterIndex, desc.VendorId, desc.DeviceId, desc.Description).c_str());
 #endif
 
         return true;

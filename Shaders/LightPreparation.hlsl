@@ -18,7 +18,7 @@ RWStructuredBuffer<RAB_LightInfo> g_lightInfo : register(u0);
 
 bool FindTask(uint dispatchThreadID, out Task task) {
 	for (int left = 0, right = int(g_taskCount) - 1; left <= right;) {
-		const int middle = (left + right) / 2;
+		const int middle = left + (right - left) / 2;
 		task = g_tasks[middle];
 		const int triangleIndex = int(dispatchThreadID) - int(task.LightBufferOffset);
 		if (triangleIndex < 0) right = middle - 1;

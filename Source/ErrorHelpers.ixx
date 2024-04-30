@@ -9,21 +9,23 @@ export module ErrorHelpers;
 
 using namespace std;
 
+#define PARAMETERS string_view message = {}, const stacktrace& stacktrace = stacktrace::current()
+
 #define MESSAGE format("{}{}{}", message, empty(message) ? "" : "\n\n", to_string(stacktrace))
 
-#define ThrowException(Type, Succeeded) \
-	void ThrowIfFailed(same_as<Type> auto value, string_view message = {}, const stacktrace& stacktrace = stacktrace::current()) { \
-		if (!Succeeded) throw_std_system_error(static_cast<int>(GetLastError()), message, stacktrace); \
+#define THROW(Type, Succeeded, Code) \
+	void ThrowIfFailed(same_as<Type> auto value, PARAMETERS) { \
+		if (!Succeeded) ThrowSystemError(error_code(static_cast<int>(Code), system_category()), message, stacktrace); \
 	}
 
 export namespace ErrorHelpers {
-	[[noreturn]] void throw_std_system_error(int code, string_view message = {}, const stacktrace& stacktrace = stacktrace::current()) {
-		throw system_error(code, system_category(), MESSAGE);
+	template <constructible_from<const char*> T>
+	[[noreturn]] void Throw(PARAMETERS) { throw T(MESSAGE); }
+
+	[[noreturn]] void ThrowSystemError(error_code code, PARAMETERS) {
+		throw system_error(code, format("{}\n\n0x{:08X}", MESSAGE, static_cast<uint32_t>(code.value())));
 	}
 
-	template <constructible_from<const char*> T>
-	[[noreturn]] void Throw(string_view message, const stacktrace& stacktrace = stacktrace::current()) { throw T(MESSAGE); }
-
-	ThrowException(BOOL, value);
-	ThrowException(HRESULT, SUCCEEDED(value));
+	THROW(BOOL, value, GetLastError());
+	THROW(HRESULT, SUCCEEDED(value), value);
 }

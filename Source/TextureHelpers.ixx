@@ -25,12 +25,14 @@ using namespace Microsoft::WRL;
 using namespace std;
 using namespace std::filesystem;
 
-#define Load(Loader, ...) \
+#define LOAD(Loader, ...) \
 	HRESULT ret; \
-	if (ScratchImage image; SUCCEEDED(ret = Loader(__VA_ARGS__, nullptr, image))) ret = LoadTexture(pDevice, resourceUploadBatch, image, ppResource); \
+	if (ScratchImage image; SUCCEEDED(ret = Loader(__VA_ARGS__, nullptr, image))) { \
+		ret = LoadTexture(pDevice, resourceUploadBatch, image, ppResource); \
+	} \
 	return ret;
 
-#define Load1(...) \
+#define LOAD1(...) \
 	auto isCubeMap = false; \
 	ComPtr<ID3D12Resource> resource; \
 	ThrowIfFailed(__VA_ARGS__); \
@@ -52,18 +54,24 @@ export namespace TextureHelpers {
 		return ret;
 	}
 
-	HRESULT LoadHDR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource) { Load(LoadFromHDRMemory, pData, size); }
+	HRESULT LoadHDR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource) {
+		LOAD(LoadFromHDRMemory, pData, size);
+	}
 
-	HRESULT LoadHDR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromHDRFile, filePath.c_str()); }
+	HRESULT LoadHDR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) {
+		LOAD(LoadFromHDRFile, filePath.c_str());
+	}
 
-	HRESULT LoadEXR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) { Load(LoadFromEXRFile, filePath.c_str()); }
+	HRESULT LoadEXR(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource) {
+		LOAD(LoadFromEXRFile, filePath.c_str());
+	}
 
 	HRESULT LoadTGA(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const void* pData, size_t size, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
-		Load(LoadFromTGAMemory, pData, size, flags);
+		LOAD(LoadFromTGAMemory, pData, size, flags);
 	}
 
 	HRESULT LoadTGA(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const path& filePath, ID3D12Resource** ppResource, TGA_FLAGS flags = TGA_FLAGS_NONE) {
-		Load(LoadFromTGAFile, filePath.c_str(), flags);
+		LOAD(LoadFromTGAFile, filePath.c_str(), flags);
 	}
 
 	shared_ptr<Texture> LoadTexture(const path& filePath, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex, bool* pIsCubeMap = nullptr) {
@@ -73,7 +81,7 @@ export namespace TextureHelpers {
 		if (empty(filePathExtension)) throw invalid_argument(format("{}: Unknown file format", filePath.string()));
 
 		const auto extension = filePathExtension.c_str() + 1;
-		Load1(
+		LOAD1(
 			!_wcsicmp(extension, L"dds") ? CreateDDSTextureFromFile(pDevice, resourceUploadBatch, filePath.c_str(), &resource, false, 0, nullptr, &isCubeMap) :
 			!_wcsicmp(extension, L"hdr") ? LoadHDR(pDevice, resourceUploadBatch, filePath, &resource) :
 			!_wcsicmp(extension, L"exr") ? LoadEXR(pDevice, resourceUploadBatch, filePath, &resource) :
@@ -84,7 +92,7 @@ export namespace TextureHelpers {
 	}
 
 	shared_ptr<Texture> LoadTexture(string_view format, const void* pData, size_t size, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex, bool* pIsCubeMap = nullptr) {
-		Load1(
+		LOAD1(
 			!_stricmp(data(format), "dds") ? CreateDDSTextureFromMemory(pDevice, resourceUploadBatch, static_cast<const uint8_t*>(pData), size, &resource, false, 0, nullptr, &isCubeMap) :
 			!_stricmp(data(format), "hdr") ? LoadHDR(pDevice, resourceUploadBatch, pData, size, &resource) :
 			!_stricmp(data(format), "tga") ? LoadTGA(pDevice, resourceUploadBatch, pData, size, &resource) :
