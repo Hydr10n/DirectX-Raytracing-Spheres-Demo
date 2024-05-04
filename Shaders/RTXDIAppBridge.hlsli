@@ -77,18 +77,14 @@ bool RAB_GetSurfaceBrdfSample(RAB_Surface surface, inout RAB_RandomSamplerState 
 
 void ShadeSurface(RAB_LightSample lightSample, RAB_Surface surface, out float3 diffuse, out float3 specular) {
 	diffuse = specular = 0;
-
 	if (lightSample.SolidAnglePDF <= 0) return;
-
 	const float3 L = normalize(lightSample.Position - surface.Position);
-
 	if (dot(L, surface.GeometricNormal) <= 0) return;
-
 	const float3 H = normalize(surface.ViewDirection + L);
 	const float NoL = abs(dot(surface.Normal, L)), NoV = abs(dot(surface.Normal, surface.ViewDirection)), VoH = abs(dot(surface.ViewDirection, H)), NoH = abs(dot(surface.Normal, H));
-	const float3 throughput = NoL * lightSample.Radiance / lightSample.SolidAnglePDF;
-	diffuse = surface.Albedo * STL::BRDF::DiffuseTerm_Burley(surface.Roughness, NoL, NoV, VoH) * throughput;
-	specular = STL::BRDF::DistributionTerm_GGX(surface.Roughness, NoH) * STL::BRDF::FresnelTerm_Schlick(surface.Rf0, VoH) * STL::BRDF::GeometryTermMod_SmithCorrelated(surface.Roughness, NoL, NoV, VoH, NoH) * throughput;
+	const float3 F = STL::BRDF::FresnelTerm(surface.Rf0, VoH), throughput = NoL * lightSample.Radiance / lightSample.SolidAnglePDF;
+	diffuse = (1 - F) * surface.Albedo * STL::BRDF::DiffuseTerm(surface.Roughness, NoL, NoV, VoH) * throughput;
+	specular = F * STL::BRDF::DistributionTerm(surface.Roughness, NoH) * STL::BRDF::GeometryTermMod(surface.Roughness, NoL, NoV, VoH, NoH) * throughput;
 }
 
 float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Surface surface) {
@@ -115,11 +111,12 @@ bool RAB_GetConservativeVisibility(RAB_Surface surface, RAB_LightSample lightSam
 bool RAB_GetTemporalConservativeVisibility(RAB_Surface currentSurface, RAB_Surface previousSurface, RAB_LightSample lightSample) { return RAB_GetConservativeVisibility(currentSurface, lightSample); }
 
 float RAB_GetSurfaceBrdfPdf(RAB_Surface surface, float3 dir) {
-	const float NoL = abs(dot(surface.Normal, dir));
-	if (NoL == 0) return 0;
+	const float NoL = dot(surface.Normal, dir);
+	if (NoL <= 0) return 0;
 	const float
+		NoV = abs(dot(surface.Normal, surface.ViewDirection)), NoH = abs(dot(surface.Normal, normalize(surface.ViewDirection + dir))),
 		diffusePDF = STL::ImportanceSampling::Cosine::GetPDF(NoL),
-		specularPDF = STL::ImportanceSampling::VNDF::GetPDF(abs(dot(surface.Normal, surface.ViewDirection)), abs(dot(surface.Normal, normalize(surface.ViewDirection + dir))), surface.Roughness);
+		specularPDF = STL::ImportanceSampling::VNDF::GetPDF(STL::Geometry::RotateVector(STL::Geometry::GetBasis(surface.Normal), surface.ViewDirection), NoH, surface.Roughness);
 	return lerp(specularPDF, diffusePDF, surface.DiffuseProbability);
 }
 

@@ -71,16 +71,18 @@ struct Material {
 		if (splitProbability < diffuseProbability) {
 			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(randomValue));
 			H = normalize(V + L);
+			const float NoL = abs(dot(N, L)), VoH = abs(dot(V, H));
 
 			scatterResult.Type = ScatterType::DiffuseReflection;
-			scatterResult.Throughput = albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, abs(dot(N, L)), NoV, abs(dot(V, H))) / diffuseProbability;
+			scatterResult.Throughput = albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, NoL, NoV, VoH) / diffuseProbability;
 		}
 		else {
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 			L = reflect(-V, H);
+			const float NoL = abs(dot(N, L)), VoH = abs(dot(V, H));
 
 			scatterResult.Type = ScatterType::SpecularReflection;
-			scatterResult.Throughput = STL::BRDF::FresnelTerm_Schlick(Rf0, abs(dot(V, H))) * STL::BRDF::GeometryTerm_Smith(Roughness, abs(dot(N, L))) / (1 - diffuseProbability);
+			scatterResult.Throughput = STL::BRDF::FresnelTerm_Schlick(Rf0, VoH) * STL::BRDF::GeometryTerm_Smith(Roughness, NoL) / (1 - diffuseProbability);
 		}
 
 		scatterResult.Direction = L;
