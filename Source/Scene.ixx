@@ -8,6 +8,7 @@ module;
 #include "directxtk12/Mouse.h"
 #include "directxtk12/ResourceUploadBatch.h"
 #include "directxtk12/SimpleMath.h"
+#include "directxtk12/VertexTypes.h"
 
 #include "rtxmu/D3D12AccelStructManager.h"
 
@@ -80,7 +81,7 @@ export {
 			Transform Transform;
 		} EnvironmentLightTexture, EnvironmentTexture;
 
-		unordered_map<string, pair<shared_ptr<vector<Mesh::VertexType>>, shared_ptr<vector<Mesh::IndexType>>>> Meshes;
+		unordered_map<string, pair<shared_ptr<vector<DirectX::VertexPositionNormalTexture>>, shared_ptr<vector<Mesh::IndexType>>>> Meshes;
 
 		vector<RenderObjectDesc> RenderObjects;
 	};

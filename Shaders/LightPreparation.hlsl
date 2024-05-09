@@ -85,10 +85,10 @@ void main(uint dispatchThreadID : SV_DispatchThreadID) {
 		emissiveColor = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3).rgb;
 	}
 
-	RAB_LightInfo lightInfo;
-	lightInfo.Base = positions[0];
-	lightInfo.Edges[0] = positions[1] - positions[0];
-	lightInfo.Edges[1] = positions[2] - positions[0];
-	lightInfo.Radiance = emissiveColor;
-	g_lightInfo[dispatchThreadID] = lightInfo;
+	TriangleLight triangleLight;
+	triangleLight.Base = positions[0];
+	triangleLight.Edges[0] = positions[1] - positions[0];
+	triangleLight.Edges[1] = positions[2] - positions[0];
+	triangleLight.Radiance = emissiveColor;
+	g_lightInfo[dispatchThreadID] = triangleLight.Store();
 }

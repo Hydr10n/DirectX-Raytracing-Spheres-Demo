@@ -67,7 +67,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 		emissiveColor = material.EmissiveColor;
 		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, diffuseProbability == 0);
-		geometricNormal = STL::Packing::EncodeUnitVector(hitInfo.GeometricNormal);
+		geometricNormal = STL::Packing::EncodeUnitVector(hitInfo.GeometricNormal, true);
 	}
 
 	g_linearDepth[pixelPosition] = linearDepth;

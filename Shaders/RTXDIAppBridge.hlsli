@@ -39,7 +39,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame) {
 		surface.Position = g_camera.ReconstructPreviousWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize)), surface.LinearDepth);
 		const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_previousNormalRoughness[pixelPosition]);
 		surface.Normal = normalRoughness.xyz;
-		surface.GeometricNormal = STL::Packing::DecodeUnitVector(g_previousGeometricNormals[pixelPosition]);
+		surface.GeometricNormal = STL::Packing::DecodeUnitVector(g_previousGeometricNormals[pixelPosition], true);
 		surface.Roughness = max(normalRoughness.w, MinRoughness);
 		const float4 baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, surface.Albedo, surface.Rf0);

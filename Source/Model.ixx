@@ -7,6 +7,8 @@ module;
 #include "directxtk12/ResourceUploadBatch.h"
 #include "directxtk12/VertexTypes.h"
 
+#include "MathLib.h"
+
 export module Model;
 
 import DescriptorHeap;
@@ -15,10 +17,11 @@ import GPUBuffer;
 import Vertex;
 
 using namespace DirectX;
+using namespace Packed;
 using namespace std;
 
 export struct Mesh {
-	using VertexType = VertexPositionNormalTexture;
+	using VertexType = ::VertexPositionNormalTexture;
 	using IndexType = UINT16;
 
 	string Name;
@@ -31,14 +34,19 @@ export struct Mesh {
 	static constexpr VertexDesc GetVertexDesc() {
 		return {
 			.Stride = sizeof(VertexType),
-			.NormalOffset = offsetof(VertexType, normal),
-			.TextureCoordinateOffset = offsetof(VertexType, textureCoordinate)
+			.NormalOffset = offsetof(VertexType, Normal),
+			.TextureCoordinateOffset = offsetof(VertexType, TextureCoordinate)
 		};
 	}
 
 	~Mesh() { DeleteEvent.Raise(this); }
 
-	static auto Create(span<const VertexType> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex) {
+	static auto Create(span<const DirectX::VertexPositionNormalTexture> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex) {
+		vector<VertexType> newVertices;
+		newVertices.reserve(vertices.size());
+		for (const auto vertex : vertices) {
+			newVertices.emplace_back(vertex.position, sf2_to_h2(vertex.textureCoordinate.x, vertex.textureCoordinate.y), reinterpret_cast<const XMFLOAT2&>(EncodeUnitVector(reinterpret_cast<const float3&>(vertex.normal), true)));
+		}
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);
 			descriptorIndex = descriptorHeap.Allocate(1, descriptorIndex);
@@ -46,7 +54,7 @@ export struct Mesh {
 			else buffer->CreateRawSRV(descriptorHeap, descriptorIndex - 1);
 		};
 		const auto mesh = make_shared<Mesh>();
-		CreateBuffer(mesh->Vertices, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, false);
+		CreateBuffer(mesh->Vertices, newVertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, false);
 		CreateBuffer(mesh->Indices, indices, D3D12_RESOURCE_STATE_INDEX_BUFFER, true);
 		return mesh;
 	}

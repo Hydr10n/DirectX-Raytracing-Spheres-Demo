@@ -50,7 +50,7 @@ export {
 				GeometricPrimitive::VertexCollection vertices;
 				GeometricPrimitive::IndexCollection indices;
 				GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
-				Meshes[ObjectNames::Sphere] = { make_shared<vector<Mesh::VertexType>>(vertices), make_shared<vector<Mesh::IndexType>>(indices) };
+				Meshes[ObjectNames::Sphere] = { make_shared<vector<VertexPositionNormalTexture>>(vertices), make_shared<vector<Mesh::IndexType>>(indices) };
 			}
 
 			Camera.Position.z = -15;

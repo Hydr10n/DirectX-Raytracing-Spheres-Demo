@@ -2,7 +2,12 @@
 
 #include "Math.hlsli"
 
-struct RAB_LightInfo { float3 Base, Edges[2], Radiance; };
+struct RAB_LightInfo {
+	float3 Base;
+	uint Scalars;
+	float2 Directions[2];
+	uint2 Radiance;
+};
 
 RAB_LightInfo RAB_EmptyLightInfo() { return (RAB_LightInfo)0; }
 
@@ -21,9 +26,11 @@ struct TriangleLight {
 
 	void Load(RAB_LightInfo lightInfo) {
 		Base = lightInfo.Base;
-		Edges = lightInfo.Edges;
-		Radiance = lightInfo.Radiance;
-		const float3 normal = cross(lightInfo.Edges[0], lightInfo.Edges[1]);
+		const float2 scalars = STL::Packing::UintToRg16f(lightInfo.Scalars);
+		Edges[0] = STL::Packing::DecodeUnitVector(lightInfo.Directions[0], true) * scalars[0];
+		Edges[1] = STL::Packing::DecodeUnitVector(lightInfo.Directions[1], true) * scalars[1];
+		Radiance = float3(STL::Packing::UintToRg16f(lightInfo.Radiance.x), STL::Packing::UintToRg16f(lightInfo.Radiance.y).x);
+		const float3 normal = cross(Edges[0], Edges[1]);
 		const float normalLength = length(normal);
 		if (normalLength > 0) {
 			Normal = normal / normalLength;
@@ -38,8 +45,11 @@ struct TriangleLight {
 	RAB_LightInfo Store() {
 		RAB_LightInfo lightInfo;
 		lightInfo.Base = Base;
-		lightInfo.Edges = Edges;
-		lightInfo.Radiance = Radiance;
+		const float2 scalars = float2(length(Edges[0]), length(Edges[1]));
+		lightInfo.Scalars = STL::Packing::Rg16fToUint(scalars);
+		lightInfo.Directions[0] = STL::Packing::EncodeUnitVector(Edges[0] / scalars[0], true);
+		lightInfo.Directions[1] = STL::Packing::EncodeUnitVector(Edges[1] / scalars[1], true);
+		lightInfo.Radiance = uint2(STL::Packing::Rg16fToUint(Radiance.rg), STL::Packing::Rg16fToUint(float2(Radiance.b, 0)));
 		return lightInfo;
 	}
 

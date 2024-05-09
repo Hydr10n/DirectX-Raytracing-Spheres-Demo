@@ -12,7 +12,10 @@ namespace Math {
 		return ((positions[1] - positions[0]) * d2.y - (positions[2] - positions[0]) * d1.y) / (d1.x * d2.y - d1.y * d2.x);
 	}
 
-	float3x3 InverseTranspose(float3x3 m) { return float3x3(cross(m[1], m[2]), cross(m[2], m[0]), cross(m[0], m[1])) / dot(cross(m[0], m[1]), m[2]); }
+	float3x3 InverseTranspose(float3x3 m) {
+		const float3 v = cross(m[0], m[1]);
+		return float3x3(cross(m[1], m[2]), cross(m[2], m[0]), v) / dot(v, m[2]);
+	}
 
 	float2 ToLatLongCoordinate(float3 direction) {
 		const float Pi = STL::Math::Pi(1);

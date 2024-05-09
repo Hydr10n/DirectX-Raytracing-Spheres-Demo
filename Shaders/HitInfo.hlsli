@@ -2,11 +2,12 @@
 
 #include "Vertex.hlsli"
 
-#include "STL.hlsli"
-
 #include "SelfIntersectionAvoidance.hlsli"
 
-struct HitInfo : VertexPositionNormalTexture {
+struct HitInfo {
+	float3 Position, Normal;
+	float2 TextureCoordinate;
+
 	float3 ObjectPosition, GeometricNormal;
 
 	float3 SafePosition, SafeNormal;
