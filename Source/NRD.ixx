@@ -8,6 +8,8 @@ module;
 #include "NRI.h"
 #include "NRIDescs.h"
 #include "Extensions/NRIHelper.h"
+#pragma warning(disable:5202)
+struct AGSContext;
 #include "Extensions/NRIWrapperD3D12.h"
 #include "NRDIntegration.hpp"
 

@@ -100,6 +100,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
+		float directHitDistance = 1.#INFf;
 		float3 directDiffuse = 0, directSpecular = 0;
 		if (RTXDISettings.IsEnabled) {
 			RAB_Surface surface;
@@ -149,6 +150,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 			if (RTXDI_IsValidDIReservoir(reservoir)) {
 				if (RAB_GetConservativeVisibility(surface, lightSample)) {
+					directHitDistance = length(lightSample.Position - surface.Position);
 					ShadeSurface(lightSample, surface, directDiffuse, directSpecular);
 					const float invPDF = RTXDI_GetDIReservoirInvPdf(reservoir);
 					directDiffuse *= invPDF;
@@ -160,8 +162,19 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 
 		const NRDSettings NRDSettings = g_graphicsSettings.NRD;
 		if (NRDSettings.Denoiser != NRDDenoiser::None) {
-			const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
-			const float3 diffuse = ((isDiffuse ? radiance : 0) + directDiffuse) / lerp((1 - Fenvironment) * albedo, 1, 0.01f), specular = ((isDiffuse ? 0 : radiance) + directSpecular) / lerp(Fenvironment, 1, 0.01f);
+			const float3
+				Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness),
+				indirectDiffuse = isDiffuse ? radiance : 0,
+				indirectSpecular = isDiffuse ? 0 : radiance,
+				diffuse = (directDiffuse + indirectDiffuse) / lerp((1 - Fenvironment) * albedo, 1, 0.01f),
+				specular = (directSpecular + indirectSpecular) / lerp(Fenvironment, 1, 0.01f);
+			if (isDiffuse) {
+				const float
+					directLuminance = STL::Color::Luminance(directDiffuse),
+					indirectLuminance = STL::Color::Luminance(indirectDiffuse),
+					directHitDistanceContribution = min(directLuminance / (directLuminance + indirectLuminance + 1e-3f), 0.5f);
+				hitDistance = lerp(hitDistance, directHitDistance, directHitDistanceContribution);
+			}
 			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
 				const float normalizedHitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, NRDSettings.HitDistanceParameters, isDiffuse ? 1 : material.Roughness);
 				noisyDiffuse = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, normalizedHitDistance, true);
