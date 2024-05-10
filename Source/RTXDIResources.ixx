@@ -19,7 +19,11 @@ using namespace rtxdi;
 using namespace std;
 
 export {
-	struct RAB_LightInfo { XMFLOAT3 Base, Edges[2], Radiance; };
+	struct RAB_LightInfo {
+		XMFLOAT3 Center;
+		UINT Scalars, Directions[2];
+		XMUINT2 Radiance;
+	};
 
 	struct RTXDIResources {
 		unique_ptr<ReSTIRDIContext> ReSTIRDIContext;
