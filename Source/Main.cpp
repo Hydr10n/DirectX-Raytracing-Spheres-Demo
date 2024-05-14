@@ -8,6 +8,8 @@
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
 
+#include "nvapi.h"
+
 #include "imgui_impl_win32.h"
 
 #include "MyAppData.h"
@@ -51,6 +53,11 @@ int WINAPI wWinMain(
 	string error;
 
 	RoInitializeWrapper roInitializeWrapper(RO_INIT_MULTITHREADED);
+
+	struct NVAPI {
+		NVAPI() { ignore = NvAPI_Initialize(); }
+		~NVAPI() { ignore = NvAPI_Unload(); }
+	} NVAPI;
 
 	try {
 		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));

@@ -8,6 +8,8 @@ set(project "RaytracingSpheres")
 
 project(${project})
 
+set(DXC_PATH "$ENV{VCPKG_ROOT}/packages/directx-dxc_x64-windows/tools/directx-dxc/" CACHE STRING "")
+
 set(AMD_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/AMD/")
 
 add_subdirectory("${AMD_library_path}MemoryAllocator/D3D12")
@@ -68,6 +70,7 @@ set(NVIDIA_CXX_include_directories
 	"MathLib"
 	"NRD/Include" "NRD/Integration"
 	"NRI/Include"
+	"NVAPI"
 	"RTXDI/rtxdi-sdk/include"
 	"RTXMU/include"
 	"Streamline/include")
@@ -82,6 +85,7 @@ include(ShaderCompilation.cmake)
 set(NVIDIA_shader_include_directories
 	"MathLib"
 	"NRD/Shaders/Include"
+	"NVAPI"
 	"RTXDI/rtxdi-sdk/include")
 list(TRANSFORM NVIDIA_shader_include_directories PREPEND ${NVIDIA_library_path})
 file(GLOB shaders "Shaders/*.hlsl")
@@ -101,7 +105,8 @@ target_link_libraries(${project} PRIVATE
 	rtxdi-sdk
 	rtxmu
 	streamline
-	"${Intel_library_path}XeSS/lib/libxess.lib")
+	"${Intel_library_path}XeSS/lib/libxess.lib"
+	"${NVIDIA_library_path}NVAPI/amd64/nvapi64.lib")
 
 set(packages
 	directxtex

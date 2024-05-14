@@ -18,6 +18,8 @@ module;
 
 #include "D3D12MemAlloc.h"
 
+#include "nvapi.h"
+
 #include "rtxdi/ReSTIRDI.h"
 
 #include "sl_helpers.h"
@@ -39,6 +41,7 @@ import Camera;
 import CommonShaderData;
 import DescriptorHeap;
 import DeviceResources;
+import DirectIllumination;
 import ErrorHelpers;
 import GPUBuffer;
 import GPUMemoryAllocator;
@@ -196,8 +199,6 @@ struct App::Impl : IDeviceNotify {
 	void OnDeviceLost() override {
 		if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
 
-		m_RTXDIResources = {};
-
 		m_scene.reset();
 
 		m_GPUBuffers = {};
@@ -219,7 +220,9 @@ struct App::Impl : IDeviceNotify {
 
 		m_streamline.reset();
 
+		m_directIllumination.reset();
 		m_lightPreparation.reset();
+		m_RTXDIResources = {};
 
 		m_raytracing.reset();
 
@@ -260,6 +263,8 @@ private:
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
 
+	bool m_isShaderExecutionReorderingSupported{};
+
 	XMUINT2 m_renderSize{};
 
 	HaltonSamplePattern m_haltonSamplePattern;
@@ -283,10 +288,11 @@ private:
 			InPreviousBaseColorMetalness, OutPreviousBaseColorMetalness,
 			InBaseColorMetalness, OutBaseColorMetalness,
 			InEmissiveColor, OutEmissiveColor,
-			InPreviousNormalRoughness, OutPreviousNormalRoughness,
+			InPreviousNormals, OutPreviousNormals,
+			InNormals, OutNormals,
+			InPreviousRoughness, OutPreviousRoughness,
+			InRoughness, OutRoughness,
 			InNormalRoughness, OutNormalRoughness,
-			InPreviousGeometricNormals, OutPreviousGeometricNormals,
-			InGeometricNormals, OutGeometricNormals,
 			OutNoisyDiffuse, OutNoisySpecular,
 			InDenoisedDiffuse, OutDenoisedDiffuse,
 			InDenoisedSpecular, OutDenoisedSpecular,
@@ -310,7 +316,10 @@ private:
 
 	unique_ptr<Raytracing> m_raytracing;
 
+	atomic_bool m_RTXDIResourcesLock;
+	RTXDIResources m_RTXDIResources;
 	unique_ptr<LightPreparation> m_lightPreparation;
+	unique_ptr<DirectIllumination> m_directIllumination;
 
 	Constants m_slConstants = [] {
 		Constants constants;
@@ -354,10 +363,11 @@ private:
 		MAKE_NAMEW(PreviousBaseColorMetalness);
 		MAKE_NAMEW(BaseColorMetalness);
 		MAKE_NAMEW(EmissiveColor);
-		MAKE_NAMEW(PreviousNormalRoughness);
+		MAKE_NAMEW(PreviousNormals);
+		MAKE_NAMEW(Normals);
+		MAKE_NAMEW(PreviousRoughness);
+		MAKE_NAMEW(Roughness);
 		MAKE_NAMEW(NormalRoughness);
-		MAKE_NAMEW(PreviousGeometricNormals);
-		MAKE_NAMEW(GeometricNormals);
 		MAKE_NAMEW(NoisyDiffuse);
 		MAKE_NAMEW(NoisySpecular);
 		MAKE_NAMEW(DenoisedDiffuse);
@@ -378,9 +388,6 @@ private:
 
 	shared_ptr<Scene> m_scene;
 
-	RTXDIResources m_RTXDIResources;
-	atomic_bool m_RTXDIResourcesLock;
-
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
 
 	void CreateDeviceDependentResources() {
@@ -389,6 +396,13 @@ private:
 		m_graphicsMemory = make_unique<GraphicsMemory>(device);
 
 		m_GPUMemoryAllocator = make_unique<GPUMemoryAllocator>(ALLOCATOR_DESC{ .pDevice = device, .pAdapter = m_deviceResources->GetAdapter() });
+
+		{
+			NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAPS caps;
+			m_isShaderExecutionReorderingSupported = NvAPI_D3D12_GetRaytracingCaps(device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
+				&& caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD
+				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(device, 1024, 0) == NVAPI_OK;
+		}
 
 		CreateDescriptorHeaps();
 
@@ -419,18 +433,14 @@ private:
 			CreateTexture(RenderTextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InLinearDepth, ResourceDescriptorIndex::OutLinearDepth);
 			CreateTexture(RenderTextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InNormalizedDepth, ResourceDescriptorIndex::OutNormalizedDepth);
 			CreateTexture(RenderTextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InMotionVectors, ResourceDescriptorIndex::OutMotionVectors);
-			CreateTexture(RenderTextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InPreviousBaseColorMetalness, ResourceDescriptorIndex::OutPreviousBaseColorMetalness);
+			CreateTexture(RenderTextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InPreviousBaseColorMetalness, ResourceDescriptorIndex::OutPreviousBaseColorMetalness);
 			CreateTexture(RenderTextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InBaseColorMetalness, ResourceDescriptorIndex::OutBaseColorMetalness);
 			CreateTexture(RenderTextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorIndex::InEmissiveColor, ResourceDescriptorIndex::OutEmissiveColor);
-
-			{
-				const auto normalFormat = NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding);
-				CreateTexture(RenderTextureNames::PreviousNormalRoughness, normalFormat, ResourceDescriptorIndex::InPreviousNormalRoughness, ResourceDescriptorIndex::OutPreviousNormalRoughness);
-				CreateTexture(RenderTextureNames::NormalRoughness, normalFormat, ResourceDescriptorIndex::InNormalRoughness, ResourceDescriptorIndex::OutNormalRoughness);
-			}
-
-			CreateTexture(RenderTextureNames::PreviousGeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorIndex::InPreviousGeometricNormals, ResourceDescriptorIndex::OutPreviousGeometricNormals);
-			CreateTexture(RenderTextureNames::GeometricNormals, DXGI_FORMAT_R16G16_SNORM, ResourceDescriptorIndex::InGeometricNormals, ResourceDescriptorIndex::OutGeometricNormals);
+			CreateTexture(RenderTextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::InPreviousNormals, ResourceDescriptorIndex::OutPreviousNormals);
+			CreateTexture(RenderTextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::InNormals, ResourceDescriptorIndex::OutNormals);
+			CreateTexture(RenderTextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::InPreviousRoughness, ResourceDescriptorIndex::OutPreviousRoughness);
+			CreateTexture(RenderTextureNames::Roughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::InRoughness, ResourceDescriptorIndex::OutRoughness);
+			CreateTexture(RenderTextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), ResourceDescriptorIndex::InNormalRoughness, ResourceDescriptorIndex::OutNormalRoughness);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -528,7 +538,7 @@ private:
 			if (IsSceneReady()) {
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
-				if (g_graphicsSettings.Raytracing.RTXDI.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount()) {
+				if (IsRTXDIEnabled()) {
 					m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
 					PrepareLights(commandList);
 				}
@@ -558,8 +568,8 @@ private:
 		{
 			swap(m_renderTextures.at(RenderTextureNames::PreviousLinearDepth), m_renderTextures.at(RenderTextureNames::LinearDepth));
 			swap(m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness), m_renderTextures.at(RenderTextureNames::BaseColorMetalness));
-			swap(m_renderTextures.at(RenderTextureNames::PreviousNormalRoughness), m_renderTextures.at(RenderTextureNames::NormalRoughness));
-			swap(m_renderTextures.at(RenderTextureNames::PreviousGeometricNormals), m_renderTextures.at(RenderTextureNames::GeometricNormals));
+			swap(m_renderTextures.at(RenderTextureNames::PreviousNormals), m_renderTextures.at(RenderTextureNames::Normals));
+			swap(m_renderTextures.at(RenderTextureNames::PreviousRoughness), m_renderTextures.at(RenderTextureNames::Roughness));
 		}
 	}
 
@@ -580,6 +590,7 @@ private:
 			m_raytracing->SetScene(m_scene.get());
 
 			PrepareLightResources();
+			m_directIllumination->SetScene(m_scene.get());
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -603,6 +614,7 @@ private:
 		m_raytracing = make_unique<Raytracing>(device);
 
 		m_lightPreparation = make_unique<LightPreparation>(device);
+		m_directIllumination = make_unique<DirectIllumination>(device);
 
 		{
 			ignore = slSetD3DDevice(device);
@@ -884,64 +896,109 @@ private:
 	void RenderScene() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
+		const auto frameIndex = m_stepTimer.GetFrameCount() - 1;
+
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
-		const auto& RTXDISettings = raytracingSettings.RTXDI;
-		const auto& reSTIRDIContext = *m_RTXDIResources.ReSTIRDIContext;
-		m_raytracing->SetConstants({
-			.RenderSize = m_renderSize,
-			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-			.Bounces = raytracingSettings.Bounces,
-			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
-			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-			.RTXDI{
-				.IsEnabled = RTXDISettings.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount(),
-				.LocalLightSamples = RTXDISettings.LocalLightSamples,
-				.BRDFSamples = RTXDISettings.BRDFSamples,
-				.SpatioTemporalSamples = RTXDISettings.SpatioTemporalSamples,
-				.InputBufferIndex = !(reSTIRDIContext.getFrameIndex() & 1),
-				.OutputBufferIndex = reSTIRDIContext.getFrameIndex() & 1,
-				.UniformRandomNumber = reSTIRDIContext.getTemporalResamplingParameters().uniformRandomNumber,
-				.LightBufferParameters = m_lightPreparation->GetLightBufferParameters(),
-				.RuntimeParameters{
-					.neighborOffsetMask = reSTIRDIContext.getStaticParameters().NeighborOffsetCount - 1
+
+		const NRDSettings NRDSettings{
+			.Denoiser = m_NRD->IsAvailable() ? g_graphicsSettings.PostProcessing.NRD.Denoiser : NRDDenoiser::None,
+			.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
+		};
+
+		const auto
+			color = m_renderTextures.at(RenderTextureNames::Color).get(),
+			linearDepth = m_renderTextures.at(RenderTextureNames::LinearDepth).get(),
+			motionVectors = m_renderTextures.at(RenderTextureNames::MotionVectors).get(),
+			baseColorMetalness = m_renderTextures.at(RenderTextureNames::BaseColorMetalness).get(),
+			normals = m_renderTextures.at(RenderTextureNames::Normals).get(),
+			roughness = m_renderTextures.at(RenderTextureNames::Roughness).get(),
+			noisyDiffuse = m_renderTextures.at(RenderTextureNames::NoisyDiffuse).get(),
+			noisySpecular = m_renderTextures.at(RenderTextureNames::NoisySpecular).get();
+
+		{
+			m_raytracing->SetConstants({
+				.RenderSize = m_renderSize,
+				.FrameIndex = frameIndex,
+				.Bounces = raytracingSettings.Bounces,
+				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
+				.NRD = NRDSettings
+				});
+
+			m_raytracing->GPUBuffers = {
+				.InSceneData = m_GPUBuffers.SceneData.get(),
+				.InCamera = m_GPUBuffers.Camera.get(),
+				.InInstanceData = m_GPUBuffers.InstanceData.get(),
+				.InObjectData = m_GPUBuffers.ObjectData.get()
+			};
+
+			m_raytracing->RenderTextures = {
+				.OutColor = color,
+				.OutLinearDepth = linearDepth,
+				.OutNormalizedDepth = m_renderTextures.at(RenderTextureNames::NormalizedDepth).get(),
+				.OutMotionVectors = motionVectors,
+				.OutBaseColorMetalness = baseColorMetalness,
+				.OutEmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
+				.OutNormals = normals,
+				.OutRoughness = roughness,
+				.OutNormalRoughness = m_renderTextures.at(RenderTextureNames::NormalRoughness).get(),
+				.OutNoisyDiffuse = noisyDiffuse,
+				.OutNoisySpecular = noisySpecular
+			};
+
+			m_raytracing->Render(commandList);
+		}
+
+		if (IsRTXDIEnabled()) {
+			const auto& RTXDISettings = raytracingSettings.RTXDI;
+			const auto& reSTIRDIContext = *m_RTXDIResources.ReSTIRDIContext;
+			m_directIllumination->SetConstants({
+				.RenderSize = m_renderSize,
+				.FrameIndex = frameIndex,
+				.RTXDI{
+					.LocalLightSamples = RTXDISettings.LocalLightSamples,
+					.BRDFSamples = RTXDISettings.BRDFSamples,
+					.SpatioTemporalSamples = RTXDISettings.SpatioTemporalSamples,
+					.InputBufferIndex = !(reSTIRDIContext.getFrameIndex() & 1),
+					.OutputBufferIndex = reSTIRDIContext.getFrameIndex() & 1,
+					.UniformRandomNumber = reSTIRDIContext.getTemporalResamplingParameters().uniformRandomNumber,
+					.LightBufferParameters = m_lightPreparation->GetLightBufferParameters(),
+					.RuntimeParameters{
+						.neighborOffsetMask = reSTIRDIContext.getStaticParameters().NeighborOffsetCount - 1
+					},
+					.ReservoirBufferParameters = reSTIRDIContext.getReservoirBufferParameters()
 				},
-				.ReservoirBufferParameters = reSTIRDIContext.getReservoirBufferParameters()
-			},
-			.NRD{
-				.Denoiser = m_NRD->IsAvailable() ? g_graphicsSettings.PostProcessing.NRD.Denoiser : NRDDenoiser::None,
-				.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
-			}
-			});
+				.NRD = NRDSettings
+				});
 
-		m_raytracing->GPUBuffers = {
-			.InSceneData = m_GPUBuffers.SceneData.get(),
-			.InCamera = m_GPUBuffers.Camera.get(),
-			.InInstanceData = m_GPUBuffers.InstanceData.get(),
-			.InObjectData = m_GPUBuffers.ObjectData.get(),
-			.InLightInfo = m_RTXDIResources.LightInfo.get(),
-			.InLightIndices = m_RTXDIResources.LightIndices.get(),
-			.InNeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
-			.OutDIReservoir = m_RTXDIResources.DIReservoir.get()
-		};
+			m_directIllumination->GPUBuffers = {
+				.InCamera = m_GPUBuffers.Camera.get(),
+				.InInstanceData = m_GPUBuffers.InstanceData.get(),
+				.InObjectData = m_GPUBuffers.ObjectData.get(),
+				.InLightInfo = m_RTXDIResources.LightInfo.get(),
+				.InLightIndices = m_RTXDIResources.LightIndices.get(),
+				.InNeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
+				.OutDIReservoir = m_RTXDIResources.DIReservoir.get()
+			};
 
-		m_raytracing->RenderTextures = {
-			.InPreviousLinearDepth = m_renderTextures.at(RenderTextureNames::PreviousLinearDepth).get(),
-			.InPreviousBaseColorMetalness = m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness).get(),
-			.InPreviousNormalRoughness = m_renderTextures.at(RenderTextureNames::PreviousNormalRoughness).get(),
-			.InPreviousGeometricNormals = m_renderTextures.at(RenderTextureNames::PreviousGeometricNormals).get(),
-			.OutColor = m_renderTextures.at(RenderTextureNames::Color).get(),
-			.OutLinearDepth = m_renderTextures.at(RenderTextureNames::LinearDepth).get(),
-			.OutNormalizedDepth = m_renderTextures.at(RenderTextureNames::NormalizedDepth).get(),
-			.OutMotionVectors = m_renderTextures.at(RenderTextureNames::MotionVectors).get(),
-			.OutBaseColorMetalness = m_renderTextures.at(RenderTextureNames::BaseColorMetalness).get(),
-			.OutEmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
-			.OutNormalRoughness = m_renderTextures.at(RenderTextureNames::NormalRoughness).get(),
-			.OutGeometricNormals = m_renderTextures.at(RenderTextureNames::GeometricNormals).get(),
-			.OutNoisyDiffuse = m_renderTextures.at(RenderTextureNames::NoisyDiffuse).get(),
-			.OutNoisySpecular = m_renderTextures.at(RenderTextureNames::NoisySpecular).get()
-		};
+			m_directIllumination->RenderTextures = {
+				.InPreviousLinearDepth = m_renderTextures.at(RenderTextureNames::PreviousLinearDepth).get(),
+				.InLinearDepth = linearDepth,
+				.InMotionVectors = motionVectors,
+				.InPreviousBaseColorMetalness = m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness).get(),
+				.InBaseColorMetalness = baseColorMetalness,
+				.InPreviousNormals = m_renderTextures.at(RenderTextureNames::PreviousNormals).get(),
+				.InNormals = normals,
+				.InPreviousRoughness = m_renderTextures.at(RenderTextureNames::PreviousRoughness).get(),
+				.InRoughness = roughness,
+				.OutColor = color,
+				.OutNoisyDiffuse = noisyDiffuse,
+				.OutNoisySpecular = noisySpecular
+			};
 
-		m_raytracing->Render(commandList);
+			m_directIllumination->Render(commandList);
+		}
 	}
 
 	bool IsDLSSFrameGenerationEnabled() const { return g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && m_streamline->IsFeatureAvailable(kFeatureDLSS_G) && IsReflexEnabled(); }
@@ -949,6 +1006,8 @@ private:
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 	bool IsReflexEnabled() const { return g_graphicsSettings.ReflexMode != ReflexMode::eOff && m_streamline->IsFeatureAvailable(kFeatureReflex); }
+	bool IsRTXDIEnabled() const { return g_graphicsSettings.Raytracing.RTXDI.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount(); }
+	bool IsShaderExecutionReorderingEnabled() const { return m_isShaderExecutionReorderingSupported && g_graphicsSettings.Raytracing.IsShaderExecutionReorderingEnabled; }
 	bool IsXeSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable(); }
 
 	static void SetReflexOptions() {
@@ -1513,6 +1572,14 @@ private:
 					isChanged |= ImGui::SliderInt("Bounces", reinterpret_cast<int*>(&raytracingSettings.Bounces), 0, raytracingSettings.MaxBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					isChanged |= ImGui::SliderInt("Samples per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+					{
+						auto isEnabled = IsShaderExecutionReorderingEnabled();
+						if (const ImGuiEx::ScopedEnablement scopedEnablement(m_isShaderExecutionReorderingSupported);
+							ImGui::Checkbox("NVIDIA Shader Execution Reordering", &isEnabled)) {
+							raytracingSettings.IsShaderExecutionReorderingEnabled = isEnabled;
+						}
+					}
 
 					if (ImGui::TreeNodeEx("NVIDIA RTX Dynamic Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& RTXDISettings = raytracingSettings.RTXDI;

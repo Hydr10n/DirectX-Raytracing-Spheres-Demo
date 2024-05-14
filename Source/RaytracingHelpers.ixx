@@ -17,29 +17,37 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX::RaytracingHelpers {
-	struct AccelerationStructureBuffers {
-		ComPtr<ID3D12Resource> Scratch, Result, InstanceDescs;
+	struct BottomLevelAccelerationStructureBuffers {
+		shared_ptr<DefaultBuffer<uint8_t>> Scratch, Result;
 
-		AccelerationStructureBuffers() = default;
+		BottomLevelAccelerationStructureBuffers() = default;
 
-		AccelerationStructureBuffers(ID3D12Device* pDevice, size_t scratchSize, size_t resultSize, size_t instanceDescCount) noexcept(false) {
-			const auto CreateBuffer = [&](ComPtr<ID3D12Resource>& buffer, size_t size, D3D12_RESOURCE_STATES initialState, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE type = D3D12_HEAP_TYPE_DEFAULT) {
-				const CD3DX12_HEAP_PROPERTIES heapProperties(type);
-				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, flags);
-				ThrowIfFailed(pDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&buffer)));
-			};
-			CreateBuffer(Scratch, scratchSize, D3D12_RESOURCE_STATE_COMMON);
-			CreateBuffer(Result, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-			if (instanceDescCount) CreateBuffer(InstanceDescs, sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * instanceDescCount, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD);
+		BottomLevelAccelerationStructureBuffers(ID3D12Device* pDevice, size_t scratchSize, size_t resultSize) noexcept(false) {
+			Scratch = make_shared<DefaultBuffer<uint8_t>>(pDevice, scratchSize);
+			Result = make_shared<DefaultBuffer<uint8_t>>(pDevice, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+		}
+	};
+
+	struct TopLevelAccelerationStructureBuffers : BottomLevelAccelerationStructureBuffers {
+		shared_ptr<UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC>> InstanceDescs;
+
+		TopLevelAccelerationStructureBuffers() = default;
+
+		TopLevelAccelerationStructureBuffers(ID3D12Device* pDevice, size_t scratchSize, size_t resultSize, size_t instanceDescCount) :
+			BottomLevelAccelerationStructureBuffers(pDevice, scratchSize, resultSize) {
+			if (instanceDescCount) InstanceDescs = make_shared<UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC>>(pDevice, instanceDescCount);
 		}
 	};
 
 	template <bool IsTop>
 	class AccelerationStructure {
 	public:
+		AccelerationStructure(const AccelerationStructure&) = delete;
+		AccelerationStructure& operator=(const AccelerationStructure&) = delete;
+
 		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_device(pDevice), m_flags(flags) {}
 
-		ID3D12Resource* GetBuffer() const noexcept { return m_buffers.Result.Get(); }
+		ID3D12Resource* GetBuffer() const noexcept { return m_buffers.Result->GetNative(); }
 
 		UINT GetDescCount() const noexcept { return m_descCount; }
 
@@ -59,33 +67,35 @@ export namespace DirectX::RaytracingHelpers {
 
 			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result) {
 				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-				desc.SourceAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
+				desc.SourceAccelerationStructureData = m_buffers.Result->GetNative()->GetGPUVirtualAddress();
 			}
 			else {
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
 				m_device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
 
-				m_buffers = AccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, IsTop ? desc.Inputs.NumDescs : 0);
+				if constexpr (IsTop) {
+					m_buffers = TopLevelAccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, desc.Inputs.NumDescs);
+				}
+				else {
+					m_buffers = BottomLevelAccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes);
+				}
 
 				desc.SourceAccelerationStructureData = NULL;
 			}
 
 			if constexpr (IsTop) {
 				if (m_buffers.InstanceDescs) {
-					D3D12_RAYTRACING_INSTANCE_DESC* pInstanceDescs;
-					ThrowIfFailed(m_buffers.InstanceDescs->Map(0, nullptr, reinterpret_cast<void**>(&pInstanceDescs)));
-					ranges::copy(descs, pInstanceDescs);
-					m_buffers.InstanceDescs->Unmap(0, nullptr);
+					m_buffers.InstanceDescs->Upload(descs);
 
-					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetGPUVirtualAddress();
+					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetNative()->GetGPUVirtualAddress();
 				}
 			}
 
-			desc.DestAccelerationStructureData = m_buffers.Result->GetGPUVirtualAddress();
-			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetGPUVirtualAddress();
+			desc.DestAccelerationStructureData = m_buffers.Result->GetNative()->GetGPUVirtualAddress();
+			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetNative()->GetGPUVirtualAddress();
 			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
 
-			const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_buffers.Result.Get());
+			const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_buffers.Result->GetNative());
 			pCommandList->ResourceBarrier(1, &barrier);
 		}
 
@@ -96,7 +106,7 @@ export namespace DirectX::RaytracingHelpers {
 
 		UINT m_descCount{};
 
-		AccelerationStructureBuffers m_buffers;
+		conditional_t<IsTop, TopLevelAccelerationStructureBuffers, BottomLevelAccelerationStructureBuffers> m_buffers;
 	};
 
 	using BottomLevelAccelerationStructure = AccelerationStructure<false>;
@@ -127,4 +137,77 @@ export namespace DirectX::RaytracingHelpers {
 			}
 		};
 	}
+
+	class ShaderBindingTable {
+	public:
+		struct Entry {
+			wstring Name;
+			vector<UINT64> Data{ 0 };
+		};
+
+		ShaderBindingTable(const ShaderBindingTable&) = delete;
+		ShaderBindingTable& operator=(const ShaderBindingTable&) = delete;
+
+		ShaderBindingTable(
+			ID3D12Device* pDevice, ID3D12StateObjectProperties* pStateObjectProperties,
+			span<Entry> rayGenerationEntries, span<Entry> missEntries, span<Entry> hitGroupEntries
+		) {
+			constexpr auto GetStride = [](span<Entry> entries) {
+				size_t maxCount = 0;
+				for (const auto& entry : entries) maxCount = max(maxCount, size(entry.Data));
+				return static_cast<UINT>(AlignUp(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT + sizeof(UINT64) * maxCount, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+			};
+
+			m_rayGenerationEntries.assign_range(rayGenerationEntries);
+			m_rayGenerationStride = GetStride(rayGenerationEntries);
+
+			m_missEntries.assign_range(missEntries);
+			m_missStride = GetStride(missEntries);
+
+			m_hitGroupEntries.assign_range(hitGroupEntries);
+			m_hitGroupStride = GetStride(hitGroupEntries);
+
+			m_buffer = make_unique<ConstantBuffer<uint8_t>>(pDevice, (GetRayGenerationSize() + GetMissSize() + GetHitGroupSize() + D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1) / D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+
+			auto pData = &m_buffer->At(0);
+			const auto Copy = [&](span<const Entry> entries, UINT stride) {
+				for (const auto& [Name, Data] : entries) {
+					const auto ID = pStateObjectProperties->GetShaderIdentifier(Name.c_str());
+					if (ID == nullptr) {
+						const auto message = L"Unknown shader identifier in Shader Binding Table: " + Name;
+						const auto size = WideCharToMultiByte(CP_ACP, 0, data(message), static_cast<int>(std::size(message)), nullptr, 0, nullptr, nullptr);
+						string str(size, 0);
+						WideCharToMultiByte(CP_ACP, 0, data(message), static_cast<int>(std::size(message)), data(str), size, nullptr, nullptr);
+						throw logic_error(str);
+					}
+
+					memcpy(pData, ID, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+					memcpy(pData + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT, data(Data), sizeof(UINT64) * size(Data));
+
+					pData += stride;
+				}
+			};
+			Copy(m_rayGenerationEntries, m_rayGenerationStride);
+			Copy(m_missEntries, m_missStride);
+			Copy(m_hitGroupEntries, m_hitGroupStride);
+		}
+
+		D3D12_GPU_VIRTUAL_ADDRESS GetRayGenerationAddress() const { return m_buffer->GetNative()->GetGPUVirtualAddress(); }
+		UINT GetRayGenerationStride() const { return m_rayGenerationStride; }
+		UINT GetRayGenerationSize() const { return m_rayGenerationStride * static_cast<UINT>(size(m_rayGenerationEntries)); }
+
+		D3D12_GPU_VIRTUAL_ADDRESS GetMissAddress() const { return GetRayGenerationAddress() + GetMissSize(); }
+		UINT GetMissStride() const { return m_missStride; }
+		UINT GetMissSize() const { return m_missStride * static_cast<UINT>(size(m_missEntries)); }
+
+		D3D12_GPU_VIRTUAL_ADDRESS GetHitGroupAddress() const { return GetMissAddress() + GetHitGroupSize(); }
+		UINT GetHitGroupStride() const { return m_hitGroupStride; }
+		UINT GetHitGroupSize() const { return m_hitGroupStride * static_cast<UINT>(size(m_hitGroupEntries)); }
+
+	private:
+		vector<Entry> m_rayGenerationEntries, m_missEntries, m_hitGroupEntries;
+		UINT m_rayGenerationStride{}, m_missStride{}, m_hitGroupStride{};
+
+		unique_ptr<ConstantBuffer<uint8_t>> m_buffer;
+	};
 }

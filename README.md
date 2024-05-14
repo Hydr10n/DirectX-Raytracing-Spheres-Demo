@@ -37,6 +37,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Russian Roulette
 	- Bounces
 	- Samples per Pixel
+	- NVIDIA Shader Execution Reordering
 	- NVIDIA RTX Dynamic Illumination
 		- Local Light Samples
 		- BRDF Samples
@@ -96,6 +97,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - Graphics:
 	- Basic: Any GPU capable of DirectX Raytracing Tier 1.1
 	- NVIDIA
+		- Shader Execution Reordering: GeForce RTX 40 Series
 		- DLSS
 			- Super Resolution: GeForce RTX 20 Series
 			- Frame Generation: GeForce RTX 40 Series

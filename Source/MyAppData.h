@@ -148,7 +148,7 @@ public:
 			struct Raytracing {
 				static constexpr UINT MaxBounces = 32, MaxSamplesPerPixel = 16;
 
-				bool IsRussianRouletteEnabled = false;
+				bool IsRussianRouletteEnabled = false, IsShaderExecutionReorderingEnabled = true;
 
 				UINT Bounces = 8, SamplesPerPixel = 1;
 
@@ -162,7 +162,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, IsEnabled, LocalLightSamples, BRDFSamples, SpatioTemporalSamples);
 				} RTXDI;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, Bounces, SamplesPerPixel, RTXDI);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, Bounces, SamplesPerPixel, RTXDI);
 			} Raytracing;
 
 			struct PostProcessing {
