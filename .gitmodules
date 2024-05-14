@@ -26,3 +26,6 @@
 [submodule "External/Intel/XeSS"]
 	path = External/Intel/XeSS
 	url = https://github.com/intel/xess
+[submodule "External/NVIDIA/NVAPI"]
+	path = External/NVIDIA/NVAPI
+	url = https://github.com/NVIDIA/nvapi
