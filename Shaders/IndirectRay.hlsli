@@ -8,18 +8,15 @@ struct IndirectRay {
 		float HitDistance;
 	};
 
-	static TraceResult Trace(HitInfo hitInfo, float3 worldRayDirection) {
+	static TraceResult Trace(HitInfo hitInfo, ScatterResult scatterResult) {
 		TraceResult traceResult;
 		traceResult.HitDistance = 1.#INFf;
 
 		float3 emissiveColor = 0, incidentColor = 0, throughput = 1;
 
-		ScatterResult scatterResult;
-		scatterResult.Direction = worldRayDirection;
-
 		for (uint bounce = 1; bounce <= g_graphicsSettings.Bounces; bounce++) {
 			const RayDesc rayDesc = { hitInfo.GetSafeWorldRayOrigin(scatterResult.Direction), 0, scatterResult.Direction, 1.#INFf };
-			if (!CastRay(rayDesc, hitInfo)) {
+			if (!CastRay(rayDesc, hitInfo, g_graphicsSettings.IsShaderExecutionReorderingEnabled)) {
 				incidentColor = GetEnvironmentLightColor(rayDesc.Direction);
 				break;
 			}

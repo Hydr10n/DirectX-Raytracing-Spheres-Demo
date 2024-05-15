@@ -5,7 +5,11 @@
 #include "ShadingHelpers.hlsli"
 
 template <uint Flags>
-void TraceRay(inout RayQuery<Flags> q, RayDesc rayDesc, uint flags, uint mask) {
+void TraceRay(inout RayQuery<Flags> q, RayDesc rayDesc, uint flags, uint mask
+#ifdef NV_SHADER_EXTN_SLOT
+	, bool enableShaderExecutionReordering
+#endif
+) {
 	q.TraceRayInline(g_scene, flags, mask, rayDesc);
 	while (q.Proceed()) {
 		if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE) {
@@ -15,17 +19,25 @@ void TraceRay(inout RayQuery<Flags> q, RayDesc rayDesc, uint flags, uint mask) {
 		}
 	}
 #ifdef NV_SHADER_EXTN_SLOT
-	if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT && g_graphicsSettings.IsShaderExecutionReorderingEnabled) {
+	if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT && enableShaderExecutionReordering) {
 		const BuiltInTriangleIntersectionAttributes attributes = { q.CommittedTriangleBarycentrics() };
-		const NvHitObject hitObject = NvMakeHitWithRecordIndex(q.CommittedInstanceContributionToHitGroupIndex() + q.CommittedGeometryIndex(), g_scene, q.CommittedInstanceIndex(), q.CommittedGeometryIndex(), q.CommittedPrimitiveIndex(), 0, rayDesc, attributes);
+		const NvHitObject hitObject = NvMakeHit(g_scene, q.CommittedInstanceIndex(), q.CommittedGeometryIndex(), q.CommittedPrimitiveIndex(), 0, 0, 0, rayDesc, attributes);
 		NvReorderThread(hitObject);
 	}
 #endif
 }
 
-bool CastRay(RayDesc rayDesc, out HitInfo hitInfo) {
+bool CastRay(RayDesc rayDesc, out HitInfo hitInfo
+#ifdef NV_SHADER_EXTN_SLOT
+	, bool enableShaderExecutionReordering
+#endif
+) {
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
-	TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u);
+	TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u
+#ifdef NV_SHADER_EXTN_SLOT
+		, enableShaderExecutionReordering
+#endif
+	);
 	const bool isHit = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (isHit) {
 		hitInfo.InstanceIndex = q.CommittedInstanceIndex();

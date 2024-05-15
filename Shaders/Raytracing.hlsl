@@ -47,7 +47,7 @@ void RayGeneration() {
 	const float2 UV = Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	const float3 V = -rayDesc.Direction;
-	const bool hit = CastRay(rayDesc, hitInfo);
+	const bool hit = CastRay(rayDesc, hitInfo, false);
 	if (hit) {
 		NoV = abs(dot(hitInfo.Normal, V));
 		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
@@ -83,7 +83,7 @@ void RayGeneration() {
 		const float bayer4x4 = STL::Sequence::Bayer4x4(pixelPosition, g_graphicsSettings.FrameIndex);
 		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++) {
 			const ScatterResult scatterResult = material.Scatter(hitInfo, rayDesc.Direction, bayer4x4 + STL::Rng::Hash::GetFloat() / 16);
-			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(hitInfo, scatterResult.Direction);
+			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(hitInfo, scatterResult);
 			if (!i) {
 				isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 				hitDistance = traceResult.HitDistance;
