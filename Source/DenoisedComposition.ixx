@@ -1,7 +1,5 @@
 module;
 
-#include <DirectXMath.h>
-
 #include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
@@ -43,9 +41,11 @@ export namespace PostProcessing {
 
 		explicit DenoisedComposition(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DenoisedComposition_dxil, size(g_DenoisedComposition_dxil) };
+
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
+
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 			m_pipelineState->SetName(L"DenoisedComposition");
 		}
 
@@ -62,8 +62,10 @@ export namespace PostProcessing {
 					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.OutColor, RenderTextures.OutColor->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
-			pCommandList->SetPipelineState(m_pipelineState.Get());
+
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
+			pCommandList->SetPipelineState(m_pipelineState.Get());
+
 			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.InCamera->GetNative()->GetGPUVirtualAddress());
 			pCommandList->SetComputeRootDescriptorTable(2, RenderTextures.InLinearDepth->GetSRVDescriptor().GPUHandle);
@@ -73,6 +75,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootDescriptorTable(6, RenderTextures.InDenoisedDiffuse->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(7, RenderTextures.InDenoisedSpecular->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(8, RenderTextures.OutColor->GetUAVDescriptor().GPUHandle);
+
 			pCommandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}
 

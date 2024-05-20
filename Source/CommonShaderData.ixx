@@ -5,7 +5,6 @@ module;
 export module CommonShaderData;
 
 import Material;
-import NRD;
 import Vertex;
 
 using namespace DirectX;
@@ -39,11 +38,5 @@ export {
 		VertexDesc VertexDesc;
 		Material Material;
 		ObjectResourceDescriptorIndices ResourceDescriptorIndices;
-	};
-
-	struct NRDSettings {
-		NRDDenoiser Denoiser;
-		XMUINT3 _;
-		XMFLOAT4 HitDistanceParameters;
 	};
 }

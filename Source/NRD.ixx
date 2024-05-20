@@ -4,6 +4,8 @@ module;
 
 #include <d3d12.h>
 
+#include <DirectXMath.h>
+
 #include "NRD.h"
 #include "NRI.h"
 #include "NRIDescs.h"
@@ -15,12 +17,19 @@ struct AGSContext;
 
 export module NRD;
 
+using namespace DirectX;
 using namespace nrd;
 using namespace nri;
 using namespace std;
 
 export {
 	enum class NRDDenoiser { None, ReBLUR, ReLAX };
+
+	struct NRDSettings {
+		NRDDenoiser Denoiser;
+		XMUINT3 _;
+		XMFLOAT4 HitDistanceParameters;
+	};
 
 	struct NRD {
 		NRD(const NRD&) = delete;

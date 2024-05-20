@@ -43,20 +43,14 @@ void main(uint2 pixelPosition : SV_DispatchThreadID) {
 	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, albedo, Rf0);
 
 	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_constants.RenderSize, g_camera.Jitter));
+	const float3 V = -normalize(NDC.x * g_camera.RightDirection + NDC.y * g_camera.UpDirection + g_camera.ForwardDirection);
 	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
-	float3 diffuse = 0, specular = 0;
-	const float3
-		V = -normalize(NDC.x * g_camera.RightDirection + NDC.y * g_camera.UpDirection + g_camera.ForwardDirection),
-		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, abs(dot(normalRoughness.xyz, V)), normalRoughness.w);
-	if (g_constants.NRDDenoiser == NRDDenoiser::ReBLUR) {
-		diffuse = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedDiffuse[pixelPosition]).rgb;
-		specular = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(g_denoisedSpecular[pixelPosition]).rgb;
-	}
-	else if (g_constants.NRDDenoiser == NRDDenoiser::ReLAX) {
-		diffuse = RELAX_BackEnd_UnpackRadiance(g_denoisedDiffuse[pixelPosition]).rgb;
-		specular = RELAX_BackEnd_UnpackRadiance(g_denoisedSpecular[pixelPosition]).rgb;
-	}
-	diffuse *= lerp((1 - Fenvironment) * albedo, 1, 0.01f);
-	specular *= lerp(Fenvironment, 1, 0.01f);
-	g_color[pixelPosition] = diffuse + specular + g_emissiveColor[pixelPosition];
+	float4 diffuseHitDistance = g_denoisedDiffuse[pixelPosition], specularHitDistance = g_denoisedSpecular[pixelPosition];
+	UnpackDenoisedSignals(
+		g_constants.NRDDenoiser,
+		abs(dot(normalRoughness.xyz, V)),
+		albedo, Rf0, normalRoughness.w,
+		diffuseHitDistance, specularHitDistance
+	);
+	g_color[pixelPosition] = diffuseHitDistance.rgb + specularHitDistance.rgb + g_emissiveColor[pixelPosition];
 }

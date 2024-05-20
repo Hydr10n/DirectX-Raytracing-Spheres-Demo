@@ -1,8 +1,14 @@
 #pragma once
 
+#define RTXDI_SCREEN_SPACE_GROUP_SIZE 8
+
+#define RTXDI_ENABLE_BOILING_FILTER
+#define RTXDI_BOILING_FILTER_GROUP_SIZE RTXDI_SCREEN_SPACE_GROUP_SIZE
+
 #define RTXDI_ENABLE_PRESAMPLING 0
+
+#include "rtxdi/ReSTIRDIParameters.h"
 #include "rtxdi/RtxdiMath.hlsli"
-#include "rtxdi/RtxdiParameters.h"
 
 #include "Common.hlsli"
 
@@ -10,22 +16,20 @@
 
 #include "TriangleLight.hlsli"
 
+#include "Denoiser.hlsli"
+
 SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
 
-struct RTXDISettings {
-	uint LocalLightSamples, BRDFSamples, SpatioTemporalSamples, InputBufferIndex, OutputBufferIndex, UniformRandomNumber;
-	uint2 _;
-	RTXDI_LightBufferParameters LightBufferParameters;
-	RTXDI_RuntimeParameters RuntimeParameters;
-	RTXDI_ReservoirBufferParameters ReservoirBufferParameters;
-};
-
 struct GraphicsSettings {
 	uint2 RenderSize;
 	uint FrameIndex, _;
-	RTXDISettings RTXDI;
+	struct {
+		RTXDI_LightBufferParameters LightBuffer;
+		RTXDI_RuntimeParameters Runtime;
+		ReSTIRDI_Parameters ReSTIRDI;
+	} RTXDI;
 	NRDSettings NRD;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
@@ -54,14 +58,67 @@ RWTexture2D<float3> g_color : register(u1);
 RWTexture2D<float4> g_noisyDiffuse : register(u2);
 RWTexture2D<float4> g_noisySpecular : register(u3);
 
-#include "RaytracingHelpers.hlsli"
-
 #define RTXDI_NEIGHBOR_OFFSETS_BUFFER g_neighborOffsets
 #define RTXDI_LIGHT_RESERVOIR_BUFFER g_DIReservoir
 
-typedef uint RAB_RandomSamplerState;
-RAB_RandomSamplerState RAB_InitRandomSampler(uint2 pixelPosition, uint frameIndex) { return 0; }
-float RAB_GetNextRandom(inout RAB_RandomSamplerState rng) { return STL::Rng::Hash::GetFloat(); }
+#define ROOT_SIGNATURE \
+	[RootSignature( \
+		"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED)," \
+		"StaticSampler(s0)," \
+		"SRV(t0)," \
+		"CBV(b0)," \
+		"CBV(b1)," \
+		"SRV(t1)," \
+		"SRV(t2)," \
+		"SRV(t3)," \
+		"SRV(t4)," \
+		"DescriptorTable(SRV(t5))," \
+		"DescriptorTable(SRV(t6))," \
+		"DescriptorTable(SRV(t7))," \
+		"DescriptorTable(SRV(t8))," \
+		"DescriptorTable(SRV(t9))," \
+		"DescriptorTable(SRV(t10))," \
+		"DescriptorTable(SRV(t11))," \
+		"DescriptorTable(SRV(t12))," \
+		"DescriptorTable(SRV(t13))," \
+		"DescriptorTable(SRV(t14))," \
+		"UAV(u0)," \
+		"DescriptorTable(UAV(u1))," \
+		"DescriptorTable(UAV(u2))," \
+		"DescriptorTable(UAV(u3))" \
+	)]
+
+#include "RaytracingHelpers.hlsli"
+
+struct RAB_RandomSamplerState { uint Seed, Index; };
+
+RAB_RandomSamplerState RAB_InitRandomSampler(uint2 pixelPos, uint frameIndex) {
+	RAB_RandomSamplerState state;
+	state.Seed = RTXDI_JenkinsHash(RTXDI_ZCurveToLinearIndex(pixelPos)) + frameIndex;
+	state.Index = 1;
+	return state;
+}
+
+float RAB_GetNextRandom(inout RAB_RandomSamplerState rng) {
+#define ROT32(x, y) ((x << y) | (x >> (32 - y)))
+	// https://en.wikipedia.org/wiki/MurmurHash
+	const uint c1 = 0xcc9e2d51, c2 = 0x1b873593, r1 = 15, r2 = 13, m = 5, n = 0xe6546b64;
+	uint hash = rng.Seed, k = rng.Index++;
+	k *= c1;
+	k = ROT32(k, r1);
+	k *= c2;
+	hash ^= k;
+	hash = ROT32(hash, r2) * m + n;
+	hash ^= 4;
+	hash ^= hash >> 16;
+	hash *= 0x85ebca6b;
+	hash ^= hash >> 13;
+	hash *= 0xc2b2ae35;
+	hash ^= hash >> 16;
+#undef ROT32
+	const uint one = asuint(1.0f), mask = (1 << 23) - 1;
+	return asfloat((mask & hash) | one) - 1;
+}
 
 struct RAB_Surface {
 	float3 Position, Normal, GeometricNormal;
@@ -122,7 +179,7 @@ float2 RAB_GetEnvironmentMapRandXYFromDir(float3 worldDir) { return 0; }
 float RAB_EvaluateEnvironmentMapSamplingPdf(float3 L) { return 0; }
 
 float RAB_EvaluateLocalLightSourcePdf(uint lightIndex) {
-	return 1.0f / g_graphicsSettings.RTXDI.LightBufferParameters.localLightBufferRegion.numLights;
+	return 1.0f / g_graphicsSettings.RTXDI.LightBuffer.localLightBufferRegion.numLights;
 }
 
 bool RAB_GetSurfaceBrdfSample(RAB_Surface surface, inout RAB_RandomSamplerState rng, out float3 dir) {
@@ -164,7 +221,7 @@ RAB_LightSample RAB_SamplePolymorphicLight(RAB_LightInfo lightInfo, RAB_Surface 
 bool RAB_GetConservativeVisibility(RAB_Surface surface, RAB_LightSample lightSample) {
 	const float3 L = lightSample.Position - surface.Position;
 	const float Llength = length(L);
-	const RayDesc rayDesc = { surface.Position, 1e-3f, L / Llength, Llength - 1e-3f };
+	const RayDesc rayDesc = { surface.Position, 1e-3f, L / Llength, max(1e-3f, Llength - 1e-3f) };
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
 	TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u);
 	return q.CommittedStatus() == COMMITTED_NOTHING;

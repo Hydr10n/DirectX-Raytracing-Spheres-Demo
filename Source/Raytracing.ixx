@@ -1,7 +1,5 @@
 module;
 
-#include <DirectXMath.h>
-
 #include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
@@ -14,8 +12,8 @@ import Camera;
 import CommonShaderData;
 import ErrorHelpers;
 import GPUBuffer;
+import NRD;
 import RaytracingHelpers;
-import Scene;
 import Texture;
 
 using namespace DirectX;
@@ -29,9 +27,8 @@ using namespace std;
 export struct Raytracing {
 	struct GraphicsSettings {
 		XMUINT2 RenderSize;
-		UINT FrameIndex, Bounces, SamplesPerPixel;
+		UINT FrameIndex, Bounces, SamplesPerPixel, _;
 		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
-		UINT _;
 		NRDSettings NRD;
 	};
 
@@ -57,7 +54,7 @@ export struct Raytracing {
 			* OutNoisySpecular;
 	} RenderTextures{};
 
-	explicit Raytracing(ID3D12Device5* pDevice) noexcept(false) : m_device(pDevice), m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
+	explicit Raytracing(ID3D12Device5* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Raytracing_dxil, size(g_Raytracing_dxil) };
 
 		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
@@ -71,15 +68,6 @@ export struct Raytracing {
 		subobject->DefineExport(ShaderEntryNames::RayGeneration);
 		ThrowIfFailed(pDevice->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(&m_pipelineState)));
 		m_pipelineState->SetName(L"Raytracing");
-	}
-
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept {
-		m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings;
-		m_renderSize = graphicsSettings.RenderSize;
-	}
-
-	void SetScene(const Scene* pScene) {
-		m_scene = pScene;
 
 		vector<ShaderBindingTable::Entry>
 			rayGenerationEntries{ { ShaderEntryNames::RayGeneration } },
@@ -87,10 +75,15 @@ export struct Raytracing {
 			hitGroupEntries;
 		ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 		ThrowIfFailed(m_pipelineState->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
-		m_shaderBindingTable = make_unique<ShaderBindingTable>(m_device, stateObjectProperties.Get(), rayGenerationEntries, missEntries, hitGroupEntries);
+		m_shaderBindingTable = make_unique<ShaderBindingTable>(pDevice, stateObjectProperties.Get(), rayGenerationEntries, missEntries, hitGroupEntries);
 	}
 
-	void Render(ID3D12GraphicsCommandList4* pCommandList) {
+	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept {
+		m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings;
+		m_renderSize = graphicsSettings.RenderSize;
+	}
+
+	void Render(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene) {
 		const ScopedBarrier scopedBarrier(
 			pCommandList,
 			{
@@ -108,25 +101,27 @@ export struct Raytracing {
 			}
 		);
 
-		pCommandList->SetPipelineState1(m_pipelineState.Get());
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		pCommandList->SetComputeRootShaderResourceView(0, m_scene->GetTopLevelAccelerationStructure().GetBuffer()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootConstantBufferView(1, m_GPUBuffers.GraphicsSettings.GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootConstantBufferView(2, GPUBuffers.InSceneData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootConstantBufferView(3, GPUBuffers.InCamera->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(4, GPUBuffers.InInstanceData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(5, GPUBuffers.InObjectData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootDescriptorTable(6, RenderTextures.OutColor->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(7, RenderTextures.OutLinearDepth->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(8, RenderTextures.OutNormalizedDepth->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(9, RenderTextures.OutMotionVectors->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(10, RenderTextures.OutBaseColorMetalness->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(11, RenderTextures.OutEmissiveColor->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(12, RenderTextures.OutNormals->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(13, RenderTextures.OutRoughness->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(14, RenderTextures.OutNormalRoughness->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(15, RenderTextures.OutNoisyDiffuse->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(16, RenderTextures.OutNoisySpecular->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetPipelineState1(m_pipelineState.Get());
+
+		UINT i = 0;
+		pCommandList->SetComputeRootShaderResourceView(i++, scene.GetBuffer()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.InSceneData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.InCamera->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InInstanceData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InObjectData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutColor->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutLinearDepth->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutNormalizedDepth->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutMotionVectors->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutBaseColorMetalness->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutEmissiveColor->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutNormals->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutRoughness->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutNormalRoughness->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutNoisyDiffuse->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, RenderTextures.OutNoisySpecular->GetUAVDescriptor().GPUHandle);
 
 		const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
 			.RayGenerationShaderRecord{
@@ -153,8 +148,6 @@ export struct Raytracing {
 private:
 	struct ShaderEntryNames { MAKE_NAME(RayGeneration); };
 
-	ID3D12Device5* m_device;
-
 	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
@@ -163,6 +156,4 @@ private:
 	unique_ptr<ShaderBindingTable> m_shaderBindingTable;
 
 	XMUINT2 m_renderSize{};
-
-	const Scene* m_scene{};
 };

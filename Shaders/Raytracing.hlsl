@@ -1,6 +1,6 @@
 #include "IndirectRay.hlsli"
 
-RaytracingShaderConfig ShaderConfig = { 0, sizeof(BuiltInTriangleIntersectionAttributes) };
+RaytracingShaderConfig ShaderConfig = { 0, 0 };
 RaytracingPipelineConfig PipelineConfig = { 1 };
 
 GlobalRootSignature GlobalRootSignature = {
@@ -93,21 +93,16 @@ void RayGeneration() {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
-		const NRDSettings NRDSettings = g_graphicsSettings.NRD;
-		if (NRDSettings.Denoiser != NRDDenoiser::None) {
-			const float3
-				Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness),
-				diffuse = (isDiffuse ? radiance : 0) / lerp((1 - Fenvironment) * albedo, 1, 0.01f),
-				specular = (isDiffuse ? 0 : radiance) / lerp(Fenvironment, 1, 0.01f);
-			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
-				hitDistance = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, NRDSettings.HitDistanceParameters, isDiffuse ? 1 : material.Roughness);
-				noisyDiffuse = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, hitDistance, true);
-				noisySpecular = REBLUR_FrontEnd_PackRadianceAndNormHitDist(specular, hitDistance, true);
-			}
-			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) {
-				noisyDiffuse = RELAX_FrontEnd_PackRadianceAndHitDist(diffuse, hitDistance, true);
-				noisySpecular = RELAX_FrontEnd_PackRadianceAndHitDist(specular, hitDistance, true);
-			}
+		if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None) {
+			const float4 radianceHitDistance = float4(radiance, hitDistance);
+			PackNoisySignals(
+				g_graphicsSettings.NRD,
+				NoV, linearDepth,
+				albedo, Rf0, material.Roughness,
+				0, 0, 1.#INFf,
+				isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
+				noisyDiffuse, noisySpecular
+			);
 		}
 
 		radiance += material.EmissiveColor;

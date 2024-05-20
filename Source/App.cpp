@@ -20,7 +20,7 @@ module;
 
 #include "nvapi.h"
 
-#include "rtxdi/ReSTIRDI.h"
+#include "rtxdi/ImportanceSamplingContext.h"
 
 #include "sl_helpers.h"
 #include "sl_dlss_g.h"
@@ -41,7 +41,6 @@ import Camera;
 import CommonShaderData;
 import DescriptorHeap;
 import DeviceResources;
-import DirectIllumination;
 import ErrorHelpers;
 import GPUBuffer;
 import GPUMemoryAllocator;
@@ -54,6 +53,7 @@ import PostProcessing.Bloom;
 import PostProcessing.ChromaticAberration;
 import PostProcessing.DenoisedComposition;
 import Raytracing;
+import RTXDI;
 import RTXDIResources;
 import SharedData;
 import StepTimer;
@@ -220,7 +220,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_streamline.reset();
 
-		m_directIllumination.reset();
+		m_RTXDI.reset();
 		m_lightPreparation.reset();
 		m_RTXDIResources = {};
 
@@ -297,7 +297,7 @@ private:
 			InDenoisedDiffuse, OutDenoisedDiffuse,
 			InDenoisedSpecular, OutDenoisedSpecular,
 			InValidation, OutValidation,
-			InNeighborOffsets,
+			InRTXDINeighborOffsets,
 			InFont,
 			Reserve,
 			Count = 1 << 16
@@ -316,10 +316,9 @@ private:
 
 	unique_ptr<Raytracing> m_raytracing;
 
-	atomic_bool m_RTXDIResourcesLock;
 	RTXDIResources m_RTXDIResources;
 	unique_ptr<LightPreparation> m_lightPreparation;
-	unique_ptr<DirectIllumination> m_directIllumination;
+	unique_ptr<RTXDI> m_RTXDI;
 
 	Constants m_slConstants = [] {
 		Constants constants;
@@ -538,11 +537,6 @@ private:
 			if (IsSceneReady()) {
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
-				if (IsRTXDIEnabled()) {
-					m_RTXDIResources.ReSTIRDIContext->setFrameIndex(m_stepTimer.GetFrameCount() - 1);
-					PrepareLights(commandList);
-				}
-
 				RenderScene();
 
 				PostProcessGraphics();
@@ -587,10 +581,7 @@ private:
 
 			ResetCamera();
 
-			m_raytracing->SetScene(m_scene.get());
-
 			PrepareLightResources();
-			m_directIllumination->SetScene(m_scene.get());
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -614,7 +605,7 @@ private:
 		m_raytracing = make_unique<Raytracing>(device);
 
 		m_lightPreparation = make_unique<LightPreparation>(device);
-		m_directIllumination = make_unique<DirectIllumination>(device);
+		m_RTXDI = make_unique<RTXDI>(device);
 
 		{
 			ignore = slSetD3DDevice(device);
@@ -681,12 +672,11 @@ private:
 	}
 
 	void PrepareLightResources() {
+		const auto device = m_deviceResources->GetDevice();
+
 		m_lightPreparation->SetScene(m_scene.get());
 		if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
-			const auto device = m_deviceResources->GetDevice();
-
 			m_RTXDIResources.CreateLightBuffers(device, emissiveTriangleCount, m_scene->GetObjectCount());
-			if (!m_RTXDIResourcesLock) m_RTXDIResources.CreateDIReservoir(device);
 
 			{
 				ResourceUploadBatch resourceUploadBatch(device);
@@ -898,8 +888,6 @@ private:
 
 		const auto frameIndex = m_stepTimer.GetFrameCount() - 1;
 
-		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
-
 		const NRDSettings NRDSettings{
 			.Denoiser = m_NRD->IsAvailable() ? g_graphicsSettings.PostProcessing.NRD.Denoiser : NRDDenoiser::None,
 			.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
@@ -915,7 +903,10 @@ private:
 			noisyDiffuse = m_renderTextures.at(RenderTextureNames::NoisyDiffuse).get(),
 			noisySpecular = m_renderTextures.at(RenderTextureNames::NoisySpecular).get();
 
+		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
+
 		{
+			const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 			m_raytracing->SetConstants({
 				.RenderSize = m_renderSize,
 				.FrameIndex = frameIndex,
@@ -947,32 +938,33 @@ private:
 				.OutNoisySpecular = noisySpecular
 			};
 
-			m_raytracing->Render(commandList);
+			m_raytracing->Render(commandList, scene);
 		}
 
 		if (IsRTXDIEnabled()) {
-			const auto& RTXDISettings = raytracingSettings.RTXDI;
-			const auto& reSTIRDIContext = *m_RTXDIResources.ReSTIRDIContext;
-			m_directIllumination->SetConstants({
+			PrepareLights(commandList);
+
+			auto& ReSTIRDIContext = m_RTXDIResources.Context->getReSTIRDIContext();
+			ReSTIRDIContext.setFrameIndex(frameIndex);
+			m_RTXDI->SetConstants({
 				.RenderSize = m_renderSize,
 				.FrameIndex = frameIndex,
 				.RTXDI{
-					.LocalLightSamples = RTXDISettings.LocalLightSamples,
-					.BRDFSamples = RTXDISettings.BRDFSamples,
-					.SpatioTemporalSamples = RTXDISettings.SpatioTemporalSamples,
-					.InputBufferIndex = !(reSTIRDIContext.getFrameIndex() & 1),
-					.OutputBufferIndex = reSTIRDIContext.getFrameIndex() & 1,
-					.UniformRandomNumber = reSTIRDIContext.getTemporalResamplingParameters().uniformRandomNumber,
-					.LightBufferParameters = m_lightPreparation->GetLightBufferParameters(),
-					.RuntimeParameters{
-						.neighborOffsetMask = reSTIRDIContext.getStaticParameters().NeighborOffsetCount - 1
-					},
-					.ReservoirBufferParameters = reSTIRDIContext.getReservoirBufferParameters()
+					.LightBuffer = m_lightPreparation->GetLightBufferParameters(),
+					.Runtime = ReSTIRDIContext.getRuntimeParams(),
+					.ReSTIRDI{
+						.reservoirBufferParams = ReSTIRDIContext.getReservoirBufferParameters(),
+						.bufferIndices = ReSTIRDIContext.getBufferIndices(),
+						.initialSamplingParams = ReSTIRDIContext.getInitialSamplingParameters(),
+						.temporalResamplingParams = ReSTIRDIContext.getTemporalResamplingParameters(),
+						.spatialResamplingParams = ReSTIRDIContext.getSpatialResamplingParameters(),
+						.shadingParams = ReSTIRDIContext.getShadingParameters()
+					}
 				},
 				.NRD = NRDSettings
 				});
 
-			m_directIllumination->GPUBuffers = {
+			m_RTXDI->GPUBuffers = {
 				.InCamera = m_GPUBuffers.Camera.get(),
 				.InInstanceData = m_GPUBuffers.InstanceData.get(),
 				.InObjectData = m_GPUBuffers.ObjectData.get(),
@@ -982,7 +974,7 @@ private:
 				.OutDIReservoir = m_RTXDIResources.DIReservoir.get()
 			};
 
-			m_directIllumination->RenderTextures = {
+			m_RTXDI->RenderTextures = {
 				.InPreviousLinearDepth = m_renderTextures.at(RenderTextureNames::PreviousLinearDepth).get(),
 				.InLinearDepth = linearDepth,
 				.InMotionVectors = motionVectors,
@@ -997,7 +989,7 @@ private:
 				.OutNoisySpecular = noisySpecular
 			};
 
-			m_directIllumination->Render(commandList);
+			m_RTXDI->Render(commandList, scene);
 		}
 	}
 
@@ -1006,7 +998,7 @@ private:
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 	bool IsReflexEnabled() const { return g_graphicsSettings.ReflexMode != ReflexMode::eOff && m_streamline->IsFeatureAvailable(kFeatureReflex); }
-	bool IsRTXDIEnabled() const { return g_graphicsSettings.Raytracing.RTXDI.IsEnabled && m_lightPreparation->GetEmissiveTriangleCount(); }
+	bool IsRTXDIEnabled() const { return g_graphicsSettings.Raytracing.IsRTXDIEnabled && m_lightPreparation->GetEmissiveTriangleCount(); }
 	bool IsShaderExecutionReorderingEnabled() const { return m_isShaderExecutionReorderingSupported && g_graphicsSettings.Raytracing.IsShaderExecutionReorderingEnabled; }
 	bool IsXeSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable(); }
 
@@ -1105,22 +1097,24 @@ private:
 		ResetTemporalAccumulation();
 
 		{
-			const struct ScopedAtomic {
-				atomic_bool& Value;
-				ScopedAtomic(atomic_bool& value) : Value(value) { Value = true; }
-				~ScopedAtomic() { Value = false; }
-			} lock = m_RTXDIResourcesLock;
+			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
+
+			auto& ReSTIRDIContext = m_RTXDIResources.Context->getReSTIRDIContext();
+			auto initialSamplingParameters = ReSTIRDIContext.getInitialSamplingParameters();
+			initialSamplingParameters.brdfCutoff = 0;
+			ReSTIRDIContext.setInitialSamplingParameters(initialSamplingParameters);
+			ReSTIRDIContext.setResamplingMode(ReSTIRDI_ResamplingMode::FusedSpatiotemporal);
 
 			const auto device = m_deviceResources->GetDevice();
 
 			ResourceUploadBatch resourceUploadBatch(device);
 			resourceUploadBatch.Begin();
 
-			m_RTXDIResources.ReSTIRDIContext = make_unique<ReSTIRDIContext>(ReSTIRDIStaticParameters{ .RenderWidth = m_renderSize.x, .RenderHeight = m_renderSize.y });
-			m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::InNeighborOffsets);
-			m_RTXDIResources.CreateDIReservoir(device);
+			m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::InRTXDINeighborOffsets);
 
 			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+
+			m_RTXDIResources.CreateDIReservoir(device);
 		}
 	}
 
@@ -1581,25 +1575,7 @@ private:
 						}
 					}
 
-					if (ImGui::TreeNodeEx("NVIDIA RTX Dynamic Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
-						auto& RTXDISettings = raytracingSettings.RTXDI;
-
-						{
-							const ImGuiEx::ScopedID scopedID("Enable NVIDIA RTX Dynamic Illumination");
-
-							isChanged |= ImGui::Checkbox("Enable", &RTXDISettings.IsEnabled);
-						}
-
-						if (RTXDISettings.IsEnabled) {
-							isChanged |= ImGui::SliderInt("Local Light Samples", reinterpret_cast<int*>(&RTXDISettings.LocalLightSamples), 1, RTXDISettings.MaxLocalLightSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-							isChanged |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&RTXDISettings.BRDFSamples), 0, RTXDISettings.MaxBRDFSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-							isChanged |= ImGui::SliderInt("Spatio-Temporal Samples", reinterpret_cast<int*>(&RTXDISettings.SpatioTemporalSamples), 0, RTXDISettings.MaxSpatioTemporalSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
-						}
-
-						ImGui::TreePop();
-					}
+					isChanged |= ImGui::Checkbox("NVIDIA RTX Dynamic Illumination", &raytracingSettings.IsRTXDIEnabled);
 
 					if (isChanged) ResetTemporalAccumulation();
 

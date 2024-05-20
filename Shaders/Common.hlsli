@@ -4,8 +4,6 @@
 
 #include "Vertex.hlsli"
 
-#include "Denoiser.hlsli"
-
 struct SceneResourceDescriptorIndices {
 	uint InEnvironmentLightTexture, InEnvironmentTexture;
 	uint2 _;
@@ -34,10 +32,4 @@ struct ObjectData {
 	VertexDesc VertexDesc;
 	Material Material;
 	ObjectResourceDescriptorIndices ResourceDescriptorIndices;
-};
-
-struct NRDSettings {
-	NRDDenoiser Denoiser;
-	uint3 _;
-	float4 HitDistanceParameters;
 };

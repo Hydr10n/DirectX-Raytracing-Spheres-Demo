@@ -24,9 +24,11 @@ export namespace PostProcessing {
 
 		explicit Merge(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Merge_dxil, size(g_Merge_dxil) };
+
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
+
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 			m_pipelineState->SetName(L"Merge");
 		}
 
@@ -39,12 +41,15 @@ export namespace PostProcessing {
 					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Output, Textures.Output->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
-			pCommandList->SetPipelineState(m_pipelineState.Get());
+
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
+			pCommandList->SetPipelineState(m_pipelineState.Get());
+
 			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootDescriptorTable(1, Textures.Input1->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(2, Textures.Input2->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(3, Textures.Output->GetUAVDescriptor().GPUHandle);
+
 			const auto size = GetTextureSize(*Textures.Output);
 			pCommandList->Dispatch((size.x + 15) / 16, (size.y + 15) / 16, 1);
 		}

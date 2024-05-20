@@ -4,6 +4,8 @@
 
 #include "Camera.hlsli"
 
+#include "Denoiser.hlsli"
+
 #define NV_SHADER_EXTN_SLOT u1024
 #include "nvHLSLExtns.h"
 
@@ -13,9 +15,8 @@ RaytracingAccelerationStructure g_scene : register(t0);
 
 struct GraphicsSettings {
 	uint2 RenderSize;
-	uint FrameIndex, Bounces, SamplesPerPixel;
+	uint FrameIndex, Bounces, SamplesPerPixel, _;
 	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
-	uint _;
 	NRDSettings NRD;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);

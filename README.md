@@ -39,9 +39,6 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Samples per Pixel
 	- NVIDIA Shader Execution Reordering
 	- NVIDIA RTX Dynamic Illumination
-		- Local Light Samples
-		- BRDF Samples
-		- Spatio-Temporal Samples
 - Post-Processing
 	- NVIDIA Real-Time Denoisers
 		- Denoiser: ReBLUR | ReLAX

@@ -32,9 +32,11 @@ export namespace PostProcessing {
 
 		explicit Bloom(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice), m_descriptorHeap(pDevice, DescriptorIndex::Reserve + (1 + BlurMipLevels) * 2), m_merge(pDevice) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Bloom_dxil, size(g_Bloom_dxil) };
+
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC computePipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&computePipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
+
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 			m_pipelineState->SetName(L"Bloom");
 		}
 
@@ -79,8 +81,8 @@ export namespace PostProcessing {
 			const auto descriptorHeap = m_descriptorHeap.Heap();
 			pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-			pCommandList->SetPipelineState(m_pipelineState.Get());
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
+			pCommandList->SetPipelineState(m_pipelineState.Get());
 
 			struct {
 				UINT InputMipLevel;
@@ -96,9 +98,11 @@ export namespace PostProcessing {
 						CD3DX12_RESOURCE_BARRIER::Transition(output, output.GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 					}
 				);
+
 				pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 				pCommandList->SetComputeRootDescriptorTable(1, input.GetSRVDescriptor().GPUHandle);
 				pCommandList->SetComputeRootDescriptorTable(2, output.GetUAVDescriptor(outputMipLevel).GPUHandle);
+
 				const auto size = GetTextureSize(output);
 				const auto scale = 1 << outputMipLevel;
 				pCommandList->Dispatch((size.x / scale + 15) / 16, (size.y / scale + 15) / 16, 1);
