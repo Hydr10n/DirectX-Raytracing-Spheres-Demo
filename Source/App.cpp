@@ -689,14 +689,14 @@ private:
 		}
 	}
 
-	void PrepareLights(ID3D12GraphicsCommandList* pCommandList) {
+	void PrepareLights() {
 		m_lightPreparation->GPUBuffers = {
 			.InInstanceData = m_GPUBuffers.InstanceData.get(),
 			.InObjectData = m_GPUBuffers.ObjectData.get(),
 			.OutLightInfo = m_RTXDIResources.LightInfo.get()
 		};
 
-		m_lightPreparation->Process(pCommandList);
+		m_lightPreparation->Process(m_deviceResources->GetCommandList());
 	}
 
 	void ProcessInput() {
@@ -941,8 +941,12 @@ private:
 			m_raytracing->Render(commandList, scene);
 		}
 
-		if (IsRTXDIEnabled()) {
-			PrepareLights(commandList);
+		if (const auto& lightBufferParameters = m_lightPreparation->GetLightBufferParameters();
+			g_graphicsSettings.Raytracing.IsRTXDIEnabled
+			&& (lightBufferParameters.localLightBufferRegion.numLights
+				|| lightBufferParameters.infiniteLightBufferRegion.numLights
+				|| lightBufferParameters.environmentLightParams.lightPresent)) {
+			PrepareLights();
 
 			auto& ReSTIRDIContext = m_RTXDIResources.Context->getReSTIRDIContext();
 			ReSTIRDIContext.setFrameIndex(frameIndex);
@@ -950,7 +954,7 @@ private:
 				.RenderSize = m_renderSize,
 				.FrameIndex = frameIndex,
 				.RTXDI{
-					.LightBuffer = m_lightPreparation->GetLightBufferParameters(),
+					.LightBuffer = lightBufferParameters,
 					.Runtime = ReSTIRDIContext.getRuntimeParams(),
 					.ReSTIRDI{
 						.reservoirBufferParams = ReSTIRDIContext.getReservoirBufferParameters(),
@@ -998,7 +1002,6 @@ private:
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 	bool IsReflexEnabled() const { return g_graphicsSettings.ReflexMode != ReflexMode::eOff && m_streamline->IsFeatureAvailable(kFeatureReflex); }
-	bool IsRTXDIEnabled() const { return g_graphicsSettings.Raytracing.IsRTXDIEnabled && m_lightPreparation->GetEmissiveTriangleCount(); }
 	bool IsShaderExecutionReorderingEnabled() const { return m_isShaderExecutionReorderingSupported && g_graphicsSettings.Raytracing.IsShaderExecutionReorderingEnabled; }
 	bool IsXeSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable(); }
 
@@ -1100,10 +1103,9 @@ private:
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
 
 			auto& ReSTIRDIContext = m_RTXDIResources.Context->getReSTIRDIContext();
-			auto initialSamplingParameters = ReSTIRDIContext.getInitialSamplingParameters();
-			initialSamplingParameters.brdfCutoff = 0;
-			ReSTIRDIContext.setInitialSamplingParameters(initialSamplingParameters);
-			ReSTIRDIContext.setResamplingMode(ReSTIRDI_ResamplingMode::FusedSpatiotemporal);
+			auto temporalResamplingParameters = m_RTXDIResources.Context->getReSTIRDIContext().getTemporalResamplingParameters();
+			temporalResamplingParameters.temporalBiasCorrection = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
+			ReSTIRDIContext.setTemporalResamplingParameters(temporalResamplingParameters);
 
 			const auto device = m_deviceResources->GetDevice();
 

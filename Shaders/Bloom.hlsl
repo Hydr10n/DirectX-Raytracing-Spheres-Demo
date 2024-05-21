@@ -7,7 +7,8 @@
 
 SamplerState g_linearSampler : register(s0);
 
-struct Constants {
+struct Constants
+{
 	uint InputMipLevel;
 	float UpsamplingFilterRadius;
 };
@@ -19,11 +20,18 @@ RWTexture2D<float3> g_output : register(u0);
 
 static float2 g_UV, g_size;
 
-float3 Sample(float x, float y) { return g_input.SampleLevel(g_linearSampler, g_UV + g_size * float2(x, y), g_constants.InputMipLevel); }
+float3 Sample(float x, float y)
+{
+	return g_input.SampleLevel(g_linearSampler, g_UV + g_size * float2(x, y), g_constants.InputMipLevel);
+}
 
-float KarisAverage(float3 rgb) { return 1 / (1 + STL::Color::Luminance(STL::Color::ToSrgb(rgb)) * 0.25f); }
+float KarisAverage(float3 rgb)
+{
+	return 1 / (1 + STL::Color::Luminance(STL::Color::ToSrgb(rgb)) * 0.25f);
+}
 
-float3 Downsample() {
+float3 Downsample()
+{
 	/*
 	 * Take 13 samples around current texel 'e':
 	 * a - b - c
@@ -39,7 +47,8 @@ float3 Downsample() {
 		j = Sample(-1, 1), k = Sample(1, 1),
 		l = Sample(-1, -1), m = Sample(1, -1);
 
-	if (g_constants.InputMipLevel) {
+	if (g_constants.InputMipLevel)
+	{
 		/*
 		 * Apply weighted distribution:
 		 * 0.5 + 0.125 + 0.125 + 0.125 + 0.125 = 1
@@ -56,29 +65,30 @@ float3 Downsample() {
 		 */
 		return e * 0.125f + (a + c + g + i) * 0.03125f + (b + d + f + h) * 0.0625f + (j + k + l + m) * 0.125f;
 	}
-	else {
-		/*
-		 * We need to apply Karis average to each block of 4 samples to prevent fireflies
-		 * (very bright subpixels, leads to pulsating artifacts)
-		 */
-		const float3 v0 = 0.125f / 4, v1 = 0.5f / 4;
-		float3 groups[] = {
-			(a + b + d + e) * v0,
-			(b + c + e + f) * v0,
-			(d + e + g + h) * v0,
-			(e + f + h + i) * v0,
-			(j + k + l + m) * v1
-		};
-		groups[0] *= KarisAverage(groups[0]);
-		groups[1] *= KarisAverage(groups[1]);
-		groups[2] *= KarisAverage(groups[2]);
-		groups[3] *= KarisAverage(groups[3]);
-		groups[4] *= KarisAverage(groups[4]);
-		return max(groups[0] + groups[1] + groups[2] + groups[3] + groups[4], 1e-4f);
-	}
+	
+	/*
+	 * We need to apply Karis average to each block of 4 samples to prevent fireflies
+	 * (very bright subpixels, leads to pulsating artifacts)
+	 */
+	const float3 v0 = 0.125f / 4, v1 = 0.5f / 4;
+	float3 groups[] =
+	{
+		(a + b + d + e) * v0,
+		(b + c + e + f) * v0,
+		(d + e + g + h) * v0,
+		(e + f + h + i) * v0,
+		(j + k + l + m) * v1
+	};
+	groups[0] *= KarisAverage(groups[0]);
+	groups[1] *= KarisAverage(groups[1]);
+	groups[2] *= KarisAverage(groups[2]);
+	groups[3] *= KarisAverage(groups[3]);
+	groups[4] *= KarisAverage(groups[4]);
+	return max(groups[0] + groups[1] + groups[2] + groups[3] + groups[4], 1e-4f);
 }
 
-float3 Upsample() {
+float3 Upsample()
+{
 	/*
 	 * Take 9 samples around current texel 'e':
 	 * a - b - c
@@ -106,19 +116,25 @@ float3 Upsample() {
 	"DescriptorTable(UAV(u0))"
 )]
 [numthreads(16, 16, 1)]
-void main(uint2 pixelPosition : SV_DispatchThreadID) {
+void main(uint2 pixelPosition : SV_DispatchThreadID)
+{
 	uint2 pixelDimensions;
 	g_output.GetDimensions(pixelDimensions.x, pixelDimensions.y);
-	if (any(pixelPosition >= pixelDimensions)) return;
+	if (any(pixelPosition >= pixelDimensions))
+	{
+		return;
+	}
 
 	g_UV = Math::CalculateUV(pixelPosition, pixelDimensions);
 
 	float3 ret;
-	if (g_constants.UpsamplingFilterRadius > 0) {
+	if (g_constants.UpsamplingFilterRadius > 0)
+	{
 		g_size = g_constants.UpsamplingFilterRadius;
 		ret = Upsample();
 	}
-	else {
+	else
+	{
 		g_size = 1.0f / pixelDimensions;
 		ret = Downsample();
 	}

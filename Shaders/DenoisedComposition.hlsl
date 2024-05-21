@@ -4,7 +4,8 @@
 
 #include "Math.hlsli"
 
-struct Constants {
+struct Constants
+{
 	uint2 RenderSize;
 	NRDDenoiser NRDDenoiser;
 };
@@ -33,10 +34,12 @@ RWTexture2D<float3> g_color : register(u0);
 	"DescriptorTable(UAV(u0))"
 )]
 [numthreads(16, 16, 1)]
-void main(uint2 pixelPosition : SV_DispatchThreadID) {
-	if (any(pixelPosition >= g_constants.RenderSize)) return;
-
-	if (g_linearDepth[pixelPosition] == 1.#INFf) return;
+void main(uint2 pixelPosition : SV_DispatchThreadID)
+{
+	if (any(pixelPosition >= g_constants.RenderSize) || g_linearDepth[pixelPosition] == 1.#INF)
+	{
+		return;
+	}
 
 	float3 albedo, Rf0;
 	const float4 baseColorMetalness = g_baseColorMetalness[pixelPosition];

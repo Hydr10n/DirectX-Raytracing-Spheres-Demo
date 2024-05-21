@@ -2,7 +2,8 @@
 
 SamplerState g_linearSampler : register(s0);
 
-struct Constants {
+struct Constants
+{
 	float2 FocusUV;
 	float3 Offsets;
 };
@@ -19,15 +20,19 @@ RWTexture2D<float3> g_output : register(u0);
 	"DescriptorTable(UAV(u0))"
 )]
 [numthreads(16, 16, 1)]
-void main(uint2 pixelPosition : SV_DispatchThreadID) {
+void main(uint2 pixelPosition : SV_DispatchThreadID)
+{
 	float2 pixelDimensions;
 	g_output.GetDimensions(pixelDimensions.x, pixelDimensions.y);
-	if (any(pixelPosition >= pixelDimensions)) return;
+	if (any(pixelPosition >= pixelDimensions))
+	{
+		return;
+	}
 
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions), direction = UV - g_constants.FocusUV;
 	g_output[pixelPosition] = float3(
 		g_input.SampleLevel(g_linearSampler, UV + direction * g_constants.Offsets.r, 0).r,
 		g_input.SampleLevel(g_linearSampler, UV + direction * g_constants.Offsets.g, 0).g,
 		g_input.SampleLevel(g_linearSampler, UV + direction * g_constants.Offsets.b, 0).b
-		);
+	);
 }

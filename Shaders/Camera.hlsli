@@ -2,7 +2,8 @@
 
 #include "STL.hlsli"
 
-struct Camera {
+struct Camera
+{
 	bool IsNormalizedDepthReversed;
 	float3 Position, RightDirection;
 	float _;
@@ -13,7 +14,8 @@ struct Camera {
 	float2 Jitter;
 	float4x4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousProjectionToView, PreviousViewToWorld, WorldToProjection;
 
-	RayDesc GeneratePinholeRay(float2 NDC) {
+	RayDesc GeneratePinholeRay(float2 NDC)
+	{
 		RayDesc rayDesc;
 		rayDesc.Origin = Position;
 		rayDesc.Direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
@@ -23,7 +25,8 @@ struct Camera {
 		return rayDesc;
 	}
 
-	RayDesc GenerateThinLensRay(float2 NDC) {
+	RayDesc GenerateThinLensRay(float2 NDC)
+	{
 		const float2 value = STL::ImportanceSampling::Uniform::GetRay(STL::Rng::Hash::GetFloat2()).xy;
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
@@ -35,8 +38,10 @@ struct Camera {
 		return rayDesc;
 	}
 
-	float3 ReconstructWorldPosition(float2 NDC, float linearDepth, bool isPrevious) {
-		if (isPrevious) {
+	float3 ReconstructWorldPosition(float2 NDC, float linearDepth, bool isPrevious)
+	{
+		if (isPrevious)
+		{
 			float4 projection = STL::Geometry::ProjectiveTransform(PreviousProjectionToView, float4(NDC, 0.5f, 1));
 			projection.xy /= projection.z;
 			projection.zw = 1;

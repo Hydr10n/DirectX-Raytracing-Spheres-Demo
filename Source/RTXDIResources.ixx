@@ -40,12 +40,12 @@ export {
 			LightIndices = make_unique<DefaultBuffer<UINT>>(pDevice, objectCount);
 		}
 
-		void CreateNeighborOffsets(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeap& descriptorHeap, UINT neighborOffsetsDescriptorIndex) {
+		void CreateNeighborOffsets(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeap& descriptorHeap, UINT descriptorIndex) {
 			const auto neighborOffsetCount = Context->getNeighborOffsetCount();
 			vector<UINT16> offsets(neighborOffsetCount);
 			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
 			NeighborOffsets = make_unique<DefaultBuffer<UINT16>>(pDevice, resourceUploadBatch, offsets);
-			NeighborOffsets->CreateTypedSRV(descriptorHeap, neighborOffsetsDescriptorIndex, DXGI_FORMAT_R8G8_SNORM);
+			NeighborOffsets->CreateTypedSRV(descriptorHeap, descriptorIndex, DXGI_FORMAT_R8G8_SNORM);
 		}
 
 		void CreateDIReservoir(ID3D12Device* pDevice) {

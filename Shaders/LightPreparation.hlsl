@@ -6,9 +6,15 @@
 
 SamplerState g_anisotropicSampler : register(s0);
 
-cbuffer _ : register(b0) { uint g_taskCount; }
+cbuffer _ : register(b0)
+{
+	uint g_taskCount;
+}
 
-struct Task { uint InstanceIndex, GeometryIndex, TriangleCount, LightBufferOffset; };
+struct Task
+{
+	uint InstanceIndex, GeometryIndex, TriangleCount, LightBufferOffset;
+};
 StructuredBuffer<Task> g_tasks : register(t0);
 
 StructuredBuffer<InstanceData> g_instanceData : register(t1);
@@ -16,14 +22,25 @@ StructuredBuffer<ObjectData> g_objectData : register(t2);
 
 RWStructuredBuffer<RAB_LightInfo> g_lightInfo : register(u0);
 
-bool FindTask(uint dispatchThreadID, out Task task) {
-	for (int left = 0, right = int(g_taskCount) - 1; left <= right;) {
+bool FindTask(uint dispatchThreadID, out Task task)
+{
+	for (int left = 0, right = int(g_taskCount) - 1; left <= right;)
+	{
 		const int middle = left + (right - left) / 2;
 		task = g_tasks[middle];
 		const int triangleIndex = int(dispatchThreadID) - int(task.LightBufferOffset);
-		if (triangleIndex < 0) right = middle - 1;
-		else if (triangleIndex < task.TriangleCount) return true;
-		else left = middle + 1;
+		if (triangleIndex < 0)
+		{
+			right = middle - 1;
+		}
+		else if (triangleIndex < task.TriangleCount)
+		{
+			return true;
+		}
+		else
+		{
+			left = middle + 1;
+		}
 	}
 	return false;
 }
@@ -38,9 +55,13 @@ bool FindTask(uint dispatchThreadID, out Task task) {
 	"UAV(u0)"
 )]
 [numthreads(256, 1, 1)]
-void main(uint dispatchThreadID : SV_DispatchThreadID) {
+void main(uint dispatchThreadID : SV_DispatchThreadID)
+{
 	Task task;
-	if (!FindTask(dispatchThreadID, task)) return;
+	if (!FindTask(dispatchThreadID, task))
+	{
+		return;
+	}
 
 	const InstanceData instanceData = g_instanceData[task.InstanceIndex];
 	const uint objectIndex = instanceData.FirstGeometryIndex + task.GeometryIndex;
@@ -56,8 +77,12 @@ void main(uint dispatchThreadID : SV_DispatchThreadID) {
 	positions[2] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	float3 emissiveColor;
-	if (resourceDescriptorIndices.TextureMaps.EmissiveColor == ~0u) emissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
-	else {
+	if (resourceDescriptorIndices.TextureMaps.EmissiveColor == ~0u)
+	{
+		emissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
+	}
+	else
+	{
 		float2 textureCoordinates[3];
 		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
 
@@ -65,17 +90,20 @@ void main(uint dispatchThreadID : SV_DispatchThreadID) {
 		const float edgeLengths[] = { length(edges[0]), length(edges[1]), length(edges[2]) };
 
 		float2 shortEdge, longEdges[2];
-		if (edgeLengths[0] < edgeLengths[1] && edgeLengths[0] < edgeLengths[2]) {
+		if (edgeLengths[0] < edgeLengths[1] && edgeLengths[0] < edgeLengths[2])
+		{
 			shortEdge = edges[0];
 			longEdges[0] = edges[1];
 			longEdges[1] = edges[2];
 		}
-		else if (edgeLengths[1] < edgeLengths[2]) {
+		else if (edgeLengths[1] < edgeLengths[2])
+		{
 			shortEdge = edges[1];
 			longEdges[0] = edges[2];
 			longEdges[1] = edges[0];
 		}
-		else {
+		else
+		{
 			shortEdge = edges[2];
 			longEdges[0] = edges[0];
 			longEdges[1] = edges[1];

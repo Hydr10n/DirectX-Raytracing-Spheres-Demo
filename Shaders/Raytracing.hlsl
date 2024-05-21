@@ -3,7 +3,8 @@
 RaytracingShaderConfig ShaderConfig = { 0, 0 };
 RaytracingPipelineConfig PipelineConfig = { 1 };
 
-GlobalRootSignature GlobalRootSignature = {
+GlobalRootSignature GlobalRootSignature =
+{
 	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
 	"StaticSampler(s0),"
 	"SRV(t0),"
@@ -26,12 +27,13 @@ GlobalRootSignature GlobalRootSignature = {
 	"DescriptorTable(UAV(u1024))"
 };
 [shader("raygeneration")]
-void RayGeneration() {
+void RayGeneration()
+{
 	const uint2 pixelPosition = DispatchRaysIndex().xy, pixelDimensions = DispatchRaysDimensions().xy;
 
 	STL::Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
 
-	float linearDepth = 1.#INFf, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
+	float linearDepth = 1.#INF, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
 	float3 motionVector = 0;
 	float4 baseColorMetalness = 0;
 	float3 emissiveColor = 0;
@@ -48,7 +50,8 @@ void RayGeneration() {
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
 	const float3 V = -rayDesc.Direction;
 	const bool hit = CastRay(rayDesc, hitInfo, false);
-	if (hit) {
+	if (hit)
+	{
 		NoV = abs(dot(hitInfo.Normal, V));
 		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
@@ -77,14 +80,17 @@ void RayGeneration() {
 	float3 radiance = 0;
 	float4 noisyDiffuse = 0, noisySpecular = 0;
 
-	if (hit) {
+	if (hit)
+	{
 		bool isDiffuse = true;
-		float hitDistance = 1.#INFf;
+		float hitDistance = 1.#INF;
 		const float bayer4x4 = STL::Sequence::Bayer4x4(pixelPosition, g_graphicsSettings.FrameIndex);
-		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++) {
+		for (uint i = 0; i < g_graphicsSettings.SamplesPerPixel; i++)
+		{
 			const ScatterResult scatterResult = material.Scatter(hitInfo, rayDesc.Direction, bayer4x4 + STL::Rng::Hash::GetFloat() / 16);
 			const IndirectRay::TraceResult traceResult = IndirectRay::Trace(hitInfo, scatterResult);
-			if (!i) {
+			if (!i)
+			{
 				isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
 				hitDistance = traceResult.HitDistance;
 			}
@@ -93,13 +99,14 @@ void RayGeneration() {
 
 		radiance *= NRD_IsValidRadiance(radiance) ? 1.0f / g_graphicsSettings.SamplesPerPixel : 0;
 
-		if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None) {
+		if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
+		{
 			const float4 radianceHitDistance = float4(radiance, hitDistance);
 			PackNoisySignals(
 				g_graphicsSettings.NRD,
 				NoV, linearDepth,
 				albedo, Rf0, material.Roughness,
-				0, 0, 1.#INFf,
+				0, 0, 1.#INF,
 				isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
 				noisyDiffuse, noisySpecular
 			);
@@ -107,7 +114,10 @@ void RayGeneration() {
 
 		radiance += material.EmissiveColor;
 	}
-	else if (!GetEnvironmentColor(rayDesc.Direction, radiance)) radiance = GetEnvironmentLightColor(rayDesc.Direction);
+	else if (!GetEnvironmentColor(rayDesc.Direction, radiance))
+	{
+		radiance = GetEnvironmentLightColor(rayDesc.Direction);
+	}
 
 	g_color[pixelPosition] = radiance;
 	g_noisyDiffuse[pixelPosition] = noisyDiffuse;

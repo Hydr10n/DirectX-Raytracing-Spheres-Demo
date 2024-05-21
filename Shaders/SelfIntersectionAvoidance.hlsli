@@ -37,15 +37,16 @@ namespace SelfIntersectionAvoidance
 	// Compute the object and world space position and normal corresponding to a triangle hit point.
 	// Compute a safe spawn point offset along the normal in world space to prevent self intersection of secondary rays.
 	void GetSafeTriangleSpawnPoint(
-		out float3     objectPosition,
-		out float3     worldPosition,
-		out float3     objectNormal,
-		out float3     worldNormal,
-		out float      worldOffset,
-		const float3   v[3],
-		const float2   barycentrics,
+		out float3 objectPosition,
+		out float3 worldPosition,
+		out float3 objectNormal,
+		out float3 worldNormal,
+		out float worldOffset,
+		const float3 v[3],
+		const float2 barycentrics,
 		const float3x4 objectToWorld,
-		const float3x4 worldToObject)
+		const float3x4 worldToObject
+	)
 	{
 		precise float3 edge1 = v[1] - v[0], edge2 = v[2] - v[0];
 
@@ -82,7 +83,7 @@ namespace SelfIntersectionAvoidance
 		const float c1 = 1.788139769587360206060111522674560546875E-7f;
 
 		const float3 extent3 = abs(edge1) + abs(edge2) + abs(abs(edge1) - abs(edge2));
-		const float  extent = max(max(extent3.x, extent3.y), extent3.z);
+		const float extent = max(max(extent3.x, extent3.y), extent3.z);
 
 		// bound object space error due to reconstruction and intersection
 		float3 objErr = mad(c0, abs(v[0]), mul(c1, extent));

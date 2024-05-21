@@ -3,8 +3,12 @@
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
-void main(uint2 globalIndex : SV_DispatchThreadID) {
-	if (any(globalIndex >= g_graphicsSettings.RenderSize)) return;
+void main(uint2 globalIndex : SV_DispatchThreadID)
+{
+	if (any(globalIndex >= g_graphicsSettings.RenderSize))
+	{
+		return;
+	}
 
 	const ReSTIRDI_Parameters DIParameters = g_graphicsSettings.RTXDI.ReSTIRDI;
 
@@ -13,7 +17,8 @@ void main(uint2 globalIndex : SV_DispatchThreadID) {
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 
 	const RAB_Surface surface = RAB_GetGBufferSurface(pixelPosition, false);
-	if (RAB_IsSurfaceValid(surface)) {
+	if (RAB_IsSurfaceValid(surface))
+	{
 		RAB_RandomSamplerState
 			rng = RAB_InitRandomSampler(pixelPosition, 1),
 			tileRng = RAB_InitRandomSampler(pixelPosition / RTXDI_TILE_SIZE_IN_PIXELS, 1);
@@ -33,10 +38,12 @@ void main(uint2 globalIndex : SV_DispatchThreadID) {
 			sampleParameters,
 			g_graphicsSettings.RTXDI.LightBuffer,
 			DIParameters.initialSamplingParams.localLightSamplingMode,
-			lightSample);
+			lightSample
+		);
 		if (DIParameters.initialSamplingParams.enableInitialVisibility
 			&& RTXDI_IsValidDIReservoir(reservoir)
-			&& !RAB_GetConservativeVisibility(surface, lightSample)) {
+			&& !RAB_GetConservativeVisibility(surface, lightSample))
+		{
 			RTXDI_StoreVisibilityInDIReservoir(reservoir, 0, true);
 		}
 	}

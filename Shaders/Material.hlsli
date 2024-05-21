@@ -4,18 +4,26 @@
 
 #include "HitInfo.hlsli"
 
-enum class ScatterType { DiffuseReflection, SpecularReflection, SpecularTransmission };
+enum class ScatterType
+{
+	DiffuseReflection, SpecularReflection, SpecularTransmission
+};
 
-struct ScatterResult {
+struct ScatterResult
+{
 	ScatterType Type;
 	float3 Direction, Throughput;
 };
 
-enum class AlphaMode { Opaque, Blend, Mask };
+enum class AlphaMode
+{
+	Opaque, Blend, Mask
+};
 
 static const float MinRoughness = 1e-3f;
 
-struct Material {
+struct Material
+{
 	float4 BaseColor;
 	float3 EmissiveColor;
 	float Metallic, Roughness, Opacity, RefractiveIndex;
@@ -23,7 +31,8 @@ struct Material {
 	float AlphaThreshold;
 	float3 _;
 
-	static float EstimateDiffuseProbability(float3 albedo, float3 Rf0, float roughness, float NoV) {
+	static float EstimateDiffuseProbability(float3 albedo, float3 Rf0, float roughness, float NoV)
+	{
 		const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Ross(Rf0, NoV, roughness);
 		const float
 			diffuse = STL::Color::Luminance(albedo * (1 - Fenvironment)), specular = STL::Color::Luminance(Fenvironment),
@@ -31,7 +40,8 @@ struct Material {
 		return diffuseProbability < 5e-3f ? 0 : diffuseProbability;
 	}
 
-	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, float splitProbability = STL::Rng::Hash::GetFloat()) {
+	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, float splitProbability = STL::Rng::Hash::GetFloat())
+	{
 		ScatterResult scatterResult;
 
 		float3 albedo, Rf0;
@@ -44,17 +54,20 @@ struct Material {
 
 		float3 H, L;
 
-		if (Opacity < 1) {
+		if (Opacity < 1)
+		{
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 
 			const float VoH = abs(dot(V, H));
 			const float refractiveIndex = hitInfo.IsFrontFace ? STL::BRDF::IOR::Vacuum / RefractiveIndex : RefractiveIndex;
-			if (refractiveIndex * sqrt(1 - VoH * VoH) > 1 || splitProbability < STL::BRDF::FresnelTerm_Dielectric(refractiveIndex, VoH)) {
+			if (refractiveIndex * sqrt(1 - VoH * VoH) > 1 || splitProbability < STL::BRDF::FresnelTerm_Dielectric(refractiveIndex, VoH))
+			{
 				L = reflect(-V, H);
 
 				scatterResult.Type = ScatterType::SpecularReflection;
 			}
-			else {
+			else
+			{
 				L = refract(-V, H, refractiveIndex);
 
 				scatterResult.Type = ScatterType::SpecularTransmission;
@@ -68,7 +81,8 @@ struct Material {
 
 		const float NoV = abs(dot(N, V));
 		const float diffuseProbability = EstimateDiffuseProbability(albedo, Rf0, Roughness, NoV);
-		if (splitProbability < diffuseProbability) {
+		if (splitProbability < diffuseProbability)
+		{
 			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(randomValue));
 			H = normalize(V + L);
 			const float NoL = abs(dot(N, L)), VoH = abs(dot(V, H));
@@ -76,7 +90,8 @@ struct Material {
 			scatterResult.Type = ScatterType::DiffuseReflection;
 			scatterResult.Throughput = albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, NoL, NoV, VoH) / diffuseProbability;
 		}
-		else {
+		else
+		{
 			H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
 			L = reflect(-V, H);
 			const float NoL = abs(dot(N, L)), VoH = abs(dot(V, H));
@@ -87,7 +102,10 @@ struct Material {
 
 		scatterResult.Direction = L;
 
-		if (dot(hitInfo.GeometricNormal, L) <= 0) scatterResult.Throughput = 0;
+		if (dot(hitInfo.GeometricNormal, L) <= 0)
+		{
+			scatterResult.Throughput = 0;
+		}
 
 		return scatterResult;
 	}

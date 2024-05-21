@@ -7,8 +7,9 @@ module;
 #include "rtxdi/ReSTIRDIParameters.h"
 
 #include "Shaders/DIFinalShading.dxil.h"
-#include "Shaders/DIFusedSpatioTemporalResampling.dxil.h"
-#include "Shaders/DIInitialSamplesGeneration.dxil.h"
+#include "Shaders/DIInitialSampling.dxil.h"
+#include "Shaders/DISpatialResampling.dxil.h"
+#include "Shaders/DITemporalResampling.dxil.h"
 
 export module RTXDI;
 
@@ -66,21 +67,28 @@ export struct RTXDI {
 	} RenderTextures{};
 
 	explicit RTXDI(ID3D12Device* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
-		constexpr D3D12_SHADER_BYTECODE DIInitialSamplesGenerationShaderByteCode{ g_DIInitialSamplesGeneration_dxil, size(g_DIInitialSamplesGeneration_dxil) };
+		constexpr D3D12_SHADER_BYTECODE DIInitialSamplingShaderByteCode{ g_DIInitialSampling_dxil, size(g_DIInitialSampling_dxil) };
 
-		ThrowIfFailed(pDevice->CreateRootSignature(0, DIInitialSamplesGenerationShaderByteCode.pShaderBytecode, DIInitialSamplesGenerationShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
+		ThrowIfFailed(pDevice->CreateRootSignature(0, DIInitialSamplingShaderByteCode.pShaderBytecode, DIInitialSamplingShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 
 		{
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = DIInitialSamplesGenerationShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DIInitialSamplesGeneration)));
-			m_DIInitialSamplesGeneration->SetName(L"DIInitialSamplesGeneration");
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = DIInitialSamplingShaderByteCode };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DIInitialSampling)));
+			m_DIInitialSampling->SetName(L"DIInitialSampling");
 		}
 
 		{
-			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DIFusedSpatioTemporalResampling_dxil, size(g_DIFusedSpatioTemporalResampling_dxil) };
+			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DITemporalResampling_dxil, size(g_DITemporalResampling_dxil) };
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DIFusedSpatioTemporalResampling)));
-			m_DIFusedSpatioTemporalResampling->SetName(L"DIFusedSpatioTemporalResampling");
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DITemporalResampling)));
+			m_DITemporalResampling->SetName(L"DITemporalResampling");
+		}
+
+		{
+			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DISpatialResampling_dxil, size(g_DISpatialResampling_dxil) };
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DISpatialResampling)));
+			m_DISpatialResampling->SetName(L"DISpatialResampling");
 		}
 
 		{
@@ -146,10 +154,12 @@ export struct RTXDI {
 			pCommandList->ResourceBarrier(1, &barrier);
 
 			pCommandList->SetPipelineState(pipelineState.Get());
+
 			pCommandList->Dispatch((m_renderSize.x + 7) / 8, (m_renderSize.y + 7) / 8, 1);
 		};
-		Dispatch(m_DIInitialSamplesGeneration);
-		Dispatch(m_DIFusedSpatioTemporalResampling);
+		Dispatch(m_DIInitialSampling);
+		Dispatch(m_DITemporalResampling);
+		Dispatch(m_DISpatialResampling);
 		Dispatch(m_DIFinalShading);
 	}
 
@@ -157,7 +167,7 @@ private:
 	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
-	ComPtr<ID3D12PipelineState> m_DIInitialSamplesGeneration, m_DIFusedSpatioTemporalResampling, m_DIFinalShading;
+	ComPtr<ID3D12PipelineState> m_DIInitialSampling, m_DITemporalResampling, m_DISpatialResampling, m_DIFinalShading;
 
 	XMUINT2 m_renderSize{};
 };

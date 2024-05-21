@@ -6,7 +6,7 @@ module;
 
 #include "directxtk12/ResourceUploadBatch.h"
 
-#include "rtxdi/ReSTIRDIParameters.h"
+#include "rtxdi/RtxdiParameters.h"
 
 #include "Shaders/LightPreparation.dxil.h"
 

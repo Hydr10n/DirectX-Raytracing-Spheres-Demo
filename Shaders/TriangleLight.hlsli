@@ -2,28 +2,46 @@
 
 #include "Math.hlsli"
 
-struct RAB_LightInfo {
+struct RAB_LightInfo
+{
 	float3 Center;
 	uint Scalars, Directions[2];
 	uint2 Radiance;
 };
 
-RAB_LightInfo RAB_EmptyLightInfo() { return (RAB_LightInfo)0; }
+RAB_LightInfo RAB_EmptyLightInfo()
+{
+	return (RAB_LightInfo)0;
+}
 
-struct RAB_LightSample {
+struct RAB_LightSample
+{
 	float3 Position, Normal, Radiance;
 	float SolidAnglePDF;
 };
 
-RAB_LightSample RAB_EmptyLightSample() { return (RAB_LightSample)0; }
-bool RAB_IsAnalyticLightSample(RAB_LightSample lightSample) { return false; }
-float RAB_LightSampleSolidAnglePdf(RAB_LightSample lightSample) { return lightSample.SolidAnglePDF; }
+RAB_LightSample RAB_EmptyLightSample()
+{
+	return (RAB_LightSample)0;
+}
 
-struct TriangleLight {
+bool RAB_IsAnalyticLightSample(RAB_LightSample lightSample)
+{
+	return false;
+}
+
+float RAB_LightSampleSolidAnglePdf(RAB_LightSample lightSample)
+{
+	return lightSample.SolidAnglePDF;
+}
+
+struct TriangleLight
+{
 	float3 Base, Edges[2], Normal, Radiance;
 	float Area;
 
-	void Load(RAB_LightInfo lightInfo) {
+	void Load(RAB_LightInfo lightInfo)
+	{
 		const float2 scalars = STL::Packing::UintToRg16f(lightInfo.Scalars);
 		Edges[0] = STL::Packing::DecodeUnitVector(STL::Packing::UintToRg16f(lightInfo.Directions[0]), true) * scalars[0];
 		Edges[1] = STL::Packing::DecodeUnitVector(STL::Packing::UintToRg16f(lightInfo.Directions[1]), true) * scalars[1];
@@ -31,17 +49,20 @@ struct TriangleLight {
 		Radiance = float3(STL::Packing::UintToRg16f(lightInfo.Radiance.x), STL::Packing::UintToRg16f(lightInfo.Radiance.y).x);
 		const float3 normal = cross(Edges[0], Edges[1]);
 		const float normalLength = length(normal);
-		if (normalLength > 0) {
+		if (normalLength > 0)
+		{
 			Normal = normal / normalLength;
 			Area = normalLength / 2;
 		}
-		else {
+		else
+		{
 			Normal = 0;
 			Area = 0;
 		}
 	}
 
-	RAB_LightInfo Store() {
+	RAB_LightInfo Store()
+	{
 		RAB_LightInfo lightInfo;
 		lightInfo.Center = Base + (Edges[0] + Edges[1]) / 3;
 		const float2 scalars = float2(length(Edges[0]), length(Edges[1]));
@@ -52,13 +73,15 @@ struct TriangleLight {
 		return lightInfo;
 	}
 
-	float CalculateSolidAnglePDF(float3 viewPosition, float3 lightSamplePosition, float3 lightSampleNormal) {
+	float CalculateSolidAnglePDF(float3 viewPosition, float3 lightSamplePosition, float3 lightSampleNormal)
+	{
 		const float3 L = lightSamplePosition - viewPosition;
 		const float Llength = length(L);
 		return Math::ToSolidAnglePDF(1 / Area, Llength, abs(dot(L / Llength, -lightSampleNormal)));
 	}
 
-	RAB_LightSample CalculateSample(float2 randomValue, float3 viewPosition) {
+	RAB_LightSample CalculateSample(float2 randomValue, float3 viewPosition)
+	{
 		RAB_LightSample lightSample;
 		const float3 barycentrics = Math::SampleTriangle(randomValue);
 		lightSample.Position = Base + Edges[0] * barycentrics.y + Edges[1] * barycentrics.z;

@@ -13,7 +13,8 @@ SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
 
-struct GraphicsSettings {
+struct GraphicsSettings
+{
 	uint2 RenderSize;
 	uint FrameIndex, Bounces, SamplesPerPixel, _;
 	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
@@ -42,46 +43,65 @@ RWTexture2D<float4> g_noisySpecular : register(u10);
 
 #include "RaytracingHelpers.hlsli"
 
-float3 GetEnvironmentLightColor(float3 worldRayDirection) {
+float3 GetEnvironmentLightColor(float3 worldRayDirection)
+{
 	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
-	if (resourceDescriptorIndices.InEnvironmentLightTexture != ~0u) {
+	if (resourceDescriptorIndices.InEnvironmentLightTexture != ~0u)
+	{
 		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
-		if (g_sceneData.IsEnvironmentLightTextureCubeMap) {
+		if (g_sceneData.IsEnvironmentLightTextureCubeMap)
+		{
 			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentLightTexture];
 			return texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
 		const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentLightTexture];
 		return texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 	}
-	if (g_sceneData.EnvironmentLightColor.a >= 0) return g_sceneData.EnvironmentLightColor.rgb;
+	if (g_sceneData.EnvironmentLightColor.a >= 0)
+	{
+		return g_sceneData.EnvironmentLightColor.rgb;
+	}
 	return lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f);
 }
 
-bool GetEnvironmentColor(float3 worldRayDirection, out float3 color) {
+bool GetEnvironmentColor(float3 worldRayDirection, out float3 color)
+{
 	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
 	bool ret;
-	if ((ret = resourceDescriptorIndices.InEnvironmentTexture != ~0u)) {
+	if ((ret = resourceDescriptorIndices.InEnvironmentTexture != ~0u))
+	{
 		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentTextureTransform, worldRayDirection));
-		if (g_sceneData.IsEnvironmentTextureCubeMap) {
+		if (g_sceneData.IsEnvironmentTextureCubeMap)
+		{
 			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
-		else {
+		else
+		{
 			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 		}
 	}
-	else if ((ret = g_sceneData.EnvironmentColor.a >= 0)) color = g_sceneData.EnvironmentColor.rgb;
+	else if ((ret = g_sceneData.EnvironmentColor.a >= 0))
+	{
+		color = g_sceneData.EnvironmentColor.rgb;
+	}
 	return ret;
 }
 
-float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo) {
+float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo)
+{
 	float3 previousPosition;
-	if (g_sceneData.IsStatic) previousPosition = hitInfo.Position;
-	else {
+	if (g_sceneData.IsStatic)
+	{
+		previousPosition = hitInfo.Position;
+	}
+	else
+	{
 		previousPosition = hitInfo.ObjectPosition;
 		const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices;
-		if (resourceDescriptorIndices.Mesh.MotionVectors != ~0u) {
+		if (resourceDescriptorIndices.Mesh.MotionVectors != ~0u)
+		{
 			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.MotionVectors];
 			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
 			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
