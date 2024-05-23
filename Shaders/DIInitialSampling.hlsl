@@ -5,14 +5,13 @@ ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
 void main(uint2 globalIndex : SV_DispatchThreadID)
 {
-	if (any(globalIndex >= g_graphicsSettings.RenderSize))
+	const uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(globalIndex, g_graphicsSettings.RTXDI.Runtime.activeCheckerboardField);
+	if (any(pixelPosition >= g_graphicsSettings.RenderSize))
 	{
 		return;
 	}
 
 	const ReSTIRDI_Parameters DIParameters = g_graphicsSettings.RTXDI.ReSTIRDI;
-
-	const uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(globalIndex, g_graphicsSettings.RTXDI.Runtime.activeCheckerboardField);
 
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 

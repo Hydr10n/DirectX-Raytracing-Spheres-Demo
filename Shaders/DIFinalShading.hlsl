@@ -5,12 +5,11 @@ ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
 void main(uint2 globalIndex : SV_DispatchThreadID)
 {
-	if (any(globalIndex >= g_graphicsSettings.RenderSize))
+	const uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(globalIndex, g_graphicsSettings.RTXDI.Runtime.activeCheckerboardField);
+	if (any(pixelPosition >= g_graphicsSettings.RenderSize))
 	{
 		return;
 	}
-
-	const uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(globalIndex, g_graphicsSettings.RTXDI.Runtime.activeCheckerboardField);
 
 	const RAB_Surface surface = RAB_GetGBufferSurface(pixelPosition, false);
 	if (RAB_IsSurfaceValid(surface))
@@ -23,8 +22,8 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			const RAB_LightInfo lightInfo = RAB_LoadLightInfo(RTXDI_GetDIReservoirLightIndex(reservoir), false);
 			const RAB_LightSample lightSample = RAB_SamplePolymorphicLight(lightInfo, surface, RTXDI_GetDIReservoirSampleUV(reservoir));
 
-			if (DIParameters.initialSamplingParams.enableInitialVisibility
-				&& !RAB_GetConservativeVisibility(surface, lightSample))
+			if (DIParameters.shadingParams.enableFinalVisibility
+				&& !GetFinalVisibility(surface, lightSample.Position))
 			{
 				RTXDI_StoreVisibilityInDIReservoir(reservoir, 0, true);
 				RTXDI_StoreDIReservoir(reservoir, DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.shadingInputBufferIndex);
@@ -49,7 +48,8 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 				);
 			}
 
-			g_color[globalIndex] += directDiffuse + directSpecular;
+			const float3 radiance = directDiffuse + directSpecular;
+			g_color[globalIndex] += NRD_IsValidRadiance(radiance) ? radiance : 0;
 		}
 	}
 }

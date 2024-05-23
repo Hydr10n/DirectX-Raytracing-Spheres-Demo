@@ -1,6 +1,6 @@
 #include "Common.hlsli"
 
-#include "TriangleLight.hlsli"
+#include "Light.hlsli"
 
 #include "MeshHelpers.hlsli"
 
@@ -20,7 +20,7 @@ StructuredBuffer<Task> g_tasks : register(t0);
 StructuredBuffer<InstanceData> g_instanceData : register(t1);
 StructuredBuffer<ObjectData> g_objectData : register(t2);
 
-RWStructuredBuffer<RAB_LightInfo> g_lightInfo : register(u0);
+RWStructuredBuffer<LightInfo> g_lightInfo : register(u0);
 
 bool FindTask(uint dispatchThreadID, out Task task)
 {
@@ -118,5 +118,5 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	triangleLight.Edges[0] = positions[1] - positions[0];
 	triangleLight.Edges[1] = positions[2] - positions[0];
 	triangleLight.Radiance = emissiveColor;
-	g_lightInfo[dispatchThreadID] = triangleLight.Store();
+	triangleLight.Store(g_lightInfo[dispatchThreadID]);
 }

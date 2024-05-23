@@ -33,9 +33,9 @@ namespace {
 
 export struct LightPreparation {
 	struct {
-		UploadBuffer<InstanceData>* InInstanceData;
-		UploadBuffer<ObjectData>* InObjectData;
-		DefaultBuffer<RAB_LightInfo>* OutLightInfo;
+		UploadBuffer<InstanceData>* InstanceData;
+		UploadBuffer<ObjectData>* ObjectData;
+		DefaultBuffer<LightInfo>* LightInfo;
 	} GPUBuffers{};
 
 	explicit LightPreparation(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice) {
@@ -106,9 +106,9 @@ export struct LightPreparation {
 
 		pCommandList->SetComputeRoot32BitConstant(0, m_emissiveMeshCount, 0);
 		pCommandList->SetComputeRootShaderResourceView(1, m_GPUBuffers.Tasks->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InInstanceData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.InObjectData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.OutLightInfo->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.LightInfo->GetNative()->GetGPUVirtualAddress());
 
 		pCommandList->Dispatch((m_emissiveTriangleCount + 255) / 256, 1, 1);
 	}

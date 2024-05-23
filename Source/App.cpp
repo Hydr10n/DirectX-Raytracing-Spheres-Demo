@@ -691,9 +691,9 @@ private:
 
 	void PrepareLights() {
 		m_lightPreparation->GPUBuffers = {
-			.InInstanceData = m_GPUBuffers.InstanceData.get(),
-			.InObjectData = m_GPUBuffers.ObjectData.get(),
-			.OutLightInfo = m_RTXDIResources.LightInfo.get()
+			.InstanceData = m_GPUBuffers.InstanceData.get(),
+			.ObjectData = m_GPUBuffers.ObjectData.get(),
+			.LightInfo = m_RTXDIResources.LightInfo.get()
 		};
 
 		m_lightPreparation->Process(m_deviceResources->GetCommandList());
@@ -918,24 +918,24 @@ private:
 				});
 
 			m_raytracing->GPUBuffers = {
-				.InSceneData = m_GPUBuffers.SceneData.get(),
-				.InCamera = m_GPUBuffers.Camera.get(),
-				.InInstanceData = m_GPUBuffers.InstanceData.get(),
-				.InObjectData = m_GPUBuffers.ObjectData.get()
+				.SceneData = m_GPUBuffers.SceneData.get(),
+				.Camera = m_GPUBuffers.Camera.get(),
+				.InstanceData = m_GPUBuffers.InstanceData.get(),
+				.ObjectData = m_GPUBuffers.ObjectData.get()
 			};
 
 			m_raytracing->RenderTextures = {
-				.OutColor = color,
-				.OutLinearDepth = linearDepth,
-				.OutNormalizedDepth = m_renderTextures.at(RenderTextureNames::NormalizedDepth).get(),
-				.OutMotionVectors = motionVectors,
-				.OutBaseColorMetalness = baseColorMetalness,
-				.OutEmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
-				.OutNormals = normals,
-				.OutRoughness = roughness,
-				.OutNormalRoughness = m_renderTextures.at(RenderTextureNames::NormalRoughness).get(),
-				.OutNoisyDiffuse = noisyDiffuse,
-				.OutNoisySpecular = noisySpecular
+				.Color = color,
+				.LinearDepth = linearDepth,
+				.NormalizedDepth = m_renderTextures.at(RenderTextureNames::NormalizedDepth).get(),
+				.MotionVectors = motionVectors,
+				.BaseColorMetalness = baseColorMetalness,
+				.EmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
+				.Normals = normals,
+				.Roughness = roughness,
+				.NormalRoughness = m_renderTextures.at(RenderTextureNames::NormalRoughness).get(),
+				.NoisyDiffuse = noisyDiffuse,
+				.NoisySpecular = noisySpecular
 			};
 
 			m_raytracing->Render(commandList, scene);
@@ -969,28 +969,28 @@ private:
 				});
 
 			m_RTXDI->GPUBuffers = {
-				.InCamera = m_GPUBuffers.Camera.get(),
-				.InInstanceData = m_GPUBuffers.InstanceData.get(),
-				.InObjectData = m_GPUBuffers.ObjectData.get(),
-				.InLightInfo = m_RTXDIResources.LightInfo.get(),
-				.InLightIndices = m_RTXDIResources.LightIndices.get(),
-				.InNeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
-				.OutDIReservoir = m_RTXDIResources.DIReservoir.get()
+				.Camera = m_GPUBuffers.Camera.get(),
+				.InstanceData = m_GPUBuffers.InstanceData.get(),
+				.ObjectData = m_GPUBuffers.ObjectData.get(),
+				.LightInfo = m_RTXDIResources.LightInfo.get(),
+				.LightIndices = m_RTXDIResources.LightIndices.get(),
+				.NeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
+				.DIReservoir = m_RTXDIResources.DIReservoir.get()
 			};
 
 			m_RTXDI->RenderTextures = {
-				.InPreviousLinearDepth = m_renderTextures.at(RenderTextureNames::PreviousLinearDepth).get(),
-				.InLinearDepth = linearDepth,
-				.InMotionVectors = motionVectors,
-				.InPreviousBaseColorMetalness = m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness).get(),
-				.InBaseColorMetalness = baseColorMetalness,
-				.InPreviousNormals = m_renderTextures.at(RenderTextureNames::PreviousNormals).get(),
-				.InNormals = normals,
-				.InPreviousRoughness = m_renderTextures.at(RenderTextureNames::PreviousRoughness).get(),
-				.InRoughness = roughness,
-				.OutColor = color,
-				.OutNoisyDiffuse = noisyDiffuse,
-				.OutNoisySpecular = noisySpecular
+				.PreviousLinearDepth = m_renderTextures.at(RenderTextureNames::PreviousLinearDepth).get(),
+				.LinearDepth = linearDepth,
+				.MotionVectors = motionVectors,
+				.PreviousBaseColorMetalness = m_renderTextures.at(RenderTextureNames::PreviousBaseColorMetalness).get(),
+				.BaseColorMetalness = baseColorMetalness,
+				.PreviousNormals = m_renderTextures.at(RenderTextureNames::PreviousNormals).get(),
+				.Normals = normals,
+				.PreviousRoughness = m_renderTextures.at(RenderTextureNames::PreviousRoughness).get(),
+				.Roughness = roughness,
+				.Color = color,
+				.NoisyDiffuse = noisyDiffuse,
+				.NoisySpecular = noisySpecular
 			};
 
 			m_RTXDI->Render(commandList, scene);
@@ -1102,19 +1102,23 @@ private:
 		{
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
 
-			auto& ReSTIRDIContext = m_RTXDIResources.Context->getReSTIRDIContext();
-			auto temporalResamplingParameters = m_RTXDIResources.Context->getReSTIRDIContext().getTemporalResamplingParameters();
-			temporalResamplingParameters.temporalBiasCorrection = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
-			ReSTIRDIContext.setTemporalResamplingParameters(temporalResamplingParameters);
+			{
+				auto& context = m_RTXDIResources.Context->getReSTIRDIContext();
+				auto temporalResamplingParameters = context.getTemporalResamplingParameters();
+				temporalResamplingParameters.temporalBiasCorrection = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
+				context.setTemporalResamplingParameters(temporalResamplingParameters);
+			}
 
 			const auto device = m_deviceResources->GetDevice();
 
-			ResourceUploadBatch resourceUploadBatch(device);
-			resourceUploadBatch.Begin();
+			{
+				ResourceUploadBatch resourceUploadBatch(device);
+				resourceUploadBatch.Begin();
 
-			m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::InRTXDINeighborOffsets);
+				m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::InRTXDINeighborOffsets);
 
-			resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+			}
 
 			m_RTXDIResources.CreateDIReservoir(device);
 		}
@@ -1252,16 +1256,16 @@ private:
 				.NRDDenoiser = NRDSettings.Denoiser
 			};
 
-			m_denoisedComposition->GPUBuffers = { .InCamera = m_GPUBuffers.Camera.get() };
+			m_denoisedComposition->GPUBuffers = { .Camera = m_GPUBuffers.Camera.get() };
 
 			m_denoisedComposition->RenderTextures = {
-				.InLinearDepth = &linearDepth,
-				.InBaseColorMetalness = &baseColorMetalness,
-				.InEmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
-				.InNormalRoughness = &normalRoughness,
-				.InDenoisedDiffuse = &denoisedDiffuse,
-				.InDenoisedSpecular = &denoisedSpecular,
-				.OutColor = m_renderTextures.at(RenderTextureNames::Color).get()
+				.LinearDepth = &linearDepth,
+				.BaseColorMetalness = &baseColorMetalness,
+				.EmissiveColor = m_renderTextures.at(RenderTextureNames::EmissiveColor).get(),
+				.NormalRoughness = &normalRoughness,
+				.DenoisedDiffuse = &denoisedDiffuse,
+				.DenoisedSpecular = &denoisedSpecular,
+				.Color = m_renderTextures.at(RenderTextureNames::Color).get()
 			};
 
 			m_denoisedComposition->Process(commandList);

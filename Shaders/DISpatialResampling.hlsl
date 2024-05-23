@@ -3,23 +3,22 @@
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
-void main(uint2 globalIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
+void main(uint2 globalIndex : SV_DispatchThreadID)
 {
-	if (any(globalIndex >= g_graphicsSettings.RenderSize))
+	const uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(globalIndex, g_graphicsSettings.RTXDI.Runtime.activeCheckerboardField);
+	if (any(pixelPosition >= g_graphicsSettings.RenderSize))
 	{
 		return;
 	}
 
 	const ReSTIRDI_Parameters DIParameters = g_graphicsSettings.RTXDI.ReSTIRDI;
 
-	const uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(globalIndex, g_graphicsSettings.RTXDI.Runtime.activeCheckerboardField);
-
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 
 	const RAB_Surface surface = RAB_GetGBufferSurface(pixelPosition, false);
 	if (RAB_IsSurfaceValid(surface))
 	{
-		RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelPosition, 2);
+		RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelPosition, 3);
 
 		reservoir = RTXDI_LoadDIReservoir(DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.spatialResamplingInputBufferIndex);
 

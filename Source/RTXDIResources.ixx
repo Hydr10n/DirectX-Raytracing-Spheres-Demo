@@ -19,7 +19,7 @@ using namespace rtxdi;
 using namespace std;
 
 export {
-	struct RAB_LightInfo {
+	struct LightInfo {
 		XMFLOAT3 Center;
 		UINT Scalars, Directions[2];
 		XMUINT2 Radiance;
@@ -28,7 +28,7 @@ export {
 	struct RTXDIResources {
 		unique_ptr<ImportanceSamplingContext> Context;
 
-		unique_ptr<DefaultBuffer<RAB_LightInfo>> LightInfo;
+		unique_ptr<DefaultBuffer<LightInfo>> LightInfo;
 		unique_ptr<DefaultBuffer<UINT>> LightIndices;
 
 		unique_ptr<DefaultBuffer<UINT16>> NeighborOffsets;
@@ -36,7 +36,7 @@ export {
 		unique_ptr<DefaultBuffer<RTXDI_PackedDIReservoir>> DIReservoir;
 
 		void CreateLightBuffers(ID3D12Device* pDevice, UINT emissiveTriangleCount, UINT objectCount) {
-			LightInfo = make_unique<DefaultBuffer<RAB_LightInfo>>(pDevice, emissiveTriangleCount);
+			LightInfo = make_unique<DefaultBuffer<::LightInfo>>(pDevice, emissiveTriangleCount);
 			LightIndices = make_unique<DefaultBuffer<UINT>>(pDevice, objectCount);
 		}
 
