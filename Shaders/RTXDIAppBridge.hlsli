@@ -1,7 +1,6 @@
 #pragma once
 
-#define RTXDI_ENABLE_PRESAMPLING 0
-
+#define RTXDI_PRESAMPLING_GROUP_SIZE 256
 #define RTXDI_SCREEN_SPACE_GROUP_SIZE 8
 
 #define RTXDI_ENABLE_BOILING_FILTER
@@ -23,10 +22,10 @@ RaytracingAccelerationStructure g_scene : register(t0);
 
 struct GraphicsSettings
 {
-	uint2 RenderSize;
-	uint FrameIndex, _;
+	uint2 RenderSize, _;
 	struct
 	{
+		RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
 		RTXDI_LightBufferParameters LightBuffer;
 		RTXDI_RuntimeParameters Runtime;
 		ReSTIRDI_Parameters ReSTIRDI;
@@ -43,22 +42,26 @@ StructuredBuffer<LightInfo> g_lightInfo : register(t3);
 StructuredBuffer<uint> g_lightIndices : register(t4);
 Buffer<float2> g_neighborOffsets : register(t5);
 
-Texture2D<float> g_previousLinearDepth : register(t6);
-Texture2D<float> g_linearDepth : register(t7);
-Texture2D<float3> g_motionVectors : register(t8);
-Texture2D<float4> g_previousBaseColorMetalness : register(t9);
-Texture2D<float4> g_baseColorMetalness : register(t10);
-Texture2D<float4> g_previousNormals : register(t11);
-Texture2D<float4> g_normals : register(t12);
-Texture2D<float> g_previousRoughness : register(t13);
-Texture2D<float> g_roughness : register(t14);
+Texture2D g_localLightPDF : register(t6);
+Texture2D<float> g_previousLinearDepth : register(t7);
+Texture2D<float> g_linearDepth : register(t8);
+Texture2D<float3> g_motionVectors : register(t9);
+Texture2D<float4> g_previousBaseColorMetalness : register(t10);
+Texture2D<float4> g_baseColorMetalness : register(t11);
+Texture2D<float4> g_previousNormals : register(t12);
+Texture2D<float4> g_normals : register(t13);
+Texture2D<float> g_previousRoughness : register(t14);
+Texture2D<float> g_roughness : register(t15);
 
-RWStructuredBuffer<RTXDI_PackedDIReservoir> g_DIReservoir : register(u0);
+RWStructuredBuffer<uint2> g_RIS : register(u0);
+RWStructuredBuffer<uint4> g_RISLightInfo : register(u1);
+RWStructuredBuffer<RTXDI_PackedDIReservoir> g_DIReservoir : register(u2);
 
-RWTexture2D<float3> g_color : register(u1);
-RWTexture2D<float4> g_noisyDiffuse : register(u2);
-RWTexture2D<float4> g_noisySpecular : register(u3);
+RWTexture2D<float3> g_color : register(u3);
+RWTexture2D<float4> g_noisyDiffuse : register(u4);
+RWTexture2D<float4> g_noisySpecular : register(u5);
 
+#define RTXDI_RIS_BUFFER g_RIS
 #define RTXDI_NEIGHBOR_OFFSETS_BUFFER g_neighborOffsets
 #define RTXDI_LIGHT_RESERVOIR_BUFFER g_DIReservoir
 
@@ -83,10 +86,13 @@ RWTexture2D<float4> g_noisySpecular : register(u3);
 		"DescriptorTable(SRV(t12))," \
 		"DescriptorTable(SRV(t13))," \
 		"DescriptorTable(SRV(t14))," \
+		"DescriptorTable(SRV(t15))," \
 		"UAV(u0)," \
-		"DescriptorTable(UAV(u1))," \
-		"DescriptorTable(UAV(u2))," \
-		"DescriptorTable(UAV(u3))" \
+		"UAV(u1)," \
+		"UAV(u2)," \
+		"DescriptorTable(UAV(u3))," \
+		"DescriptorTable(UAV(u4))," \
+		"DescriptorTable(UAV(u5))" \
 	)]
 
 #include "RaytracingHelpers.hlsli"
@@ -146,6 +152,18 @@ RAB_LightInfo RAB_EmptyLightInfo()
 RAB_LightInfo RAB_LoadLightInfo(uint index, bool previousFrame)
 {
 	return g_lightInfo[index];
+}
+
+RAB_LightInfo RAB_LoadCompactLightInfo(uint linearIndex)
+{
+	RAB_LightInfo lightInfo;
+	lightInfo.Load(g_RISLightInfo[linearIndex * 2], g_RISLightInfo[linearIndex * 2 + 1]);
+	return lightInfo;
+}
+
+bool RAB_StoreCompactLightInfo(uint linearIndex, RAB_LightInfo lightInfo)
+{
+	return lightInfo.Store(g_RISLightInfo[linearIndex * 2], g_RISLightInfo[linearIndex * 2 + 1]);
 }
 
 using RAB_LightSample = LightSample;

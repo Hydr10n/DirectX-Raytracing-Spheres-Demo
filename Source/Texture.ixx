@@ -4,7 +4,6 @@ module;
 
 #include "directx/d3dx12.h"
 
-#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/SimpleMath.h"
 
@@ -78,7 +77,7 @@ export namespace DirectX {
 		const Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.RTV[mipLevel]; }
 		Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.RTV[mipLevel]; }
 
-		void CreateSRV(const DescriptorHeap& resourceDescriptorHeap, UINT index, bool isCubeMap = false) {
+		void CreateSRV(const DescriptorHeapEx& resourceDescriptorHeap, UINT index, bool isCubeMap = false) {
 			m_descriptors.SRV = {
 				.Index = index,
 				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
@@ -89,7 +88,7 @@ export namespace DirectX {
 			CreateShaderResourceView(device.Get(), *this, m_descriptors.SRV.CPUHandle, isCubeMap);
 		}
 
-		void CreateUAV(const DescriptorHeap& resourceDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
+		void CreateUAV(const DescriptorHeapEx& resourceDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
 			m_descriptors.UAV[mipLevel] = {
 				.Index = index,
 				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
@@ -100,7 +99,7 @@ export namespace DirectX {
 			CreateUnorderedAccessView(device.Get(), *this, m_descriptors.UAV[mipLevel].CPUHandle, mipLevel);
 		}
 
-		void CreateRTV(const DescriptorHeap& renderDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
+		void CreateRTV(const DescriptorHeapEx& renderDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
 			m_descriptors.RTV[mipLevel] = {
 				.Index = index,
 				.CPUHandle = renderDescriptorHeap.GetCpuHandle(index)

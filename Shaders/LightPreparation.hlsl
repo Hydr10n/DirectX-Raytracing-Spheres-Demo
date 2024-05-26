@@ -4,6 +4,8 @@
 
 #include "MeshHelpers.hlsli"
 
+#include "rtxdi/RtxdiMath.hlsli"
+
 SamplerState g_anisotropicSampler : register(s0);
 
 cbuffer _ : register(b0)
@@ -21,6 +23,8 @@ StructuredBuffer<InstanceData> g_instanceData : register(t1);
 StructuredBuffer<ObjectData> g_objectData : register(t2);
 
 RWStructuredBuffer<LightInfo> g_lightInfo : register(u0);
+
+RWTexture2D<float> g_localLightPDF : register(u1);
 
 bool FindTask(uint dispatchThreadID, out Task task)
 {
@@ -52,7 +56,8 @@ bool FindTask(uint dispatchThreadID, out Task task)
 	"SRV(t0),"
 	"SRV(t1),"
 	"SRV(t2),"
-	"UAV(u0)"
+	"UAV(u0),"
+	"DescriptorTable(UAV(u1))"
 )]
 [numthreads(256, 1, 1)]
 void main(uint dispatchThreadID : SV_DispatchThreadID)
@@ -114,9 +119,7 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	}
 
 	TriangleLight triangleLight;
-	triangleLight.Base = positions[0];
-	triangleLight.Edges[0] = positions[1] - positions[0];
-	triangleLight.Edges[1] = positions[2] - positions[0];
-	triangleLight.Radiance = emissiveColor;
+	triangleLight.Initialize(positions[0], positions[1] - positions[0], positions[2] - positions[0], emissiveColor);
 	triangleLight.Store(g_lightInfo[dispatchThreadID]);
+	g_localLightPDF[RTXDI_LinearIndexToZCurve(dispatchThreadID)] = triangleLight.CalculatePower();
 }

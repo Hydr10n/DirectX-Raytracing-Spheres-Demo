@@ -4,7 +4,6 @@ module;
 
 #include "directx/d3dx12.h"
 
-#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/DirectXHelpers.h"
 
 #include "Shaders/Bloom.dxil.h"
@@ -42,41 +41,41 @@ export namespace PostProcessing {
 
 		void SetTextures(const Texture& input, const Texture& output) {
 			auto a = false, b = false;
-			if (!m_renderTextures.Input || m_renderTextures.Input->GetNative() != input) {
-				m_renderTextures.Input = make_unique<Texture>(input, input.GetState());
-				m_renderTextures.Input->CreateSRV(m_descriptorHeap, DescriptorIndex::Input);
+			if (!m_textures.Input || m_textures.Input->GetNative() != input) {
+				m_textures.Input = make_unique<Texture>(input, input.GetState());
+				m_textures.Input->CreateSRV(m_descriptorHeap, DescriptorIndex::Input);
 			}
-			else if (m_renderTextures.Input && m_renderTextures.Input->GetNative() == input) {
-				m_renderTextures.Input->SetState(input.GetState());
+			else if (m_textures.Input && m_textures.Input->GetNative() == input) {
+				m_textures.Input->SetState(input.GetState());
 				a = true;
 			}
-			if (!m_renderTextures.Output || m_renderTextures.Output->GetNative() != output) {
-				m_renderTextures.Output = make_unique<Texture>(output, output.GetState());
-				m_renderTextures.Output->CreateUAV(m_descriptorHeap, DescriptorIndex::Output);
+			if (!m_textures.Output || m_textures.Output->GetNative() != output) {
+				m_textures.Output = make_unique<Texture>(output, output.GetState());
+				m_textures.Output->CreateUAV(m_descriptorHeap, DescriptorIndex::Output);
 			}
-			else if (m_renderTextures.Output && m_renderTextures.Output->GetNative() == output) {
-				m_renderTextures.Output->SetState(output.GetState());
+			else if (m_textures.Output && m_textures.Output->GetNative() == output) {
+				m_textures.Output->SetState(output.GetState());
 				b = true;
 			}
 			if (a && b) return;
 
 			const auto desc = input->GetDesc();
 			const auto size = GetTextureSize(input) / 2;
-			if (!m_renderTextures.Blur1 || desc.Format != m_renderTextures.Blur1->GetNative()->GetDesc().Format || size != GetTextureSize(*m_renderTextures.Blur1)) {
+			if (!m_textures.Blur1 || desc.Format != m_textures.Blur1->GetNative()->GetDesc().Format || size != GetTextureSize(*m_textures.Blur1)) {
 				UINT index = DescriptorIndex::Reserve;
 				const auto CreateTexture = [&](unique_ptr<Texture>& texture) {
 					texture = make_unique<Texture>(m_device, desc.Format, size, BlurMipLevels);
 					texture->CreateSRV(m_descriptorHeap, index++);
 					for (const auto i : views::iota(static_cast<UINT16>(0), BlurMipLevels)) texture->CreateUAV(m_descriptorHeap, index++, i);
 				};
-				CreateTexture(m_renderTextures.Blur1);
-				CreateTexture(m_renderTextures.Blur2);
+				CreateTexture(m_textures.Blur1);
+				CreateTexture(m_textures.Blur2);
 			}
 		}
 
 		void Process(ID3D12GraphicsCommandList* pCommandList) {
-			auto& input = *m_renderTextures.Input, & output = *m_renderTextures.Output;
-			auto blur1 = m_renderTextures.Blur1.get(), blur2 = m_renderTextures.Blur2.get();
+			auto& input = *m_textures.Input, & output = *m_textures.Output;
+			auto blur1 = m_textures.Blur1.get(), blur2 = m_textures.Blur2.get();
 
 			const auto descriptorHeap = m_descriptorHeap.Heap();
 			pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -150,13 +149,13 @@ export namespace PostProcessing {
 
 		ID3D12Device* m_device;
 
-		DescriptorHeap m_descriptorHeap;
+		DescriptorHeapEx m_descriptorHeap;
 
 		Merge m_merge;
 
 		ComPtr<ID3D12RootSignature> m_rootSignature;
 		ComPtr<ID3D12PipelineState> m_pipelineState;
 
-		struct { unique_ptr<Texture> Input, Output, Blur1, Blur2; } m_renderTextures{};
+		struct { unique_ptr<Texture> Input, Output, Blur1, Blur2; } m_textures{};
 	};
 }

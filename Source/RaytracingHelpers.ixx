@@ -95,8 +95,7 @@ export namespace DirectX::RaytracingHelpers {
 			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetNative()->GetGPUVirtualAddress();
 			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
 
-			const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_buffers.Result->GetNative());
-			pCommandList->ResourceBarrier(1, &barrier);
+			m_buffers.Result->InsertUAVBarrier(pCommandList);
 		}
 
 	private:

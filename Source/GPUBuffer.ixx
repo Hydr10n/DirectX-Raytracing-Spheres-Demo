@@ -4,7 +4,6 @@ module;
 
 #include "directx/d3dx12.h"
 
-#include "directxtk12/DescriptorHeap.h"
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
@@ -161,37 +160,37 @@ export namespace DirectX {
 		const Descriptor& GetTypedUAVDescriptor() const noexcept { return m_descriptors.UAV.Typed; }
 		Descriptor& GetTypedUAVDescriptor() noexcept { return m_descriptors.UAV.Typed; }
 
-		void CreateCBV(const DescriptorHeap& descriptorHeap, UINT index) {
+		void CreateCBV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(CBV);
 			DirectX::CreateCBV(*this, m_descriptors.CBV.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
-		void CreateStructuredSRV(const DescriptorHeap& descriptorHeap, UINT index) {
+		void CreateStructuredSRV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(SRV.Structured);
 			DirectX::CreateStructuredSRV(*this, m_descriptors.SRV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
 		}
 
-		void CreateRawSRV(const DescriptorHeap& descriptorHeap, UINT index) {
+		void CreateRawSRV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(SRV.Raw);
 			DirectX::CreateRawSRV(*this, m_descriptors.SRV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
-		void CreateTypedSRV(const DescriptorHeap& descriptorHeap, UINT index, DXGI_FORMAT format) {
+		void CreateTypedSRV(const DescriptorHeapEx& descriptorHeap, UINT index, DXGI_FORMAT format) {
 			DESCRIPTOR(SRV.Typed);
 			DirectX::CreateTypedSRV(*this, m_descriptors.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
-		void CreateStructuredUAV(const DescriptorHeap& descriptorHeap, UINT index) {
+		void CreateStructuredUAV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(UAV.Structured);
 			DirectX::CreateStructuredUAV(*this, m_descriptors.UAV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
 		}
 
-		void CreateRawUAV(const DescriptorHeap& descriptorHeap, UINT index) {
+		void CreateRawUAV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(UAV.Raw);
 			DirectX::CreateRawUAV(*this, m_descriptors.UAV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
-		void CreateTypedUAV(const DescriptorHeap& descriptorHeap, UINT index, DXGI_FORMAT format) {
+		void CreateTypedUAV(const DescriptorHeapEx& descriptorHeap, UINT index, DXGI_FORMAT format) {
 			DESCRIPTOR(UAV.Typed);
 			DirectX::CreateTypedUAV(*this, m_descriptors.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}

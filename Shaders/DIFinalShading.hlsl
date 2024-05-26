@@ -43,13 +43,13 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 					abs(dot(surface.Normal, surface.ViewDirection)), surface.LinearDepth,
 					surface.Albedo, surface.Rf0, surface.Roughness,
 					directDiffuse, directSpecular, length(lightSample.Position - surface.Position),
-					g_noisyDiffuse[globalIndex], g_noisySpecular[globalIndex], true,
-					g_noisyDiffuse[globalIndex], g_noisySpecular[globalIndex]
+					g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition], true,
+					g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
 				);
 			}
 
 			const float3 radiance = directDiffuse + directSpecular;
-			g_color[globalIndex] += NRD_IsValidRadiance(radiance) ? radiance : 0;
+			g_color[pixelPosition] += NRD_IsValidRadiance(radiance) ? radiance : 0;
 		}
 	}
 }

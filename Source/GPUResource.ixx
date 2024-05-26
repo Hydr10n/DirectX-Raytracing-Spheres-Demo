@@ -1,5 +1,7 @@
 module;
 
+#include "directx/d3dx12.h"
+
 #include "directxtk12/DirectXHelpers.h"
 
 #include "D3D12MemAlloc.h"
@@ -32,8 +34,16 @@ export namespace DirectX {
 		void SetState(D3D12_RESOURCE_STATES state) noexcept { m_state = state; }
 
 		void TransitionTo(ID3D12GraphicsCommandList* pCommandList, D3D12_RESOURCE_STATES state) {
-			TransitionResource(pCommandList, GetNative(), m_state, state);
-			m_state = state;
+			if (state != m_state) {
+				TransitionResource(pCommandList, GetNative(), m_state, state);
+				m_state = state;
+			}
+			else if (state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) InsertUAVBarrier(pCommandList);
+		}
+
+		void InsertUAVBarrier(ID3D12GraphicsCommandList* pCommandList) {
+			const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_resource.Get());
+			pCommandList->ResourceBarrier(1, &barrier);
 		}
 
 	protected:

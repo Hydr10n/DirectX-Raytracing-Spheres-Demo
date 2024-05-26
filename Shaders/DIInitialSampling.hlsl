@@ -37,6 +37,10 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			sampleParameters,
 			g_graphicsSettings.RTXDI.LightBuffer,
 			DIParameters.initialSamplingParams.localLightSamplingMode,
+#if RTXDI_ENABLE_PRESAMPLING
+			g_graphicsSettings.RTXDI.LocalLightRISBufferSegment,
+			g_graphicsSettings.RTXDI.EnvironmentLightRISBufferSegment,
+#endif
 			lightSample
 		);
 		if (DIParameters.initialSamplingParams.enableInitialVisibility

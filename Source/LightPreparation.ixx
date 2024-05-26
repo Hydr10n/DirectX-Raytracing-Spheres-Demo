@@ -4,6 +4,7 @@ module;
 
 #include "directx/d3dx12.h"
 
+#include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
 #include "rtxdi/RtxdiParameters.h"
@@ -37,6 +38,8 @@ export struct LightPreparation {
 		UploadBuffer<ObjectData>* ObjectData;
 		DefaultBuffer<LightInfo>* LightInfo;
 	} GPUBuffers{};
+
+	struct { Texture* LocalLightPDF; } Textures{};
 
 	explicit LightPreparation(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice) {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LightPreparation_dxil, size(g_LightPreparation_dxil) };
@@ -101,6 +104,13 @@ export struct LightPreparation {
 	}
 
 	void Process(ID3D12GraphicsCommandList* pCommandList) {
+		const ScopedBarrier scopedBarrier(
+			pCommandList,
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LocalLightPDF, Textures.LocalLightPDF->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+			}
+		);
+
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 		pCommandList->SetPipelineState(m_pipelineState.Get());
 
@@ -109,6 +119,7 @@ export struct LightPreparation {
 		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.LightInfo->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootDescriptorTable(5, Textures.LocalLightPDF->GetUAVDescriptor().GPUHandle);
 
 		pCommandList->Dispatch((m_emissiveTriangleCount + 255) / 256, 1, 1);
 	}

@@ -7,8 +7,25 @@
 struct LightInfo
 {
 	float3 Center;
-	uint Scalars, Directions[2];
-	uint2 Radiance;
+	uint Scalars;
+	uint2 Directions, Radiance;
+	
+	void Load(uint4 data0, uint4 data1)
+	{
+		Center = asfloat(data0.xyz);
+		Scalars = data0.w;
+		Directions = data1.xy;
+		Radiance = data1.zw;
+	}
+	
+	bool Store(out uint4 data0, out uint4 data1)
+	{
+		data0.xyz = asuint(Center);
+		data0.w = Scalars;
+		data1.xy = Directions;
+		data1.zw = Radiance;
+		return true;
+	}
 };
 
 struct LightSample
@@ -21,15 +38,13 @@ struct TriangleLight
 {
 	float3 Base, Edges[2], Normal, Radiance;
 	float Area;
-
-	void Load(LightInfo lightInfo)
+	
+	void Initialize(float3 base, float3 edge0, float3 edge1, float3 radiance)
 	{
-		const float2 scalars = STL::Packing::UintToRg16f(lightInfo.Scalars);
-		Edges[0] = RTXDI_DecodeNormalizedVectorFromSnorm2x16(lightInfo.Directions[0]) * scalars[0];
-		Edges[1] = RTXDI_DecodeNormalizedVectorFromSnorm2x16(lightInfo.Directions[1]) * scalars[1];
-		Base = lightInfo.Center - (Edges[0] + Edges[1]) / 3;
-		Radiance = float3(STL::Packing::UintToRg16f(lightInfo.Radiance.x), STL::Packing::UintToRg16f(lightInfo.Radiance.y).x);
-		const float3 normal = cross(Edges[0], Edges[1]);
+		Base = base;
+		Edges[0] = edge0;
+		Edges[1] = edge1;
+		const float3 normal = cross(edge0, edge1);
 		const float normalLength = length(normal);
 		if (normalLength > 0)
 		{
@@ -41,6 +56,18 @@ struct TriangleLight
 			Normal = 0;
 			Area = 0;
 		}
+		Radiance = radiance;
+	}
+
+	void Load(LightInfo lightInfo)
+	{
+		const float2 scalars = STL::Packing::UintToRg16f(lightInfo.Scalars);
+		const float3
+			edge0 = RTXDI_DecodeNormalizedVectorFromSnorm2x16(lightInfo.Directions[0]) * scalars[0],
+			edge1 = RTXDI_DecodeNormalizedVectorFromSnorm2x16(lightInfo.Directions[1]) * scalars[1],
+			base = lightInfo.Center - (edge0 + edge1) / 3,
+			radiance = float3(STL::Packing::UintToRg16f(lightInfo.Radiance.x), STL::Packing::UintToRg16f(lightInfo.Radiance.y).x);
+		Initialize(base, edge0, edge1, radiance);
 	}
 
 	void Store(out LightInfo lightInfo)
@@ -69,5 +96,10 @@ struct TriangleLight
 		lightSample.Radiance = Radiance;
 		lightSample.SolidAnglePDF = CalculateSolidAnglePDF(viewPosition, lightSample.Position, lightSample.Normal);
 		return lightSample;
+	}
+	
+	float CalculatePower()
+	{
+		return Area * STL::Math::Pi(1) * STL::Color::Luminance(Radiance);
 	}
 };

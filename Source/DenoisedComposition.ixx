@@ -37,7 +37,7 @@ export namespace PostProcessing {
 				* DenoisedDiffuse,
 				* DenoisedSpecular,
 				* Color;
-		} RenderTextures{};
+		} Textures{};
 
 		explicit DenoisedComposition(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DenoisedComposition_dxil, size(g_DenoisedComposition_dxil) };
@@ -53,13 +53,13 @@ export namespace PostProcessing {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.LinearDepth, RenderTextures.LinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.BaseColorMetalness, RenderTextures.BaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.EmissiveColor, RenderTextures.EmissiveColor->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.NormalRoughness, RenderTextures.NormalRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.DenoisedDiffuse, RenderTextures.DenoisedDiffuse->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.DenoisedSpecular, RenderTextures.DenoisedSpecular->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*RenderTextures.Color, RenderTextures.Color->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LinearDepth, Textures.LinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.BaseColorMetalness, Textures.BaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.EmissiveColor, Textures.EmissiveColor->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NormalRoughness, Textures.NormalRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.DenoisedDiffuse, Textures.DenoisedDiffuse->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.DenoisedSpecular, Textures.DenoisedSpecular->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Color, Textures.Color->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
 
@@ -68,13 +68,13 @@ export namespace PostProcessing {
 
 			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
 			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootDescriptorTable(2, RenderTextures.LinearDepth->GetSRVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(3, RenderTextures.BaseColorMetalness->GetSRVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(4, RenderTextures.EmissiveColor->GetSRVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(5, RenderTextures.NormalRoughness->GetSRVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(6, RenderTextures.DenoisedDiffuse->GetSRVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(7, RenderTextures.DenoisedSpecular->GetSRVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(8, RenderTextures.Color->GetUAVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(2, Textures.LinearDepth->GetSRVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(3, Textures.BaseColorMetalness->GetSRVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(4, Textures.EmissiveColor->GetSRVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(5, Textures.NormalRoughness->GetSRVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(6, Textures.DenoisedDiffuse->GetSRVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(7, Textures.DenoisedSpecular->GetSRVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootDescriptorTable(8, Textures.Color->GetUAVDescriptor().GPUHandle);
 
 			pCommandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
 		}
