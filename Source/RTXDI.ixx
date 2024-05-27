@@ -241,7 +241,7 @@ export struct RTXDI {
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor().GPUHandle);
 
-		{
+		if (m_context->getLightBufferParameters().localLightBufferRegion.numLights) {
 			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState, XMUINT2 size) {
 				GPUBuffers.RIS->InsertUAVBarrier(pCommandList);
 
@@ -250,39 +250,30 @@ export struct RTXDI {
 				pCommandList->Dispatch((size.x + 255) / 256, size.y, 1);
 			};
 
-			if (m_context->getLightBufferParameters().localLightBufferRegion.numLights) {
-				if (m_context->isLocalLightPowerRISEnabled()) {
-					const auto localLightRISBufferSegment = m_context->getLocalLightRISBufferSegmentParams();
-					Dispatch(m_localLightPresampling, { localLightRISBufferSegment.tileSize, localLightRISBufferSegment.tileCount });
-				}
+			if (m_context->isLocalLightPowerRISEnabled()) {
+				const auto localLightRISBufferSegment = m_context->getLocalLightRISBufferSegmentParams();
+				Dispatch(m_localLightPresampling, { localLightRISBufferSegment.tileSize, localLightRISBufferSegment.tileCount });
+			}
 
-				if (m_context->isReGIREnabled()) {
-					Dispatch(m_ReGIRPresampling, { m_context->getReGIRContext().getReGIRLightSlotCount(), 1 });
-				}
+			if (m_context->isReGIREnabled()) {
+				Dispatch(m_ReGIRPresampling, { m_context->getReGIRContext().getReGIRLightSlotCount(), 1 });
 			}
 		}
 
 		{
+			const auto& parameters = m_context->getReSTIRDIContext().getStaticParameters();
+			const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
 			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState) {
 				GPUBuffers.DIReservoir->InsertUAVBarrier(pCommandList);
 
 				pCommandList->SetPipelineState(pipelineState.Get());
 
-				const auto& parameters = m_context->getReSTIRDIContext().getStaticParameters();
-				const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
 				pCommandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
 			};
 
 			Dispatch(m_DIInitialSampling);
-
-			const auto resamplingMode = m_context->getReSTIRDIContext().getResamplingMode();
-			if (resamplingMode == ReSTIRDI_ResamplingMode::Temporal || resamplingMode == ReSTIRDI_ResamplingMode::TemporalAndSpatial) {
-				Dispatch(m_DITemporalResampling);
-			}
-			if (resamplingMode == ReSTIRDI_ResamplingMode::Spatial || resamplingMode == ReSTIRDI_ResamplingMode::TemporalAndSpatial) {
-				Dispatch(m_DISpatialResampling);
-			}
-
+			Dispatch(m_DITemporalResampling);
+			Dispatch(m_DISpatialResampling);
 			Dispatch(m_DIFinalShading);
 		}
 	}

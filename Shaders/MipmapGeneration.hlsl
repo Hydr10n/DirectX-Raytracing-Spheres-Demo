@@ -36,7 +36,7 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 	{
 		uint2 sourcePos = GlobalIndex.xy * 2;
 		
-		TEXTURE(g_constants.MipLevel);
+		TEXTURE(0);
 		sourceWeights.x = texture[sourcePos + int2(0, 0)];
 		sourceWeights.y = texture[sourcePos + int2(0, 1)];
 		sourceWeights.z = texture[sourcePos + int2(1, 0)];
@@ -51,7 +51,7 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 	float weight = (sourceWeights.x + sourceWeights.y + sourceWeights.z + sourceWeights.w) * 0.25;
 
 	{
-		TEXTURE(g_constants.MipLevel + 1);
+		TEXTURE(1);
 		texture[GlobalIndex.xy] = weight;
 	}
 
@@ -71,7 +71,7 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 
 	if ((lane & 3) == 0)
 	{
-		TEXTURE(g_constants.MipLevel + 2);
+		TEXTURE(2);
 		texture[GlobalIndex.xy >> 1] = weight;
 	}
 
@@ -86,7 +86,7 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 
 	if ((lane & 15) == 0)
 	{
-		TEXTURE(g_constants.MipLevel + 3);
+		TEXTURE(3);
 		texture[GlobalIndex.xy >> 2] = weight;
 
 		// Store the intermediate result into shared memory.
@@ -116,7 +116,7 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 
 	if ((lane & 3) == 0)
 	{
-		TEXTURE(g_constants.MipLevel + 4);
+		TEXTURE(4);
 		texture[GlobalIndex.xy] = weight;
 	}
 
@@ -131,7 +131,7 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 
 	if (lane == 0)
 	{
-		TEXTURE(g_constants.MipLevel + 5);
+		TEXTURE(5);
 		texture[GlobalIndex.xy >> 1] = weight;
 	}
 }

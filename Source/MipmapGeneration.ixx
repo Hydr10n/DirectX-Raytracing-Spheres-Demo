@@ -57,7 +57,7 @@ export namespace PostProcessing {
 
 			const auto size = GetTextureSize(m_texture->GetNative());
 			for (UINT mipLevel = 0, mipLevels = m_texture->GetNative()->GetDesc().MipLevels; mipLevel < mipLevels; mipLevel += 5) {
-				struct { UINT MipLevel, MipLevels; } constants{ mipLevel, mipLevels };
+				const struct { UINT MipLevel, MipLevels; } constants{ mipLevel, mipLevels };
 				pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 
 				pCommandList->Dispatch((max(1u, size.x >> mipLevel) + 31) / 32, (max(1u, size.y >> mipLevel) + 31) / 32, 1);

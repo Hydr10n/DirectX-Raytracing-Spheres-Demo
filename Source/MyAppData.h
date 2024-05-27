@@ -186,7 +186,7 @@ public:
 					} ReGIR;
 
 					struct ReSTIRDI {
-						rtxdi::ReSTIRDI_ResamplingMode ResamplingMode = rtxdi::ReSTIRDI_ResamplingMode::TemporalAndSpatial;
+						bool IsEnabled = true;
 
 						struct InitialSampling {
 							struct LocalLight {
@@ -204,7 +204,7 @@ public:
 							FRIEND_JSON_CONVERSION_FUNCTIONS(InitialSampling, LocalLight, BRDFSamples);
 						} InitialSampling;
 
-						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, ResamplingMode, InitialSampling);
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, InitialSampling);
 					} ReSTIRDI;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReGIR, ReSTIRDI);

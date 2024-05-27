@@ -43,7 +43,6 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 			- Cell Size
 			- Visualize Cells
 		- ReSTIR DI
-			- Resampling Mode: Temporal | Spatial | Temporal + Spatial
 			- Initial Sampling
 				- Local Light
 					- Mode: Uniform | Power RIS | ReGIR RIS

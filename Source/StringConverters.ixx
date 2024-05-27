@@ -19,17 +19,6 @@ export {
 		}
 	}
 
-	constexpr auto ToString(ReSTIRDI_ResamplingMode value) {
-		switch (value) {
-			case ReSTIRDI_ResamplingMode::None: return "None";
-			case ReSTIRDI_ResamplingMode::Temporal: return "Temporal";
-			case ReSTIRDI_ResamplingMode::Spatial: return "Spatial";
-			case ReSTIRDI_ResamplingMode::TemporalAndSpatial: return "Temporal + Spatial";
-			case ReSTIRDI_ResamplingMode::FusedSpatiotemporal: return "Fused Spatio-Temporal";
-			default: throw;
-		}
-	}
-
 	constexpr auto ToString(ReSTIRDI_LocalLightSamplingMode value) {
 		switch (value) {
 			case ReSTIRDI_LocalLightSamplingMode::Uniform: return "Uniform";
