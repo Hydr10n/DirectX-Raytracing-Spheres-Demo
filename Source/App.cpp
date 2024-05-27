@@ -747,6 +747,44 @@ private:
 		}
 
 		m_RTXDIResources.Context->setLightBufferParams(m_lightPreparation->GetLightBufferParameters());
+
+		const auto& RTXDISettings = g_graphicsSettings.Raytracing.RTXDI;
+
+		{
+			const auto& settings = RTXDISettings.ReGIR;
+
+			auto& context = m_RTXDIResources.Context->getReGIRContext();
+
+			auto dynamicParameters = context.getReGIRDynamicParameters();
+			dynamicParameters.regirCellSize = settings.CellSize;
+			dynamicParameters.center = reinterpret_cast<const rtxdi::float3&>(m_cameraController.GetPosition());
+			context.setDynamicParameters(dynamicParameters);
+		}
+
+		{
+			const auto& settings = RTXDISettings.ReSTIRDI;
+
+			auto& context = m_RTXDIResources.Context->getReSTIRDIContext();
+
+			context.setFrameIndex(m_stepTimer.GetFrameCount() - 1);
+
+			context.setResamplingMode(settings.ResamplingMode);
+
+			auto initialSamplingParameters = context.getInitialSamplingParameters();
+			initialSamplingParameters.numPrimaryLocalLightSamples = settings.InitialSampling.LocalLight.Samples;
+			initialSamplingParameters.numPrimaryBrdfSamples = settings.InitialSampling.BRDFSamples;
+			initialSamplingParameters.brdfCutoff = 0;
+			initialSamplingParameters.localLightSamplingMode = settings.InitialSampling.LocalLight.Mode;
+			context.setInitialSamplingParameters(initialSamplingParameters);
+
+			auto temporalResamplingParameters = context.getTemporalResamplingParameters();
+			temporalResamplingParameters.temporalBiasCorrection = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
+			context.setTemporalResamplingParameters(temporalResamplingParameters);
+
+			auto spatialResamplingParameters = context.getSpatialResamplingParameters();
+			spatialResamplingParameters.spatialBiasCorrection = ReSTIRDI_SpatialBiasCorrectionMode::Raytraced;
+			context.setSpatialResamplingParameters(spatialResamplingParameters);
+		}
 	}
 
 	void ProcessInput() {
@@ -936,8 +974,6 @@ private:
 	void RenderScene() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto frameIndex = m_stepTimer.GetFrameCount() - 1;
-
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
 		const NRDSettings NRDSettings{
@@ -960,7 +996,7 @@ private:
 		{
 			m_raytracing->SetConstants({
 				.RenderSize = m_renderSize,
-				.FrameIndex = frameIndex,
+				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
 				.Bounces = raytracingSettings.Bounces,
 				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
 				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
@@ -992,62 +1028,40 @@ private:
 			m_raytracing->Render(commandList, scene);
 		}
 
-		if (raytracingSettings.IsRTXDIEnabled) {
+		if (raytracingSettings.RTXDI.ReSTIRDI.ResamplingMode != ReSTIRDI_ResamplingMode::None) {
 			PrepareLights();
 
-			if (const auto& lightBufferParameters = m_RTXDIResources.Context->getLightBufferParameters();
-				lightBufferParameters.localLightBufferRegion.numLights) {
-				auto& ReSTIRDIContext = m_RTXDIResources.Context->getReSTIRDIContext();
-				ReSTIRDIContext.setFrameIndex(frameIndex);
-				m_RTXDI->SetConstants({
-					.RenderSize = m_renderSize,
-					.RTXDI{
-						.LocalLightRISBufferSegment = m_RTXDIResources.Context->getLocalLightRISBufferSegmentParams(),
-						.EnvironmentLightRISBufferSegment = m_RTXDIResources.Context->getEnvironmentLightRISBufferSegmentParams(),
-						.LightBuffer = lightBufferParameters,
-						.Runtime = ReSTIRDIContext.getRuntimeParams(),
-						.ReSTIRDI{
-							.reservoirBufferParams = ReSTIRDIContext.getReservoirBufferParameters(),
-							.bufferIndices = ReSTIRDIContext.getBufferIndices(),
-							.initialSamplingParams = ReSTIRDIContext.getInitialSamplingParameters(),
-							.temporalResamplingParams = ReSTIRDIContext.getTemporalResamplingParameters(),
-							.spatialResamplingParams = ReSTIRDIContext.getSpatialResamplingParameters(),
-							.shadingParams = ReSTIRDIContext.getShadingParameters()
-						}
-					},
-					.NRD = NRDSettings
-					});
+			m_RTXDI->SetConstants(*m_RTXDIResources.Context, raytracingSettings.RTXDI.ReGIR.VisualizeCells, NRDSettings);
 
-				m_RTXDI->GPUBuffers = {
-					.Camera = m_GPUBuffers.Camera.get(),
-					.InstanceData = m_GPUBuffers.InstanceData.get(),
-					.ObjectData = m_GPUBuffers.ObjectData.get(),
-					.LightInfo = m_RTXDIResources.LightInfo.get(),
-					.LightIndices = m_RTXDIResources.LightIndices.get(),
-					.NeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
-					.RIS = m_RTXDIResources.RIS.get(),
-					.RISLightInfo = m_RTXDIResources.RISLightInfo.get(),
-					.DIReservoir = m_RTXDIResources.DIReservoir.get()
-				};
+			m_RTXDI->GPUBuffers = {
+				.Camera = m_GPUBuffers.Camera.get(),
+				.InstanceData = m_GPUBuffers.InstanceData.get(),
+				.ObjectData = m_GPUBuffers.ObjectData.get(),
+				.LightInfo = m_RTXDIResources.LightInfo.get(),
+				.LightIndices = m_RTXDIResources.LightIndices.get(),
+				.NeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
+				.RIS = m_RTXDIResources.RIS.get(),
+				.RISLightInfo = m_RTXDIResources.RISLightInfo.get(),
+				.DIReservoir = m_RTXDIResources.DIReservoir.get()
+			};
 
-				m_RTXDI->Textures = {
-					.LocalLightPDF = m_RTXDIResources.LocalLightPDF.get(),
-					.PreviousLinearDepth = m_textures.at(TextureNames::PreviousLinearDepth).get(),
-					.LinearDepth = linearDepth,
-					.MotionVectors = motionVectors,
-					.PreviousBaseColorMetalness = m_textures.at(TextureNames::PreviousBaseColorMetalness).get(),
-					.BaseColorMetalness = baseColorMetalness,
-					.PreviousNormals = m_textures.at(TextureNames::PreviousNormals).get(),
-					.Normals = normals,
-					.PreviousRoughness = m_textures.at(TextureNames::PreviousRoughness).get(),
-					.Roughness = roughness,
-					.Color = color,
-					.NoisyDiffuse = noisyDiffuse,
-					.NoisySpecular = noisySpecular
-				};
+			m_RTXDI->Textures = {
+				.LocalLightPDF = m_RTXDIResources.LocalLightPDF.get(),
+				.PreviousLinearDepth = m_textures.at(TextureNames::PreviousLinearDepth).get(),
+				.LinearDepth = linearDepth,
+				.MotionVectors = motionVectors,
+				.PreviousBaseColorMetalness = m_textures.at(TextureNames::PreviousBaseColorMetalness).get(),
+				.BaseColorMetalness = baseColorMetalness,
+				.PreviousNormals = m_textures.at(TextureNames::PreviousNormals).get(),
+				.Normals = normals,
+				.PreviousRoughness = m_textures.at(TextureNames::PreviousRoughness).get(),
+				.Roughness = roughness,
+				.Color = color,
+				.NoisyDiffuse = noisyDiffuse,
+				.NoisySpecular = noisySpecular
+			};
 
-				m_RTXDI->Render(commandList, scene);
-			}
+			m_RTXDI->Render(commandList, scene);
 		}
 	}
 
@@ -1141,7 +1155,6 @@ private:
 
 	void ResetHistory() {
 		const auto commandList = m_deviceResources->GetCommandList();
-
 		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousLinearDepth)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
 		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousBaseColorMetalness)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
 		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousNormals)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
@@ -1162,22 +1175,6 @@ private:
 
 		{
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
-
-			{
-				auto& context = m_RTXDIResources.Context->getReSTIRDIContext();
-
-				auto initialSamplingParameters = context.getInitialSamplingParameters();
-				initialSamplingParameters.localLightSamplingMode = ReSTIRDI_LocalLightSamplingMode::Power_RIS;
-				context.setInitialSamplingParameters(initialSamplingParameters);
-
-				auto temporalResamplingParameters = context.getTemporalResamplingParameters();
-				temporalResamplingParameters.temporalBiasCorrection = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
-				context.setTemporalResamplingParameters(temporalResamplingParameters);
-
-				auto spatialResamplingParameters = context.getSpatialResamplingParameters();
-				spatialResamplingParameters.spatialBiasCorrection = ReSTIRDI_SpatialBiasCorrectionMode::Raytraced;
-				context.setSpatialResamplingParameters(spatialResamplingParameters);
-			}
 
 			const auto device = m_deviceResources->GetDevice();
 
@@ -1647,7 +1644,85 @@ private:
 						}
 					}
 
-					m_resetHistory |= ImGui::Checkbox("NVIDIA RTX Dynamic Illumination", &raytracingSettings.IsRTXDIEnabled);
+					if (ImGui::TreeNodeEx("NVIDIA RTX Dynamic Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& RTXDISettings = raytracingSettings.RTXDI;
+						auto& ReSTIRDISettings = RTXDISettings.ReSTIRDI;
+
+						if (ReSTIRDISettings.ResamplingMode != ReSTIRDI_ResamplingMode::None
+							&& ReSTIRDISettings.InitialSampling.LocalLight.Mode == ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS
+							&& ImGui::TreeNodeEx("ReGIR", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& ReGIRSettings = RTXDISettings.ReGIR;
+
+							m_resetHistory |= ImGui::SliderFloat("Cell Size", &ReGIRSettings.CellSize, ReGIRSettings.MinCellSize, ReGIRSettings.MaxCellSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+							m_resetHistory |= ImGui::Checkbox("Visualize Cells", &ReGIRSettings.VisualizeCells);
+
+							ImGui::TreePop();
+						}
+
+						if (ImGui::TreeNodeEx("ReSTIR DI", ImGuiTreeNodeFlags_DefaultOpen)) {
+							if (ImGui::BeginCombo("Resampling Mode", ToString(ReSTIRDISettings.ResamplingMode))) {
+								for (const auto ResamplingMode : {
+									ReSTIRDI_ResamplingMode::None,
+									ReSTIRDI_ResamplingMode::Temporal,
+									ReSTIRDI_ResamplingMode::Spatial,
+									ReSTIRDI_ResamplingMode::TemporalAndSpatial }) {
+									const auto isSelected = ReSTIRDISettings.ResamplingMode == ResamplingMode;
+
+									if (ImGui::Selectable(ToString(ResamplingMode), isSelected)) {
+										ReSTIRDISettings.ResamplingMode = ResamplingMode;
+
+										m_resetHistory = true;
+									}
+
+									if (isSelected) ImGui::SetItemDefaultFocus();
+								}
+
+								ImGui::EndCombo();
+							}
+
+							if (ReSTIRDISettings.ResamplingMode != ReSTIRDI_ResamplingMode::None) {
+								if (ImGui::TreeNodeEx("Initial Sampling", ImGuiTreeNodeFlags_DefaultOpen)) {
+									auto& initialSamplingSettings = ReSTIRDISettings.InitialSampling;
+
+									if (ImGui::TreeNodeEx("Local Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+										auto& localLightSettings = initialSamplingSettings.LocalLight;
+
+										if (ImGui::BeginCombo("Mode", ToString(localLightSettings.Mode))) {
+											for (const auto SamplingMode : {
+												ReSTIRDI_LocalLightSamplingMode::Uniform,
+												ReSTIRDI_LocalLightSamplingMode::Power_RIS,
+												ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS }) {
+												const auto isSelected = localLightSettings.Mode == SamplingMode;
+
+												if (ImGui::Selectable(ToString(SamplingMode), isSelected)) {
+													localLightSettings.Mode = SamplingMode;
+
+													m_resetHistory = true;
+												}
+
+												if (isSelected) ImGui::SetItemDefaultFocus();
+											}
+
+											ImGui::EndCombo();
+										}
+
+										m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&localLightSettings.Samples), 0, localLightSettings.MaxSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+										ImGui::TreePop();
+									}
+
+									m_resetHistory |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&initialSamplingSettings.BRDFSamples), 0, initialSamplingSettings.MaxBRDFSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+									ImGui::TreePop();
+								}
+							}
+
+							ImGui::TreePop();
+						}
+
+						ImGui::TreePop();
+					}
 
 					ImGui::TreePop();
 				}
@@ -1677,7 +1752,9 @@ private:
 								ImGui::EndCombo();
 							}
 
-							if (NRDSettings.Denoiser != NRDDenoiser::None) ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
+							if (NRDSettings.Denoiser != NRDDenoiser::None) {
+								ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
+							}
 
 							ImGui::TreePop();
 						}
@@ -1710,7 +1787,13 @@ private:
 						}
 
 						if (superResolutionSettings.Upscaler != Upscaler::None && ImGui::BeginCombo("Mode", ToString(superResolutionSettings.Mode))) {
-							for (const auto Mode : { SuperResolutionMode::Auto, SuperResolutionMode::Native, SuperResolutionMode::Quality, SuperResolutionMode::Balanced, SuperResolutionMode::Performance, SuperResolutionMode::UltraPerformance }) {
+							for (const auto Mode : {
+								SuperResolutionMode::Auto,
+								SuperResolutionMode::Native,
+								SuperResolutionMode::Quality,
+								SuperResolutionMode::Balanced,
+								SuperResolutionMode::Performance,
+								SuperResolutionMode::UltraPerformance }) {
 								const auto isSelected = superResolutionSettings.Mode == Mode;
 
 								if (ImGui::Selectable(ToString(Mode), isSelected)) {
@@ -1750,7 +1833,9 @@ private:
 								ImGui::Checkbox("Enable", &NISSettings.IsEnabled);
 							}
 
-							if (NISSettings.IsEnabled) ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							if (NISSettings.IsEnabled) {
+								ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							}
 
 							ImGui::TreePop();
 						}
@@ -1767,7 +1852,9 @@ private:
 							ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
 						}
 
-						if (bloomSettings.IsEnabled) ImGui::SliderFloat("Strength", &bloomSettings.Strength, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						if (bloomSettings.IsEnabled) {
+							ImGui::SliderFloat("Strength", &bloomSettings.Strength, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						}
 
 						ImGui::TreePop();
 					}
@@ -1781,7 +1868,10 @@ private:
 							ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
 							if (ImGui::BeginCombo("Color Primary Rotation", ToString(HDRSettings.ColorPrimaryRotation))) {
-								for (const auto ColorPrimaryRotation : { ToneMapPostProcess::HDTV_to_UHDTV, ToneMapPostProcess::DCI_P3_D65_to_UHDTV, ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
+								for (const auto ColorPrimaryRotation : {
+									ToneMapPostProcess::HDTV_to_UHDTV,
+									ToneMapPostProcess::DCI_P3_D65_to_UHDTV,
+									ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
 									const auto isSelected = HDRSettings.ColorPrimaryRotation == ColorPrimaryRotation;
 
 									if (ImGui::Selectable(ToString(ColorPrimaryRotation), isSelected)) {
@@ -1798,7 +1888,11 @@ private:
 							auto& nonHDRSettings = toneMappingSettings.NonHDR;
 
 							if (ImGui::BeginCombo("Operator", ToString(nonHDRSettings.Operator))) {
-								for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic }) {
+								for (const auto Operator : {
+									ToneMapPostProcess::None,
+									ToneMapPostProcess::Saturate,
+									ToneMapPostProcess::Reinhard,
+									ToneMapPostProcess::ACESFilmic }) {
 									const auto isSelected = nonHDRSettings.Operator == Operator;
 
 									if (ImGui::Selectable(ToString(Operator), isSelected)) nonHDRSettings.Operator = Operator;

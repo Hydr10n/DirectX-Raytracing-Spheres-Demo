@@ -3,6 +3,8 @@
 #define RTXDI_PRESAMPLING_GROUP_SIZE 256
 #define RTXDI_SCREEN_SPACE_GROUP_SIZE 8
 
+#define RTXDI_REGIR_MODE RTXDI_REGIR_ONION
+
 #define RTXDI_ENABLE_BOILING_FILTER
 #define RTXDI_BOILING_FILTER_GROUP_SIZE RTXDI_SCREEN_SPACE_GROUP_SIZE
 
@@ -22,13 +24,16 @@ RaytracingAccelerationStructure g_scene : register(t0);
 
 struct GraphicsSettings
 {
-	uint2 RenderSize, _;
+	uint2 RenderSize;
+	bool VisualizeReGIRCells;
+	uint _;
 	struct
 	{
 		RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
 		RTXDI_LightBufferParameters LightBuffer;
 		RTXDI_RuntimeParameters Runtime;
 		ReSTIRDI_Parameters ReSTIRDI;
+		ReGIR_Parameters ReGIR;
 	} RTXDI;
 	NRDSettings NRD;
 };
@@ -351,6 +356,13 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
 	float3 diffuse, specular;
 	ShadeSurface(lightSample, surface, diffuse, specular);
 	return STL::Color::Luminance(diffuse + specular);
+}
+
+float RAB_GetLightTargetPdfForVolume(RAB_LightInfo light, float3 volumeCenter, float volumeRadius)
+{
+	TriangleLight triangleLight;
+	triangleLight.Load(light);
+	return triangleLight.CalculateWeightForVolume(volumeCenter, volumeRadius);
 }
 
 bool GetConservativeVisibility(RAB_Surface surface, float3 samplePosition)

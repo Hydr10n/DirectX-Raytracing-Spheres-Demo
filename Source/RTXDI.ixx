@@ -1,16 +1,19 @@
 module;
 
+#include <ranges>
+
 #include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 
-#include "rtxdi/ReSTIRDIParameters.h"
+#include "rtxdi/ImportanceSamplingContext.h"
 
 #include "Shaders/DIFinalShading.dxil.h"
 #include "Shaders/DIInitialSampling.dxil.h"
 #include "Shaders/DISpatialResampling.dxil.h"
 #include "Shaders/DITemporalResampling.dxil.h"
 #include "Shaders/LocalLightPresampling.dxil.h"
+#include "Shaders/ReGIRPresampling.dxil.h"
 
 export module RTXDI;
 
@@ -27,16 +30,20 @@ using namespace DirectX;
 using namespace DirectX::RaytracingHelpers;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
+using namespace rtxdi;
 using namespace std;
 
 export struct RTXDI {
 	struct GraphicsSettings {
-		XMUINT2 RenderSize, _;
+		XMUINT2 RenderSize;
+		BOOL VisualizeReGIRCells;
+		UINT _;
 		struct {
 			RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
 			RTXDI_LightBufferParameters LightBuffer;
 			RTXDI_RuntimeParameters Runtime;
 			ReSTIRDI_Parameters ReSTIRDI;
+			ReGIR_Parameters ReGIR;
 		} RTXDI;
 		NRDSettings NRD;
 	};
@@ -83,6 +90,13 @@ export struct RTXDI {
 		}
 
 		{
+			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_ReGIRPresampling_dxil, size(g_ReGIRPresampling_dxil) };
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_ReGIRPresampling)));
+			m_ReGIRPresampling->SetName(L"ReGIRPresampling");
+		}
+
+		{
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = DIInitialSamplingShaderByteCode };
 			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DIInitialSampling)));
 			m_DIInitialSampling->SetName(L"DIInitialSampling");
@@ -110,10 +124,72 @@ export struct RTXDI {
 		}
 	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept {
-		m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings;
-		m_renderSize = graphicsSettings.RenderSize;
-		m_localLightRISBufferSegment = graphicsSettings.RTXDI.LocalLightRISBufferSegment;
+	void SetConstants(const ImportanceSamplingContext& importanceSamplingContext, bool visualizeReGIRCells, const NRDSettings& NRDSettings) {
+		m_context = &importanceSamplingContext;
+
+		ReGIR_Parameters ReGIRParameters;
+		{
+			const auto& context = importanceSamplingContext.getReGIRContext();
+			const auto staticParameters = context.getReGIRStaticParameters();
+			const auto dynamicParameters = context.getReGIRDynamicParameters();
+			const auto onionParameters = context.getReGIROnionCalculatedParameters();
+			ReGIRParameters = {
+				.commonParams{
+					.localLightSamplingFallbackMode = static_cast<uint32_t>(dynamicParameters.fallbackSamplingMode),
+					.centerX = dynamicParameters.center.x,
+					.centerY = dynamicParameters.center.y,
+					.centerZ = dynamicParameters.center.z,
+					.risBufferOffset = context.getReGIRCellOffset(),
+					.lightsPerCell = staticParameters.LightsPerCell,
+					.cellSize = dynamicParameters.regirCellSize * (staticParameters.Mode == ReGIRMode::Onion ? 0.5f : 1),
+					.samplingJitter = max(0.0f, dynamicParameters.regirSamplingJitter * 2),
+					.localLightPresamplingMode = static_cast<uint32_t>(dynamicParameters.presamplingMode),
+					.numRegirBuildSamples = dynamicParameters.regirNumBuildSamples
+				},
+				.gridParams{
+					.cellsX = staticParameters.gridParameters.GridSize.x,
+					.cellsY = staticParameters.gridParameters.GridSize.y,
+					.cellsZ = staticParameters.gridParameters.GridSize.z
+				},
+				.onionParams{
+					.numLayerGroups = static_cast<uint32_t>(size(onionParameters.regirOnionLayers)),
+					.cubicRootFactor = onionParameters.regirOnionCubicRootFactor,
+					.linearFactor = onionParameters.regirOnionLinearFactor
+				}
+			};
+			for (const auto i : views::iota(static_cast<size_t>(0), size(onionParameters.regirOnionLayers))) {
+				ReGIRParameters.onionParams.layers[i] = onionParameters.regirOnionLayers[i];
+				ReGIRParameters.onionParams.layers[i].innerRadius *= ReGIRParameters.commonParams.cellSize;
+				ReGIRParameters.onionParams.layers[i].outerRadius *= ReGIRParameters.commonParams.cellSize;
+			}
+			for (const auto i : views::iota(static_cast<size_t>(0), size(onionParameters.regirOnionRings))) {
+				ReGIRParameters.onionParams.rings[i] = onionParameters.regirOnionRings[i];
+			}
+		}
+
+		auto& ReSTIRDIContext = importanceSamplingContext.getReSTIRDIContext();
+		const auto& ReSTIRDIStaticParameters = ReSTIRDIContext.getStaticParameters();
+
+		m_GPUBuffers.GraphicsSettings.At(0) = {
+			.RenderSize{ ReSTIRDIStaticParameters.RenderWidth, ReSTIRDIStaticParameters.RenderHeight },
+			.VisualizeReGIRCells = visualizeReGIRCells,
+			.RTXDI{
+				.LocalLightRISBufferSegment = importanceSamplingContext.getLocalLightRISBufferSegmentParams(),
+				.EnvironmentLightRISBufferSegment = importanceSamplingContext.getEnvironmentLightRISBufferSegmentParams(),
+				.LightBuffer = importanceSamplingContext.getLightBufferParameters(),
+				.Runtime = importanceSamplingContext.getReSTIRDIContext().getRuntimeParams(),
+				.ReSTIRDI{
+					.reservoirBufferParams = ReSTIRDIContext.getReservoirBufferParameters(),
+					.bufferIndices = ReSTIRDIContext.getBufferIndices(),
+					.initialSamplingParams = ReSTIRDIContext.getInitialSamplingParameters(),
+					.temporalResamplingParams = ReSTIRDIContext.getTemporalResamplingParameters(),
+					.spatialResamplingParams = ReSTIRDIContext.getSpatialResamplingParameters(),
+					.shadingParams = ReSTIRDIContext.getShadingParameters()
+				},
+				.ReGIR = ReGIRParameters
+			},
+			.NRD = NRDSettings
+		};
 	}
 
 	void Render(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene) {
@@ -174,7 +250,16 @@ export struct RTXDI {
 				pCommandList->Dispatch((size.x + 255) / 256, size.y, 1);
 			};
 
-			Dispatch(m_localLightPresampling, { m_localLightRISBufferSegment.tileSize, m_localLightRISBufferSegment.tileCount });
+			if (m_context->getLightBufferParameters().localLightBufferRegion.numLights) {
+				if (m_context->isLocalLightPowerRISEnabled()) {
+					const auto localLightRISBufferSegment = m_context->getLocalLightRISBufferSegmentParams();
+					Dispatch(m_localLightPresampling, { localLightRISBufferSegment.tileSize, localLightRISBufferSegment.tileCount });
+				}
+
+				if (m_context->isReGIREnabled()) {
+					Dispatch(m_ReGIRPresampling, { m_context->getReGIRContext().getReGIRLightSlotCount(), 1 });
+				}
+			}
 		}
 
 		{
@@ -183,12 +268,21 @@ export struct RTXDI {
 
 				pCommandList->SetPipelineState(pipelineState.Get());
 
-				pCommandList->Dispatch((m_renderSize.x + 7) / 8, (m_renderSize.y + 7) / 8, 1);
+				const auto& parameters = m_context->getReSTIRDIContext().getStaticParameters();
+				const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
+				pCommandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
 			};
 
 			Dispatch(m_DIInitialSampling);
-			Dispatch(m_DITemporalResampling);
-			Dispatch(m_DISpatialResampling);
+
+			const auto resamplingMode = m_context->getReSTIRDIContext().getResamplingMode();
+			if (resamplingMode == ReSTIRDI_ResamplingMode::Temporal || resamplingMode == ReSTIRDI_ResamplingMode::TemporalAndSpatial) {
+				Dispatch(m_DITemporalResampling);
+			}
+			if (resamplingMode == ReSTIRDI_ResamplingMode::Spatial || resamplingMode == ReSTIRDI_ResamplingMode::TemporalAndSpatial) {
+				Dispatch(m_DISpatialResampling);
+			}
+
 			Dispatch(m_DIFinalShading);
 		}
 	}
@@ -198,9 +292,8 @@ private:
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState>
-		m_localLightPresampling,
+		m_localLightPresampling, m_ReGIRPresampling,
 		m_DIInitialSampling, m_DITemporalResampling, m_DISpatialResampling, m_DIFinalShading;
 
-	XMUINT2 m_renderSize{};
-	RTXDI_RISBufferSegmentParameters m_localLightRISBufferSegment{};
+	const ImportanceSamplingContext* m_context;
 };

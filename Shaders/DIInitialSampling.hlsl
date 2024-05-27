@@ -40,6 +40,9 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 #if RTXDI_ENABLE_PRESAMPLING
 			g_graphicsSettings.RTXDI.LocalLightRISBufferSegment,
 			g_graphicsSettings.RTXDI.EnvironmentLightRISBufferSegment,
+#if RTXDI_REGIR_MODE != RTXDI_REGIR_DISABLED
+			g_graphicsSettings.RTXDI.ReGIR,
+#endif
 #endif
 			lightSample
 		);

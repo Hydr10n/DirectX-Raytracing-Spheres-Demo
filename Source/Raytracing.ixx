@@ -78,7 +78,7 @@ export struct Raytracing {
 		m_shaderBindingTable = make_unique<ShaderBindingTable>(pDevice, stateObjectProperties.Get(), rayGenerationEntries, missEntries, hitGroupEntries);
 	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept {
+	void SetConstants(const GraphicsSettings& graphicsSettings) {
 		m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings;
 		m_renderSize = graphicsSettings.RenderSize;
 	}

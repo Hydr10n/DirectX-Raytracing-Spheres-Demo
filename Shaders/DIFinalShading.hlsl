@@ -1,5 +1,6 @@
 #include "RTXDIAppBridge.hlsli"
 #include "rtxdi/DIReservoir.hlsli"
+#include "rtxdi/ReGIRSampling.hlsli"
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
@@ -35,7 +36,17 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			const float invPDF = RTXDI_GetDIReservoirInvPdf(reservoir);
 			directDiffuse *= invPDF;
 			directSpecular *= invPDF;
+			
+			if (g_graphicsSettings.VisualizeReGIRCells
+				&& DIParameters.initialSamplingParams.localLightSamplingMode == ReSTIRDI_LocalLightSamplingMode_REGIR_RIS)
+			{
+				const float3 cellColor = RTXDI_VisualizeReGIRCells(g_graphicsSettings.RTXDI.ReGIR, surface.Position);
+				directDiffuse = lerp(directDiffuse, cellColor, 0.5f);
+			}
 
+			const float3 radiance = directDiffuse + directSpecular;
+			g_color[pixelPosition] += NRD_IsValidRadiance(radiance) ? radiance : 0;
+			
 			if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
 			{
 				PackNoisySignals(
@@ -47,9 +58,6 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 					g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
 				);
 			}
-
-			const float3 radiance = directDiffuse + directSpecular;
-			g_color[pixelPosition] += NRD_IsValidRadiance(radiance) ? radiance : 0;
 		}
 	}
 }

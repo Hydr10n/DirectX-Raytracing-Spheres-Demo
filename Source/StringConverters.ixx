@@ -5,6 +5,7 @@ module;
 export module StringConverters;
 
 using namespace DirectX;
+using namespace rtxdi;
 using namespace sl;
 using namespace WindowHelpers;
 
@@ -14,6 +15,26 @@ export {
 			case WindowMode::Windowed: return "Windowed";
 			case WindowMode::Borderless: return "Borderless";
 			case WindowMode::Fullscreen: return "Fullscreen";
+			default: throw;
+		}
+	}
+
+	constexpr auto ToString(ReSTIRDI_ResamplingMode value) {
+		switch (value) {
+			case ReSTIRDI_ResamplingMode::None: return "None";
+			case ReSTIRDI_ResamplingMode::Temporal: return "Temporal";
+			case ReSTIRDI_ResamplingMode::Spatial: return "Spatial";
+			case ReSTIRDI_ResamplingMode::TemporalAndSpatial: return "Temporal + Spatial";
+			case ReSTIRDI_ResamplingMode::FusedSpatiotemporal: return "Fused Spatio-Temporal";
+			default: throw;
+		}
+	}
+
+	constexpr auto ToString(ReSTIRDI_LocalLightSamplingMode value) {
+		switch (value) {
+			case ReSTIRDI_LocalLightSamplingMode::Uniform: return "Uniform";
+			case ReSTIRDI_LocalLightSamplingMode::Power_RIS: return "Power RIS";
+			case ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS: return "ReGIR RIS";
 			default: throw;
 		}
 	}

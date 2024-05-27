@@ -10,6 +10,8 @@
 
 #include "directxtk12/PostProcess.h"
 
+#include "rtxdi/ReSTIRDI.h"
+
 import DisplayHelpers;
 import NRD;
 import Streamline;
@@ -28,6 +30,27 @@ namespace WindowHelpers {
 		}
 	);
 }
+
+namespace rtxdi {
+	NLOHMANN_JSON_SERIALIZE_ENUM(
+		ReSTIRDI_ResamplingMode,
+		{
+			{ ReSTIRDI_ResamplingMode::None, "None" },
+			{ ReSTIRDI_ResamplingMode::Temporal, "Temporal" },
+			{ ReSTIRDI_ResamplingMode::Spatial, "Spatial" },
+			{ ReSTIRDI_ResamplingMode::TemporalAndSpatial, "TemporalAndSpatial" }
+		}
+	);
+}
+
+NLOHMANN_JSON_SERIALIZE_ENUM(
+	ReSTIRDI_LocalLightSamplingMode,
+	{
+		{ ReSTIRDI_LocalLightSamplingMode::Uniform, "Uniform" },
+		{ ReSTIRDI_LocalLightSamplingMode::Power_RIS, "Power_RIS" },
+		{ ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS, "ReGIR_RIS" }
+	}
+);
 
 namespace sl {
 	NLOHMANN_JSON_SERIALIZE_ENUM(
@@ -136,25 +159,58 @@ public:
 			sl::ReflexMode ReflexMode = sl::ReflexMode::eLowLatency;
 
 			struct Camera {
-				static constexpr float MinHorizontalFieldOfView = 30, MaxHorizontalFieldOfView = 120;
-
 				bool IsJitterEnabled = true;
 
+				static constexpr float MinHorizontalFieldOfView = 30, MaxHorizontalFieldOfView = 120;
 				float HorizontalFieldOfView = 90;
 
 				FRIEND_JSON_CONVERSION_FUNCTIONS(Camera, IsJitterEnabled, HorizontalFieldOfView);
 			} Camera;
 
 			struct Raytracing {
-				static constexpr UINT MaxBounces = 32, MaxSamplesPerPixel = 16;
-
 				bool IsRussianRouletteEnabled = false;
 
+				static constexpr UINT MaxBounces = 32, MaxSamplesPerPixel = 16;
 				UINT Bounces = 8, SamplesPerPixel = 1;
 
-				bool IsShaderExecutionReorderingEnabled = true, IsRTXDIEnabled = true;
+				bool IsShaderExecutionReorderingEnabled = true;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, Bounces, SamplesPerPixel, IsShaderExecutionReorderingEnabled, IsRTXDIEnabled);
+				struct RTXDI {
+					struct ReGIR {
+						static constexpr float MinCellSize = 1e-2f, MaxCellSize = 10;
+						float CellSize = 1;
+
+						bool VisualizeCells{};
+
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, CellSize, VisualizeCells);
+					} ReGIR;
+
+					struct ReSTIRDI {
+						rtxdi::ReSTIRDI_ResamplingMode ResamplingMode = rtxdi::ReSTIRDI_ResamplingMode::TemporalAndSpatial;
+
+						struct InitialSampling {
+							struct LocalLight {
+								ReSTIRDI_LocalLightSamplingMode Mode = ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS;
+
+								static constexpr UINT MaxSamples = 32;
+								UINT Samples = 8;
+
+								FRIEND_JSON_CONVERSION_FUNCTIONS(LocalLight, Mode, Samples);
+							} LocalLight;
+
+							static constexpr UINT MaxBRDFSamples = 8;
+							UINT BRDFSamples = 1;
+
+							FRIEND_JSON_CONVERSION_FUNCTIONS(InitialSampling, LocalLight, BRDFSamples);
+						} InitialSampling;
+
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, ResamplingMode, InitialSampling);
+					} ReSTIRDI;
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReGIR, ReSTIRDI);
+				} RTXDI;
+
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, Bounces, SamplesPerPixel, IsShaderExecutionReorderingEnabled, RTXDI);
 			} Raytracing;
 
 			struct PostProcessing {
@@ -197,7 +253,6 @@ public:
 				struct ToneMapping {
 					struct HDR {
 						static constexpr float MinPaperWhiteNits = 50, MaxPaperWhiteNits = 10000;
-
 						float PaperWhiteNits = 200;
 
 						DirectX::ToneMapPostProcess::ColorPrimaryRotation ColorPrimaryRotation = DirectX::ToneMapPostProcess::HDTV_to_UHDTV;
@@ -206,10 +261,9 @@ public:
 					} HDR;
 
 					struct NonHDR {
-						static constexpr float MinExposure = -10, MaxExposure = 10;
-
 						DirectX::ToneMapPostProcess::Operator Operator = DirectX::ToneMapPostProcess::ACESFilmic;
 
+						static constexpr float MinExposure = -10, MaxExposure = 10;
 						float Exposure{};
 
 						FRIEND_JSON_CONVERSION_FUNCTIONS(NonHDR, Operator, Exposure);
@@ -229,8 +283,15 @@ public:
 				Camera.HorizontalFieldOfView = clamp(Camera.HorizontalFieldOfView, Camera.MinHorizontalFieldOfView, Camera.MaxHorizontalFieldOfView);
 
 				{
-					Raytracing.Bounces = clamp(Raytracing.Bounces, 0u, Raytracing.MaxBounces);
+					Raytracing.Bounces = min(Raytracing.Bounces, Raytracing.MaxBounces);
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
+
+					Raytracing.RTXDI.ReGIR.CellSize = clamp(Raytracing.RTXDI.ReGIR.CellSize, Raytracing.RTXDI.ReGIR.MinCellSize, Raytracing.RTXDI.ReGIR.MaxCellSize);
+
+					{
+						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.MaxSamples);
+						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.MaxBRDFSamples);
+					}
 				}
 
 				{
@@ -266,7 +327,6 @@ public:
 			struct Camera {
 				struct Speed {
 					static constexpr float MaxMovement = 1000, MaxRotation = 2;
-
 					float Movement = 10, Rotation = 0.5f;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(Speed, Movement, Rotation);

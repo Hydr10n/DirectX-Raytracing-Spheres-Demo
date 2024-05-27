@@ -34,6 +34,15 @@ struct LightSample
 	float SolidAnglePDF;
 };
 
+float CalculateAverageDistanceToVolume(float distanceToCenter, float volumeRadius)
+{
+	// The expression and factor are fitted to a Monte Carlo estimated curve.
+	// At distanceToCenter == 0, this function returns (0.75 * volumeRadius) which is analytically accurate.
+	// At infinity, the result asymptotically approaches distanceToCenter.
+	const float nonlinearFactor = 1.1547f, value = distanceToCenter + volumeRadius * nonlinearFactor;
+	return distanceToCenter + volumeRadius * volumeRadius * volumeRadius / (value * value);
+}
+
 struct TriangleLight
 {
 	float3 Base, Edges[2], Normal, Radiance;
@@ -101,5 +110,17 @@ struct TriangleLight
 	float CalculatePower()
 	{
 		return Area * STL::Math::Pi(1) * STL::Color::Luminance(Radiance);
+	}
+
+	float CalculateWeightForVolume(float3 volumeCenter, float volumeRadius)
+	{
+		if (dot(volumeCenter - Base, Normal) < -volumeRadius)
+		{
+			return 0;
+		}
+		const float
+			distance = CalculateAverageDistanceToVolume(length(Base + (Edges[0] + Edges[1]) / 3 - volumeCenter), volumeRadius),
+			approximateSolidAngle = min(Area / (distance * distance), STL::Math::Pi(2));
+		return approximateSolidAngle * STL::Color::Luminance(Radiance);
 	}
 };
