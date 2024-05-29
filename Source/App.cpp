@@ -267,7 +267,7 @@ private:
 		Mouse::ButtonStateTracker Mouse;
 	} m_inputDeviceStateTrackers;
 
-	bool m_isShaderExecutionReorderingSupported{};
+	bool m_isShaderExecutionReorderingAvailable{};
 
 	bool m_resetHistory{};
 
@@ -336,28 +336,16 @@ private:
 	unique_ptr<LightPreparation> m_lightPreparation;
 	unique_ptr<RTXDI> m_RTXDI;
 
-	Constants m_slConstants = [] {
-		Constants constants;
-		constants.cameraPinholeOffset = { 0, 0 };
-		constants.depthInverted = Boolean::eTrue;
-		constants.cameraMotionIncluded = Boolean::eTrue;
-		constants.motionVectors3D = Boolean::eFalse;
-		constants.reset = Boolean::eFalse;
-		return constants;
-	}();
+	bool m_resetStreamline{};
 	unique_ptr<Streamline> m_streamline;
 
-	bool m_isReflexLowLatencyAvailable{};
+	bool m_isReflexLowLatencyAvailable{}, m_isDLSSFrameGenerationEnabled{};
 
-	DLSSGOptions m_DLSSGOptions;
-
-	CommonSettings m_NRDCommonSettings{ .isBaseColorMetalnessAvailable = true };
-	ReblurSettings m_NRDReblurSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
-	RelaxSettings m_NRDRelaxSettings{ .hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3, .enableAntiFirefly = true };
+	bool m_resetNRD{};
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
-	XeSSSettings m_XeSSSettings;
+	bool m_resetXeSS{};
 	unique_ptr<XeSS> m_XeSS;
 
 	unique_ptr<ChromaticAberration> m_chromaticAberration;
@@ -416,7 +404,7 @@ private:
 
 		{
 			NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAPS caps;
-			m_isShaderExecutionReorderingSupported = NvAPI_D3D12_GetRaytracingCaps(device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
+			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
 				&& caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD
 				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(device, 1024, 0) == NVAPI_OK;
 		}
@@ -529,6 +517,14 @@ private:
 	void Render() {
 		if (!m_stepTimer.GetFrameCount()) return;
 
+		const auto isSceneReady = IsSceneReady();
+
+		if (IsDLSSFrameGenerationEnabled()) {
+			if (!m_isDLSSFrameGenerationEnabled && isSceneReady) SetDLSSFrameGenerationOptions(true);
+			else if (m_isDLSSFrameGenerationEnabled && !isSceneReady) SetDLSSFrameGenerationOptions(false);
+		}
+		else if (m_isDLSSFrameGenerationEnabled) SetDLSSFrameGenerationOptions(false);
+
 		m_deviceResources->Prepare();
 
 		const auto commandList = m_deviceResources->GetCommandList();
@@ -558,7 +554,7 @@ private:
 			const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-			if (IsSceneReady()) {
+			if (isSceneReady) {
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
 				RenderScene();
@@ -976,7 +972,7 @@ private:
 
 		const NRDSettings NRDSettings{
 			.Denoiser = m_NRD->IsAvailable() ? g_graphicsSettings.PostProcessing.NRD.Denoiser : NRDDenoiser::None,
-			.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(m_NRDReblurSettings.hitDistanceParameters)
+			.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(ReblurSettings().hitDistanceParameters)
 		};
 
 		const auto
@@ -1070,7 +1066,7 @@ private:
 	bool IsNISEnabled() const { return g_graphicsSettings.PostProcessing.NIS.IsEnabled && m_streamline->IsFeatureAvailable(kFeatureNIS); }
 	bool IsNRDEnabled() const { return g_graphicsSettings.PostProcessing.NRD.Denoiser != NRDDenoiser::None && m_NRD->IsAvailable(); }
 	bool IsReflexEnabled() const { return g_graphicsSettings.ReflexMode != ReflexMode::eOff && m_streamline->IsFeatureAvailable(kFeatureReflex); }
-	bool IsShaderExecutionReorderingEnabled() const { return m_isShaderExecutionReorderingSupported && g_graphicsSettings.Raytracing.IsShaderExecutionReorderingEnabled; }
+	bool IsShaderExecutionReorderingEnabled() const { return m_isShaderExecutionReorderingAvailable && g_graphicsSettings.Raytracing.IsShaderExecutionReorderingEnabled; }
 	bool IsXeSSSuperResolutionEnabled() const { return g_graphicsSettings.PostProcessing.SuperResolution.Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable(); }
 
 	static void SetReflexOptions() {
@@ -1153,6 +1149,13 @@ private:
 		OnRenderSizeChanged();
 	}
 
+	void SetDLSSFrameGenerationOptions(bool enable) {
+		DLSSGOptions options;
+		options.mode = enable ? DLSSGMode::eAuto : DLSSGMode::eOff;
+		ignore = m_streamline->SetConstants(options);
+		m_isDLSSFrameGenerationEnabled = enable;
+	}
+
 	void ResetHistory() {
 		const auto commandList = m_deviceResources->GetCommandList();
 		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousLinearDepth)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
@@ -1160,11 +1163,7 @@ private:
 		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousNormals)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
 		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousRoughness)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
 
-		m_slConstants.reset = Boolean::eTrue;
-
-		m_NRDCommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
-
-		m_XeSSSettings.Reset = true;
+		m_resetStreamline = m_resetNRD = m_resetXeSS = true;
 	}
 
 	void OnRenderSizeChanged() {
@@ -1239,23 +1238,26 @@ private:
 	}
 
 	void PrepareStreamline() {
-		reinterpret_cast<XMFLOAT4X4&>(m_slConstants.cameraViewToClip) = m_cameraController.GetViewToProjection();
-		recalculateCameraMatrices(m_slConstants, reinterpret_cast<const float4x4&>(m_camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(m_camera.PreviousViewToProjection));
-		m_slConstants.jitterOffset = { -m_camera.Jitter.x, -m_camera.Jitter.y };
-		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraPos) = m_cameraController.GetPosition();
-		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraUp) = m_cameraController.GetUpDirection();
-		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraRight) = m_cameraController.GetRightDirection();
-		reinterpret_cast<XMFLOAT3&>(m_slConstants.cameraFwd) = m_cameraController.GetForwardDirection();
-		m_slConstants.cameraNear = m_cameraController.GetNearDepth();
-		m_slConstants.cameraFar = m_cameraController.GetFarDepth();
-		m_slConstants.cameraFOV = m_cameraController.GetVerticalFieldOfView();
-		m_slConstants.cameraAspectRatio = m_cameraController.GetAspectRatio();
-
-		m_slConstants.mvecScale = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y) };
-
-		ignore = m_streamline->SetConstants(m_slConstants);
-
-		m_slConstants.reset = Boolean::eFalse;
+		Constants constants;
+		reinterpret_cast<XMFLOAT4X4&>(constants.cameraViewToClip) = m_cameraController.GetViewToProjection();
+		recalculateCameraMatrices(constants, reinterpret_cast<const float4x4&>(m_camera.PreviousViewToWorld), reinterpret_cast<const float4x4&>(m_camera.PreviousViewToProjection));
+		constants.jitterOffset = { -m_camera.Jitter.x, -m_camera.Jitter.y };
+		constants.mvecScale = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y) };
+		constants.cameraPinholeOffset = { 0, 0 };
+		reinterpret_cast<XMFLOAT3&>(constants.cameraPos) = m_cameraController.GetPosition();
+		reinterpret_cast<XMFLOAT3&>(constants.cameraUp) = m_cameraController.GetUpDirection();
+		reinterpret_cast<XMFLOAT3&>(constants.cameraRight) = m_cameraController.GetRightDirection();
+		reinterpret_cast<XMFLOAT3&>(constants.cameraFwd) = m_cameraController.GetForwardDirection();
+		constants.cameraNear = m_cameraController.GetNearDepth();
+		constants.cameraFar = m_cameraController.GetFarDepth();
+		constants.cameraFOV = m_cameraController.GetVerticalFieldOfView();
+		constants.cameraAspectRatio = m_cameraController.GetAspectRatio();
+		constants.depthInverted = Boolean::eTrue;
+		constants.cameraMotionIncluded = Boolean::eTrue;
+		constants.motionVectors3D = Boolean::eFalse;
+		constants.reset = m_resetStreamline ? Boolean::eTrue : Boolean::eFalse;
+		m_resetStreamline = false;
+		ignore = m_streamline->SetConstants(constants);
 	}
 
 	void ProcessNRD() {
@@ -1284,34 +1286,47 @@ private:
 			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
 			Tag(nrd::ResourceType::OUT_VALIDATION, *m_textures.at(TextureNames::Validation));
 
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrixPrev) = m_camera.PreviousWorldToView;
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrixPrev) = m_camera.PreviousViewToProjection;
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
-			reinterpret_cast<XMFLOAT4X4&>(m_NRDCommonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
-			ranges::copy(m_NRDCommonSettings.cameraJitter, m_NRDCommonSettings.cameraJitterPrev);
-			reinterpret_cast<XMFLOAT2&>(m_NRDCommonSettings.cameraJitter) = m_camera.Jitter;
-
 			const auto outputSize = GetOutputSize();
-			m_NRDCommonSettings.resourceSize[0] = static_cast<uint16_t>(outputSize.cx);
-			m_NRDCommonSettings.resourceSize[1] = static_cast<uint16_t>(outputSize.cy);
-			ranges::copy(m_NRDCommonSettings.resourceSize, m_NRDCommonSettings.resourceSizePrev);
-
-			m_NRDCommonSettings.rectSize[0] = static_cast<uint16_t>(m_renderSize.x);
-			m_NRDCommonSettings.rectSize[1] = static_cast<uint16_t>(m_renderSize.y);
-			ranges::copy(m_NRDCommonSettings.rectSize, m_NRDCommonSettings.rectSizePrev);
-
-			reinterpret_cast<XMFLOAT3&>(m_NRDCommonSettings.motionVectorScale) = { 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 };
-
-			m_NRDCommonSettings.enableValidation = NRDSettings.IsValidationOverlayEnabled;
-
-			ignore = m_NRD->SetConstants(m_NRDCommonSettings);
+			CommonSettings commonSettings{
+				.motionVectorScale{ 1 / static_cast<float>(m_renderSize.x), 1 / static_cast<float>(m_renderSize.y), 1 },
+				.cameraJitter{ m_camera.Jitter.x, m_camera.Jitter.y },
+				.resourceSize{ static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy) },
+				.rectSize{ static_cast<uint16_t>(m_renderSize.x), static_cast<uint16_t>(m_renderSize.y) },
+				.frameIndex = m_stepTimer.GetFrameCount() - 1,
+				.accumulationMode = m_resetNRD ? AccumulationMode::CLEAR_AND_RESTART : AccumulationMode::CONTINUE,
+				.isBaseColorMetalnessAvailable = true,
+				.enableValidation = NRDSettings.IsValidationOverlayEnabled
+			};
+			reinterpret_cast<XMFLOAT4X4&>(commonSettings.viewToClipMatrix) = m_cameraController.GetViewToProjection();
+			reinterpret_cast<XMFLOAT4X4&>(commonSettings.viewToClipMatrixPrev) = m_camera.PreviousViewToProjection;
+			reinterpret_cast<XMFLOAT4X4&>(commonSettings.worldToViewMatrix) = m_cameraController.GetWorldToView();
+			reinterpret_cast<XMFLOAT4X4&>(commonSettings.worldToViewMatrixPrev) = m_camera.PreviousWorldToView;
+			ranges::copy(commonSettings.cameraJitter, commonSettings.cameraJitterPrev);
+			ranges::copy(commonSettings.resourceSize, commonSettings.resourceSizePrev);
+			ranges::copy(commonSettings.rectSize, commonSettings.rectSizePrev);
+			m_resetNRD = false;
+			ignore = m_NRD->SetConstants(commonSettings);
 
 			const auto denoiser = static_cast<Identifier>(NRDSettings.Denoiser);
-			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) ignore = m_NRD->SetConstants(denoiser, m_NRDReblurSettings);
-			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) ignore = m_NRD->SetConstants(denoiser, m_NRDRelaxSettings);
+			if (NRDSettings.Denoiser == NRDDenoiser::ReBLUR) {
+				ignore = m_NRD->SetConstants(
+					denoiser,
+					ReblurSettings{
+						.hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3,
+						.enableAntiFirefly = true
+					}
+				);
+			}
+			else if (NRDSettings.Denoiser == NRDDenoiser::ReLAX) {
+				ignore = m_NRD->SetConstants(
+					denoiser,
+					RelaxSettings{
+						.hitDistanceReconstructionMode = HitDistanceReconstructionMode::AREA_3X3,
+						.enableAntiFirefly = true
+					}
+				);
+			}
 			m_NRD->Denoise(initializer_list<Identifier>{ denoiser });
-
-			m_NRDCommonSettings.accumulationMode = AccumulationMode::CONTINUE;
 
 			const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -1351,9 +1366,6 @@ private:
 	}
 
 	void ProcessDLSSFrameGeneration(Texture& inColor) {
-		m_DLSSGOptions.mode = g_graphicsSettings.PostProcessing.IsDLSSFrameGenerationEnabled && g_graphicsSettings.ReflexMode != ReflexMode::eOff ? DLSSGMode::eAuto : DLSSGMode::eOff;
-		ignore = m_streamline->SetConstants(m_DLSSGOptions);
-
 		ResourceTagDesc resourceTagDescs[]{
 			CreateResourceTagDesc(kBufferTypeDepth, *m_textures.at(TextureNames::NormalizedDepth)),
 			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_textures.at(TextureNames::MotionVectors)),
@@ -1365,13 +1377,13 @@ private:
 	void ProcessXeSSSuperResolution() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		reinterpret_cast<XMUINT2&>(m_XeSSSettings.InputSize) = m_renderSize;
-
-		reinterpret_cast<XMFLOAT2&>(m_XeSSSettings.Jitter) = { -m_camera.Jitter.x, -m_camera.Jitter.y };
-
-		m_XeSS->SetConstants(m_XeSSSettings);
-
-		m_XeSSSettings.Reset = false;
+		const XeSSSettings settings{
+			.InputSize = reinterpret_cast<const xess_2d_t&>(m_renderSize),
+			.Jitter{ -m_camera.Jitter.x, -m_camera.Jitter.y },
+			.Reset = m_resetXeSS
+		};
+		m_resetXeSS = false;
+		m_XeSS->SetConstants(settings);
 
 		struct XeSSResource {
 			XeSSResourceType Type;
@@ -1573,7 +1585,9 @@ private:
 						ImGui::EndCombo();
 					}
 
-					if (isChanged) m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper.Apply()); });
+					if (isChanged) {
+						m_futures["WindowSetting"] = async(launch::deferred, [&] { ThrowIfFailed(m_windowModeHelper.Apply()); });
+					}
 				}
 
 				{
@@ -1605,7 +1619,7 @@ private:
 							if (ImGui::Selectable(ToString(ReflexMode), isSelected)) {
 								g_graphicsSettings.ReflexMode = ReflexMode;
 
-								SetReflexOptions();
+								m_futures["ReflexSetting"] = async(launch::deferred, [&] { SetReflexOptions(); });
 							}
 
 							if (isSelected) ImGui::SetItemDefaultFocus();
@@ -1638,7 +1652,7 @@ private:
 
 					{
 						auto isEnabled = IsShaderExecutionReorderingEnabled();
-						if (const ImGuiEx::ScopedEnablement scopedEnablement(m_isShaderExecutionReorderingSupported);
+						if (const ImGuiEx::ScopedEnablement scopedEnablement(m_isShaderExecutionReorderingAvailable);
 							ImGui::Checkbox("NVIDIA Shader Execution Reordering", &isEnabled)) {
 							raytracingSettings.IsShaderExecutionReorderingEnabled = isEnabled;
 						}
@@ -1793,7 +1807,9 @@ private:
 							ImGui::EndCombo();
 						}
 
-						if (isChanged) m_futures["SuperResolutionSetting"] = async(launch::deferred, [&] { SetSuperResolutionOptions(); });
+						if (isChanged) {
+							m_futures["SuperResolutionSetting"] = async(launch::deferred, [&] { SetSuperResolutionOptions(); });
+						}
 
 						ImGui::TreePop();
 					}

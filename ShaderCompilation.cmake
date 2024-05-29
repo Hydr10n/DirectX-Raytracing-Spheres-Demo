@@ -1,6 +1,6 @@
 function(CompileShaders)
 	set(options "")
-	set(single_value_args target config out folder additional_options)
+	set(single_value_args target config out additional_options)
 	set(multi_value_args include_directories source)
 	cmake_parse_arguments(args "${options}" "${single_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -53,8 +53,4 @@ function(CompileShaders)
 	endforeach()
 
 	add_custom_target(${args_target} COMMAND ${compiler_command} DEPENDS ShaderMake BYPRODUCTS ${compiled_shaders})
-
-	if(args_folder)
-		set_target_properties(${args_target} PROPERTIES FOLDER ${args_folder})
-	endif()
 endfunction()

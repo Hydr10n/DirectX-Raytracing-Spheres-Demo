@@ -162,9 +162,7 @@ export struct RTXDI {
 				ReGIRParameters.onionParams.layers[i].innerRadius *= ReGIRParameters.commonParams.cellSize;
 				ReGIRParameters.onionParams.layers[i].outerRadius *= ReGIRParameters.commonParams.cellSize;
 			}
-			for (const auto i : views::iota(static_cast<size_t>(0), size(onionParameters.regirOnionRings))) {
-				ReGIRParameters.onionParams.rings[i] = onionParameters.regirOnionRings[i];
-			}
+			ranges::copy(onionParameters.regirOnionRings, ReGIRParameters.onionParams.rings);
 		}
 
 		auto& ReSTIRDIContext = importanceSamplingContext.getReSTIRDIContext();

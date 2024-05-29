@@ -39,11 +39,8 @@ option(STREAMLINE_FEATURE_NIS "" ON)
 option(STREAMLINE_FEATURE_REFLEX "" ON)
 add_subdirectory("${NVIDIA_library_path}Streamline")
 
-file(GLOB include "Source/*.h")
 file(GLOB modules "Source/*.ixx")
 file(GLOB source "Source/*.cpp")
-source_group("Include" FILES ${include})
-source_group("Source" FILES ${source} ${modules})
 add_executable(${project} WIN32
 	${source}
 	"Source/App.rc"
@@ -53,8 +50,6 @@ target_sources(${project} PRIVATE FILE_SET cxx_modules TYPE CXX_MODULES FILES ${
 
 set_target_properties(${project} PROPERTIES CXX_STANDARD 23)
 set_target_properties(${project} PROPERTIES CXX_STANDARD_REQUIRED ON)
-
-set_target_properties(${project} PROPERTIES FOLDER ${project})
 
 target_compile_definitions(${project} PRIVATE NOMINMAX)
 
@@ -124,6 +119,10 @@ target_link_libraries(${project} PRIVATE
 	nlohmann_json::nlohmann_json
 	unofficial::omniverse-physx-sdk::sdk)
 
-add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${Intel_library_path}XeSS/bin/libxess.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+	"${Intel_library_path}XeSS/bin/libxess.dll"
+	"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
-add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+	"${CMAKE_CURRENT_SOURCE_DIR}/Assets"
+	"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")
