@@ -25,7 +25,7 @@ RaytracingAccelerationStructure g_scene : register(t0);
 struct GraphicsSettings
 {
 	uint2 RenderSize;
-	bool VisualizeReGIRCells;
+	bool IsReGIRCellVisualizationEnabled;
 	uint _;
 	struct
 	{

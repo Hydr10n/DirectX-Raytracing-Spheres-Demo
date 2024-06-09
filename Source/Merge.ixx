@@ -18,9 +18,12 @@ using namespace std;
 
 export namespace PostProcessing {
 	struct Merge {
-		struct { float Weight1, Weight2; } Constants{};
+		struct Constants { float Weight1, Weight2; };
 
 		struct { Texture* Input1, * Input2, * Output; } Textures{};
+
+		Merge(const Merge&) = delete;
+		Merge& operator=(const Merge&) = delete;
 
 		explicit Merge(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Merge_dxil, size(g_Merge_dxil) };
@@ -32,7 +35,7 @@ export namespace PostProcessing {
 			m_pipelineState->SetName(L"Merge");
 		}
 
-		void Process(ID3D12GraphicsCommandList* pCommandList) {
+		void Process(ID3D12GraphicsCommandList* pCommandList, Constants constants) {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
@@ -45,7 +48,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 
-			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
+			pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 			pCommandList->SetComputeRootDescriptorTable(1, Textures.Input1->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(2, Textures.Input2->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(3, Textures.Output->GetUAVDescriptor().GPUHandle);

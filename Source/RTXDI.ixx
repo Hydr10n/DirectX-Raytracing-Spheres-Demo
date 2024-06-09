@@ -34,35 +34,14 @@ using namespace rtxdi;
 using namespace std;
 
 export struct RTXDI {
-	struct GraphicsSettings {
-		XMUINT2 RenderSize;
-		BOOL VisualizeReGIRCells;
-		UINT _;
-		struct {
-			RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
-			RTXDI_LightBufferParameters LightBuffer;
-			RTXDI_RuntimeParameters Runtime;
-			ReSTIRDI_Parameters ReSTIRDI;
-			ReGIR_Parameters ReGIR;
-		} RTXDI;
-		NRDSettings NRD;
-	};
-
 	struct {
 		ConstantBuffer<Camera>* Camera;
 		UploadBuffer<InstanceData>* InstanceData;
 		UploadBuffer<ObjectData>* ObjectData;
-		DefaultBuffer<LightInfo>* LightInfo;
-		DefaultBuffer<UINT>* LightIndices;
-		DefaultBuffer<UINT16>* NeighborOffsets;
-		DefaultBuffer<XMUINT2>* RIS;
-		DefaultBuffer<XMUINT4>* RISLightInfo;
-		DefaultBuffer<RTXDI_PackedDIReservoir>* DIReservoir;
 	} GPUBuffers{};
 
 	struct {
 		Texture
-			* LocalLightPDF,
 			* PreviousLinearDepth,
 			* LinearDepth,
 			* MotionVectors,
@@ -124,22 +103,24 @@ export struct RTXDI {
 		}
 	}
 
-	void SetConstants(const ImportanceSamplingContext& importanceSamplingContext, bool visualizeReGIRCells, const NRDSettings& NRDSettings) {
-		m_context = &importanceSamplingContext;
+	void SetConstants(const RTXDIResources& resources, bool isReGIRCellVisualizationEnabled, const NRDSettings& NRDSettings) {
+		m_resources = &resources;
+
+		const auto& context = *m_resources->Context;
 
 		ReGIR_Parameters ReGIRParameters;
 		{
-			const auto& context = importanceSamplingContext.getReGIRContext();
-			const auto staticParameters = context.getReGIRStaticParameters();
-			const auto dynamicParameters = context.getReGIRDynamicParameters();
-			const auto onionParameters = context.getReGIROnionCalculatedParameters();
+			const auto& ReGIRContext = context.getReGIRContext();
+			const auto staticParameters = ReGIRContext.getReGIRStaticParameters();
+			const auto dynamicParameters = ReGIRContext.getReGIRDynamicParameters();
+			const auto onionParameters = ReGIRContext.getReGIROnionCalculatedParameters();
 			ReGIRParameters = {
 				.commonParams{
 					.localLightSamplingFallbackMode = static_cast<uint32_t>(dynamicParameters.fallbackSamplingMode),
 					.centerX = dynamicParameters.center.x,
 					.centerY = dynamicParameters.center.y,
 					.centerZ = dynamicParameters.center.z,
-					.risBufferOffset = context.getReGIRCellOffset(),
+					.risBufferOffset = ReGIRContext.getReGIRCellOffset(),
 					.lightsPerCell = staticParameters.LightsPerCell,
 					.cellSize = dynamicParameters.regirCellSize * (staticParameters.Mode == ReGIRMode::Onion ? 0.5f : 1),
 					.samplingJitter = max(0.0f, dynamicParameters.regirSamplingJitter * 2),
@@ -165,17 +146,17 @@ export struct RTXDI {
 			ranges::copy(onionParameters.regirOnionRings, ReGIRParameters.onionParams.rings);
 		}
 
-		auto& ReSTIRDIContext = importanceSamplingContext.getReSTIRDIContext();
+		auto& ReSTIRDIContext = context.getReSTIRDIContext();
 		const auto& ReSTIRDIStaticParameters = ReSTIRDIContext.getStaticParameters();
 
 		m_GPUBuffers.GraphicsSettings.At(0) = {
 			.RenderSize{ ReSTIRDIStaticParameters.RenderWidth, ReSTIRDIStaticParameters.RenderHeight },
-			.VisualizeReGIRCells = visualizeReGIRCells,
+			.IsReGIRCellVisualizationEnabled = isReGIRCellVisualizationEnabled,
 			.RTXDI{
-				.LocalLightRISBufferSegment = importanceSamplingContext.getLocalLightRISBufferSegmentParams(),
-				.EnvironmentLightRISBufferSegment = importanceSamplingContext.getEnvironmentLightRISBufferSegmentParams(),
-				.LightBuffer = importanceSamplingContext.getLightBufferParameters(),
-				.Runtime = importanceSamplingContext.getReSTIRDIContext().getRuntimeParams(),
+				.LocalLightRISBufferSegment = context.getLocalLightRISBufferSegmentParams(),
+				.EnvironmentLightRISBufferSegment = context.getEnvironmentLightRISBufferSegmentParams(),
+				.LightBuffer = context.getLightBufferParameters(),
+				.Runtime = context.getReSTIRDIContext().getRuntimeParams(),
 				.ReSTIRDI{
 					.reservoirBufferParams = ReSTIRDIContext.getReservoirBufferParameters(),
 					.bufferIndices = ReSTIRDIContext.getBufferIndices(),
@@ -194,8 +175,8 @@ export struct RTXDI {
 		const ScopedBarrier scopedBarrier(
 			pCommandList,
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(*GPUBuffers.LightInfo, GPUBuffers.LightInfo->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LocalLightPDF, Textures.LocalLightPDF->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(*m_resources->LightInfo, m_resources->LightInfo->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(*m_resources->LocalLightPDF, m_resources->LocalLightPDF->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.PreviousLinearDepth, Textures.PreviousLinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LinearDepth, Textures.LinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.MotionVectors, Textures.MotionVectors->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
@@ -219,10 +200,10 @@ export struct RTXDI {
 		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.LightInfo->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.LightIndices->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootDescriptorTable(i++, GPUBuffers.NeighborOffsets->GetTypedSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.LocalLightPDF->GetSRVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootShaderResourceView(i++, m_resources->LightInfo->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(i++, m_resources->LightIndices->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootDescriptorTable(i++, m_resources->NeighborOffsets->GetTypedSRVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, m_resources->LocalLightPDF->GetSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.PreviousLinearDepth->GetSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetSRVDescriptor().GPUHandle);
@@ -232,41 +213,43 @@ export struct RTXDI {
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.PreviousRoughness->GetSRVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootUnorderedAccessView(i++, GPUBuffers.RIS->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootUnorderedAccessView(i++, GPUBuffers.RISLightInfo->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootUnorderedAccessView(i++, GPUBuffers.DIReservoir->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootUnorderedAccessView(i++, m_resources->RIS->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootUnorderedAccessView(i++, m_resources->RISLightInfo->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor().GPUHandle);
 
-		if (m_context->getLightBufferParameters().localLightBufferRegion.numLights) {
-			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState, XMUINT2 size) {
-				GPUBuffers.RIS->InsertUAVBarrier(pCommandList);
+		const auto& context = *m_resources->Context;
 
+		if (context.getLightBufferParameters().localLightBufferRegion.numLights) {
+			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState, XMUINT2 size) {
 				pCommandList->SetPipelineState(pipelineState.Get());
 
 				pCommandList->Dispatch((size.x + 255) / 256, size.y, 1);
+
+				m_resources->RIS->InsertUAVBarrier(pCommandList);
 			};
 
-			if (m_context->isLocalLightPowerRISEnabled()) {
-				const auto localLightRISBufferSegment = m_context->getLocalLightRISBufferSegmentParams();
+			if (context.isLocalLightPowerRISEnabled()) {
+				const auto localLightRISBufferSegment = context.getLocalLightRISBufferSegmentParams();
 				Dispatch(m_localLightPresampling, { localLightRISBufferSegment.tileSize, localLightRISBufferSegment.tileCount });
 			}
 
-			if (m_context->isReGIREnabled()) {
-				Dispatch(m_ReGIRPresampling, { m_context->getReGIRContext().getReGIRLightSlotCount(), 1 });
+			if (context.isReGIREnabled()) {
+				Dispatch(m_ReGIRPresampling, { context.getReGIRContext().getReGIRLightSlotCount(), 1 });
 			}
 		}
 
 		{
-			const auto& parameters = m_context->getReSTIRDIContext().getStaticParameters();
-			const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
 			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState) {
-				GPUBuffers.DIReservoir->InsertUAVBarrier(pCommandList);
-
 				pCommandList->SetPipelineState(pipelineState.Get());
 
+				const auto& parameters = context.getReSTIRDIContext().getStaticParameters();
+				const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
 				pCommandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
+
+				m_resources->DIReservoir->InsertUAVBarrier(pCommandList);
 			};
 
 			Dispatch(m_DIInitialSampling);
@@ -277,6 +260,20 @@ export struct RTXDI {
 	}
 
 private:
+	struct GraphicsSettings {
+		XMUINT2 RenderSize;
+		BOOL IsReGIRCellVisualizationEnabled;
+		UINT _;
+		struct {
+			RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
+			RTXDI_LightBufferParameters LightBuffer;
+			RTXDI_RuntimeParameters Runtime;
+			ReSTIRDI_Parameters ReSTIRDI;
+			ReGIR_Parameters ReGIR;
+		} RTXDI;
+		NRDSettings NRD;
+	};
+
 	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
@@ -284,5 +281,5 @@ private:
 		m_localLightPresampling, m_ReGIRPresampling,
 		m_DIInitialSampling, m_DITemporalResampling, m_DISpatialResampling, m_DIFinalShading;
 
-	const ImportanceSamplingContext* m_context;
+	const RTXDIResources* m_resources{};
 };

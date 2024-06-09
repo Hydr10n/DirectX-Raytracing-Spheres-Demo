@@ -102,7 +102,7 @@ export {
 						.Material{
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0,
-							.Opacity = 0,
+							.Transmission = 1,
 							.RefractiveIndex = 1.5f
 						}
 					},
@@ -111,7 +111,7 @@ export {
 						.Material{
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0.5f,
-							.Opacity = 0,
+							.Transmission = 1,
 							.RefractiveIndex = 1.5f
 						}
 					},
@@ -130,10 +130,10 @@ export {
 					renderObject.Material = Material;
 
 					if (auto& textures = renderObject.Textures; Name == ObjectNames::AlienMetal) {
-						textures[TextureMap::BaseColor] = directoryPath / L"Alien-Metal_Albedo.png";
-						textures[TextureMap::Metallic] = directoryPath / L"Alien-Metal_Metallic.png";
-						textures[TextureMap::Roughness] = directoryPath / L"Alien-Metal_Roughness.png";
-						textures[TextureMap::Normal] = directoryPath / L"Alien-Metal_Normal.png";
+						textures[TextureMapType::BaseColor] = directoryPath / L"Alien-Metal_Albedo.png";
+						textures[TextureMapType::Metallic] = directoryPath / L"Alien-Metal_Metallic.png";
+						textures[TextureMapType::Roughness] = directoryPath / L"Alien-Metal_Roughness.png";
+						textures[TextureMapType::Normal] = directoryPath / L"Alien-Metal_Normal.png";
 					}
 
 					AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
@@ -181,7 +181,7 @@ export {
 							renderObject.Material = {
 								.BaseColor = RandomFloat4(0.1f),
 								.Roughness = random.Float(0, 0.5f),
-								.Opacity = 0,
+								.Transmission = 1,
 								.RefractiveIndex = 1.5f
 							};
 						}
@@ -252,15 +252,15 @@ export {
 						rigidDynamic.setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 						rigidDynamic.setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 
-						textures[TextureMap::BaseColor] = directoryPath / L"Moon_BaseColor.jpg";
-						textures[TextureMap::Normal] = directoryPath / L"Moon_Normal.jpg";
+						textures[TextureMapType::BaseColor] = directoryPath / L"Moon_BaseColor.jpg";
+						textures[TextureMapType::Normal] = directoryPath / L"Moon_Normal.jpg";
 					}
 					else if (renderObject.Name == ObjectNames::Earth) {
 						rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
 						PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &Mass, 1);
 
-						textures[TextureMap::BaseColor] = directoryPath / L"Earth_BaseColor.jpg";
-						textures[TextureMap::Normal] = directoryPath / L"Earth_Normal.jpg";
+						textures[TextureMapType::BaseColor] = directoryPath / L"Earth_BaseColor.jpg";
+						textures[TextureMapType::Normal] = directoryPath / L"Earth_Normal.jpg";
 					}
 					else if (renderObject.Name == ObjectNames::Star) rigidDynamic.setMass(0);
 

@@ -21,10 +21,10 @@ using namespace std;
 
 export namespace PostProcessing {
 	struct DenoisedComposition {
-		struct {
+		struct Constants {
 			XMUINT2 RenderSize;
 			NRDDenoiser NRDDenoiser;
-		} Constants{};
+		};
 
 		struct { ConstantBuffer<Camera>* Camera; } GPUBuffers{};
 
@@ -39,6 +39,9 @@ export namespace PostProcessing {
 				* Color;
 		} Textures{};
 
+		DenoisedComposition(const DenoisedComposition&) = delete;
+		DenoisedComposition& operator=(const DenoisedComposition&) = delete;
+
 		explicit DenoisedComposition(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DenoisedComposition_dxil, size(g_DenoisedComposition_dxil) };
 
@@ -49,7 +52,7 @@ export namespace PostProcessing {
 			m_pipelineState->SetName(L"DenoisedComposition");
 		}
 
-		void Process(ID3D12GraphicsCommandList* pCommandList) {
+		void Process(ID3D12GraphicsCommandList* pCommandList, const Constants& constants) {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
@@ -66,7 +69,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 
-			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
+			pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
 			pCommandList->SetComputeRootDescriptorTable(2, Textures.LinearDepth->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(3, Textures.BaseColorMetalness->GetSRVDescriptor().GPUHandle);
@@ -76,7 +79,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootDescriptorTable(7, Textures.DenoisedSpecular->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(8, Textures.Color->GetUAVDescriptor().GPUHandle);
 
-			pCommandList->Dispatch((Constants.RenderSize.x + 15) / 16, (Constants.RenderSize.y + 15) / 16, 1);
+			pCommandList->Dispatch((constants.RenderSize.x + 15) / 16, (constants.RenderSize.y + 15) / 16, 1);
 		}
 
 	private:

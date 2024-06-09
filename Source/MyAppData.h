@@ -6,11 +6,11 @@
 
 #include "JsonHelpers.h"
 
+#include "rtxdi/ReSTIRDI.h"
+
 #include "sl_helpers.h"
 
 #include "directxtk12/PostProcess.h"
-
-#include "rtxdi/ReSTIRDI.h"
 
 import DisplayHelpers;
 import NRD;
@@ -27,18 +27,6 @@ namespace WindowHelpers {
 			{ WindowMode::Windowed, "Windowed" },
 			{ WindowMode::Borderless, "Borderless" },
 			{ WindowMode::Fullscreen, "Fullscreen" }
-		}
-	);
-}
-
-namespace rtxdi {
-	NLOHMANN_JSON_SERIALIZE_ENUM(
-		ReSTIRDI_ResamplingMode,
-		{
-			{ ReSTIRDI_ResamplingMode::None, "None" },
-			{ ReSTIRDI_ResamplingMode::Temporal, "Temporal" },
-			{ ReSTIRDI_ResamplingMode::Spatial, "Spatial" },
-			{ ReSTIRDI_ResamplingMode::TemporalAndSpatial, "TemporalAndSpatial" }
 		}
 	);
 }
@@ -180,9 +168,9 @@ public:
 						static constexpr float MinCellSize = 1e-2f, MaxCellSize = 10;
 						float CellSize = 1;
 
-						bool VisualizeCells{};
+						bool IsCellVisualizationEnabled{};
 
-						FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, CellSize, VisualizeCells);
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, CellSize, IsCellVisualizationEnabled);
 					} ReGIR;
 
 					struct ReSTIRDI {

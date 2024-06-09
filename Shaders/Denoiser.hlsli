@@ -6,7 +6,10 @@
 
 #include "STL.hlsli"
 
-enum class NRDDenoiser { None, ReBLUR, ReLAX };
+enum class NRDDenoiser 
+{
+	None, ReBLUR, ReLAX
+};
 
 struct NRDSettings
 {

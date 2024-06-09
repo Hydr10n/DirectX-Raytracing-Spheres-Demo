@@ -15,9 +15,10 @@ RaytracingAccelerationStructure g_scene : register(t0);
 
 struct GraphicsSettings
 {
-	uint2 RenderSize;
-	uint FrameIndex, Bounces, SamplesPerPixel, _;
+	uint FrameIndex, Bounces, SamplesPerPixel;
+	float ThroughputThreshold;
 	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
+	uint2 _;
 	NRDSettings NRD;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
@@ -89,7 +90,7 @@ bool GetEnvironmentColor(float3 worldRayDirection, out float3 color)
 	return ret;
 }
 
-float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo)
+float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth, HitInfo hitInfo)
 {
 	float3 previousPosition;
 	if (g_sceneData.IsStatic)
@@ -109,5 +110,5 @@ float3 CalculateMotionVector(float2 UV, float linearDepth, HitInfo hitInfo)
 		}
 		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
-	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * g_graphicsSettings.RenderSize, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
+	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
 }

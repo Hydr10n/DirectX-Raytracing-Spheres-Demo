@@ -11,7 +11,7 @@ float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 baryce
 	return Vertex::Interpolate(textureCoordinates, barycentrics);
 }
 
-float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBaseColorAlpha = true)
+float GetOpacity(uint objectIndex, float2 textureCoordinate, bool sampleBaseColorTexture = true)
 {
 	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
 	uint index;
@@ -25,16 +25,16 @@ float GetOpacity(uint objectIndex, float2 textureCoordinate, bool getBaseColorAl
 		const Texture2D<float> texture = ResourceDescriptorHeap[index];
 		return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
-	if (g_objectData[objectIndex].Material.AlphaMode != AlphaMode::Opaque && getBaseColorAlpha)
+	if (g_objectData[objectIndex].Material.AlphaMode != AlphaMode::Opaque)
 	{
-		if ((index = resourceDescriptorIndices.TextureMaps.BaseColor) != ~0u)
+		if (sampleBaseColorTexture && (index = resourceDescriptorIndices.TextureMaps.BaseColor) != ~0u)
 		{
 			const Texture2D<float4> texture = ResourceDescriptorHeap[index];
 			return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).a;
 		}
-		return min(g_objectData[objectIndex].Material.Opacity, g_objectData[objectIndex].Material.BaseColor.a);
+		return min(1 - g_objectData[objectIndex].Material.Transmission, g_objectData[objectIndex].Material.BaseColor.a);
 	}
-	return g_objectData[objectIndex].Material.Opacity;
+	return 1 - g_objectData[objectIndex].Material.Transmission;
 }
 
 bool IsOpaque(uint objectIndex, float2 textureCoordinate)
@@ -118,11 +118,7 @@ Material GetMaterial(uint objectIndex, float2 textureCoordinate)
 		material.Roughness = max(material.Roughness, MinRoughness);
 	}
 
-	material.Opacity = GetOpacity(objectIndex, textureCoordinate, false);
-	if (g_objectData[objectIndex].Material.AlphaMode != AlphaMode::Opaque)
-	{
-		material.Opacity = min(material.Opacity, material.BaseColor.a);
-	}
+	material.Transmission = 1 - GetOpacity(objectIndex, textureCoordinate, false);
 
 	material.RefractiveIndex = max(g_objectData[objectIndex].Material.RefractiveIndex, 1);
 

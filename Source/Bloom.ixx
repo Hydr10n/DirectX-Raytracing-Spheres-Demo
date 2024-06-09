@@ -27,7 +27,7 @@ namespace {
 
 export namespace PostProcessing {
 	struct Bloom {
-		struct { float Strength; } Constants{};
+		struct Constants { float Strength; };
 
 		explicit Bloom(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice), m_descriptorHeap(pDevice, DescriptorIndex::Reserve + (1 + BlurMipLevels) * 2), m_merge(pDevice) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Bloom_dxil, size(g_Bloom_dxil) };
@@ -73,7 +73,7 @@ export namespace PostProcessing {
 			}
 		}
 
-		void Process(ID3D12GraphicsCommandList* pCommandList) {
+		void Process(ID3D12GraphicsCommandList* pCommandList, Constants constants) {
 			auto& input = *m_textures.Input, & output = *m_textures.Output;
 			auto blur1 = m_textures.Blur1.get(), blur2 = m_textures.Blur2.get();
 
@@ -86,7 +86,7 @@ export namespace PostProcessing {
 			struct {
 				UINT InputMipLevel;
 				float UpsamplingFilterRadius;
-			} constants{};
+			} _constants{};
 			auto outputMipLevel = 0;
 
 			const auto Dispatch = [&](const Texture& input, const Texture& output) {
@@ -98,7 +98,7 @@ export namespace PostProcessing {
 					}
 				);
 
-				pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
+				pCommandList->SetComputeRoot32BitConstants(0, sizeof(_constants) / 4, &_constants, 0);
 				pCommandList->SetComputeRootDescriptorTable(1, input.GetSRVDescriptor().GPUHandle);
 				pCommandList->SetComputeRootDescriptorTable(2, output.GetUAVDescriptor(outputMipLevel).GPUHandle);
 
@@ -110,11 +110,11 @@ export namespace PostProcessing {
 			Dispatch(input, *blur1);
 
 			for (const auto i : views::iota(0, (BlurMipLevels - 1) * 2)) {
-				constants.InputMipLevel = outputMipLevel;
+				_constants.InputMipLevel = outputMipLevel;
 				if (i < BlurMipLevels - 1) outputMipLevel++;
 				else {
 					outputMipLevel--;
-					constants.UpsamplingFilterRadius = 5e-3f;
+					_constants.UpsamplingFilterRadius = 5e-3f;
 				}
 
 				Dispatch(*blur1, *blur2);
@@ -122,18 +122,13 @@ export namespace PostProcessing {
 				swap(blur1, blur2);
 			}
 
-			m_merge.Constants = {
-				.Weight1 = 1 - Constants.Strength,
-				.Weight2 = Constants.Strength
-			};
-
 			m_merge.Textures = {
 				.Input1 = &input,
 				.Input2 = blur1,
 				.Output = &output
 			};
 
-			m_merge.Process(pCommandList);
+			m_merge.Process(pCommandList, { .Weight1 = 1 - constants.Strength, .Weight2 = constants.Strength });
 		}
 
 	private:

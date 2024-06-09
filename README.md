@@ -15,11 +15,6 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 ---
 
 ## Features
-### Inline Raytracing
-- Diffuse Reflection
-- Specular Reflection
-- Specular Transmission
-
 ### PBR Metallic/Roughness Workflow
 
 ### Rigid-Body Simulation Using NVIDIA PhysX
@@ -36,12 +31,12 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - Raytracing
 	- Russian Roulette
 	- Bounces
-	- Samples per Pixel
-	- NVIDIA Shader Execution Reordering
+	- Samples/Pixel
+- NVIDIA Shader Execution Reordering
 	- NVIDIA RTX Dynamic Illumination
 		- ReGIR
 			- Cell Size
-			- Visualize Cells
+			- Cell Visualization
 		- ReSTIR DI
 			- Initial Sampling
 				- Local Light

@@ -65,11 +65,9 @@ namespace {
 #define DEFAULT_ALIGNMENT size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
 
 #define DESCRIPTOR(descriptor) \
-	m_descriptors.descriptor = { \
-		.Index = index, \
-		.CPUHandle = descriptorHeap.GetCpuHandle(index), \
-		.GPUHandle = descriptorHeap.GetGpuHandle(index) \
-	}
+	m_descriptors.ShaderVisible.descriptor.Index = index; \
+	m_descriptors.ShaderVisible.descriptor.CPUHandle = descriptorHeap.GetCpuHandle(index); \
+	m_descriptors.ShaderVisible.descriptor.GPUHandle = descriptorHeap.GetGpuHandle(index);
 
 export namespace DirectX {
 	void CreateCBV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
@@ -139,60 +137,80 @@ export namespace DirectX {
 		size_t GetCapacity() const noexcept { return m_capacity; }
 		size_t GetCount() const noexcept { return m_count; }
 
-		const Descriptor& GetCBVDescriptor() const noexcept { return m_descriptors.CBV; }
-		Descriptor& GetCBVDescriptor() noexcept { return m_descriptors.CBV; }
-
-		const Descriptor& GetStructuredSRVDescriptor() const noexcept { return m_descriptors.SRV.Structured; }
-		Descriptor& GetStructuredSRVDescriptor() noexcept { return m_descriptors.SRV.Structured; }
-
-		const Descriptor& GetRawSRVDescriptor() const noexcept { return m_descriptors.SRV.Raw; }
-		Descriptor& GetRawSRVDescriptor() noexcept { return m_descriptors.SRV.Raw; }
-
-		const Descriptor& GetTypedSRVDescriptor() const noexcept { return m_descriptors.SRV.Typed; }
-		Descriptor& GetTypedSRVDescriptor() noexcept { return m_descriptors.SRV.Typed; }
-
-		const Descriptor& GetStructuredUAVDescriptor() const noexcept { return m_descriptors.UAV.Structured; }
-		Descriptor& GetStructuredUAVDescriptor() noexcept { return m_descriptors.UAV.Structured; }
-
-		const Descriptor& GetRawUAVDescriptor() const noexcept { return m_descriptors.UAV.Raw; }
-		Descriptor& GetRawUAVDescriptor() noexcept { return m_descriptors.UAV.Raw; }
-
-		const Descriptor& GetTypedUAVDescriptor() const noexcept { return m_descriptors.UAV.Typed; }
-		Descriptor& GetTypedUAVDescriptor() noexcept { return m_descriptors.UAV.Typed; }
-
-		void CreateCBV(const DescriptorHeapEx& descriptorHeap, UINT index) {
-			DESCRIPTOR(CBV);
-			DirectX::CreateCBV(*this, m_descriptors.CBV.CPUHandle, static_cast<UINT>(m_stride * m_count));
+		void Clear(ID3D12GraphicsCommandList* pCommandList, const XMUINT4& values = {}) {
+			TransitionTo(pCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			pCommandList->ClearUnorderedAccessViewUint(m_descriptors.ShaderVisible.UAV.Raw.GPUHandle, m_descriptors.Default.RawUAV.CPUHandle, m_resource.Get(), reinterpret_cast<const UINT*>(&values), 0, nullptr);
+			InsertUAVBarrier(pCommandList);
 		}
+
+		const auto& GetCBVDescriptor() const noexcept { return m_descriptors.ShaderVisible.CBV; }
+		auto& GetCBVDescriptor() noexcept { return m_descriptors.ShaderVisible.CBV; }
+
+		const auto& GetStructuredSRVDescriptor() const noexcept { return m_descriptors.ShaderVisible.SRV.Structured; }
+		auto& GetStructuredSRVDescriptor() noexcept { return m_descriptors.ShaderVisible.SRV.Structured; }
+
+		const auto& GetRawSRVDescriptor() const noexcept { return m_descriptors.ShaderVisible.SRV.Raw; }
+		auto& GetRawSRVDescriptor() noexcept { return m_descriptors.ShaderVisible.SRV.Raw; }
+
+		const auto& GetTypedSRVDescriptor() const noexcept { return m_descriptors.ShaderVisible.SRV.Typed; }
+		auto& GetTypedSRVDescriptor() noexcept { return m_descriptors.ShaderVisible.SRV.Typed; }
+
+		const auto& GetStructuredUAVDescriptor() const noexcept { return m_descriptors.ShaderVisible.UAV.Structured; }
+		auto& GetStructuredUAVDescriptor() noexcept { return m_descriptors.ShaderVisible.UAV.Structured; }
+
+		template <bool IsDefault = false>
+		const auto& GetRawUAVDescriptor() const noexcept {
+			if constexpr (IsDefault) return m_descriptors.Default.RawUAV;
+			return m_descriptors.ShaderVisible.UAV.Raw;
+		}
+
+		template <bool IsDefault = false>
+		auto& GetRawUAVDescriptor() noexcept {
+			return const_cast<conditional_t<IsDefault, DefaultDescriptor, ShaderVisibleDescriptor>&>(as_const(*this).GetRawUAVDescriptor<IsDefault>());
+		}
+
+		const auto& GetTypedUAVDescriptor() const noexcept { return m_descriptors.ShaderVisible.UAV.Typed; }
+		auto& GetTypedUAVDescriptor() noexcept { return m_descriptors.ShaderVisible.UAV.Typed; }
 
 		void CreateStructuredSRV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(SRV.Structured);
-			DirectX::CreateStructuredSRV(*this, m_descriptors.SRV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
+			DirectX::CreateStructuredSRV(*this, m_descriptors.ShaderVisible.SRV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
 		}
 
 		void CreateRawSRV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(SRV.Raw);
-			DirectX::CreateRawSRV(*this, m_descriptors.SRV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
+			DirectX::CreateRawSRV(*this, m_descriptors.ShaderVisible.SRV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
 		}
 
 		void CreateTypedSRV(const DescriptorHeapEx& descriptorHeap, UINT index, DXGI_FORMAT format) {
 			DESCRIPTOR(SRV.Typed);
-			DirectX::CreateTypedSRV(*this, m_descriptors.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
+			DirectX::CreateTypedSRV(*this, m_descriptors.ShaderVisible.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
 		void CreateStructuredUAV(const DescriptorHeapEx& descriptorHeap, UINT index) {
 			DESCRIPTOR(UAV.Structured);
-			DirectX::CreateStructuredUAV(*this, m_descriptors.UAV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
+			DirectX::CreateStructuredUAV(*this, m_descriptors.ShaderVisible.UAV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
 		}
 
 		void CreateRawUAV(const DescriptorHeapEx& descriptorHeap, UINT index) {
-			DESCRIPTOR(UAV.Raw);
-			DirectX::CreateRawUAV(*this, m_descriptors.UAV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
+			const auto size = static_cast<UINT>(m_stride * m_count);
+			if (descriptorHeap.Heap()->GetDesc().Flags == D3D12_DESCRIPTOR_HEAP_FLAG_NONE) {
+				auto& descriptor = m_descriptors.Default.RawUAV;
+				descriptor = {
+					.Index = index,
+					.CPUHandle = descriptorHeap.GetCpuHandle(index)
+				};
+				DirectX::CreateRawUAV(*this, descriptor.CPUHandle, size);
+			}
+			else {
+				DESCRIPTOR(UAV.Raw);
+				DirectX::CreateRawUAV(*this, m_descriptors.ShaderVisible.UAV.Raw.CPUHandle, size);
+			}
 		}
 
 		void CreateTypedUAV(const DescriptorHeapEx& descriptorHeap, UINT index, DXGI_FORMAT format) {
 			DESCRIPTOR(UAV.Typed);
-			DirectX::CreateTypedUAV(*this, m_descriptors.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
+			DirectX::CreateTypedUAV(*this, m_descriptors.ShaderVisible.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
 		}
 
 	protected:
@@ -211,8 +229,11 @@ export namespace DirectX {
 
 	private:
 		struct {
-			Descriptor CBV;
-			struct { Descriptor Structured, Raw, Typed; } SRV, UAV;
+			struct { DefaultDescriptor RawUAV; } Default;
+			struct {
+				ShaderVisibleDescriptor CBV;
+				struct { ShaderVisibleDescriptor Structured, Raw, Typed; } SRV, UAV;
+			} ShaderVisible;
 		} m_descriptors;
 	};
 
@@ -233,7 +254,8 @@ export namespace DirectX {
 		) noexcept(false) : GPUBuffer(pDevice, HeapType, (sizeof(T) + Alignment - 1) & ~(Alignment - 1), capacity, initialState, flags) {}
 
 	protected:
-		TGPUBuffer(const TGPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) : GPUBuffer(source, initialState) {}
+		TGPUBuffer(const TGPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) :
+			GPUBuffer(source, initialState) {}
 	};
 
 	template <typename T, DEFAULT_ALIGNMENT>
@@ -321,7 +343,9 @@ export namespace DirectX {
 			}
 		}
 
-		void Map() { if (m_data == nullptr) ThrowIfFailed((*this)->Map(0, nullptr, reinterpret_cast<void**>(&m_data))); }
+		void Map() {
+			if (m_data == nullptr) ThrowIfFailed((*this)->Map(0, nullptr, reinterpret_cast<void**>(&m_data)));
+		}
 
 		void Unmap() {
 			if (m_data != nullptr) {

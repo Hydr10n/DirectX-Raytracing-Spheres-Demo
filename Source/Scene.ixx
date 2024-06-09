@@ -51,13 +51,13 @@ export {
 	struct RenderObjectDesc : RenderObjectBase {
 		string MeshURI;
 
-		map<TextureMap, path> Textures;
+		map<TextureMapType, path> Textures;
 	};
 
 	struct RenderObject : RenderObjectBase {
 		shared_ptr<Mesh> Mesh;
 
-		map<TextureMap, shared_ptr<Texture>> Textures;
+		map<TextureMapType, shared_ptr<Texture>> Textures;
 	};
 
 	struct SceneBase {
@@ -135,8 +135,8 @@ export {
 
 					renderObject.Mesh = Meshes.at(renderObjectDesc.MeshURI);
 
-					for (const auto& [TextureType, FilePath] : renderObjectDesc.Textures) {
-						renderObject.Textures[TextureType] = LoadTexture(ResolveResourcePath(FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
+					for (const auto& [TextureMapType, FilePath] : renderObjectDesc.Textures) {
+						renderObject.Textures[TextureMapType] = LoadTexture(ResolveResourcePath(FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
 					}
 
 					RenderObjects.emplace_back(renderObject);

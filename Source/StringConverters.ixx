@@ -5,7 +5,6 @@ module;
 export module StringConverters;
 
 using namespace DirectX;
-using namespace rtxdi;
 using namespace sl;
 using namespace WindowHelpers;
 

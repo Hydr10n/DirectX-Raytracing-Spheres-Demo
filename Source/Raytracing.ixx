@@ -27,7 +27,8 @@ using namespace std;
 export struct Raytracing {
 	struct GraphicsSettings {
 		XMUINT2 RenderSize;
-		UINT FrameIndex, Bounces, SamplesPerPixel, _;
+		UINT FrameIndex, Bounces, SamplesPerPixel;
+		float ThroughputThreshold = 1e-3f;
 		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
 		NRDSettings NRD;
 	};
@@ -54,7 +55,8 @@ export struct Raytracing {
 			* NoisySpecular;
 	} Textures{};
 
-	explicit Raytracing(ID3D12Device5* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
+	explicit Raytracing(ID3D12Device5* pDevice) noexcept(false) :
+		m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<_GraphicsSettings>(pDevice) } {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_Raytracing_dxil, size(g_Raytracing_dxil) };
 
 		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
@@ -79,7 +81,16 @@ export struct Raytracing {
 	}
 
 	void SetConstants(const GraphicsSettings& graphicsSettings) {
-		m_GPUBuffers.GraphicsSettings.At(0) = graphicsSettings;
+		m_GPUBuffers.GraphicsSettings.At(0) = {
+			.FrameIndex = graphicsSettings.FrameIndex,
+			.Bounces = graphicsSettings.Bounces,
+			.SamplesPerPixel = graphicsSettings.SamplesPerPixel,
+			.ThroughputThreshold = graphicsSettings.ThroughputThreshold,
+			.IsRussianRouletteEnabled = graphicsSettings.IsRussianRouletteEnabled,
+			.IsShaderExecutionReorderingEnabled = graphicsSettings.IsShaderExecutionReorderingEnabled,
+			.NRD = graphicsSettings.NRD
+		};
+
 		m_renderSize = graphicsSettings.RenderSize;
 	}
 
@@ -109,8 +120,8 @@ export struct Raytracing {
 		pCommandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
 		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData ? GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress() : NULL);
+		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData ? GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress() : NULL);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetUAVDescriptor().GPUHandle);
 		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NormalizedDepth->GetUAVDescriptor().GPUHandle);
@@ -146,9 +157,17 @@ export struct Raytracing {
 	}
 
 private:
-	struct ShaderEntryNames { MAKE_NAME(RayGeneration); };
+	struct _GraphicsSettings {
+		UINT FrameIndex, Bounces, SamplesPerPixel;
+		float ThroughputThreshold;
+		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
+		XMUINT2 _;
+		NRDSettings NRD;
+	};
 
-	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
+	struct { ConstantBuffer<_GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
+
+	struct ShaderEntryNames { MAKE_NAME(RayGeneration); };
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12StateObject> m_pipelineState;

@@ -18,12 +18,15 @@ using namespace std;
 
 export namespace PostProcessing {
 	struct ChromaticAberration {
-		struct {
+		struct Constants {
 			XMFLOAT2 FocusUV{ 0.5f, 0.5f };
 			XMFLOAT3 Offsets{ 3e-3f, 3e-3f, -3e-3f };
-		} Constants;
+		};
 
 		struct { Texture* Input, * Output; } Textures{};
+
+		ChromaticAberration(const ChromaticAberration&) = delete;
+		ChromaticAberration& operator=(const ChromaticAberration&) = delete;
 
 		explicit ChromaticAberration(ID3D12Device* pDevice) noexcept(false) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_ChromaticAberration_dxil, size(g_ChromaticAberration_dxil) };
@@ -35,7 +38,7 @@ export namespace PostProcessing {
 			m_pipelineState->SetName(L"ChromaticAberration");
 		}
 
-		void Process(ID3D12GraphicsCommandList* pCommandList) {
+		void Process(ID3D12GraphicsCommandList* pCommandList, const Constants& constants = {}) {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
@@ -47,7 +50,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 
-			pCommandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &Constants, 0);
+			pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 			pCommandList->SetComputeRootDescriptorTable(1, Textures.Input->GetSRVDescriptor().GPUHandle);
 			pCommandList->SetComputeRootDescriptorTable(2, Textures.Output->GetUAVDescriptor().GPUHandle);
 

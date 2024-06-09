@@ -149,7 +149,7 @@ struct App::Impl : IDeviceNotify {
 			pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) {
 			m_futures.erase(pFuture);
 
-			OnSceneLoaded();
+			if (m_scene) OnSceneLoaded();
 		}
 
 		m_stepTimer.Tick([&] { Update(); });
@@ -232,6 +232,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_renderDescriptorHeap.reset();
 		m_resourceDescriptorHeap.reset();
+		m_defaultDescriptorHeap.reset();
 
 		m_GPUMemoryAllocator.reset();
 		m_graphicsMemory.reset();
@@ -283,31 +284,40 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
+	struct DefaultDescriptorIndex {
+		enum {
+			RTXDIDIReservoir,
+			Capacity
+		};
+	};
+	unique_ptr<DescriptorHeapEx> m_defaultDescriptorHeap;
+
 	struct ResourceDescriptorIndex {
 		enum {
-			InColor, OutColor,
-			InFinalColor, OutFinalColor,
-			InPreviousLinearDepth, OutPreviousLinearDepth,
-			InLinearDepth, OutLinearDepth,
-			InNormalizedDepth, OutNormalizedDepth,
-			InMotionVectors, OutMotionVectors,
-			InPreviousBaseColorMetalness, OutPreviousBaseColorMetalness,
-			InBaseColorMetalness, OutBaseColorMetalness,
-			InEmissiveColor, OutEmissiveColor,
-			InPreviousNormals, OutPreviousNormals,
-			InNormals, OutNormals,
-			InPreviousRoughness, OutPreviousRoughness,
-			InRoughness, OutRoughness,
-			InNormalRoughness, OutNormalRoughness,
-			OutNoisyDiffuse, OutNoisySpecular,
-			InDenoisedDiffuse, OutDenoisedDiffuse,
-			InDenoisedSpecular, OutDenoisedSpecular,
-			InValidation, OutValidation,
-			InLocalLightPDF, OutLocalLightPDF,
-			InRTXDINeighborOffsets,
-			InFont,
+			RColor, RWColor,
+			RFinalColor, RWFinalColor,
+			RPreviousLinearDepth, RWPreviousLinearDepth,
+			RLinearDepth, RWLinearDepth,
+			RNormalizedDepth, RWNormalizedDepth,
+			RMotionVectors, RWMotionVectors,
+			RPreviousBaseColorMetalness, RWPreviousBaseColorMetalness,
+			RBaseColorMetalness, RWBaseColorMetalness,
+			REmissiveColor, RWEmissiveColor,
+			RPreviousNormals, RWPreviousNormals,
+			RNormals, RWNormals,
+			RPreviousRoughness, RWPreviousRoughness,
+			RRoughness, RWRoughness,
+			RNormalRoughness, RWNormalRoughness,
+			RNoisyDiffuse, RWNoisySpecular,
+			RDenoisedDiffuse, RWDenoisedDiffuse,
+			RDenoisedSpecular, RWDenoisedSpecular,
+			RValidation, RWValidation,
+			RLocalLightPDF, RWLocalLightPDF,
+			RRTXDINeighborOffsets,
+			RWRTXDIDIReservoir,
+			RFont,
 			Reserve,
-			Count = 1 << 16
+			Capacity = 1 << 16
 		};
 	};
 	unique_ptr<DescriptorHeapEx> m_resourceDescriptorHeap;
@@ -325,7 +335,7 @@ private:
 			PreviousRoughness,
 			Roughness,
 			LocalLightPDF,
-			Count
+			Capacity
 		};
 	};
 	unique_ptr<DescriptorHeapEx> m_renderDescriptorHeap;
@@ -336,16 +346,13 @@ private:
 	unique_ptr<LightPreparation> m_lightPreparation;
 	unique_ptr<RTXDI> m_RTXDI;
 
-	bool m_resetStreamline{};
 	unique_ptr<Streamline> m_streamline;
 
 	bool m_isReflexLowLatencyAvailable{}, m_isDLSSFrameGenerationEnabled{};
 
-	bool m_resetNRD{};
 	unique_ptr<NRD> m_NRD;
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
-	bool m_resetXeSS{};
 	unique_ptr<XeSS> m_XeSS;
 
 	unique_ptr<ChromaticAberration> m_chromaticAberration;
@@ -432,20 +439,20 @@ private:
 				if (RTVDescriptorIndex != ~0u) texture->CreateRTV(*m_renderDescriptorHeap, RTVDescriptorIndex);
 			};
 
-			CreateTexture(TextureNames::Color, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InColor, ResourceDescriptorIndex::OutColor, RenderDescriptorIndex::Color);
-			CreateTexture(TextureNames::FinalColor, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InFinalColor, ResourceDescriptorIndex::OutFinalColor, RenderDescriptorIndex::FinalColor);
-			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InPreviousLinearDepth, ResourceDescriptorIndex::OutPreviousLinearDepth, RenderDescriptorIndex::PreviousLinearDepth);
-			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InLinearDepth, ResourceDescriptorIndex::OutLinearDepth, RenderDescriptorIndex::LinearDepth);
-			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::InNormalizedDepth, ResourceDescriptorIndex::OutNormalizedDepth);
-			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InMotionVectors, ResourceDescriptorIndex::OutMotionVectors);
-			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InPreviousBaseColorMetalness, ResourceDescriptorIndex::OutPreviousBaseColorMetalness, RenderDescriptorIndex::PreviousBaseColorMetalness);
-			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InBaseColorMetalness, ResourceDescriptorIndex::OutBaseColorMetalness, RenderDescriptorIndex::BaseColorMetalness);
-			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorIndex::InEmissiveColor, ResourceDescriptorIndex::OutEmissiveColor);
-			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::InPreviousNormals, ResourceDescriptorIndex::OutPreviousNormals, RenderDescriptorIndex::PreviousNormals);
-			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::InNormals, ResourceDescriptorIndex::OutNormals, RenderDescriptorIndex::Normals);
-			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::InPreviousRoughness, ResourceDescriptorIndex::OutPreviousRoughness, RenderDescriptorIndex::PreviousRoughness);
-			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::InRoughness, ResourceDescriptorIndex::OutRoughness, RenderDescriptorIndex::Roughness);
-			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), ResourceDescriptorIndex::InNormalRoughness, ResourceDescriptorIndex::OutNormalRoughness);
+			CreateTexture(TextureNames::Color, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RColor, ResourceDescriptorIndex::RWColor, RenderDescriptorIndex::Color);
+			CreateTexture(TextureNames::FinalColor, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RFinalColor, ResourceDescriptorIndex::RWFinalColor, RenderDescriptorIndex::FinalColor);
+			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::RPreviousLinearDepth, ResourceDescriptorIndex::RWPreviousLinearDepth, RenderDescriptorIndex::PreviousLinearDepth);
+			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::RLinearDepth, ResourceDescriptorIndex::RWLinearDepth, RenderDescriptorIndex::LinearDepth);
+			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::RNormalizedDepth, ResourceDescriptorIndex::RWNormalizedDepth);
+			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RMotionVectors, ResourceDescriptorIndex::RWMotionVectors);
+			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::RPreviousBaseColorMetalness, ResourceDescriptorIndex::RWPreviousBaseColorMetalness, RenderDescriptorIndex::PreviousBaseColorMetalness);
+			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::RBaseColorMetalness, ResourceDescriptorIndex::RWBaseColorMetalness, RenderDescriptorIndex::BaseColorMetalness);
+			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorIndex::REmissiveColor, ResourceDescriptorIndex::RWEmissiveColor);
+			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::RPreviousNormals, ResourceDescriptorIndex::RWPreviousNormals, RenderDescriptorIndex::PreviousNormals);
+			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::RNormals, ResourceDescriptorIndex::RWNormals, RenderDescriptorIndex::Normals);
+			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::RPreviousRoughness, ResourceDescriptorIndex::RWPreviousRoughness, RenderDescriptorIndex::PreviousRoughness);
+			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::RRoughness, ResourceDescriptorIndex::RWRoughness, RenderDescriptorIndex::Roughness);
+			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), ResourceDescriptorIndex::RNormalRoughness, ResourceDescriptorIndex::RWNormalRoughness);
 
 			if (m_NRD = make_unique<NRD>(
 				device, m_deviceResources->GetCommandQueue(), commandList,
@@ -457,11 +464,11 @@ private:
 			}
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::OutNoisyDiffuse);
-				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::OutNoisySpecular);
-				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InDenoisedDiffuse, ResourceDescriptorIndex::OutDenoisedDiffuse);
-				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::InDenoisedSpecular, ResourceDescriptorIndex::OutDenoisedSpecular);
-				CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::InValidation, ResourceDescriptorIndex::OutValidation);
+				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::RNoisyDiffuse);
+				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::RWNoisySpecular);
+				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RDenoisedDiffuse, ResourceDescriptorIndex::RWDenoisedDiffuse);
+				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RDenoisedSpecular, ResourceDescriptorIndex::RWDenoisedSpecular);
+				CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::RValidation, ResourceDescriptorIndex::RWValidation);
 			}
 
 			m_XeSS = make_unique<XeSS>(device, xess_2d_t{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE);
@@ -476,7 +483,7 @@ private:
 			const auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorIndex::InFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorIndex::InFont));
+			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorIndex::RFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorIndex::RFont));
 
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", static_cast<float>(outputSize.cy) * 0.022f);
@@ -542,12 +549,6 @@ private:
 		commandList->RSSetViewports(1, &viewport);
 		commandList->RSSetScissorRects(1, &scissorRect);
 
-		if (m_resetHistory) {
-			ResetHistory();
-
-			m_resetHistory = false;
-		}
-
 		{
 			const ScopedPixEvent scopedPixEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
@@ -555,11 +556,22 @@ private:
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 			if (isSceneReady) {
+				if (m_resetHistory) ResetHistory();
+
 				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
 
 				RenderScene();
 
 				PostProcessGraphics();
+
+				m_resetHistory = false;
+
+				{
+					swap(m_textures.at(TextureNames::PreviousLinearDepth), m_textures.at(TextureNames::LinearDepth));
+					swap(m_textures.at(TextureNames::PreviousBaseColorMetalness), m_textures.at(TextureNames::BaseColorMetalness));
+					swap(m_textures.at(TextureNames::PreviousNormals), m_textures.at(TextureNames::Normals));
+					swap(m_textures.at(TextureNames::PreviousRoughness), m_textures.at(TextureNames::Roughness));
+				}
 			}
 
 			if (m_UIStates.IsVisible) RenderUI();
@@ -578,13 +590,45 @@ private:
 		m_deviceResources->WaitForGpu();
 
 		m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
+	}
+
+	void OnRenderSizeChanged() {
+		m_resetHistory = true;
+
+		const auto outputSize = GetOutputSize();
+		m_haltonSamplePattern = HaltonSamplePattern(static_cast<UINT>(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y))));
 
 		{
-			swap(m_textures.at(TextureNames::PreviousLinearDepth), m_textures.at(TextureNames::LinearDepth));
-			swap(m_textures.at(TextureNames::PreviousBaseColorMetalness), m_textures.at(TextureNames::BaseColorMetalness));
-			swap(m_textures.at(TextureNames::PreviousNormals), m_textures.at(TextureNames::Normals));
-			swap(m_textures.at(TextureNames::PreviousRoughness), m_textures.at(TextureNames::Roughness));
+			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
+
+			const auto device = m_deviceResources->GetDevice();
+
+			{
+				ResourceUploadBatch resourceUploadBatch(device);
+				resourceUploadBatch.Begin();
+
+				m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::RRTXDINeighborOffsets);
+
+				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+			}
+
+			m_RTXDIResources.CreateDIReservoir(device);
+			m_RTXDIResources.DIReservoir->CreateRawUAV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::RWRTXDIDIReservoir);
+			m_RTXDIResources.DIReservoir->CreateRawUAV(*m_defaultDescriptorHeap, DefaultDescriptorIndex::RTXDIDIReservoir);
 		}
+	}
+
+	void ResetHistory() {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
+
+		m_textures.at(TextureNames::PreviousLinearDepth)->Clear(commandList);
+		m_textures.at(TextureNames::PreviousBaseColorMetalness)->Clear(commandList);
+		m_textures.at(TextureNames::PreviousNormals)->Clear(commandList);
+		m_textures.at(TextureNames::PreviousRoughness)->Clear(commandList);
+
+		if (raytracingSettings.RTXDI.ReSTIRDI.IsEnabled) m_RTXDIResources.DIReservoir->Clear(commandList);
 	}
 
 	bool IsSceneLoading() const { return m_futures.contains(FutureNames::Scene); }
@@ -616,9 +660,11 @@ private:
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetDevice();
 
-		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorIndex::Count, ResourceDescriptorIndex::Reserve);
+		m_defaultDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, DefaultDescriptorIndex::Capacity);
 
-		m_renderDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorIndex::Count);
+		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorIndex::Capacity, ResourceDescriptorIndex::Reserve);
+
+		m_renderDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorIndex::Capacity);
 	}
 
 	void CreatePipelineStates() {
@@ -696,13 +742,13 @@ private:
 	}
 
 	void PrepareLightResources() {
-		const auto device = m_deviceResources->GetDevice();
-
 		m_lightPreparation->SetScene(m_scene.get());
 		if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
+			const auto device = m_deviceResources->GetDevice();
+
 			m_RTXDIResources.CreateLightResources(device, emissiveTriangleCount, m_scene->GetObjectCount());
-			m_RTXDIResources.LocalLightPDF->CreateSRV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::InLocalLightPDF);
-			m_RTXDIResources.LocalLightPDF->CreateUAV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::OutLocalLightPDF);
+			m_RTXDIResources.LocalLightPDF->CreateSRV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::RLocalLightPDF);
+			m_RTXDIResources.LocalLightPDF->CreateUAV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::RWLocalLightPDF);
 			m_RTXDIResources.LocalLightPDF->CreateRTV(*m_renderDescriptorHeap, RenderDescriptorIndex::LocalLightPDF);
 
 			{
@@ -948,18 +994,18 @@ private:
 				}
 			};
 
-			for (const auto& [TextureType, Texture] : renderObject.Textures) {
+			for (const auto& [Type, Texture] : renderObject.Textures) {
 				const auto index = Texture->GetSRVDescriptor().Index;
-				switch (auto& indices = resourceDescriptorIndices.Textures; TextureType) {
-					case TextureMap::BaseColor: indices.BaseColorMap = index; break;
-					case TextureMap::EmissiveColor: indices.EmissiveColorMap = index; break;
-					case TextureMap::Metallic: indices.MetallicMap = index; break;
-					case TextureMap::Roughness: indices.RoughnessMap = index; break;
-					case TextureMap::AmbientOcclusion: indices.AmbientOcclusionMap = index; break;
-					case TextureMap::Transmission: indices.TransmissionMap = index; break;
-					case TextureMap::Opacity: indices.OpacityMap = index; break;
-					case TextureMap::Normal: indices.NormalMap = index; break;
-					default: Throw<out_of_range>("Unsupported texture type");
+				switch (auto& indices = resourceDescriptorIndices.Textures; Type) {
+					case TextureMapType::BaseColor: indices.BaseColorMap = index; break;
+					case TextureMapType::EmissiveColor: indices.EmissiveColorMap = index; break;
+					case TextureMapType::Metallic: indices.MetallicMap = index; break;
+					case TextureMapType::Roughness: indices.RoughnessMap = index; break;
+					case TextureMapType::AmbientOcclusion: indices.AmbientOcclusionMap = index; break;
+					case TextureMapType::Transmission: indices.TransmissionMap = index; break;
+					case TextureMapType::Opacity: indices.OpacityMap = index; break;
+					case TextureMapType::Normal: indices.NormalMap = index; break;
+					default: Throw<out_of_range>("Unsupported texture map type");
 				}
 			}
 		}
@@ -988,16 +1034,6 @@ private:
 		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
 
 		{
-			m_raytracing->SetConstants({
-				.RenderSize = m_renderSize,
-				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-				.Bounces = raytracingSettings.Bounces,
-				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
-				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
-				.NRD = NRDSettings
-				});
-
 			m_raytracing->GPUBuffers = {
 				.SceneData = m_GPUBuffers.SceneData.get(),
 				.Camera = m_GPUBuffers.Camera.get(),
@@ -1019,6 +1055,16 @@ private:
 				.NoisySpecular = noisySpecular
 			};
 
+			m_raytracing->SetConstants({
+				.RenderSize = m_renderSize,
+				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+				.Bounces = raytracingSettings.Bounces,
+				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
+				.NRD = NRDSettings
+				});
+
 			m_raytracing->Render(commandList, scene);
 		}
 
@@ -1026,22 +1072,13 @@ private:
 			PrepareLights();
 
 			if (m_RTXDIResources.Context->getLightBufferParameters().localLightBufferRegion.numLights) {
-				m_RTXDI->SetConstants(*m_RTXDIResources.Context, raytracingSettings.RTXDI.ReGIR.VisualizeCells, NRDSettings);
-
 				m_RTXDI->GPUBuffers = {
 					.Camera = m_GPUBuffers.Camera.get(),
 					.InstanceData = m_GPUBuffers.InstanceData.get(),
-					.ObjectData = m_GPUBuffers.ObjectData.get(),
-					.LightInfo = m_RTXDIResources.LightInfo.get(),
-					.LightIndices = m_RTXDIResources.LightIndices.get(),
-					.NeighborOffsets = m_RTXDIResources.NeighborOffsets.get(),
-					.RIS = m_RTXDIResources.RIS.get(),
-					.RISLightInfo = m_RTXDIResources.RISLightInfo.get(),
-					.DIReservoir = m_RTXDIResources.DIReservoir.get()
+					.ObjectData = m_GPUBuffers.ObjectData.get()
 				};
 
 				m_RTXDI->Textures = {
-					.LocalLightPDF = m_RTXDIResources.LocalLightPDF.get(),
 					.PreviousLinearDepth = m_textures.at(TextureNames::PreviousLinearDepth).get(),
 					.LinearDepth = linearDepth,
 					.MotionVectors = motionVectors,
@@ -1055,6 +1092,8 @@ private:
 					.NoisyDiffuse = noisyDiffuse,
 					.NoisySpecular = noisySpecular
 				};
+
+				m_RTXDI->SetConstants(m_RTXDIResources, raytracingSettings.RTXDI.ReGIR.IsCellVisualizationEnabled, NRDSettings);
 
 				m_RTXDI->Render(commandList, scene);
 			}
@@ -1149,45 +1188,11 @@ private:
 		OnRenderSizeChanged();
 	}
 
-	void SetDLSSFrameGenerationOptions(bool enable) {
+	void SetDLSSFrameGenerationOptions(bool isEnabled) {
 		DLSSGOptions options;
-		options.mode = enable ? DLSSGMode::eAuto : DLSSGMode::eOff;
+		options.mode = isEnabled ? DLSSGMode::eAuto : DLSSGMode::eOff;
 		ignore = m_streamline->SetConstants(options);
-		m_isDLSSFrameGenerationEnabled = enable;
-	}
-
-	void ResetHistory() {
-		const auto commandList = m_deviceResources->GetCommandList();
-		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousLinearDepth)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
-		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousBaseColorMetalness)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
-		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousNormals)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
-		commandList->ClearRenderTargetView(m_textures.at(TextureNames::PreviousRoughness)->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
-
-		m_resetStreamline = m_resetNRD = m_resetXeSS = true;
-	}
-
-	void OnRenderSizeChanged() {
-		m_resetHistory = true;
-
-		const auto outputSize = GetOutputSize();
-		m_haltonSamplePattern = HaltonSamplePattern(static_cast<UINT>(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y))));
-
-		{
-			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
-
-			const auto device = m_deviceResources->GetDevice();
-
-			{
-				ResourceUploadBatch resourceUploadBatch(device);
-				resourceUploadBatch.Begin();
-
-				m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::InRTXDINeighborOffsets);
-
-				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
-			}
-
-			m_RTXDIResources.CreateDIReservoir(device);
-		}
+		m_isDLSSFrameGenerationEnabled = isEnabled;
 	}
 
 	void PostProcessGraphics() {
@@ -1255,8 +1260,7 @@ private:
 		constants.depthInverted = Boolean::eTrue;
 		constants.cameraMotionIncluded = Boolean::eTrue;
 		constants.motionVectors3D = Boolean::eFalse;
-		constants.reset = m_resetStreamline ? Boolean::eTrue : Boolean::eFalse;
-		m_resetStreamline = false;
+		constants.reset = m_resetHistory ? Boolean::eTrue : Boolean::eFalse;
 		ignore = m_streamline->SetConstants(constants);
 	}
 
@@ -1293,7 +1297,7 @@ private:
 				.resourceSize{ static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy) },
 				.rectSize{ static_cast<uint16_t>(m_renderSize.x), static_cast<uint16_t>(m_renderSize.y) },
 				.frameIndex = m_stepTimer.GetFrameCount() - 1,
-				.accumulationMode = m_resetNRD ? AccumulationMode::CLEAR_AND_RESTART : AccumulationMode::CONTINUE,
+				.accumulationMode = m_resetHistory ? AccumulationMode::CLEAR_AND_RESTART : AccumulationMode::CONTINUE,
 				.isBaseColorMetalnessAvailable = true,
 				.enableValidation = NRDSettings.IsValidationOverlayEnabled
 			};
@@ -1304,7 +1308,6 @@ private:
 			ranges::copy(commonSettings.cameraJitter, commonSettings.cameraJitterPrev);
 			ranges::copy(commonSettings.resourceSize, commonSettings.resourceSizePrev);
 			ranges::copy(commonSettings.rectSize, commonSettings.rectSizePrev);
-			m_resetNRD = false;
 			ignore = m_NRD->SetConstants(commonSettings);
 
 			const auto denoiser = static_cast<Identifier>(NRDSettings.Denoiser);
@@ -1332,11 +1335,6 @@ private:
 			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 		}
 
-		m_denoisedComposition->Constants = {
-			.RenderSize = m_renderSize,
-			.NRDDenoiser = NRDSettings.Denoiser
-		};
-
 		m_denoisedComposition->GPUBuffers = { .Camera = m_GPUBuffers.Camera.get() };
 
 		m_denoisedComposition->Textures = {
@@ -1349,7 +1347,7 @@ private:
 			.Color = m_textures.at(TextureNames::Color).get()
 		};
 
-		m_denoisedComposition->Process(commandList);
+		m_denoisedComposition->Process(commandList, { .RenderSize = m_renderSize, .NRDDenoiser = NRDSettings.Denoiser });
 	}
 
 	void ProcessDLSSSuperResolution() {
@@ -1380,9 +1378,8 @@ private:
 		const XeSSSettings settings{
 			.InputSize = reinterpret_cast<const xess_2d_t&>(m_renderSize),
 			.Jitter{ -m_camera.Jitter.x, -m_camera.Jitter.y },
-			.Reset = m_resetXeSS
+			.Reset = m_resetHistory
 		};
-		m_resetXeSS = false;
 		m_XeSS->SetConstants(settings);
 
 		struct XeSSResource {
@@ -1439,11 +1436,9 @@ private:
 	void ProcessBloom(Texture& inColor, Texture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		m_bloom->Constants.Strength = g_graphicsSettings.PostProcessing.Bloom.Strength;
-
 		m_bloom->SetTextures(inColor, outColor);
 
-		m_bloom->Process(commandList);
+		m_bloom->Process(commandList, { .Strength = g_graphicsSettings.PostProcessing.Bloom.Strength });
 
 		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -1632,7 +1627,7 @@ private:
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& cameraSettings = g_graphicsSettings.Camera;
 
-					if (ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled)) m_resetHistory = true;
+					m_resetHistory |= ImGui::Checkbox("Jitter", &cameraSettings.IsJitterEnabled);
 
 					if (ImGui::SliderFloat("Horizontal Field of View", &cameraSettings.HorizontalFieldOfView, cameraSettings.MinHorizontalFieldOfView, cameraSettings.MaxHorizontalFieldOfView, "%.1f°", ImGuiSliderFlags_AlwaysClamp)) {
 						m_cameraController.SetLens(XMConvertToRadians(cameraSettings.HorizontalFieldOfView), m_cameraController.GetAspectRatio());
@@ -1648,7 +1643,7 @@ private:
 
 					m_resetHistory |= ImGui::SliderInt("Bounces", reinterpret_cast<int*>(&raytracingSettings.Bounces), 0, raytracingSettings.MaxBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
 
-					m_resetHistory |= ImGui::SliderInt("Samples per Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+					m_resetHistory |= ImGui::SliderInt("Samples/Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
 
 					{
 						auto isEnabled = IsShaderExecutionReorderingEnabled();
@@ -1669,17 +1664,13 @@ private:
 
 							m_resetHistory |= ImGui::SliderFloat("Cell Size", &ReGIRSettings.CellSize, ReGIRSettings.MinCellSize, ReGIRSettings.MaxCellSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-							m_resetHistory |= ImGui::Checkbox("Visualize Cells", &ReGIRSettings.VisualizeCells);
+							m_resetHistory |= ImGui::Checkbox("Cell Visualization", &ReGIRSettings.IsCellVisualizationEnabled);
 
 							ImGui::TreePop();
 						}
 
 						if (ImGui::TreeNodeEx("ReSTIR DI", ImGuiTreeNodeFlags_DefaultOpen)) {
-							{
-								const ImGuiEx::ScopedID scopedID("ReSTIR DI");
-
-								m_resetHistory |= ImGui::Checkbox("Enable", &ReSTIRDISettings.IsEnabled);
-							}
+							m_resetHistory |= ImGui::Checkbox("Enable", &ReSTIRDISettings.IsEnabled);
 
 							if (ReSTIRDISettings.IsEnabled
 								&& ImGui::TreeNodeEx("Initial Sampling", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1828,11 +1819,7 @@ private:
 							ImGui::TreeNodeEx("NVIDIA Image Scaling", isAvailable ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None)) {
 							auto& NISSettings = postProcessingSetttings.NIS;
 
-							{
-								const ImGuiEx::ScopedID scopedID("Enable NVIDIA Image Scaling");
-
-								ImGui::Checkbox("Enable", &NISSettings.IsEnabled);
-							}
+							ImGui::Checkbox("Enable", &NISSettings.IsEnabled);
 
 							if (NISSettings.IsEnabled) {
 								ImGui::SliderFloat("Sharpness", &NISSettings.Sharpness, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
@@ -1847,11 +1834,7 @@ private:
 					if (ImGui::TreeNodeEx("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& bloomSettings = postProcessingSetttings.Bloom;
 
-						{
-							const ImGuiEx::ScopedID scopedID("Enable Bloom");
-
-							ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
-						}
+						ImGui::Checkbox("Enable", &bloomSettings.IsEnabled);
 
 						if (bloomSettings.IsEnabled) {
 							ImGui::SliderFloat("Strength", &bloomSettings.Strength, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);

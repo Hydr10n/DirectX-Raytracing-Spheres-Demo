@@ -7,11 +7,12 @@ export module DescriptorHeap;
 using namespace std;
 
 export namespace DirectX {
-	struct Descriptor {
+	struct DefaultDescriptor {
 		uint32_t Index = ~0u;
 		D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle{};
-		D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle{};
 	};
+
+	struct ShaderVisibleDescriptor : DefaultDescriptor { D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle{}; };
 
 	class DescriptorHeapEx : public DescriptorHeap {
 	public:

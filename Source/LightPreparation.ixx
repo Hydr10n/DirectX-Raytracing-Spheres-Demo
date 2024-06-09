@@ -28,7 +28,7 @@ using namespace std;
 namespace {
 	auto IsEmissive(const RenderObject& renderObject) {
 		constexpr auto Max = [](const XMFLOAT3& value) { return max({ value.x, value.y, value.z }); };
-		return Max(renderObject.Material.EmissiveColor) > 0 || renderObject.Textures.contains(TextureMap::EmissiveColor);
+		return Max(renderObject.Material.EmissiveColor) > 0 || renderObject.Textures.contains(TextureMapType::EmissiveColor);
 	}
 }
 

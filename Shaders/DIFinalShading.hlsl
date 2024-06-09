@@ -37,7 +37,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			directDiffuse *= invPDF;
 			directSpecular *= invPDF;
 			
-			if (g_graphicsSettings.VisualizeReGIRCells
+			if (g_graphicsSettings.IsReGIRCellVisualizationEnabled
 				&& DIParameters.initialSamplingParams.localLightSamplingMode == ReSTIRDI_LocalLightSamplingMode_REGIR_RIS)
 			{
 				const float3 cellColor = RTXDI_VisualizeReGIRCells(g_graphicsSettings.RTXDI.ReGIR, surface.Position);

@@ -24,7 +24,7 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX {
-	enum class TextureMap {
+	enum class TextureMapType {
 		Unknown,
 		BaseColor,
 		EmissiveColor,
@@ -66,55 +66,59 @@ export namespace DirectX {
 
 		const Color& GetClearColor() const noexcept { return m_clearColor; }
 		void SetClearColor(const Color& color) noexcept { m_clearColor = color; }
-		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT16 mipLevel = 0) { pCommandList->ClearRenderTargetView(m_descriptors.RTV[mipLevel].CPUHandle, reinterpret_cast<const float*>(&m_clearColor), 0, nullptr); }
 
-		const Descriptor& GetSRVDescriptor() const noexcept { return m_descriptors.SRV; }
-		Descriptor& GetSRVDescriptor() noexcept { return m_descriptors.SRV; }
+		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT16 mipLevel = 0) {
+			TransitionTo(pCommandList, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			pCommandList->ClearRenderTargetView(m_descriptors.RTV[mipLevel].CPUHandle, reinterpret_cast<const float*>(&m_clearColor), 0, nullptr);
+		}
 
-		const Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.UAV[mipLevel]; }
-		Descriptor& GetUAVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.UAV[mipLevel]; }
+		const auto& GetSRVDescriptor() const noexcept { return m_descriptors.SRV; }
+		auto& GetSRVDescriptor() noexcept { return m_descriptors.SRV; }
 
-		const Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.RTV[mipLevel]; }
-		Descriptor& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.RTV[mipLevel]; }
+		const auto& GetUAVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.UAV[mipLevel]; }
+		auto& GetUAVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.UAV[mipLevel]; }
 
-		void CreateSRV(const DescriptorHeapEx& resourceDescriptorHeap, UINT index, bool isCubeMap = false) {
-			m_descriptors.SRV = {
-				.Index = index,
-				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
-				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
-			};
+		const auto& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return m_descriptors.RTV[mipLevel]; }
+		auto& GetRTVDescriptor(UINT16 mipLevel = 0) noexcept { return m_descriptors.RTV[mipLevel]; }
+
+		void CreateSRV(const DescriptorHeapEx& descriptorHeap, UINT index, bool isCubeMap = false) {
+			auto& descriptor = m_descriptors.SRV;
+			descriptor.Index = index;
+			descriptor.CPUHandle = descriptorHeap.GetCpuHandle(index);
+			descriptor.GPUHandle = descriptorHeap.GetGpuHandle(index);
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed((*this)->GetDevice(IID_PPV_ARGS(&device)));
 			CreateShaderResourceView(device.Get(), *this, m_descriptors.SRV.CPUHandle, isCubeMap);
 		}
 
-		void CreateUAV(const DescriptorHeapEx& resourceDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
-			m_descriptors.UAV[mipLevel] = {
-				.Index = index,
-				.CPUHandle = resourceDescriptorHeap.GetCpuHandle(index),
-				.GPUHandle = resourceDescriptorHeap.GetGpuHandle(index)
-			};
+		void CreateUAV(const DescriptorHeapEx& descriptorHeap, UINT index, UINT16 mipLevel = 0) {
+			auto& descriptor = m_descriptors.UAV[mipLevel];
+			descriptor.Index = index;
+			descriptor.CPUHandle = descriptorHeap.GetCpuHandle(index);
+			descriptor.GPUHandle = descriptorHeap.GetGpuHandle(index);
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed((*this)->GetDevice(IID_PPV_ARGS(&device)));
-			CreateUnorderedAccessView(device.Get(), *this, m_descriptors.UAV[mipLevel].CPUHandle, mipLevel);
+			CreateUnorderedAccessView(device.Get(), *this, descriptor.CPUHandle, mipLevel);
 		}
 
-		void CreateRTV(const DescriptorHeapEx& renderDescriptorHeap, UINT index, UINT16 mipLevel = 0) {
-			m_descriptors.RTV[mipLevel] = {
+		void CreateRTV(const DescriptorHeapEx& descriptorHeap, UINT index, UINT16 mipLevel = 0) {
+			auto& descriptor = m_descriptors.RTV[mipLevel];
+			descriptor = {
 				.Index = index,
-				.CPUHandle = renderDescriptorHeap.GetCpuHandle(index)
+				.CPUHandle = descriptorHeap.GetCpuHandle(index)
 			};
 			ComPtr<ID3D12Device> device;
 			ThrowIfFailed((*this)->GetDevice(IID_PPV_ARGS(&device)));
-			CreateRenderTargetView(device.Get(), *this, m_descriptors.RTV[mipLevel].CPUHandle, mipLevel);
+			CreateRenderTargetView(device.Get(), *this, descriptor.CPUHandle, mipLevel);
 		}
 
 	private:
 		Color m_clearColor;
 
 		struct {
-			Descriptor SRV;
-			vector<Descriptor> UAV, RTV;
+			ShaderVisibleDescriptor SRV;
+			vector<ShaderVisibleDescriptor> UAV;
+			vector<DefaultDescriptor> RTV;
 		} m_descriptors;
 	};
 }
