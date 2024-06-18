@@ -32,8 +32,8 @@ struct GraphicsSettings
 		RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
 		RTXDI_LightBufferParameters LightBuffer;
 		RTXDI_RuntimeParameters Runtime;
-		ReSTIRDI_Parameters ReSTIRDI;
 		ReGIR_Parameters ReGIR;
+		ReSTIRDI_Parameters ReSTIRDI;
 	} RTXDI;
 	NRDSettings NRD;
 };
@@ -104,7 +104,26 @@ RWTexture2D<float4> g_noisySpecular : register(u5);
 
 int2 RAB_ClampSamplePositionIntoView(int2 pixelPosition, bool previousFrame)
 {
-	return clamp(pixelPosition, 0, int2(g_graphicsSettings.RenderSize) - 1);
+	// Reflect the position across the screen edges.
+	// Compared to simple clamping, this prevents the spread of colorful blobs from screen edges.
+	const int2 pixelDimensions = (int2)g_graphicsSettings.RenderSize;
+	if (pixelPosition.x < 0)
+	{
+		pixelPosition.x = -pixelPosition.x;
+	}
+	if (pixelPosition.y < 0)
+	{
+		pixelPosition.y = -pixelPosition.y;
+	}
+	if (pixelPosition.x >= pixelDimensions.x)
+	{
+		pixelPosition.x = 2 * pixelDimensions.x - pixelPosition.x - 1;
+	}
+	if (pixelPosition.y >= pixelDimensions.y)
+	{
+		pixelPosition.y = 2 * pixelDimensions.y - pixelPosition.y - 1;
+	}
+	return pixelPosition;
 }
 
 struct RAB_RandomSamplerState
@@ -213,7 +232,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		float roughness;
 		if (previousFrame)
 		{
-			if ((surface.LinearDepth = g_previousLinearDepth[pixelPosition]) == 1.#INF)
+			if (isinf(surface.LinearDepth = g_previousLinearDepth[pixelPosition]))
 			{
 				return surface;
 			}
@@ -223,7 +242,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		}
 		else
 		{
-			if ((surface.LinearDepth = g_linearDepth[pixelPosition]) == 1.#INF)
+			if (isinf(surface.LinearDepth = g_linearDepth[pixelPosition]))
 			{
 				return surface;
 			}
@@ -234,17 +253,17 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
 		surface.Normal = STL::Packing::DecodeUnitVector(normal.xy, true);
 		surface.GeometricNormal = STL::Packing::DecodeUnitVector(normal.zw, true);
-		surface.Roughness = max(roughness, MinRoughness);
+		surface.Roughness = roughness;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, surface.Albedo, surface.Rf0);
 		surface.ViewDirection = normalize(g_camera.Position - surface.Position);
-		surface.DiffuseProbability = Material::EstimateDiffuseProbability(surface.Albedo, surface.Rf0, surface.Roughness, abs(dot(surface.Normal, surface.ViewDirection)));
+		surface.DiffuseProbability = Material::EstimateDiffuseProbability(surface.Albedo, surface.Rf0, max(surface.Roughness, MinRoughness), abs(dot(surface.Normal, surface.ViewDirection)));
 	}
 	return surface;
 }
 
 bool RAB_IsSurfaceValid(RAB_Surface surface)
 {
-	return surface.LinearDepth != 1.#INF;
+	return !isinf(surface.LinearDepth);
 }
 
 float3 RAB_GetSurfaceWorldPos(RAB_Surface surface)
@@ -291,29 +310,33 @@ bool RAB_GetSurfaceBrdfSample(RAB_Surface surface, inout RAB_RandomSamplerState 
 	}
 	else
 	{
-		dir = reflect(-surface.ViewDirection, STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, surface.Roughness, STL::Geometry::RotateVector(basis, surface.ViewDirection))));
+		dir = reflect(-surface.ViewDirection, STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, max(surface.Roughness, MinRoughness), STL::Geometry::RotateVector(basis, surface.ViewDirection))));
 	}
 	return dot(surface.Normal, dir) > 0;
 }
 
-bool EvaluateBRDF(float3 L, RAB_Surface surface, out float3 diffuse, out float3 specular)
+bool EvaluateBRDF(RAB_Surface surface, float3 L, out float3 diffuse, out float3 specular)
 {
 	if (dot(surface.GeometricNormal, L) > 0)
 	{
 		const float3 H = normalize(surface.ViewDirection + L);
-		const float NoL = abs(dot(surface.Normal, L)), NoV = abs(dot(surface.Normal, surface.ViewDirection)), VoH = abs(dot(surface.ViewDirection, H)), NoH = abs(dot(surface.Normal, H));
+		const float
+			NoL = abs(dot(surface.Normal, L)),
+			NoV = abs(dot(surface.Normal, surface.ViewDirection)),
+			VoH = abs(dot(surface.ViewDirection, H)), NoH = abs(dot(surface.Normal, H)),
+			roughness = max(surface.Roughness, MinRoughness);
 		const float3 F = STL::BRDF::FresnelTerm(surface.Rf0, VoH);
-		diffuse = (1 - F) * STL::BRDF::DiffuseTerm(surface.Roughness, NoL, NoV, VoH) * NoL;
-		specular = F * STL::BRDF::DistributionTerm(surface.Roughness, NoH) * STL::BRDF::GeometryTermMod(surface.Roughness, NoL, NoV, VoH, NoH) * NoL;
+		diffuse = (1 - F) * STL::BRDF::DiffuseTerm(roughness, NoL, NoV, VoH) * NoL;
+		specular = F * STL::BRDF::DistributionTerm(roughness, NoH) * STL::BRDF::GeometryTermMod(roughness, NoL, NoV, VoH, NoH) * NoL;
 		return true;
 	}
 	diffuse = specular = 0;
 	return false;
 }
 
-bool ShadeSurface(float3 samplePosition, float3 radiance, RAB_Surface surface, out float3 diffuse, out float3 specular)
+bool ShadeSurface(RAB_Surface surface, float3 samplePosition, float3 radiance, out float3 diffuse, out float3 specular)
 {
-	const bool ret = EvaluateBRDF(normalize(samplePosition - surface.Position), surface, diffuse, specular);
+	const bool ret = EvaluateBRDF(surface, normalize(samplePosition - surface.Position), diffuse, specular);
 	if (ret)
 	{
 		diffuse *= surface.Albedo * radiance;
@@ -322,14 +345,14 @@ bool ShadeSurface(float3 samplePosition, float3 radiance, RAB_Surface surface, o
 	return ret;
 }
 
-void ShadeSurface(RAB_LightSample lightSample, RAB_Surface surface, out float3 diffuse, out float3 specular)
+void ShadeSurface(RAB_Surface surface, RAB_LightSample lightSample, out float3 diffuse, out float3 specular)
 {
 	if (lightSample.SolidAnglePDF <= 0)
 	{
 		diffuse = specular = 0;
 		return;
 	}
-	if (ShadeSurface(lightSample.Position, lightSample.Radiance, surface, diffuse, specular))
+	if (ShadeSurface(surface, lightSample.Position, lightSample.Radiance, diffuse, specular))
 	{
 		const float invPDF = 1 / lightSample.SolidAnglePDF;
 		diffuse *= invPDF;
@@ -343,9 +366,10 @@ float RAB_GetSurfaceBrdfPdf(RAB_Surface surface, float3 dir)
 	if (NoL > 0)
 	{
 		const float
-		NoV = abs(dot(surface.Normal, surface.ViewDirection)), NoH = abs(dot(surface.Normal, normalize(surface.ViewDirection + dir))),
-		diffusePDF = STL::ImportanceSampling::Cosine::GetPDF(NoL),
-		specularPDF = STL::ImportanceSampling::VNDF::GetPDF(STL::Geometry::RotateVector(STL::Geometry::GetBasis(surface.Normal), surface.ViewDirection), NoH, surface.Roughness);
+			NoV = abs(dot(surface.Normal, surface.ViewDirection)),
+			NoH = abs(dot(surface.Normal, normalize(surface.ViewDirection + dir))),
+			diffusePDF = STL::ImportanceSampling::Cosine::GetPDF(NoL),
+			specularPDF = STL::ImportanceSampling::VNDF::GetPDF(STL::Geometry::RotateVector(STL::Geometry::GetBasis(surface.Normal), surface.ViewDirection), NoH, max(surface.Roughness, MinRoughness));
 		return lerp(specularPDF, diffusePDF, surface.DiffuseProbability);
 	}
 	return 0;
@@ -354,7 +378,7 @@ float RAB_GetSurfaceBrdfPdf(RAB_Surface surface, float3 dir)
 float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Surface surface)
 {
 	float3 diffuse, specular;
-	ShadeSurface(lightSample, surface, diffuse, specular);
+	ShadeSurface(surface, lightSample, diffuse, specular);
 	return STL::Color::Luminance(diffuse + specular);
 }
 

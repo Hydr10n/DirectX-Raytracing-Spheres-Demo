@@ -53,15 +53,13 @@ export {
 			LocalLightPDF = make_unique<Texture>(pDevice, DXGI_FORMAT_R32_FLOAT, textureSize, static_cast<UINT16>(mipLevels));
 		}
 
-		void CreateNeighborOffsets(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeapEx& descriptorHeap, UINT descriptorIndex) {
+		void CreateRenderSizeDependentResources(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeapEx& descriptorHeap, UINT descriptorIndex) {
 			const auto neighborOffsetCount = Context->getNeighborOffsetCount();
 			vector<UINT16> offsets(neighborOffsetCount);
 			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
 			NeighborOffsets = make_unique<DefaultBuffer<UINT16>>(pDevice, resourceUploadBatch, offsets);
 			NeighborOffsets->CreateTypedSRV(descriptorHeap, descriptorIndex, DXGI_FORMAT_R8G8_SNORM);
-		}
 
-		void CreateDIReservoir(ID3D12Device* pDevice) {
 			DIReservoir = make_unique<DefaultBuffer<RTXDI_PackedDIReservoir>>(pDevice, Context->getReSTIRDIContext().getReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);
 		}
 	};

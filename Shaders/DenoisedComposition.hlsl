@@ -36,7 +36,7 @@ RWTexture2D<float3> g_color : register(u0);
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID)
 {
-	if (any(pixelPosition >= g_constants.RenderSize) || g_linearDepth[pixelPosition] == 1.#INF)
+	if (any(pixelPosition >= g_constants.RenderSize) || isinf(g_linearDepth[pixelPosition]))
 	{
 		return;
 	}

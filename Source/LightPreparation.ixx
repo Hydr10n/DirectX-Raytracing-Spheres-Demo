@@ -2,8 +2,6 @@ module;
 
 #include <DirectXMath.h>
 
-#include "directx/d3dx12.h"
-
 #include "directxtk12/DirectXHelpers.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
@@ -106,9 +104,7 @@ export struct LightPreparation {
 	void Process(ID3D12GraphicsCommandList* pCommandList) {
 		const ScopedBarrier scopedBarrier(
 			pCommandList,
-			{
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LocalLightPDF, Textures.LocalLightPDF->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-			}
+			{ Textures.LocalLightPDF->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS) }
 		);
 
 		pCommandList->SetComputeRootSignature(m_rootSignature.Get());

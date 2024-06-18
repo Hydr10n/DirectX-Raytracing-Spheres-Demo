@@ -1,6 +1,6 @@
 module;
 
-#include "directx/d3dx12.h"
+#include "directx/d3d12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 
@@ -56,13 +56,13 @@ export namespace PostProcessing {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LinearDepth, Textures.LinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.BaseColorMetalness, Textures.BaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.EmissiveColor, Textures.EmissiveColor->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NormalRoughness, Textures.NormalRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.DenoisedDiffuse, Textures.DenoisedDiffuse->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.DenoisedSpecular, Textures.DenoisedSpecular->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Color, Textures.Color->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+					Textures.LinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.BaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.EmissiveColor->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.NormalRoughness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.DenoisedDiffuse->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.DenoisedSpecular->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.Color->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
 

@@ -280,7 +280,7 @@ export namespace DirectX {
 
 		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : DEFAULT_BUFFER_BASE(source) {
 			if (pCommandList != nullptr) {
-				const ScopedBarrier scopedBarrier(pCommandList, { CD3DX12_RESOURCE_BARRIER::Transition(source, source.m_state, D3D12_RESOURCE_STATE_COPY_SOURCE) });
+				const ScopedBarrier scopedBarrier(pCommandList, { source.TransitionBarrier(D3D12_RESOURCE_STATE_COPY_SOURCE) });
 				this->TransitionTo(pCommandList, D3D12_RESOURCE_STATE_COPY_DEST);
 				pCommandList->CopyBufferRegion(*this, 0, source, 0, this->m_stride * source.m_count);
 				this->TransitionTo(pCommandList, source.m_state);

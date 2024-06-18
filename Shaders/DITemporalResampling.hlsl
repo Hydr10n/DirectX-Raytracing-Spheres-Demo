@@ -11,7 +11,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 		return;
 	}
 
-	const ReSTIRDI_Parameters DIParameters = g_graphicsSettings.RTXDI.ReSTIRDI;
+	const ReSTIRDI_Parameters parameters = g_graphicsSettings.RTXDI.ReSTIRDI;
 
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 
@@ -20,28 +20,29 @@ void main(uint2 globalIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 	{
 		RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelPosition, 2);
 
-		reservoir = RTXDI_LoadDIReservoir(DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.initialSamplingOutputBufferIndex);
-
-		RTXDI_DITemporalResamplingParameters parameters;
-		parameters.screenSpaceMotion = g_motionVectors[pixelPosition];
-		parameters.sourceBufferIndex = DIParameters.bufferIndices.temporalResamplingInputBufferIndex;
-		parameters.maxHistoryLength = DIParameters.temporalResamplingParams.maxHistoryLength;
-		parameters.biasCorrectionMode = DIParameters.temporalResamplingParams.temporalBiasCorrection;
-		parameters.depthThreshold = DIParameters.temporalResamplingParams.temporalDepthThreshold;
-		parameters.normalThreshold = DIParameters.temporalResamplingParams.temporalNormalThreshold;
-		parameters.enableVisibilityShortcut = DIParameters.temporalResamplingParams.discardInvisibleSamples;
-		parameters.enablePermutationSampling = DIParameters.temporalResamplingParams.enablePermutationSampling;
-		parameters.uniformRandomNumber = DIParameters.temporalResamplingParams.uniformRandomNumber;
+		RTXDI_DITemporalResamplingParameters temporalParameters;
+		temporalParameters.screenSpaceMotion = g_motionVectors[pixelPosition];
+		temporalParameters.sourceBufferIndex = parameters.bufferIndices.temporalResamplingInputBufferIndex;
+		temporalParameters.maxHistoryLength = parameters.temporalResamplingParams.maxHistoryLength;
+		temporalParameters.biasCorrectionMode = parameters.temporalResamplingParams.temporalBiasCorrection;
+		temporalParameters.depthThreshold = parameters.temporalResamplingParams.temporalDepthThreshold;
+		temporalParameters.normalThreshold = parameters.temporalResamplingParams.temporalNormalThreshold;
+		temporalParameters.enableVisibilityShortcut = parameters.temporalResamplingParams.discardInvisibleSamples;
+		temporalParameters.enablePermutationSampling = parameters.temporalResamplingParams.enablePermutationSampling;
+		temporalParameters.uniformRandomNumber = parameters.temporalResamplingParams.uniformRandomNumber;
 
 		RAB_LightSample lightSample;
 		int2 temporalSamplePixelPos;
-		reservoir = RTXDI_DITemporalResampling(pixelPosition, surface, reservoir, rng, g_graphicsSettings.RTXDI.Runtime, DIParameters.reservoirBufferParams, parameters, temporalSamplePixelPos, lightSample);
+		reservoir = RTXDI_LoadDIReservoir(parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.initialSamplingOutputBufferIndex);
+		reservoir = RTXDI_DITemporalResampling(pixelPosition, surface, reservoir, rng, g_graphicsSettings.RTXDI.Runtime, parameters.reservoirBufferParams, temporalParameters, temporalSamplePixelPos, lightSample);
 	}
 
-	if (DIParameters.temporalResamplingParams.enableBoilingFilter)
+#ifdef RTXDI_ENABLE_BOILING_FILTER
+	if (parameters.temporalResamplingParams.enableBoilingFilter)
 	{
-		RTXDI_BoilingFilter(localIndex, DIParameters.temporalResamplingParams.boilingFilterStrength, reservoir);
+		RTXDI_BoilingFilter(localIndex, parameters.temporalResamplingParams.boilingFilterStrength, reservoir);
 	}
+#endif
 
-	RTXDI_StoreDIReservoir(reservoir, DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.temporalResamplingOutputBufferIndex);
+	RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.temporalResamplingOutputBufferIndex);
 }

@@ -54,7 +54,7 @@ void RayGeneration()
 		NoV = abs(dot(hitInfo.Normal, V));
 		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
-		diffuseProbability = Material::EstimateDiffuseProbability(albedo, Rf0, material.Roughness, NoV);
+		diffuseProbability = Material::EstimateDiffuseProbability(albedo, Rf0, max(material.Roughness, MinRoughness), NoV);
 
 		linearDepth = dot(hitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 		const float4 projection = STL::Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position);
@@ -91,48 +91,43 @@ void RayGeneration()
 			float sampleHitDistance = 1.#INF;
 			HitInfo sampleHitInfo = hitInfo;
 			ScatterResult sampleScatterResult = scatterResult;
-			if (STL::Color::Luminance(throughput) > g_graphicsSettings.ThroughputThreshold)
+			for (uint bounceIndex = 1;
+				bounceIndex <= g_graphicsSettings.Bounces
+				&& STL::Color::Luminance(throughput) > g_graphicsSettings.ThroughputThreshold;
+				bounceIndex++)
 			{
-				for (uint bounceIndex = 0; bounceIndex < g_graphicsSettings.Bounces; bounceIndex++)
+				const RayDesc rayDesc = { sampleHitInfo.GetSafeWorldRayOrigin(sampleScatterResult.Direction), 0, sampleScatterResult.Direction, 1.#INF };
+				if (!CastRay(rayDesc, sampleHitInfo, g_graphicsSettings.IsShaderExecutionReorderingEnabled))
 				{
-					const RayDesc rayDesc = { sampleHitInfo.GetSafeWorldRayOrigin(sampleScatterResult.Direction), 0, sampleScatterResult.Direction, 1.#INF };
-					if (!CastRay(rayDesc, sampleHitInfo, g_graphicsSettings.IsShaderExecutionReorderingEnabled))
-					{
-						const float3 environmentLightColor = GetEnvironmentLightColor(rayDesc.Direction);
-						
-						sampleRadiance += throughput * environmentLightColor;
+					const float3 environmentLightColor = GetEnvironmentLightColor(rayDesc.Direction);
 
-						break;
-					}
+					sampleRadiance += throughput * environmentLightColor;
 
-					if (!bounceIndex)
-					{
-						sampleHitDistance = sampleHitInfo.Distance;
-					}
-
-					Material sampleMaterial = GetMaterial(sampleHitInfo.ObjectIndex, sampleHitInfo.TextureCoordinate);
-					
-					sampleRadiance += throughput * sampleMaterial.EmissiveColor;
-
-					if (g_graphicsSettings.IsRussianRouletteEnabled && bounceIndex > 2)
-					{
-						const float probability = max(throughput.r, max(throughput.g, throughput.b));
-						if (STL::Rng::Hash::GetFloat() >= probability)
-						{
-							break;
-						}
-						throughput /= probability;
-					}
-
-					sampleScatterResult = sampleMaterial.Scatter(sampleHitInfo, rayDesc.Direction);
-
-					throughput *= sampleScatterResult.Throughput;
-
-					if (STL::Color::Luminance(throughput) <= g_graphicsSettings.ThroughputThreshold)
-					{
-						break;
-					}
+					break;
 				}
+
+				if (bounceIndex == 1)
+				{
+					sampleHitDistance = sampleHitInfo.Distance;
+				}
+
+				const Material sampleMaterial = GetMaterial(sampleHitInfo.ObjectIndex, sampleHitInfo.TextureCoordinate);
+
+				sampleRadiance += throughput * sampleMaterial.EmissiveColor;
+
+				if (g_graphicsSettings.IsRussianRouletteEnabled && bounceIndex > 2)
+				{
+					const float probability = max(throughput.r, max(throughput.g, throughput.b));
+					if (STL::Rng::Hash::GetFloat() >= probability)
+					{
+						break;
+					}
+					throughput /= probability;
+				}
+
+				sampleScatterResult = sampleMaterial.Scatter(sampleHitInfo, rayDesc.Direction);
+
+				throughput *= sampleScatterResult.Throughput;
 			}
 
 			radiance += sampleRadiance;
@@ -143,7 +138,7 @@ void RayGeneration()
 				hitDistance = sampleHitDistance;
 			}
 		}
-		
+
 		radiance = NRD_IsValidRadiance(radiance) ? radiance / g_graphicsSettings.SamplesPerPixel : 0;
 
 		if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
@@ -158,7 +153,7 @@ void RayGeneration()
 				noisyDiffuse, noisySpecular
 			);
 		}
-		
+
 		radiance += material.EmissiveColor;
 	}
 	else if (!GetEnvironmentColor(rayDesc.Direction, radiance))

@@ -33,6 +33,10 @@ export namespace DirectX {
 		D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
 		void SetState(D3D12_RESOURCE_STATES state) noexcept { m_state = state; }
 
+		D3D12_RESOURCE_BARRIER TransitionBarrier(D3D12_RESOURCE_STATES state) const {
+			return CD3DX12_RESOURCE_BARRIER::Transition(m_resource.Get(), m_state, state);
+		}
+
 		void TransitionTo(ID3D12GraphicsCommandList* pCommandList, D3D12_RESOURCE_STATES state) {
 			if (state != m_state) {
 				TransitionResource(pCommandList, GetNative(), m_state, state);

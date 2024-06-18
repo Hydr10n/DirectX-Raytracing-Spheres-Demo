@@ -11,7 +11,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		return;
 	}
 
-	const ReSTIRDI_Parameters DIParameters = g_graphicsSettings.RTXDI.ReSTIRDI;
+	const ReSTIRDI_Parameters parameters = g_graphicsSettings.RTXDI.ReSTIRDI;
 
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 
@@ -23,11 +23,11 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			tileRng = RAB_InitRandomSampler(pixelPosition / RTXDI_TILE_SIZE_IN_PIXELS, 1);
 
 		const RTXDI_SampleParameters sampleParameters = RTXDI_InitSampleParameters(
-			DIParameters.initialSamplingParams.numPrimaryLocalLightSamples,
-			DIParameters.initialSamplingParams.numPrimaryInfiniteLightSamples,
-			DIParameters.initialSamplingParams.numPrimaryEnvironmentSamples,
-			DIParameters.initialSamplingParams.numPrimaryBrdfSamples,
-			DIParameters.initialSamplingParams.brdfCutoff
+			parameters.initialSamplingParams.numPrimaryLocalLightSamples,
+			parameters.initialSamplingParams.numPrimaryInfiniteLightSamples,
+			parameters.initialSamplingParams.numPrimaryEnvironmentSamples,
+			parameters.initialSamplingParams.numPrimaryBrdfSamples,
+			parameters.initialSamplingParams.brdfCutoff
 		);
 
 		RAB_LightSample lightSample;
@@ -36,7 +36,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			surface,
 			sampleParameters,
 			g_graphicsSettings.RTXDI.LightBuffer,
-			DIParameters.initialSamplingParams.localLightSamplingMode,
+			parameters.initialSamplingParams.localLightSamplingMode,
 #if RTXDI_ENABLE_PRESAMPLING
 			g_graphicsSettings.RTXDI.LocalLightRISBufferSegment,
 			g_graphicsSettings.RTXDI.EnvironmentLightRISBufferSegment,
@@ -46,7 +46,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 #endif
 			lightSample
 		);
-		if (DIParameters.initialSamplingParams.enableInitialVisibility
+		if (parameters.initialSamplingParams.enableInitialVisibility
 			&& RTXDI_IsValidDIReservoir(reservoir)
 			&& !RAB_GetConservativeVisibility(surface, lightSample))
 		{
@@ -54,5 +54,5 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		}
 	}
 
-	RTXDI_StoreDIReservoir(reservoir, DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.initialSamplingOutputBufferIndex);
+	RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.initialSamplingOutputBufferIndex);
 }

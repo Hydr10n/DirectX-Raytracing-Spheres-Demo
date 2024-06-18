@@ -11,30 +11,30 @@ float2 GetTextureCoordinate(uint objectIndex, uint primitiveIndex, float2 baryce
 	return Vertex::Interpolate(textureCoordinates, barycentrics);
 }
 
-float GetOpacity(uint objectIndex, float2 textureCoordinate, bool sampleBaseColorTexture = true)
+float GetTransmission(uint objectIndex, float2 textureCoordinate, bool sampleBaseColorTexture = true)
 {
 	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
 	uint index;
 	if ((index = resourceDescriptorIndices.TextureMaps.Transmission) != ~0u)
 	{
 		const Texture2D<float> texture = ResourceDescriptorHeap[index];
-		return 1 - texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
+		return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
 	if ((index = resourceDescriptorIndices.TextureMaps.Opacity) != ~0u)
 	{
 		const Texture2D<float> texture = ResourceDescriptorHeap[index];
-		return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
+		return 1 - texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
 	if (g_objectData[objectIndex].Material.AlphaMode != AlphaMode::Opaque)
 	{
 		if (sampleBaseColorTexture && (index = resourceDescriptorIndices.TextureMaps.BaseColor) != ~0u)
 		{
 			const Texture2D<float4> texture = ResourceDescriptorHeap[index];
-			return texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).a;
+			return 1 - texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).a;
 		}
-		return min(1 - g_objectData[objectIndex].Material.Transmission, g_objectData[objectIndex].Material.BaseColor.a);
+		return max(g_objectData[objectIndex].Material.Transmission, 1 - g_objectData[objectIndex].Material.BaseColor.a);
 	}
-	return 1 - g_objectData[objectIndex].Material.Transmission;
+	return g_objectData[objectIndex].Material.Transmission;
 }
 
 bool IsOpaque(uint objectIndex, float2 textureCoordinate)
@@ -47,7 +47,7 @@ bool IsOpaque(uint objectIndex, float2 textureCoordinate)
 		return true;
 	}
 
-	const float opacity = GetOpacity(objectIndex, textureCoordinate);
+	const float opacity = 1 - GetTransmission(objectIndex, textureCoordinate);
 	if (opacity >= g_objectData[objectIndex].Material.AlphaThreshold)
 	{
 		return true;
@@ -115,10 +115,9 @@ Material GetMaterial(uint objectIndex, float2 textureCoordinate)
 		{
 			material.Roughness = g_objectData[objectIndex].Material.Roughness;
 		}
-		material.Roughness = max(material.Roughness, MinRoughness);
 	}
 
-	material.Transmission = 1 - GetOpacity(objectIndex, textureCoordinate, false);
+	material.Transmission = GetTransmission(objectIndex, textureCoordinate, false);
 
 	material.RefractiveIndex = max(g_objectData[objectIndex].Material.RefractiveIndex, 1);
 

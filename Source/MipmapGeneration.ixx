@@ -1,8 +1,7 @@
 module;
 
+#include <memory>
 #include <ranges>
-
-#include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 
@@ -42,12 +41,7 @@ export namespace PostProcessing {
 		}
 
 		void Process(ID3D12GraphicsCommandList* pCommandList) {
-			const ScopedBarrier scopedBarrier(
-				pCommandList,
-				{
-					CD3DX12_RESOURCE_BARRIER::Transition(*m_texture, m_texture->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-				}
-			);
+			const ScopedBarrier scopedBarrier(pCommandList, { m_texture->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS) });
 
 			const auto descriptorHeap = m_descriptorHeap.Heap();
 			pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -62,8 +56,7 @@ export namespace PostProcessing {
 
 				pCommandList->Dispatch((max(1u, size.x >> mipLevel) + 31) / 32, (max(1u, size.y >> mipLevel) + 31) / 32, 1);
 
-				const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(*m_texture);
-				pCommandList->ResourceBarrier(1, &barrier);
+				m_texture->InsertUAVBarrier(pCommandList);
 			}
 		}
 

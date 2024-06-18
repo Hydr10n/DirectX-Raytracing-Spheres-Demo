@@ -57,50 +57,22 @@ export struct RTXDI {
 	} Textures{};
 
 	explicit RTXDI(ID3D12Device* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
-		constexpr D3D12_SHADER_BYTECODE DIInitialSamplingShaderByteCode{ g_DIInitialSampling_dxil, size(g_DIInitialSampling_dxil) };
-
-		ThrowIfFailed(pDevice->CreateRootSignature(0, DIInitialSamplingShaderByteCode.pShaderBytecode, DIInitialSamplingShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
-
 		{
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LocalLightPresampling_dxil, size(g_LocalLightPresampling_dxil) };
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_localLightPresampling)));
-			m_localLightPresampling->SetName(L"LocalLightPresampling");
+			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 		}
 
-		{
-			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_ReGIRPresampling_dxil, size(g_ReGIRPresampling_dxil) };
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_ReGIRPresampling)));
-			m_ReGIRPresampling->SetName(L"ReGIRPresampling");
-		}
-
-		{
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = DIInitialSamplingShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DIInitialSampling)));
-			m_DIInitialSampling->SetName(L"DIInitialSampling");
-		}
-
-		{
-			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DITemporalResampling_dxil, size(g_DITemporalResampling_dxil) };
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DITemporalResampling)));
-			m_DITemporalResampling->SetName(L"DITemporalResampling");
-		}
-
-		{
-			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DISpatialResampling_dxil, size(g_DISpatialResampling_dxil) };
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DISpatialResampling)));
-			m_DISpatialResampling->SetName(L"DISpatialResampling");
-		}
-
-		{
-			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_DIFinalShading_dxil, size(g_DIFinalShading_dxil) };
-			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_DIFinalShading)));
-			m_DIFinalShading->SetName(L"DIFinalShading");
-		}
+		const auto CreatePipelineState = [&](ComPtr<ID3D12PipelineState>& pipelineState, auto name, span<const uint8_t> shaderByteCode) {
+			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS{ data(shaderByteCode), size(shaderByteCode) } };
+			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&pipelineState)));
+			pipelineState->SetName(name);
+		};
+		CreatePipelineState(m_localLightPresampling, L"LocalLightPresampling", g_LocalLightPresampling_dxil);
+		CreatePipelineState(m_ReGIRPresampling, L"ReGIRPresampling", g_ReGIRPresampling_dxil);
+		CreatePipelineState(m_DIInitialSampling, L"DIInitialSampling", g_DIInitialSampling_dxil);
+		CreatePipelineState(m_DITemporalResampling, L"DITemporalResampling", g_DITemporalResampling_dxil);
+		CreatePipelineState(m_DISpatialResampling, L"DISpatialResampling", g_DISpatialResampling_dxil);
+		CreatePipelineState(m_DIFinalShading, L"DIFinalShading", g_DIFinalShading_dxil);
 	}
 
 	void SetConstants(const RTXDIResources& resources, bool isReGIRCellVisualizationEnabled, const NRDSettings& NRDSettings) {
@@ -146,9 +118,8 @@ export struct RTXDI {
 			ranges::copy(onionParameters.regirOnionRings, ReGIRParameters.onionParams.rings);
 		}
 
-		auto& ReSTIRDIContext = context.getReSTIRDIContext();
+		const auto& ReSTIRDIContext = context.getReSTIRDIContext();
 		const auto& ReSTIRDIStaticParameters = ReSTIRDIContext.getStaticParameters();
-
 		m_GPUBuffers.GraphicsSettings.At(0) = {
 			.RenderSize{ ReSTIRDIStaticParameters.RenderWidth, ReSTIRDIStaticParameters.RenderHeight },
 			.IsReGIRCellVisualizationEnabled = isReGIRCellVisualizationEnabled,
@@ -157,6 +128,7 @@ export struct RTXDI {
 				.EnvironmentLightRISBufferSegment = context.getEnvironmentLightRISBufferSegmentParams(),
 				.LightBuffer = context.getLightBufferParameters(),
 				.Runtime = context.getReSTIRDIContext().getRuntimeParams(),
+				.ReGIR = ReGIRParameters,
 				.ReSTIRDI{
 					.reservoirBufferParams = ReSTIRDIContext.getReservoirBufferParameters(),
 					.bufferIndices = ReSTIRDIContext.getBufferIndices(),
@@ -164,31 +136,30 @@ export struct RTXDI {
 					.temporalResamplingParams = ReSTIRDIContext.getTemporalResamplingParameters(),
 					.spatialResamplingParams = ReSTIRDIContext.getSpatialResamplingParameters(),
 					.shadingParams = ReSTIRDIContext.getShadingParameters()
-				},
-				.ReGIR = ReGIRParameters
+				}
 			},
 			.NRD = NRDSettings
 		};
 	}
 
-	void Render(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene) {
+	void Render(ID3D12GraphicsCommandList* pCommandList, const TopLevelAccelerationStructure& scene) {
 		const ScopedBarrier scopedBarrier(
 			pCommandList,
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(*m_resources->LightInfo, m_resources->LightInfo->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*m_resources->LocalLightPDF, m_resources->LocalLightPDF->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.PreviousLinearDepth, Textures.PreviousLinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LinearDepth, Textures.LinearDepth->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.MotionVectors, Textures.MotionVectors->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.PreviousBaseColorMetalness, Textures.PreviousBaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.BaseColorMetalness, Textures.BaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.PreviousNormals, Textures.PreviousNormals->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Normals, Textures.Normals->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.PreviousRoughness, Textures.PreviousRoughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Roughness, Textures.Roughness->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Color, Textures.Color->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NoisyDiffuse, Textures.NoisyDiffuse->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NoisySpecular, Textures.NoisySpecular->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+				m_resources->LightInfo->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				m_resources->LocalLightPDF->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.PreviousLinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.LinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.MotionVectors->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.PreviousBaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.BaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.PreviousNormals->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.Normals->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.PreviousRoughness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.Roughness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+				Textures.Color->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NoisyDiffuse->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NoisySpecular->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 			}
 		);
 
@@ -268,8 +239,8 @@ private:
 			RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
 			RTXDI_LightBufferParameters LightBuffer;
 			RTXDI_RuntimeParameters Runtime;
-			ReSTIRDI_Parameters ReSTIRDI;
 			ReGIR_Parameters ReGIR;
+			ReSTIRDI_Parameters ReSTIRDI;
 		} RTXDI;
 		NRDSettings NRD;
 	};

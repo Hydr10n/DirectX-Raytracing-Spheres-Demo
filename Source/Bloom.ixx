@@ -1,8 +1,7 @@
 module;
 
+#include <memory>
 #include <ranges>
-
-#include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 
@@ -93,8 +92,8 @@ export namespace PostProcessing {
 				const ScopedBarrier scopedBarrier(
 					pCommandList,
 					{
-						CD3DX12_RESOURCE_BARRIER::Transition(input, input.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-						CD3DX12_RESOURCE_BARRIER::Transition(output, output.GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+						input.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+						output.TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 					}
 				);
 

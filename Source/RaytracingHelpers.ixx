@@ -1,9 +1,8 @@
 module;
 
+#include <memory>
 #include <span>
 #include <stdexcept>
-
-#include "directx/d3dx12.h"
 
 #include "directxtk12/DirectXHelpers.h"
 

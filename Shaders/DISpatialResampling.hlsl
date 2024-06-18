@@ -11,7 +11,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		return;
 	}
 
-	const ReSTIRDI_Parameters DIParameters = g_graphicsSettings.RTXDI.ReSTIRDI;
+	const ReSTIRDI_Parameters parameters = g_graphicsSettings.RTXDI.ReSTIRDI;
 
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
 
@@ -20,23 +20,22 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	{
 		RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelPosition, 3);
 
-		reservoir = RTXDI_LoadDIReservoir(DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.spatialResamplingInputBufferIndex);
-
-		RTXDI_DISpatialResamplingParameters parameters;
-		parameters.sourceBufferIndex = DIParameters.bufferIndices.spatialResamplingInputBufferIndex;
-		parameters.numSamples = DIParameters.spatialResamplingParams.numSpatialSamples;
-		parameters.numDisocclusionBoostSamples = DIParameters.spatialResamplingParams.numDisocclusionBoostSamples;
-		parameters.targetHistoryLength = DIParameters.temporalResamplingParams.maxHistoryLength;
-		parameters.biasCorrectionMode = DIParameters.spatialResamplingParams.spatialBiasCorrection;
-		parameters.samplingRadius = DIParameters.spatialResamplingParams.spatialSamplingRadius;
-		parameters.depthThreshold = DIParameters.spatialResamplingParams.spatialDepthThreshold;
-		parameters.normalThreshold = DIParameters.spatialResamplingParams.spatialNormalThreshold;
-		parameters.enableMaterialSimilarityTest = true;
-		parameters.discountNaiveSamples = DIParameters.spatialResamplingParams.discountNaiveSamples;
+		RTXDI_DISpatialResamplingParameters spatialParameters;
+		spatialParameters.sourceBufferIndex = parameters.bufferIndices.spatialResamplingInputBufferIndex;
+		spatialParameters.numSamples = parameters.spatialResamplingParams.numSpatialSamples;
+		spatialParameters.numDisocclusionBoostSamples = parameters.spatialResamplingParams.numDisocclusionBoostSamples;
+		spatialParameters.targetHistoryLength = parameters.temporalResamplingParams.maxHistoryLength;
+		spatialParameters.biasCorrectionMode = parameters.spatialResamplingParams.spatialBiasCorrection;
+		spatialParameters.samplingRadius = parameters.spatialResamplingParams.spatialSamplingRadius;
+		spatialParameters.depthThreshold = parameters.spatialResamplingParams.spatialDepthThreshold;
+		spatialParameters.normalThreshold = parameters.spatialResamplingParams.spatialNormalThreshold;
+		spatialParameters.enableMaterialSimilarityTest = true;
+		spatialParameters.discountNaiveSamples = parameters.spatialResamplingParams.discountNaiveSamples;
 
 		RAB_LightSample lightSample;
-		reservoir = RTXDI_DISpatialResampling(pixelPosition, surface, reservoir, rng, g_graphicsSettings.RTXDI.Runtime, DIParameters.reservoirBufferParams, parameters, lightSample);
+		reservoir = RTXDI_LoadDIReservoir(parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.spatialResamplingInputBufferIndex);
+		reservoir = RTXDI_DISpatialResampling(pixelPosition, surface, reservoir, rng, g_graphicsSettings.RTXDI.Runtime, parameters.reservoirBufferParams, spatialParameters, lightSample);
 	}
 
-	RTXDI_StoreDIReservoir(reservoir, DIParameters.reservoirBufferParams, globalIndex, DIParameters.bufferIndices.spatialResamplingOutputBufferIndex);
+	RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.spatialResamplingOutputBufferIndex);
 }

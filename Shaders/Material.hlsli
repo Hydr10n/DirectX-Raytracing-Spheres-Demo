@@ -20,7 +20,7 @@ enum class AlphaMode
 	Opaque, Blend, Mask
 };
 
-static const float MinRoughness = 1e-3f;
+static const float MinRoughness = 5e-2f;
 
 struct Material
 {
@@ -40,7 +40,7 @@ struct Material
 		return diffuseProbability < 5e-3f ? 0 : diffuseProbability;
 	}
 
-	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection)
+	ScatterResult Scatter(HitInfo hitInfo, float3 worldRayDirection, float minRoughness = MinRoughness)
 	{
 		ScatterResult scatterResult;
 		scatterResult.Throughput = 1;
@@ -49,8 +49,8 @@ struct Material
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
 		
 		const float3 N = hitInfo.Normal, V = -worldRayDirection;
-		const float NoV = abs(dot(N, V));
-		const float diffuseProbability = EstimateDiffuseProbability(albedo, Rf0, Roughness, NoV);
+		const float NoV = abs(dot(N, V)), roughness = max(Roughness, MinRoughness);
+		const float diffuseProbability = EstimateDiffuseProbability(albedo, Rf0, roughness, NoV);
 		if (STL::Rng::Hash::GetFloat() <= diffuseProbability)
 		{
 			const float transmissiveProbability = diffuseProbability * Transmission;
@@ -80,18 +80,18 @@ struct Material
 			const float3 H = normalize(V + L);
 			const float NoL = abs(dot(N, L)), VoH = abs(dot(V, H));
 
-			scatterResult.Throughput *= albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(Roughness, NoL, NoV, VoH);
+			scatterResult.Throughput *= albedo * STL::Math::Pi(1) * STL::BRDF::DiffuseTerm_Burley(roughness, NoL, NoV, VoH);
 		}
 		else
 		{
-			const float3 H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, Roughness, STL::Geometry::RotateVector(basis, V)));
+			const float3 H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, roughness, STL::Geometry::RotateVector(basis, V)));
 			const float VoH = abs(dot(V, H));
 			if (scatterResult.Type == ScatterType::SpecularReflection)
 			{
 				L = reflect(-V, H);
 				const float NoL = abs(dot(N, L)), VoH = abs(dot(V, H));
 				
-				scatterResult.Throughput *= STL::BRDF::FresnelTerm_Schlick(Rf0, VoH) * STL::BRDF::GeometryTerm_Smith(Roughness, NoL);
+				scatterResult.Throughput *= STL::BRDF::FresnelTerm_Schlick(Rf0, VoH) * STL::BRDF::GeometryTerm_Smith(roughness, NoL);
 			}
 			else
 			{

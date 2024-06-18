@@ -1,7 +1,5 @@
 module;
 
-#include "directx/d3dx12.h"
-
 #include "directxtk12/DirectXHelpers.h"
 
 #include "Shaders/ChromaticAberration.dxil.h"
@@ -42,8 +40,8 @@ export namespace PostProcessing {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Input, Textures.Input->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Output, Textures.Output->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+					Textures.Input->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.Output->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
 

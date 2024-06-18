@@ -232,7 +232,6 @@ struct App::Impl : IDeviceNotify {
 
 		m_renderDescriptorHeap.reset();
 		m_resourceDescriptorHeap.reset();
-		m_defaultDescriptorHeap.reset();
 
 		m_GPUMemoryAllocator.reset();
 		m_graphicsMemory.reset();
@@ -284,14 +283,6 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
-	struct DefaultDescriptorIndex {
-		enum {
-			RTXDIDIReservoir,
-			Capacity
-		};
-	};
-	unique_ptr<DescriptorHeapEx> m_defaultDescriptorHeap;
-
 	struct ResourceDescriptorIndex {
 		enum {
 			RColor, RWColor,
@@ -314,7 +305,6 @@ private:
 			RValidation, RWValidation,
 			RLocalLightPDF, RWLocalLightPDF,
 			RRTXDINeighborOffsets,
-			RWRTXDIDIReservoir,
 			RFont,
 			Reserve,
 			Capacity = 1 << 16
@@ -601,34 +591,26 @@ private:
 		{
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
 
-			const auto device = m_deviceResources->GetDevice();
-
 			{
+				const auto device = m_deviceResources->GetDevice();
+
 				ResourceUploadBatch resourceUploadBatch(device);
 				resourceUploadBatch.Begin();
 
-				m_RTXDIResources.CreateNeighborOffsets(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::RRTXDINeighborOffsets);
+				m_RTXDIResources.CreateRenderSizeDependentResources(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::RRTXDINeighborOffsets);
 
 				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
 			}
-
-			m_RTXDIResources.CreateDIReservoir(device);
-			m_RTXDIResources.DIReservoir->CreateRawUAV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::RWRTXDIDIReservoir);
-			m_RTXDIResources.DIReservoir->CreateRawUAV(*m_defaultDescriptorHeap, DefaultDescriptorIndex::RTXDIDIReservoir);
 		}
 	}
 
 	void ResetHistory() {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
-
 		m_textures.at(TextureNames::PreviousLinearDepth)->Clear(commandList);
 		m_textures.at(TextureNames::PreviousBaseColorMetalness)->Clear(commandList);
 		m_textures.at(TextureNames::PreviousNormals)->Clear(commandList);
 		m_textures.at(TextureNames::PreviousRoughness)->Clear(commandList);
-
-		if (raytracingSettings.RTXDI.ReSTIRDI.IsEnabled) m_RTXDIResources.DIReservoir->Clear(commandList);
 	}
 
 	bool IsSceneLoading() const { return m_futures.contains(FutureNames::Scene); }
@@ -659,8 +641,6 @@ private:
 
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetDevice();
-
-		m_defaultDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, DefaultDescriptorIndex::Capacity);
 
 		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorIndex::Capacity, ResourceDescriptorIndex::Reserve);
 
@@ -1447,7 +1427,7 @@ private:
 	void ProcessToneMapping(Texture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor, inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
 		const auto isHDREnabled = m_deviceResources->IsHDREnabled();
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
@@ -1468,7 +1448,7 @@ private:
 	void ProcessAlphaBlending(Texture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { CD3DX12_RESOURCE_BARRIER::Transition(inColor, inColor.GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
 		m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		m_alphaBlending->Begin(commandList);
@@ -1641,9 +1621,9 @@ private:
 
 					m_resetHistory |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
 
-					m_resetHistory |= ImGui::SliderInt("Bounces", reinterpret_cast<int*>(&raytracingSettings.Bounces), 0, raytracingSettings.MaxBounces, "%d", ImGuiSliderFlags_AlwaysClamp);
+					m_resetHistory |= ImGui::SliderInt("Bounces", reinterpret_cast<int*>(&raytracingSettings.Bounces), 0, raytracingSettings.MaxBounces, "%u", ImGuiSliderFlags_AlwaysClamp);
 
-					m_resetHistory |= ImGui::SliderInt("Samples/Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%d", ImGuiSliderFlags_AlwaysClamp);
+					m_resetHistory |= ImGui::SliderInt("Samples/Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 					{
 						auto isEnabled = IsShaderExecutionReorderingEnabled();
@@ -1698,12 +1678,12 @@ private:
 										ImGui::EndCombo();
 									}
 
-									m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&localLightSettings.Samples), 0, localLightSettings.MaxSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+									m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&localLightSettings.Samples), 0, localLightSettings.MaxSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 									ImGui::TreePop();
 								}
 
-								m_resetHistory |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&initialSamplingSettings.BRDFSamples), 0, initialSamplingSettings.MaxBRDFSamples, "%d", ImGuiSliderFlags_AlwaysClamp);
+								m_resetHistory |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&initialSamplingSettings.BRDFSamples), 0, initialSamplingSettings.MaxBRDFSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 								ImGui::TreePop();
 							}

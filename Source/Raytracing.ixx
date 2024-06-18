@@ -98,17 +98,17 @@ export struct Raytracing {
 		const ScopedBarrier scopedBarrier(
 			pCommandList,
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Color, Textures.Color->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.LinearDepth, Textures.LinearDepth->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NormalizedDepth, Textures.NormalizedDepth->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.MotionVectors, Textures.MotionVectors->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.BaseColorMetalness, Textures.BaseColorMetalness->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.EmissiveColor, Textures.EmissiveColor->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Normals, Textures.Normals->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Roughness, Textures.Roughness->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NormalRoughness, Textures.NormalRoughness->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NoisyDiffuse, Textures.NoisyDiffuse->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(*Textures.NoisySpecular, Textures.NoisySpecular->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+				Textures.Color->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.LinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NormalizedDepth->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.MotionVectors->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.BaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.EmissiveColor->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.Normals->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.Roughness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NormalRoughness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NoisyDiffuse->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NoisySpecular->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 			}
 		);
 

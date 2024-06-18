@@ -1,7 +1,5 @@
 module;
 
-#include "directx/d3dx12.h"
-
 #include "directxtk12/DirectXHelpers.h"
 
 #include "Shaders/Merge.dxil.h"
@@ -39,9 +37,9 @@ export namespace PostProcessing {
 			const ScopedBarrier scopedBarrier(
 				pCommandList,
 				{
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Input1, Textures.Input1->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Input2, Textures.Input2->GetState(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-					CD3DX12_RESOURCE_BARRIER::Transition(*Textures.Output, Textures.Output->GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+					Textures.Input1->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.Input2->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
+					Textures.Output->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 				}
 			);
 
