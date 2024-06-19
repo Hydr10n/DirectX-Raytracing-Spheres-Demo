@@ -29,3 +29,6 @@
 [submodule "External/NVIDIA/NVAPI"]
 	path = External/NVIDIA/NVAPI
 	url = https://github.com/NVIDIA/nvapi
+[submodule "External/NVIDIA/RTXGI/SHARC"]
+	path = External/NVIDIA/RTXGI/SHARC
+	url = https://github.com/NVIDIAGameWorks/SHARC
