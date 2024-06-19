@@ -27,6 +27,14 @@ export {
 		}
 	}
 
+	constexpr auto ToString(RTXGITechnique value) {
+		switch (value) {
+			case RTXGITechnique::None: return "None";
+			case RTXGITechnique::SHARC: return "Spatially Hashed Radiance Cache";
+			default: throw;
+		}
+	}
+
 	constexpr auto ToString(ReflexMode value) {
 		switch (value) {
 			case ReflexMode::eOff: return "Off";

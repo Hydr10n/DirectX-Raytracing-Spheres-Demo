@@ -137,9 +137,9 @@ export namespace DirectX {
 		size_t GetCapacity() const noexcept { return m_capacity; }
 		size_t GetCount() const noexcept { return m_count; }
 
-		void Clear(ID3D12GraphicsCommandList* pCommandList, const XMUINT4& values = {}) {
+		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT value = 0) {
 			TransitionTo(pCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			pCommandList->ClearUnorderedAccessViewUint(m_descriptors.ShaderVisible.UAV.Raw.GPUHandle, m_descriptors.Default.RawUAV.CPUHandle, m_resource.Get(), reinterpret_cast<const UINT*>(&values), 0, nullptr);
+			pCommandList->ClearUnorderedAccessViewUint(m_descriptors.ShaderVisible.UAV.Raw.GPUHandle, m_descriptors.Default.RawUAV.CPUHandle, m_resource.Get(), data(initializer_list{ value, value, value, value }), 0, nullptr);
 			InsertUAVBarrier(pCommandList);
 		}
 

@@ -43,6 +43,12 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 					- Mode: Uniform | Power RIS | ReGIR RIS
 					- Samples
 				- BRDF Samples
+	- NVIDIA RTX Global Illumination
+		- Spatially Hashed Radiance Cache
+			- Downscale Factor
+			- Scene Scale
+			- Roughness Threshold
+			- Hash Grid Visualization
 - Post-Processing
 	- NVIDIA Real-Time Denoisers
 		- Denoiser: ReBLUR | ReLAX

@@ -6,6 +6,20 @@
 
 #include "Denoiser.hlsli"
 
+#if defined(SHARC_UPDATE) || defined(SHARC_QUERY)
+#define ENABLE_SHARC 1
+#if SHARC_UPDATE
+#define SHARC_QUERY 0
+#else
+#define SHARC_UPDATE 0
+#endif
+#include "SharcCommon.h"
+#else
+#define ENABLE_SHARC 0
+#define SHARC_QUERY 0
+#define SHARC_UPDATE 0
+#endif
+
 #define NV_SHADER_EXTN_SLOT u1024
 #include "nvHLSLExtns.h"
 
@@ -19,6 +33,15 @@ struct GraphicsSettings
 	float ThroughputThreshold;
 	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
 	uint2 _;
+	struct
+	{
+		struct
+		{
+			uint Capacity;
+			float SceneScale, RoughnessThreshold;
+			bool IsHashGridVisualizationEnabled;
+		} SHARC;
+	} RTXGI;
 	NRDSettings NRD;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
@@ -41,6 +64,12 @@ RWTexture2D<float> g_roughness : register(u7);
 RWTexture2D<float4> g_normalRoughness : register(u8);
 RWTexture2D<float4> g_noisyDiffuse : register(u9);
 RWTexture2D<float4> g_noisySpecular : register(u10);
+
+#if ENABLE_SHARC
+RWStructuredBuffer<uint64_t> g_sharcHashEntries : register(u11);
+RWStructuredBuffer<uint4> g_sharcPreviousVoxelData : register(u12);
+RWStructuredBuffer<uint4> g_sharcVoxelData : register(u13);
+#endif
 
 #include "RaytracingHelpers.hlsli"
 

@@ -46,7 +46,8 @@ add_executable(${project} WIN32
 	${source}
 	"Source/App.rc"
 	"Source/App.manifest"
-	"${NVIDIA_library_path}NRD/Integration/NRDIntegration.hpp")
+	"${NVIDIA_library_path}NRD/Integration/NRDIntegration.hpp"
+	"${NVIDIA_library_path}ShaderMake/src/ShaderBlob.cpp")
 target_sources(${project} PRIVATE FILE_SET cxx_modules TYPE CXX_MODULES FILES ${modules})
 
 set_target_properties(${project} PROPERTIES CXX_STANDARD 23)
@@ -67,6 +68,7 @@ set(NVIDIA_CXX_include_directories
 	"NVAPI"
 	"RTXDI/rtxdi-sdk/include"
 	"RTXMU/include"
+	"ShaderMake/include"
 	"Streamline/include")
 list(TRANSFORM NVIDIA_CXX_include_directories PREPEND ${NVIDIA_library_path})
 
@@ -80,7 +82,8 @@ set(NVIDIA_shader_include_directories
 	"MathLib"
 	"NRD/Shaders/Include"
 	"NVAPI"
-	"RTXDI/rtxdi-sdk/include")
+	"RTXDI/rtxdi-sdk/include"
+	"RTXGI/SHARC/include")
 list(TRANSFORM NVIDIA_shader_include_directories PREPEND ${NVIDIA_library_path})
 
 file(GLOB shaders CONFIGURE_DEPENDS "Shaders/*.hlsl")

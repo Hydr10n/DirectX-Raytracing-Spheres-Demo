@@ -55,6 +55,7 @@ import PostProcessing.MipmapGeneration;
 import Raytracing;
 import RTXDI;
 import RTXDIResources;
+import RTXGI;
 import SharedData;
 import StepTimer;
 import StringConverters;
@@ -229,9 +230,11 @@ struct App::Impl : IDeviceNotify {
 		m_RTXDIResources = {};
 
 		m_raytracing.reset();
+		m_SHARCBuffers = {};
 
 		m_renderDescriptorHeap.reset();
 		m_resourceDescriptorHeap.reset();
+		m_defaultDescriptorHeap.reset();
 
 		m_GPUMemoryAllocator.reset();
 		m_graphicsMemory.reset();
@@ -283,6 +286,17 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
+	struct DefaultDescriptorIndex {
+		enum {
+			SHARCHashEntries,
+			SHARCHashCopyOffset,
+			SHARCPreviousVoxelData,
+			SHARCVoxelData,
+			Capacity
+		};
+	};
+	unique_ptr<DescriptorHeapEx> m_defaultDescriptorHeap;
+
 	struct ResourceDescriptorIndex {
 		enum {
 			RColor, RWColor,
@@ -303,6 +317,10 @@ private:
 			RDenoisedDiffuse, RWDenoisedDiffuse,
 			RDenoisedSpecular, RWDenoisedSpecular,
 			RValidation, RWValidation,
+			RWSHARCHashEntries,
+			RWSHARCHashCopyOffset,
+			RWSHARCPreviousVoxelData,
+			RWSHARCVoxelData,
 			RLocalLightPDF, RWLocalLightPDF,
 			RRTXDINeighborOffsets,
 			RFont,
@@ -330,6 +348,7 @@ private:
 	};
 	unique_ptr<DescriptorHeapEx> m_renderDescriptorHeap;
 
+	unique_ptr<SHARCBuffers> m_SHARCBuffers;
 	unique_ptr<Raytracing> m_raytracing;
 
 	RTXDIResources m_RTXDIResources;
@@ -411,6 +430,8 @@ private:
 		CreatePipelineStates();
 
 		CreateConstantBuffers();
+
+		CreateSHARCBuffers();
 	}
 
 	void CreateWindowSizeDependentResources() {
@@ -486,6 +507,7 @@ private:
 		if (isPCLAvailable) ignore = m_streamline->SetPCLMarker(PCLMarker::eSimulationStart);
 
 		{
+			m_camera.PreviousPosition = m_cameraController.GetPosition();
 			m_camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			m_camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
 			m_camera.PreviousWorldToProjection = m_cameraController.GetWorldToProjection();
@@ -611,6 +633,12 @@ private:
 		m_textures.at(TextureNames::PreviousBaseColorMetalness)->Clear(commandList);
 		m_textures.at(TextureNames::PreviousNormals)->Clear(commandList);
 		m_textures.at(TextureNames::PreviousRoughness)->Clear(commandList);
+
+		if (g_graphicsSettings.Raytracing.RTXGI.Technique == RTXGITechnique::SHARC) {
+			m_SHARCBuffers->HashEntries.Clear(commandList);
+			m_SHARCBuffers->HashCopyOffset.Clear(commandList);
+			m_SHARCBuffers->PreviousVoxelData.Clear(commandList);
+		}
 	}
 
 	bool IsSceneLoading() const { return m_futures.contains(FutureNames::Scene); }
@@ -641,6 +669,8 @@ private:
 
 	void CreateDescriptorHeaps() {
 		const auto device = m_deviceResources->GetDevice();
+
+		m_defaultDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, DefaultDescriptorIndex::Capacity);
 
 		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorIndex::Capacity, ResourceDescriptorIndex::Reserve);
 
@@ -719,6 +749,19 @@ private:
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, size_t capacity) { buffer = make_shared<T>(m_deviceResources->GetDevice(), capacity); };
 		if (const auto instanceCount = size(m_scene->GetInstanceData())) CreateBuffer(m_GPUBuffers.InstanceData, instanceCount);
 		if (const auto objectCount = m_scene->GetObjectCount()) CreateBuffer(m_GPUBuffers.ObjectData, objectCount);
+	}
+
+	void CreateSHARCBuffers() {
+		m_SHARCBuffers = make_unique<SHARCBuffers>(m_deviceResources->GetDevice());
+
+		const auto CreateUAV = [&](auto& buffer, UINT resourceDescriptorIndex, UINT defaultDescriptorIndex) {
+			buffer.CreateRawUAV(*m_resourceDescriptorHeap, resourceDescriptorIndex);
+			buffer.CreateRawUAV(*m_defaultDescriptorHeap, defaultDescriptorIndex);
+		};
+		CreateUAV(m_SHARCBuffers->HashEntries, ResourceDescriptorIndex::RWSHARCHashEntries, DefaultDescriptorIndex::SHARCHashEntries);
+		CreateUAV(m_SHARCBuffers->HashCopyOffset, ResourceDescriptorIndex::RWSHARCHashCopyOffset, DefaultDescriptorIndex::SHARCHashCopyOffset);
+		CreateUAV(m_SHARCBuffers->PreviousVoxelData, ResourceDescriptorIndex::RWSHARCPreviousVoxelData, DefaultDescriptorIndex::SHARCPreviousVoxelData);
+		CreateUAV(m_SHARCBuffers->VoxelData, ResourceDescriptorIndex::RWSHARCVoxelData, DefaultDescriptorIndex::SHARCVoxelData);
 	}
 
 	void PrepareLightResources() {
@@ -1014,6 +1057,8 @@ private:
 		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
 
 		{
+			if (raytracingSettings.RTXGI.Technique == RTXGITechnique::SHARC) m_SHARCBuffers->VoxelData.Clear(commandList);
+
 			m_raytracing->GPUBuffers = {
 				.SceneData = m_GPUBuffers.SceneData.get(),
 				.Camera = m_GPUBuffers.Camera.get(),
@@ -1035,17 +1080,30 @@ private:
 				.NoisySpecular = noisySpecular
 			};
 
-			m_raytracing->SetConstants({
-				.RenderSize = m_renderSize,
-				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-				.Bounces = raytracingSettings.Bounces,
-				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
-				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
-				.NRD = NRDSettings
-				});
+			m_raytracing->SetConstants(
+				{
+					.RenderSize = m_renderSize,
+					.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+					.Bounces = raytracingSettings.Bounces,
+					.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+					.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+					.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
+					.RTXGI{
+						.SHARC{
+						.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
+						.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale,
+						.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
+						.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
+						}
+					},
+					.NRD = NRDSettings
+				},
+				*m_SHARCBuffers
+			);
 
-			m_raytracing->Render(commandList, scene);
+			m_raytracing->Render(commandList, scene, raytracingSettings.RTXGI.Technique);
+
+			swap(m_SHARCBuffers->PreviousVoxelData, m_SHARCBuffers->VoxelData);
 		}
 
 		if (raytracingSettings.RTXDI.ReSTIRDI.IsEnabled) {
@@ -1689,6 +1747,40 @@ private:
 							}
 
 							ImGui::TreePop();
+						}
+
+						ImGui::TreePop();
+					}
+
+					if (ImGui::TreeNodeEx("NVIDIA RTX Global Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
+						auto& RTXGISettings = raytracingSettings.RTXGI;
+
+						if (ImGui::BeginCombo("Technique", ToString(RTXGISettings.Technique))) {
+							for (const auto RTXGITechnique : { RTXGITechnique::None, RTXGITechnique::SHARC }) {
+								const auto isSelected = RTXGISettings.Technique == RTXGITechnique;
+
+								if (ImGui::Selectable(ToString(RTXGITechnique), isSelected)) {
+									RTXGISettings.Technique = RTXGITechnique;
+
+									m_resetHistory = true;
+								}
+
+								if (isSelected) ImGui::SetItemDefaultFocus();
+							}
+
+							ImGui::EndCombo();
+						}
+
+						if (RTXGISettings.Technique == RTXGITechnique::SHARC) {
+							auto& SHARCSettings = RTXGISettings.SHARC;
+
+							m_resetHistory |= ImGui::SliderInt("Downscale Factor", reinterpret_cast<int*>(&SHARCSettings.DownscaleFactor), 1, SHARCSettings.MaxDownscaleFactor, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+							m_resetHistory |= ImGui::SliderFloat("Scene Scale", &SHARCSettings.SceneScale, SHARCSettings.MinSceneScale, SHARCSettings.MaxSceneScale, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+							m_resetHistory |= ImGui::SliderFloat("Roughness Threshold", &SHARCSettings.RoughnessThreshold, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+							m_resetHistory |= ImGui::Checkbox("Hash Grid Visualization", &SHARCSettings.IsHashGridVisualizationEnabled);
 						}
 
 						ImGui::TreePop();

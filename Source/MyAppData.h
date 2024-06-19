@@ -14,6 +14,7 @@
 
 import DisplayHelpers;
 import NRD;
+import RTXGI;
 import Streamline;
 import WindowHelpers;
 import XeSS;
@@ -37,6 +38,14 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
 		{ ReSTIRDI_LocalLightSamplingMode::Uniform, "Uniform" },
 		{ ReSTIRDI_LocalLightSamplingMode::Power_RIS, "Power_RIS" },
 		{ ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS, "ReGIR_RIS" }
+	}
+);
+
+NLOHMANN_JSON_SERIALIZE_ENUM(
+	RTXGITechnique,
+	{
+		{ RTXGITechnique::None, "None" },
+		{ RTXGITechnique::SHARC, "SHARC" }
 	}
 );
 
@@ -198,7 +207,27 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReGIR, ReSTIRDI);
 				} RTXDI;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, Bounces, SamplesPerPixel, IsShaderExecutionReorderingEnabled, RTXDI);
+				struct RTXGI {
+					RTXGITechnique Technique = RTXGITechnique::None;
+
+					struct SHARC {
+						static constexpr UINT MaxDownscaleFactor = 10;
+						UINT DownscaleFactor = 5;
+
+						static constexpr float MinSceneScale = 5, MaxSceneScale = 100;
+						float SceneScale = 50;
+
+						float RoughnessThreshold = 0.4f;
+
+						bool IsHashGridVisualizationEnabled{};
+
+						FRIEND_JSON_CONVERSION_FUNCTIONS(SHARC, DownscaleFactor, SceneScale, RoughnessThreshold, IsHashGridVisualizationEnabled);
+					} SHARC;
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXGI, Technique, SHARC);
+				} RTXGI;
+
+				FRIEND_JSON_CONVERSION_FUNCTIONS(Raytracing, IsRussianRouletteEnabled, Bounces, SamplesPerPixel, IsShaderExecutionReorderingEnabled, RTXDI, RTXGI);
 			} Raytracing;
 
 			struct PostProcessing {
@@ -279,6 +308,12 @@ public:
 					{
 						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.MaxSamples);
 						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.MaxBRDFSamples);
+					}
+
+					{
+						Raytracing.RTXGI.SHARC.DownscaleFactor = clamp(Raytracing.RTXGI.SHARC.DownscaleFactor, 1u, Raytracing.RTXGI.SHARC.MaxDownscaleFactor);
+						Raytracing.RTXGI.SHARC.SceneScale = clamp(Raytracing.RTXGI.SHARC.SceneScale, Raytracing.RTXGI.SHARC.MinSceneScale, Raytracing.RTXGI.SHARC.MaxSceneScale);
+						Raytracing.RTXGI.SHARC.RoughnessThreshold = clamp(Raytracing.RTXGI.SHARC.RoughnessThreshold, 0.0f, 1.0f);
 					}
 				}
 
