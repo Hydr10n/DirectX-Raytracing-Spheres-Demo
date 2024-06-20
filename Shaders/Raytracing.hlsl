@@ -131,6 +131,11 @@ void RayGeneration()
 
 		for (uint bounceIndex = 0; bounceIndex <= g_graphicsSettings.Bounces; bounceIndex++)
 		{
+#if SHARC_UPDATE
+			sampleRadiance = 0;
+			throughput = 1;
+#endif
+
 			if (bounceIndex)
 			{
 				sampleRayDesc.Origin = sampleHitInfo.GetSafeWorldRayOrigin(scatterResult.Direction);
