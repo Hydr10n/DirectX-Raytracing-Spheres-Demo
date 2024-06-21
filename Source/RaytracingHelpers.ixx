@@ -46,7 +46,7 @@ export namespace DirectX::RaytracingHelpers {
 
 		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_device(pDevice), m_flags(flags) {}
 
-		ID3D12Resource* GetBuffer() const noexcept { return m_buffers.Result->GetNative(); }
+		ID3D12Resource* GetBuffer() const noexcept { return *m_buffers.Result; }
 
 		UINT GetDescCount() const noexcept { return m_descCount; }
 
@@ -148,7 +148,7 @@ export namespace DirectX::RaytracingHelpers {
 
 		ShaderBindingTable(
 			ID3D12Device* pDevice, ID3D12StateObjectProperties* pStateObjectProperties,
-			span<Entry> rayGenerationEntries, span<Entry> missEntries, span<Entry> hitGroupEntries
+			span<Entry> rayGenerationEntries, span<Entry> missEntries, span<Entry> hitGroups
 		) {
 			constexpr auto GetStride = [](span<Entry> entries) {
 				size_t maxCount = 0;
@@ -162,8 +162,8 @@ export namespace DirectX::RaytracingHelpers {
 			m_missEntries.assign_range(missEntries);
 			m_missStride = GetStride(missEntries);
 
-			m_hitGroupEntries.assign_range(hitGroupEntries);
-			m_hitGroupStride = GetStride(hitGroupEntries);
+			m_hitGroups.assign_range(hitGroups);
+			m_hitGroupStride = GetStride(hitGroups);
 
 			m_buffer = make_unique<ConstantBuffer<uint8_t>>(pDevice, (GetRayGenerationSize() + GetMissSize() + GetHitGroupSize() + D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1) / D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
@@ -187,7 +187,7 @@ export namespace DirectX::RaytracingHelpers {
 			};
 			Copy(m_rayGenerationEntries, m_rayGenerationStride);
 			Copy(m_missEntries, m_missStride);
-			Copy(m_hitGroupEntries, m_hitGroupStride);
+			Copy(m_hitGroups, m_hitGroupStride);
 		}
 
 		D3D12_GPU_VIRTUAL_ADDRESS GetRayGenerationAddress() const { return m_buffer->GetNative()->GetGPUVirtualAddress(); }
@@ -200,10 +200,10 @@ export namespace DirectX::RaytracingHelpers {
 
 		D3D12_GPU_VIRTUAL_ADDRESS GetHitGroupAddress() const { return GetMissAddress() + GetHitGroupSize(); }
 		UINT GetHitGroupStride() const { return m_hitGroupStride; }
-		UINT GetHitGroupSize() const { return m_hitGroupStride * static_cast<UINT>(size(m_hitGroupEntries)); }
+		UINT GetHitGroupSize() const { return m_hitGroupStride * static_cast<UINT>(size(m_hitGroups)); }
 
 	private:
-		vector<Entry> m_rayGenerationEntries, m_missEntries, m_hitGroupEntries;
+		vector<Entry> m_rayGenerationEntries, m_missEntries, m_hitGroups;
 		UINT m_rayGenerationStride{}, m_missStride{}, m_hitGroupStride{};
 
 		unique_ptr<ConstantBuffer<uint8_t>> m_buffer;

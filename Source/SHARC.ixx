@@ -18,26 +18,21 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export {
-	struct SHARCBuffers {
-		DefaultBuffer<UINT64> HashEntries;
-		DefaultBuffer<UINT> HashCopyOffset;
-		DefaultBuffer<XMUINT4> PreviousVoxelData, VoxelData;
-
-		explicit SHARCBuffers(ID3D12Device* pDevice, UINT capacity = 1 << 22) :
-			HashEntries(pDevice, capacity),
-			HashCopyOffset(pDevice, capacity),
-			PreviousVoxelData(pDevice, capacity), VoxelData(pDevice, capacity) {}
-	};
-
 	struct SHARC {
 		struct Constants { float SceneScale; };
 
-		struct { ConstantBuffer<Camera>* Camera; } GPUBuffers{};
+		struct {
+			unique_ptr<DefaultBuffer<UINT64>> HashEntries;
+			unique_ptr<DefaultBuffer<UINT>> HashCopyOffset;
+			unique_ptr<DefaultBuffer<XMUINT4>> PreviousVoxelData, VoxelData;
+
+			ConstantBuffer<Camera>* Camera;
+		} GPUBuffers{};
 
 		SHARC(const SHARC&) = delete;
 		SHARC& operator=(const SHARC&) = delete;
 
-		explicit SHARC(ID3D12Device* pDevice) {
+		explicit SHARC(ID3D12Device* pDevice) : m_device(pDevice) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_SHARC_dxil, size(g_SHARC_dxil) };
 
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
@@ -47,34 +42,41 @@ export {
 			m_pipelineState->SetName(L"SHARC");
 		}
 
-		void Process(ID3D12GraphicsCommandList* pCommandList, const SHARCBuffers& buffers, Constants constants) {
+		void Configure(UINT capacity = 1 << 22) {
+			GPUBuffers.HashEntries = make_unique<DefaultBuffer<UINT64>>(m_device, capacity);
+			GPUBuffers.HashCopyOffset = make_unique<DefaultBuffer<UINT>>(m_device, capacity);
+			GPUBuffers.PreviousVoxelData = make_unique<DefaultBuffer<XMUINT4>>(m_device, capacity);
+			GPUBuffers.VoxelData = make_unique<DefaultBuffer<XMUINT4>>(m_device, capacity);
+		}
+
+		void Process(ID3D12GraphicsCommandList* pCommandList, Constants constants) {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 
 			pCommandList->SetComputeRootConstantBufferView(1, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootUnorderedAccessView(2, buffers.HashEntries->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootUnorderedAccessView(3, buffers.HashCopyOffset->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootUnorderedAccessView(4, buffers.PreviousVoxelData->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootUnorderedAccessView(5, buffers.VoxelData->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootUnorderedAccessView(2, GPUBuffers.HashEntries->GetNative()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootUnorderedAccessView(3, GPUBuffers.HashCopyOffset->GetNative()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.PreviousVoxelData->GetNative()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootUnorderedAccessView(5, GPUBuffers.VoxelData->GetNative()->GetGPUVirtualAddress());
 
 			const auto Dispatch = [&](bool isResolve) {
 				{
 					const auto barriers = {
-						CD3DX12_RESOURCE_BARRIER::UAV(buffers.HashEntries),
-						CD3DX12_RESOURCE_BARRIER::UAV(buffers.HashCopyOffset)
+						CD3DX12_RESOURCE_BARRIER::UAV(*GPUBuffers.HashEntries),
+						CD3DX12_RESOURCE_BARRIER::UAV(*GPUBuffers.HashCopyOffset)
 					};
 					pCommandList->ResourceBarrier(static_cast<UINT>(size(barriers)), data(barriers));
 				}
 
 				if (isResolve) {
 					const auto barriers = {
-						CD3DX12_RESOURCE_BARRIER::UAV(buffers.PreviousVoxelData),
-						CD3DX12_RESOURCE_BARRIER::UAV(buffers.VoxelData)
+						CD3DX12_RESOURCE_BARRIER::UAV(*GPUBuffers.PreviousVoxelData),
+						CD3DX12_RESOURCE_BARRIER::UAV(*GPUBuffers.VoxelData)
 					};
 					pCommandList->ResourceBarrier(static_cast<UINT>(size(barriers)), data(barriers));
 				}
 
-				const auto capacity = static_cast<UINT>(buffers.HashEntries.GetCount());
+				const auto capacity = static_cast<UINT>(GPUBuffers.HashEntries->GetCount());
 
 				const struct {
 					BOOL IsResolve;
@@ -90,6 +92,8 @@ export {
 		}
 
 	private:
+		ID3D12Device* m_device;
+
 		ComPtr<ID3D12RootSignature> m_rootSignature;
 		ComPtr<ID3D12PipelineState> m_pipelineState;
 	};

@@ -238,6 +238,11 @@ void RayGeneration()
 
 			scatterResult = sampleMaterial.Scatter(sampleHitInfo, sampleRayDesc.Direction);
 
+			if (all(scatterResult.Throughput == 0))
+			{
+				break;
+			}
+
 			throughput *= scatterResult.Throughput;
 
 #if SHARC_UPDATE

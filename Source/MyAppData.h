@@ -257,7 +257,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(NIS, IsEnabled, Sharpness);
 				} NIS;
 
-				bool IsChromaticAberrationEnabled = true;
+				bool IsChromaticAberrationEnabled{};
 
 				struct Bloom {
 					bool IsEnabled = true;

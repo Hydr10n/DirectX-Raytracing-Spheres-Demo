@@ -34,14 +34,13 @@ export struct Raytracing {
 		UINT FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold = 1e-3f;
 		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
-		struct {
-			struct {
-				UINT DownscaleFactor;
-				float SceneScale, RoughnessThreshold;
-				BOOL IsHashGridVisualizationEnabled;
-			} SHARC;
-		} RTXGI;
 		NRDSettings NRD;
+	};
+
+	struct SHARCSettings {
+		UINT DownscaleFactor;
+		float SceneScale, RoughnessThreshold;
+		BOOL IsHashGridVisualizationEnabled;
 	};
 
 	struct {
@@ -67,12 +66,7 @@ export struct Raytracing {
 	} Textures{};
 
 	explicit Raytracing(ID3D12Device5* pDevice) noexcept(false) :
-		m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<_GraphicsSettings>(pDevice) },
-		m_RTXGI{
-			.SHARC{
-				.Shader = SHARC(pDevice)
-			}
-		} {
+		m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<_GraphicsSettings>(pDevice) } {
 		const auto CreateShader = [&](Shader& shader, const ShaderConstant& constant) {
 			D3D12_SHADER_BYTECODE shaderBytecode;
 			FindPermutationInBlob(g_Raytracing_dxil, size(g_Raytracing_dxil), &constant, 1, &shaderBytecode.pShaderBytecode, &shaderBytecode.BytecodeLength);
@@ -85,141 +79,79 @@ export struct Raytracing {
 			subobject->DefineExport(L"ShaderConfig");
 			subobject->DefineExport(L"PipelineConfig");
 			subobject->DefineExport(L"GlobalRootSignature");
-			subobject->DefineExport(ShaderEntryNames::RayGeneration);
+			subobject->DefineExport(L"RayGeneration");
 			ThrowIfFailed(pDevice->CreateStateObject(stateObjectDesc, IID_PPV_ARGS(&shader.PipelineState)));
 			shader.PipelineState->SetName(L"Raytracing");
 
 			vector<ShaderBindingTable::Entry>
-				rayGenerationEntries{ { ShaderEntryNames::RayGeneration } },
+				rayGenerationEntries{ { L"RayGeneration" } },
 				missEntries,
-				hitGroupEntries;
+				hitGroups;
 			ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
 			ThrowIfFailed(shader.PipelineState->QueryInterface(IID_PPV_ARGS(&stateObjectProperties)));
-			shader.BindingTable = make_unique<ShaderBindingTable>(pDevice, stateObjectProperties.Get(), rayGenerationEntries, missEntries, hitGroupEntries);
+			shader.BindingTable = make_unique<ShaderBindingTable>(pDevice, stateObjectProperties.Get(), rayGenerationEntries, missEntries, hitGroups);
 		};
 		CreateShader(m_default, { "DEFAULT", "1" });
 		CreateShader(m_SHARCUpdate, { "SHARC_UPDATE", "1" });
 		CreateShader(m_SHARCQuery, { "SHARC_QUERY", "1" });
 	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings, const SHARCBuffers& SHARCBuffers) {
-		m_GPUBuffers.GraphicsSettings.At(0) = {
-			.FrameIndex = graphicsSettings.FrameIndex,
-			.Bounces = graphicsSettings.Bounces,
-			.SamplesPerPixel = graphicsSettings.SamplesPerPixel,
-			.ThroughputThreshold = graphicsSettings.ThroughputThreshold,
-			.IsRussianRouletteEnabled = graphicsSettings.IsRussianRouletteEnabled,
-			.IsShaderExecutionReorderingEnabled = graphicsSettings.IsShaderExecutionReorderingEnabled,
-			.RTXGI{
-				.SHARC{
-					.Capacity = static_cast<UINT>(SHARCBuffers.HashEntries.GetCount()),
-					.SceneScale = graphicsSettings.RTXGI.SHARC.SceneScale,
-					.RoughnessThreshold = graphicsSettings.RTXGI.SHARC.RoughnessThreshold,
-					.IsHashGridVisualizationEnabled = graphicsSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
-				}
-			},
-			.NRD = graphicsSettings.NRD
-		};
+	void SetConstants(const GraphicsSettings& graphicsSettings) {
+		auto& _graphicsSettings = m_GPUBuffers.GraphicsSettings.At(0);
+		_graphicsSettings.FrameIndex = graphicsSettings.FrameIndex;
+		_graphicsSettings.Bounces = graphicsSettings.Bounces;
+		_graphicsSettings.SamplesPerPixel = graphicsSettings.SamplesPerPixel;
+		_graphicsSettings.ThroughputThreshold = graphicsSettings.ThroughputThreshold;
+		_graphicsSettings.IsRussianRouletteEnabled = graphicsSettings.IsRussianRouletteEnabled;
+		_graphicsSettings.IsShaderExecutionReorderingEnabled = graphicsSettings.IsShaderExecutionReorderingEnabled;
+		_graphicsSettings.NRD = graphicsSettings.NRD;
 
 		m_renderSize = graphicsSettings.RenderSize;
-
-		m_RTXGI.SHARC.DownscaleFactor = graphicsSettings.RTXGI.SHARC.DownscaleFactor;
-		m_RTXGI.SHARC.SceneScale = graphicsSettings.RTXGI.SHARC.SceneScale;
-		m_RTXGI.SHARC.Buffers = &SHARCBuffers;
 	}
 
-	void Render(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene, RTXGITechnique RTXGITechnique) {
-		const ScopedBarrier scopedBarrier(
-			pCommandList,
-			{
-				Textures.Color->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.LinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.NormalizedDepth->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.MotionVectors->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.BaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.EmissiveColor->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.Normals->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.Roughness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.NormalRoughness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.NoisyDiffuse->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.NoisySpecular->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-			}
-		);
+	void Render(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene) {
+		const ScopedBarrier scopedBarrier = CreateScopedBarrier(pCommandList);
+
+		SetShader(pCommandList, scene, m_default);
+
+		DispatchRays(pCommandList, *m_default.BindingTable, m_renderSize);
+	}
+
+	void Render(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene, SHARC& SHARC, const SHARCSettings& SHARCSettings) {
+		const ScopedBarrier scopedBarrier = CreateScopedBarrier(pCommandList);
+
+		m_GPUBuffers.GraphicsSettings.At(0).RTXGI.SHARC = {
+			.Capacity = static_cast<UINT>(SHARC.GPUBuffers.HashEntries->GetCount()),
+			.SceneScale = SHARCSettings.SceneScale,
+			.RoughnessThreshold = SHARCSettings.RoughnessThreshold,
+			.IsHashGridVisualizationEnabled = SHARCSettings.IsHashGridVisualizationEnabled
+		};
 
 		const auto DispatchRays = [&](const Shader& shader, XMUINT2 renderSize) {
-			pCommandList->SetComputeRootSignature(shader.RootSignature.Get());
-			pCommandList->SetPipelineState1(shader.PipelineState.Get());
+			UINT i = SetShader(pCommandList, scene, shader);
 
-			UINT i = 0;
-			pCommandList->SetComputeRootShaderResourceView(i++, scene.GetBuffer()->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-			pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData ? GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress() : NULL);
-			pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData ? GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress() : NULL);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.NormalizedDepth->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.EmissiveColor->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor().GPUHandle);
-			pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor().GPUHandle);
+			pCommandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.HashEntries->GetNative()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.PreviousVoxelData->GetNative()->GetGPUVirtualAddress());
+			pCommandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.VoxelData->GetNative()->GetGPUVirtualAddress());
 
-			if (RTXGITechnique == RTXGITechnique::SHARC) {
-				const auto& buffers = *m_RTXGI.SHARC.Buffers;
-				pCommandList->SetComputeRootUnorderedAccessView(i++, buffers.HashEntries->GetGPUVirtualAddress());
-				pCommandList->SetComputeRootUnorderedAccessView(i++, buffers.PreviousVoxelData->GetGPUVirtualAddress());
-				pCommandList->SetComputeRootUnorderedAccessView(i++, buffers.VoxelData->GetGPUVirtualAddress());
-			}
-
-			const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
-				.RayGenerationShaderRecord{
-					.StartAddress = shader.BindingTable->GetRayGenerationAddress(),
-					.SizeInBytes = shader.BindingTable->GetRayGenerationSize()
-				},
-				.MissShaderTable{
-					.StartAddress = shader.BindingTable->GetMissAddress(),
-					.SizeInBytes = shader.BindingTable->GetMissSize(),
-					.StrideInBytes = shader.BindingTable->GetMissStride()
-				},
-				.HitGroupTable{
-					.StartAddress = shader.BindingTable->GetHitGroupAddress(),
-					.SizeInBytes = shader.BindingTable->GetHitGroupSize(),
-					.StrideInBytes = shader.BindingTable->GetHitGroupStride()
-				},
-				.Width = renderSize.x,
-				.Height = renderSize.y,
-				.Depth = 1
-			};
-			pCommandList->DispatchRays(&dispatchRaysDesc);
+			this->DispatchRays(pCommandList, *shader.BindingTable, renderSize);
 		};
-		switch (RTXGITechnique) {
-			case RTXGITechnique::None: DispatchRays(m_default, m_renderSize); break;
 
-			case RTXGITechnique::SHARC:
-			{
-				DispatchRays(m_SHARCUpdate, { m_renderSize.x / m_RTXGI.SHARC.DownscaleFactor, m_renderSize.y / m_RTXGI.SHARC.DownscaleFactor });
+		DispatchRays(m_SHARCUpdate, { m_renderSize.x / SHARCSettings.DownscaleFactor, m_renderSize.y / SHARCSettings.DownscaleFactor });
 
-				m_RTXGI.SHARC.Shader.GPUBuffers.Camera = GPUBuffers.Camera;
+		SHARC.GPUBuffers.Camera = GPUBuffers.Camera;
 
-				m_RTXGI.SHARC.Shader.Process(pCommandList, *m_RTXGI.SHARC.Buffers, { .SceneScale = m_RTXGI.SHARC.SceneScale });
+		SHARC.Process(pCommandList, { .SceneScale = SHARCSettings.SceneScale });
 
-				{
-					const auto barriers = {
-						CD3DX12_RESOURCE_BARRIER::UAV(m_RTXGI.SHARC.Buffers->HashEntries),
-						CD3DX12_RESOURCE_BARRIER::UAV(m_RTXGI.SHARC.Buffers->VoxelData)
-					};
-					pCommandList->ResourceBarrier(static_cast<UINT>(size(barriers)), data(barriers));
-				}
-
-				DispatchRays(m_SHARCQuery, m_renderSize);
-			}
-			break;
+		{
+			const auto barriers = {
+				CD3DX12_RESOURCE_BARRIER::UAV(*SHARC.GPUBuffers.HashEntries),
+				CD3DX12_RESOURCE_BARRIER::UAV(*SHARC.GPUBuffers.VoxelData)
+			};
+			pCommandList->ResourceBarrier(static_cast<UINT>(size(barriers)), data(barriers));
 		}
+
+		DispatchRays(m_SHARCQuery, m_renderSize);
 	}
 
 private:
@@ -240,8 +172,6 @@ private:
 
 	struct { ConstantBuffer<_GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
 
-	struct ShaderEntryNames { MAKE_NAME(RayGeneration); };
-
 	struct Shader {
 		ComPtr<ID3D12RootSignature> RootSignature;
 		ComPtr<ID3D12StateObject> PipelineState;
@@ -251,14 +181,70 @@ private:
 
 	XMUINT2 m_renderSize{};
 
-	struct {
-		struct {
-			UINT DownscaleFactor{};
-			float SceneScale{};
+	ScopedBarrier CreateScopedBarrier(ID3D12GraphicsCommandList* pCommandList) {
+		return ScopedBarrier(
+			pCommandList,
+			{
+				Textures.Color->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.LinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NormalizedDepth->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.MotionVectors->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.BaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.EmissiveColor->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.Normals->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.Roughness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NormalRoughness->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NoisyDiffuse->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				Textures.NoisySpecular->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+			}
+		);
+	}
 
-			const SHARCBuffers* Buffers{};
+	UINT SetShader(ID3D12GraphicsCommandList4* pCommandList, const TopLevelAccelerationStructure& scene, const Shader& shader) {
+		pCommandList->SetComputeRootSignature(shader.RootSignature.Get());
+		pCommandList->SetPipelineState1(shader.PipelineState.Get());
 
-			SHARC Shader;
-		} SHARC;
-	} m_RTXGI;
+		UINT i = 0;
+		pCommandList->SetComputeRootShaderResourceView(i++, scene.GetBuffer()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
+		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData ? GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress() : NULL);
+		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData ? GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress() : NULL);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NormalizedDepth->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.EmissiveColor->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor().GPUHandle);
+		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor().GPUHandle);
+		return i;
+	}
+
+	void DispatchRays(ID3D12GraphicsCommandList4* pCommandList, const ShaderBindingTable& shaderBindingTable, XMUINT2 renderSize) {
+		const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
+			.RayGenerationShaderRecord{
+				.StartAddress = shaderBindingTable.GetRayGenerationAddress(),
+				.SizeInBytes = shaderBindingTable.GetRayGenerationSize()
+			},
+			.MissShaderTable{
+				.StartAddress = shaderBindingTable.GetMissAddress(),
+				.SizeInBytes = shaderBindingTable.GetMissSize(),
+				.StrideInBytes = shaderBindingTable.GetMissStride()
+			},
+			.HitGroupTable{
+				.StartAddress = shaderBindingTable.GetHitGroupAddress(),
+				.SizeInBytes = shaderBindingTable.GetHitGroupSize(),
+				.StrideInBytes = shaderBindingTable.GetHitGroupStride()
+			},
+			.Width = renderSize.x,
+			.Height = renderSize.y,
+			.Depth = 1
+		};
+		pCommandList->DispatchRays(&dispatchRaysDesc);
+	}
 };

@@ -39,22 +39,20 @@ export namespace PostProcessing {
 		}
 
 		void SetTextures(const Texture& input, const Texture& output) {
-			auto a = false, b = false;
-			if (!m_textures.Input || m_textures.Input->GetNative() != input) {
+			const auto a = m_textures.Input && *m_textures.Input == input, b = m_textures.Output && *m_textures.Output == output;
+			if (a) {
+				m_textures.Input->SetState(input.GetState());
+			}
+			else {
 				m_textures.Input = make_unique<Texture>(input, input.GetState());
 				m_textures.Input->CreateSRV(m_descriptorHeap, DescriptorIndex::Input);
 			}
-			else if (m_textures.Input && m_textures.Input->GetNative() == input) {
-				m_textures.Input->SetState(input.GetState());
-				a = true;
+			if (b) {
+				m_textures.Output->SetState(output.GetState());
 			}
-			if (!m_textures.Output || m_textures.Output->GetNative() != output) {
+			else {
 				m_textures.Output = make_unique<Texture>(output, output.GetState());
 				m_textures.Output->CreateUAV(m_descriptorHeap, DescriptorIndex::Output);
-			}
-			else if (m_textures.Output && m_textures.Output->GetNative() == output) {
-				m_textures.Output->SetState(output.GetState());
-				b = true;
 			}
 			if (a && b) return;
 

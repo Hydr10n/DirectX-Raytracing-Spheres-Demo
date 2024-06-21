@@ -20,7 +20,7 @@ using namespace std;
 
 export namespace PostProcessing {
 	struct MipmapGeneration {
-		explicit MipmapGeneration(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice), m_descriptorHeap(pDevice, 16) {
+		explicit MipmapGeneration(ID3D12Device* pDevice) noexcept(false) : m_descriptorHeap(pDevice, 16) {
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_MipmapGeneration_dxil, size(g_MipmapGeneration_dxil) };
 
 			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
@@ -31,12 +31,12 @@ export namespace PostProcessing {
 		}
 
 		void SetTexture(const Texture& texture) {
-			if (!m_texture || m_texture->GetNative() != texture) m_texture = make_unique<Texture>(texture, texture.GetState());
-			else if (m_texture && m_texture->GetNative() == texture) {
+			if (m_texture && *m_texture == texture) {
 				m_texture->SetState(texture.GetState());
 				return;
 			}
 
+			m_texture = make_unique<Texture>(texture, texture.GetState());
 			for (const auto i : views::iota(0u, texture->GetDesc().MipLevels)) m_texture->CreateUAV(m_descriptorHeap, i, i);
 		}
 
@@ -49,7 +49,7 @@ export namespace PostProcessing {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 
-			const auto size = GetTextureSize(m_texture->GetNative());
+			const auto size = GetTextureSize(*m_texture);
 			for (UINT mipLevel = 0, mipLevels = m_texture->GetNative()->GetDesc().MipLevels; mipLevel < mipLevels; mipLevel += 5) {
 				const struct { UINT MipLevel, MipLevels; } constants{ mipLevel, mipLevels };
 				pCommandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
@@ -61,8 +61,6 @@ export namespace PostProcessing {
 		}
 
 	private:
-		ID3D12Device* m_device;
-
 		DescriptorHeapEx m_descriptorHeap;
 
 		ComPtr<ID3D12RootSignature> m_rootSignature;

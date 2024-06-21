@@ -230,7 +230,8 @@ struct App::Impl : IDeviceNotify {
 		m_RTXDIResources = {};
 
 		m_raytracing.reset();
-		m_SHARCBuffers = {};
+
+		m_SHARC.reset();
 
 		m_renderDescriptorHeap.reset();
 		m_resourceDescriptorHeap.reset();
@@ -348,7 +349,8 @@ private:
 	};
 	unique_ptr<DescriptorHeapEx> m_renderDescriptorHeap;
 
-	unique_ptr<SHARCBuffers> m_SHARCBuffers;
+	unique_ptr<SHARC> m_SHARC;
+
 	unique_ptr<Raytracing> m_raytracing;
 
 	RTXDIResources m_RTXDIResources;
@@ -430,8 +432,6 @@ private:
 		CreatePipelineStates();
 
 		CreateConstantBuffers();
-
-		CreateSHARCBuffers();
 	}
 
 	void CreateWindowSizeDependentResources() {
@@ -635,9 +635,9 @@ private:
 		m_textures.at(TextureNames::PreviousRoughness)->Clear(commandList);
 
 		if (g_graphicsSettings.Raytracing.RTXGI.Technique == RTXGITechnique::SHARC) {
-			m_SHARCBuffers->HashEntries.Clear(commandList);
-			m_SHARCBuffers->HashCopyOffset.Clear(commandList);
-			m_SHARCBuffers->PreviousVoxelData.Clear(commandList);
+			m_SHARC->GPUBuffers.HashEntries->Clear(commandList);
+			m_SHARC->GPUBuffers.HashCopyOffset->Clear(commandList);
+			m_SHARC->GPUBuffers.PreviousVoxelData->Clear(commandList);
 		}
 	}
 
@@ -679,6 +679,20 @@ private:
 
 	void CreatePipelineStates() {
 		const auto device = m_deviceResources->GetDevice();
+
+		{
+			m_SHARC = make_unique<SHARC>(device);
+			m_SHARC->Configure();
+
+			const auto CreateUAV = [&](auto& buffer, UINT resourceDescriptorIndex, UINT defaultDescriptorIndex) {
+				buffer->CreateRawUAV(*m_resourceDescriptorHeap, resourceDescriptorIndex);
+				buffer->CreateRawUAV(*m_defaultDescriptorHeap, defaultDescriptorIndex);
+			};
+			CreateUAV(m_SHARC->GPUBuffers.HashEntries, ResourceDescriptorIndex::RWSHARCHashEntries, DefaultDescriptorIndex::SHARCHashEntries);
+			CreateUAV(m_SHARC->GPUBuffers.HashCopyOffset, ResourceDescriptorIndex::RWSHARCHashCopyOffset, DefaultDescriptorIndex::SHARCHashCopyOffset);
+			CreateUAV(m_SHARC->GPUBuffers.PreviousVoxelData, ResourceDescriptorIndex::RWSHARCPreviousVoxelData, DefaultDescriptorIndex::SHARCPreviousVoxelData);
+			CreateUAV(m_SHARC->GPUBuffers.VoxelData, ResourceDescriptorIndex::RWSHARCVoxelData, DefaultDescriptorIndex::SHARCVoxelData);
+		}
 
 		m_raytracing = make_unique<Raytracing>(device);
 
@@ -749,19 +763,6 @@ private:
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, size_t capacity) { buffer = make_shared<T>(m_deviceResources->GetDevice(), capacity); };
 		if (const auto instanceCount = size(m_scene->GetInstanceData())) CreateBuffer(m_GPUBuffers.InstanceData, instanceCount);
 		if (const auto objectCount = m_scene->GetObjectCount()) CreateBuffer(m_GPUBuffers.ObjectData, objectCount);
-	}
-
-	void CreateSHARCBuffers() {
-		m_SHARCBuffers = make_unique<SHARCBuffers>(m_deviceResources->GetDevice());
-
-		const auto CreateUAV = [&](auto& buffer, UINT resourceDescriptorIndex, UINT defaultDescriptorIndex) {
-			buffer.CreateRawUAV(*m_resourceDescriptorHeap, resourceDescriptorIndex);
-			buffer.CreateRawUAV(*m_defaultDescriptorHeap, defaultDescriptorIndex);
-		};
-		CreateUAV(m_SHARCBuffers->HashEntries, ResourceDescriptorIndex::RWSHARCHashEntries, DefaultDescriptorIndex::SHARCHashEntries);
-		CreateUAV(m_SHARCBuffers->HashCopyOffset, ResourceDescriptorIndex::RWSHARCHashCopyOffset, DefaultDescriptorIndex::SHARCHashCopyOffset);
-		CreateUAV(m_SHARCBuffers->PreviousVoxelData, ResourceDescriptorIndex::RWSHARCPreviousVoxelData, DefaultDescriptorIndex::SHARCPreviousVoxelData);
-		CreateUAV(m_SHARCBuffers->VoxelData, ResourceDescriptorIndex::RWSHARCVoxelData, DefaultDescriptorIndex::SHARCVoxelData);
 	}
 
 	void PrepareLightResources() {
@@ -1057,8 +1058,6 @@ private:
 		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
 
 		{
-			if (raytracingSettings.RTXGI.Technique == RTXGITechnique::SHARC) m_SHARCBuffers->VoxelData.Clear(commandList);
-
 			m_raytracing->GPUBuffers = {
 				.SceneData = m_GPUBuffers.SceneData.get(),
 				.Camera = m_GPUBuffers.Camera.get(),
@@ -1080,30 +1079,42 @@ private:
 				.NoisySpecular = noisySpecular
 			};
 
-			m_raytracing->SetConstants(
+			m_raytracing->SetConstants({
+				.RenderSize = m_renderSize,
+				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+				.Bounces = raytracingSettings.Bounces,
+				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
+				.NRD = NRDSettings
+				});
+
+			switch (raytracingSettings.RTXGI.Technique)
+			{
+				case RTXGITechnique::None: m_raytracing->Render(commandList, scene); break;
+
+				case RTXGITechnique::SHARC:
 				{
-					.RenderSize = m_renderSize,
-					.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-					.Bounces = raytracingSettings.Bounces,
-					.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
-					.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-					.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
-					.RTXGI{
-						.SHARC{
-						.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
-						.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale,
-						.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
-						.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
+					m_SHARC->GPUBuffers.VoxelData->Clear(commandList);
+
+					m_SHARC->GPUBuffers.Camera = m_GPUBuffers.Camera.get();
+
+					m_raytracing->Render(
+						commandList,
+						scene,
+						*m_SHARC,
+						{
+							.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
+							.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale,
+							.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
+							.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
 						}
-					},
-					.NRD = NRDSettings
-				},
-				*m_SHARCBuffers
-			);
+					);
 
-			m_raytracing->Render(commandList, scene, raytracingSettings.RTXGI.Technique);
-
-			swap(m_SHARCBuffers->PreviousVoxelData, m_SHARCBuffers->VoxelData);
+					swap(m_SHARC->GPUBuffers.PreviousVoxelData, m_SHARC->GPUBuffers.VoxelData);
+				}
+				break;
+			}
 		}
 
 		if (raytracingSettings.RTXDI.ReSTIRDI.IsEnabled) {

@@ -47,7 +47,7 @@ struct Material
 
 		float3 albedo, Rf0;
 		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(BaseColor.rgb, Metallic, albedo, Rf0);
-		
+
 		const float3 N = hitInfo.Normal, V = -worldRayDirection;
 		const float NoV = abs(dot(N, V)), roughness = max(Roughness, MinRoughness);
 		const float diffuseProbability = EstimateDiffuseProbability(albedo, Rf0, roughness, NoV);
@@ -84,7 +84,9 @@ struct Material
 		}
 		else
 		{
-			const float3 H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, roughness, STL::Geometry::RotateVector(basis, V)));
+			const float3
+				Vlocal = STL::Geometry::RotateVector(basis, V),
+				H = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, roughness, Vlocal));
 			const float VoH = abs(dot(V, H));
 			if (scatterResult.Type == ScatterType::SpecularReflection)
 			{
@@ -104,7 +106,7 @@ struct Material
 				{
 					L = refract(-V, H, refractiveIndex);
 				}
-				
+
 				scatterResult.Throughput *= albedo;
 			}
 		}
