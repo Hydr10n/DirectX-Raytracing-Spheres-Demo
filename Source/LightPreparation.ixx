@@ -96,8 +96,8 @@ export struct LightPreparation {
 			}
 			instanceIndex++;
 		}
-		lightIndices.Upload(resourceUploadBatch, _lightIndices);
-		if (m_GPUBuffers.Tasks) m_GPUBuffers.Tasks->Upload(resourceUploadBatch, tasks);
+		lightIndices.Write(resourceUploadBatch, _lightIndices);
+		if (m_GPUBuffers.Tasks) m_GPUBuffers.Tasks->Write(resourceUploadBatch, tasks);
 		else m_GPUBuffers.Tasks = make_unique<DefaultBuffer<Task>>(m_device, resourceUploadBatch, tasks);
 	}
 

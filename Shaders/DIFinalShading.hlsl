@@ -37,7 +37,11 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	}
 
 	float3 diffuse, specular;
-	ShadeSurface(surface, lightSample, diffuse, specular);
+	if (!surface.Shade(lightSample, diffuse, specular))
+	{
+		return;
+	}
+
 	const float invPDF = RTXDI_GetDIReservoirInvPdf(reservoir);
 	diffuse *= invPDF;
 	specular *= invPDF;
@@ -50,14 +54,19 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	}
 
 	const float3 radiance = diffuse + specular;
-	g_color[pixelPosition] += NRD_IsValidRadiance(radiance) ? radiance : 0;
+	if (!NRD_IsValidRadiance(radiance))
+	{
+		return;
+	}
+
+	g_color[pixelPosition] += radiance;
 
 	if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
 	{
 		PackNoisySignals(
 			g_graphicsSettings.NRD,
 			abs(dot(surface.Normal, surface.ViewDirection)), surface.LinearDepth,
-			surface.Albedo, surface.Rf0, surface.Roughness,
+			surface.BRDFSample,
 			diffuse, specular, length(lightSample.Position - surface.Position),
 			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition], true,
 			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]

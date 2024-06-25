@@ -103,7 +103,7 @@ export {
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0,
 							.Transmission = 1,
-							.RefractiveIndex = 1.5f
+							.IOR = 1.5f
 						}
 					},
 					{
@@ -112,7 +112,7 @@ export {
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0.5f,
 							.Transmission = 1,
-							.RefractiveIndex = 1.5f
+							.IOR = 1.5f
 						}
 					},
 					{
@@ -182,7 +182,7 @@ export {
 								.BaseColor = RandomFloat4(0.1f),
 								.Roughness = random.Float(0, 0.5f),
 								.Transmission = 1,
-								.RefractiveIndex = 1.5f
+								.IOR = 1.5f
 							};
 						}
 						else {

@@ -212,22 +212,20 @@ export struct RTXDI {
 			}
 		}
 
-		{
-			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState) {
-				pCommandList->SetPipelineState(pipelineState.Get());
+		const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState) {
+			pCommandList->SetPipelineState(pipelineState.Get());
 
-				const auto& parameters = context.getReSTIRDIContext().getStaticParameters();
-				const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
-				pCommandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
+			const auto& parameters = context.getReSTIRDIContext().getStaticParameters();
+			const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
+			pCommandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
 
-				m_resources->DIReservoir->InsertUAVBarrier(pCommandList);
-			};
+			m_resources->DIReservoir->InsertUAVBarrier(pCommandList);
+		};
 
-			Dispatch(m_DIInitialSampling);
-			Dispatch(m_DITemporalResampling);
-			Dispatch(m_DISpatialResampling);
-			Dispatch(m_DIFinalShading);
-		}
+		Dispatch(m_DIInitialSampling);
+		Dispatch(m_DITemporalResampling);
+		Dispatch(m_DISpatialResampling);
+		Dispatch(m_DIFinalShading);
 	}
 
 private:

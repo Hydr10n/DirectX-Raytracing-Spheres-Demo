@@ -41,18 +41,20 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		return;
 	}
 
-	float3 albedo, Rf0;
-	const float4 baseColorMetalness = g_baseColorMetalness[pixelPosition];
-	STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColorMetalness.rgb, baseColorMetalness.a, albedo, Rf0);
+	const float4
+		baseColorMetalness = g_baseColorMetalness[pixelPosition],
+		normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
+
+	BRDFSample BRDFSample;
+	BRDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, normalRoughness.w);
 
 	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_constants.RenderSize, g_camera.Jitter));
 	const float3 V = -normalize(NDC.x * g_camera.RightDirection + NDC.y * g_camera.UpDirection + g_camera.ForwardDirection);
-	const float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
 	float4 diffuseHitDistance = g_denoisedDiffuse[pixelPosition], specularHitDistance = g_denoisedSpecular[pixelPosition];
 	UnpackDenoisedSignals(
 		g_constants.NRDDenoiser,
 		abs(dot(normalRoughness.xyz, V)),
-		albedo, Rf0, normalRoughness.w,
+		BRDFSample,
 		diffuseHitDistance, specularHitDistance
 	);
 	g_color[pixelPosition] = diffuseHitDistance.rgb + specularHitDistance.rgb + g_emissiveColor[pixelPosition];

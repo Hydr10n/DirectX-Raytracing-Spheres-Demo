@@ -84,7 +84,7 @@ export namespace DirectX::RaytracingHelpers {
 
 			if constexpr (IsTop) {
 				if (m_buffers.InstanceDescs) {
-					m_buffers.InstanceDescs->Upload(descs);
+					m_buffers.InstanceDescs->Write(descs);
 
 					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetNative()->GetGPUVirtualAddress();
 				}

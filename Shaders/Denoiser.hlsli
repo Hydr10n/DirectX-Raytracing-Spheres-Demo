@@ -4,9 +4,9 @@
 #include "NRDEncoding.hlsli"
 #include "NRD.hlsli"
 
-#include "STL.hlsli"
+#include "BxDF.hlsli"
 
-enum class NRDDenoiser 
+enum class NRDDenoiser
 {
 	None, ReBLUR, ReLAX
 };
@@ -21,7 +21,7 @@ struct NRDSettings
 void PackNoisySignals(
 	NRDSettings settings,
 	float NoV, float linearDepth,
-	float3 albedo, float3 Rf0, float roughness,
+	BRDFSample BRDFSample,
 	float3 directDiffuse, float3 directSpecular, float lightDistance,
 	float4 indirectDiffuseHitDistance, float4 indirectSpecularHitDistance, bool isIndirectDenoised,
 	out float4 diffuseHitDistance, out float4 specularHitDistance
@@ -39,7 +39,7 @@ void PackNoisySignals(
 		else
 		{
 			diffuseHitDistance.a = indirectDiffuseHitDistance.a;
-			specularHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(indirectSpecularHitDistance.a, linearDepth, settings.HitDistanceParameters, roughness);
+			specularHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(indirectSpecularHitDistance.a, linearDepth, settings.HitDistanceParameters, BRDFSample.Roughness);
 		}
 	}
 	else if (settings.Denoiser == NRDDenoiser::ReLAX)
@@ -54,8 +54,8 @@ void PackNoisySignals(
 	}
 	const float3
 		indirectDiffuse = indirectDiffuseHitDistance.rgb, indirectSpecular = indirectSpecularHitDistance.rgb,
-		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, roughness),
-		diffuseDemodulation = 1 / lerp((1 - Fenvironment) * albedo, 1, 0.01f),
+		Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(BRDFSample.Rf0, NoV, BRDFSample.Roughness),
+		diffuseDemodulation = 1 / lerp((1 - Fenvironment) * BRDFSample.Albedo, 1, 0.01f),
 		specularDemodulation = 1 / lerp(Fenvironment, 1, 0.01f),
 		diffuse = directDiffuse * diffuseDemodulation + indirectDiffuse * (isIndirectDenoised ? 1 : diffuseDemodulation),
 		specular = directSpecular * specularDemodulation + indirectSpecular * (isIndirectDenoised ? 1 : specularDemodulation);
@@ -80,7 +80,7 @@ void PackNoisySignals(
 void UnpackDenoisedSignals(
 	NRDDenoiser denoiser,
 	float NoV,
-	float3 albedo, float3 Rf0, float roughness,
+	BRDFSample BRDFSample,
 	inout float4 diffuseHitDistance, inout float4 specularHitDistance
 )
 {
@@ -94,7 +94,7 @@ void UnpackDenoisedSignals(
 		diffuseHitDistance = RELAX_BackEnd_UnpackRadiance(diffuseHitDistance);
 		specularHitDistance = RELAX_BackEnd_UnpackRadiance(specularHitDistance);
 	}
-	const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(Rf0, NoV, roughness);
-	diffuseHitDistance.rgb *= lerp((1 - Fenvironment) * albedo, 1, 0.01f);
+	const float3 Fenvironment = STL::BRDF::EnvironmentTerm_Rtg(BRDFSample.Rf0, NoV, BRDFSample.Roughness);
+	diffuseHitDistance.rgb *= lerp((1 - Fenvironment) * BRDFSample.Albedo, 1, 0.01f);
 	specularHitDistance.rgb *= lerp(Fenvironment, 1, 0.01f);
 }

@@ -173,17 +173,17 @@ public:
 				bool IsShaderExecutionReorderingEnabled = true;
 
 				struct RTXDI {
-					struct ReGIR {
-						static constexpr float MinCellSize = 1e-2f, MaxCellSize = 10;
-						float CellSize = 1;
-
-						bool IsCellVisualizationEnabled{};
-
-						FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, CellSize, IsCellVisualizationEnabled);
-					} ReGIR;
-
 					struct ReSTIRDI {
 						bool IsEnabled = true;
+
+						struct ReGIR {
+							static constexpr float MinCellSize = 0.1f, MaxCellSize = 10;
+							float CellSize = 1;
+
+							bool IsCellVisualizationEnabled{};
+
+							FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, CellSize, IsCellVisualizationEnabled);
+						} ReGIR;
 
 						struct InitialSampling {
 							struct LocalLight {
@@ -201,14 +201,14 @@ public:
 							FRIEND_JSON_CONVERSION_FUNCTIONS(InitialSampling, LocalLight, BRDFSamples);
 						} InitialSampling;
 
-						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, InitialSampling);
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, ReGIR, InitialSampling);
 					} ReSTIRDI;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReGIR, ReSTIRDI);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReSTIRDI);
 				} RTXDI;
 
 				struct RTXGI {
-					RTXGITechnique Technique = RTXGITechnique::None;
+					RTXGITechnique Technique = RTXGITechnique::SHARC;
 
 					struct SHARC {
 						static constexpr UINT MaxDownscaleFactor = 10;
@@ -303,9 +303,8 @@ public:
 					Raytracing.Bounces = min(Raytracing.Bounces, Raytracing.MaxBounces);
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
 
-					Raytracing.RTXDI.ReGIR.CellSize = clamp(Raytracing.RTXDI.ReGIR.CellSize, Raytracing.RTXDI.ReGIR.MinCellSize, Raytracing.RTXDI.ReGIR.MaxCellSize);
-
 					{
+						Raytracing.RTXDI.ReSTIRDI.ReGIR.CellSize = clamp(Raytracing.RTXDI.ReSTIRDI.ReGIR.CellSize, Raytracing.RTXDI.ReSTIRDI.ReGIR.MinCellSize, Raytracing.RTXDI.ReSTIRDI.ReGIR.MaxCellSize);
 						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.MaxSamples);
 						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.MaxBRDFSamples);
 					}

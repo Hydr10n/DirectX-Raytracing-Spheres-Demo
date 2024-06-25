@@ -273,7 +273,7 @@ export namespace DirectX {
 			span<const T> data,
 			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : DEFAULT_BUFFER_BASE(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
-			Upload(resourceUploadBatch, data);
+			Write(resourceUploadBatch, data);
 			resourceUploadBatch.Transition(*this, this->m_state, afterState);
 			this->m_state = afterState;
 		}
@@ -287,7 +287,7 @@ export namespace DirectX {
 			}
 		}
 
-		void Upload(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
+		void Write(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
 			const auto count = size(data);
 			if (count > this->m_capacity) *this = DefaultBuffer(this->m_device, count);
 			else this->m_count = count;
@@ -325,7 +325,7 @@ export namespace DirectX {
 			D3D12_RESOURCE_STATES initialState = MAPPABLE_BUFFER_INITIAL_STATE, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
 		) noexcept(false) : MAPPABLE_BUFFER_BASE(pDevice, size(data), initialState, flags) {
 			Map();
-			Upload(data);
+			Write(data);
 		}
 
 		MappableBuffer(const MappableBuffer& source) noexcept(false) : MAPPABLE_BUFFER_BASE(source, MAPPABLE_BUFFER_INITIAL_STATE) {
@@ -333,7 +333,7 @@ export namespace DirectX {
 			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
 		}
 
-		void Upload(span<const T> data) {
+		void Write(span<const T> data) {
 			const auto count = size(data);
 			if (count > this->m_capacity) *this = MappableBuffer(this->m_device, count);
 			else this->m_count = count;

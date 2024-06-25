@@ -39,17 +39,14 @@ void RayGeneration()
 
 	float linearDepth = 1.#INF, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
 	float3 motionVector = 0;
-	float4 baseColorMetalness = 0;
-	float3 emissiveColor = 0;
-	float4 normals = 0;
-	float roughness = 0;
-	float4 normalRoughness = 0;
+	float4 normals, normalRoughness = 0;
 
-	HitInfo hitInfo;
+	HitInfo primarySurfaceHitInfo;
 	float NoV;
-	Material material;
-	float3 albedo, Rf0;
-	float diffuseProbability;
+
+	Material primarySurfaceMaterial = (Material)0;
+	BRDFSample primarySurfaceBRDFSample;
+
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions,
 #if SHARC_UPDATE
 		STL::Rng::Hash::GetFloat()
@@ -57,35 +54,31 @@ void RayGeneration()
 		g_camera.Jitter
 #endif
 	);
-	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
-	const float3 V = -rayDesc.Direction;
-	const bool isHit = CastRay(rayDesc, hitInfo, false);
-	if (isHit)
+	const RayDesc primaryRayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
+	const bool isPrimarySurfaceHit = CastRay(primaryRayDesc, primarySurfaceHitInfo, false);
+	if (isPrimarySurfaceHit)
 	{
-		NoV = abs(dot(hitInfo.Normal, V));
-		material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
-		STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, albedo, Rf0);
-		diffuseProbability = Material::EstimateDiffuseProbability(albedo, Rf0, max(material.Roughness, MinRoughness), NoV);
+		NoV = abs(dot(primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction));
 
-		linearDepth = dot(hitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
-		const float4 projection = STL::Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position);
+		primarySurfaceMaterial = GetMaterial(primarySurfaceHitInfo.ObjectIndex, primarySurfaceHitInfo.TextureCoordinate);
+		primarySurfaceBRDFSample.Initialize(primarySurfaceMaterial);
+
+		linearDepth = dot(primarySurfaceHitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
+		const float4 projection = STL::Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
 		normalizedDepth = projection.z / projection.w;
-		motionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, hitInfo);
-		baseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
-		emissiveColor = material.EmissiveColor;
-		normals = float4(STL::Packing::EncodeUnitVector(hitInfo.Normal, true), STL::Packing::EncodeUnitVector(hitInfo.GeometricNormal, true));
-		roughness = material.Roughness;
-		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, diffuseProbability == 0);
+		motionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, primarySurfaceHitInfo);
+		normals = float4(STL::Packing::EncodeUnitVector(primarySurfaceHitInfo.Normal, true), STL::Packing::EncodeUnitVector(primarySurfaceHitInfo.GeometricNormal, true));
+		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(primarySurfaceHitInfo.Normal, primarySurfaceMaterial.Roughness, EstimateDiffuseProbability(primarySurfaceBRDFSample.Albedo, primarySurfaceBRDFSample.Rf0, max(primarySurfaceBRDFSample.Roughness, MinRoughness), NoV) == 0);
 	}
 
 #if !SHARC_UPDATE
 	g_linearDepth[pixelPosition] = linearDepth;
 	g_normalizedDepth[pixelPosition] = normalizedDepth;
 	g_motionVectors[pixelPosition] = motionVector;
-	g_baseColorMetalness[pixelPosition] = baseColorMetalness;
-	g_emissiveColor[pixelPosition] = emissiveColor;
+	g_baseColorMetalness[pixelPosition] = float4(primarySurfaceMaterial.BaseColor.rgb, primarySurfaceMaterial.Metallic);
+	g_emissiveColor[pixelPosition] = primarySurfaceMaterial.EmissiveColor;
 	g_normals[pixelPosition] = normals;
-	g_roughness[pixelPosition] = roughness;
+	g_roughness[pixelPosition] = primarySurfaceMaterial.Roughness;
 	g_normalRoughness[pixelPosition] = normalRoughness;
 #endif
 
@@ -116,12 +109,16 @@ void RayGeneration()
 	float hitDistance = 1.#INF;
 	for (uint sampleIndex = 0; sampleIndex < samplesPerPixel; sampleIndex++)
 	{
-		RayDesc sampleRayDesc = rayDesc;
-		bool sampleIsHit = isHit;
-		HitInfo sampleHitInfo = hitInfo;
-		Material sampleMaterial = material;
-		float3 sampleRadiance = 0, throughput = 1;
-		ScatterResult scatterResult;
+		RayDesc rayDesc = primaryRayDesc;
+		bool isHit = isPrimarySurfaceHit;
+		HitInfo hitInfo = primarySurfaceHitInfo;
+
+		float3 emissiveColor = primarySurfaceMaterial.EmissiveColor;
+		BSDFSample BSDFSample;
+		BSDFSample.Initialize(primarySurfaceMaterial);
+
+		LobeType lobeType;
+		float3 L, sampleRadiance = 0, throughput = 1;
 
 #if SHARC_UPDATE
 		SharcInit(sharcState);
@@ -138,37 +135,40 @@ void RayGeneration()
 
 			if (bounceIndex)
 			{
-				sampleRayDesc.Origin = sampleHitInfo.GetSafeWorldRayOrigin(scatterResult.Direction);
-				sampleRayDesc.Direction = scatterResult.Direction;
-				sampleRayDesc.TMin = 0;
-				sampleRayDesc.TMax = 1.#INF;
-				sampleIsHit = CastRay(sampleRayDesc, sampleHitInfo, g_graphicsSettings.IsShaderExecutionReorderingEnabled);
+				rayDesc.Origin = hitInfo.GetSafeWorldRayOrigin(L);
+				rayDesc.Direction = L;
+				rayDesc.TMin = 0;
+				rayDesc.TMax = 1.#INF;
+				isHit = CastRay(rayDesc, hitInfo, g_graphicsSettings.IsShaderExecutionReorderingEnabled);
 			}
 
 			if (!sampleIndex && bounceIndex == 1)
 			{
-				isDiffuse = scatterResult.Type == ScatterType::DiffuseReflection;
+				isDiffuse = lobeType == LobeType::DiffuseReflection;
 
-				if (sampleIsHit)
+				if (isHit)
 				{
-					hitDistance = sampleHitInfo.Distance;
+					hitDistance = hitInfo.Distance;
 				}
 			}
 
-			if (!sampleIsHit)
+			if (!isHit)
 			{
+				float3 environmentColor = 0, environmentLightColor = 0;
+				if (bounceIndex || !GetEnvironmentColor(rayDesc.Direction, environmentColor))
+				{
+					environmentLightColor = GetEnvironmentLightColor(rayDesc.Direction);
+				}
+				environmentColor += environmentLightColor;
+
 				if (!bounceIndex)
 				{
+					environmentColor *= samplesPerPixel;
+
 					sampleIndex = samplesPerPixel;
 				}
 
-				float3 environmentColor = 0, environmentLightColor = 0;
-				if (bounceIndex || !GetEnvironmentColor(sampleRayDesc.Direction, environmentColor))
-				{
-					environmentLightColor = GetEnvironmentLightColor(sampleRayDesc.Direction);
-				}
-
-				sampleRadiance += throughput * (environmentColor + environmentLightColor);
+				sampleRadiance += throughput * environmentColor;
 
 #if SHARC_UPDATE
 				SharcUpdateMiss(sharcState, environmentLightColor);
@@ -177,15 +177,10 @@ void RayGeneration()
 				break;
 			}
 
-			if (bounceIndex)
-			{
-				sampleMaterial = GetMaterial(sampleHitInfo.ObjectIndex, sampleHitInfo.TextureCoordinate);
-			}
-
 #if ENABLE_SHARC
 			SharcHitData sharcHitData;
-			sharcHitData.positionWorld = sampleHitInfo.Position;
-			sharcHitData.normalWorld = sampleHitInfo.GeometricNormal;
+			sharcHitData.positionWorld = hitInfo.Position;
+			sharcHitData.normalWorld = hitInfo.GeometricNormal;
 #endif
 
 #if SHARC_QUERY
@@ -196,14 +191,14 @@ void RayGeneration()
 				break;
 			}
 
-			const uint gridLevel = GetGridLevel(sampleHitInfo.Position, sharcState.gridParameters);
+			const uint gridLevel = GetGridLevel(hitInfo.Position, sharcState.gridParameters);
 			const float voxelSize = GetVoxelSize(gridLevel, sharcState.gridParameters);
-			bool isValidHit = sampleHitInfo.Distance > voxelSize * lerp(1, 2, STL::Rng::Hash::GetFloat());
+			bool isValidHit = hitInfo.Distance > voxelSize * lerp(1, 2, STL::Rng::Hash::GetFloat());
 
 			previousRoughness = min(previousRoughness, 0.99f);
 			const float
 				alpha = previousRoughness * previousRoughness,
-				footprint = sampleHitInfo.Distance * sqrt(0.5f * alpha * alpha / (1 - alpha * alpha));
+				footprint = hitInfo.Distance * sqrt(0.5f * alpha * alpha / (1 - alpha * alpha));
 			isValidHit &= footprint * lerp(1, 1.5f, STL::Rng::Hash::GetFloat()) > voxelSize;
 
 			float3 sharcRadiance;
@@ -215,10 +210,17 @@ void RayGeneration()
 			}
 #endif
 
-			sampleRadiance += sampleMaterial.EmissiveColor * throughput;
+			if (bounceIndex)
+			{
+				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
+				emissiveColor = material.EmissiveColor;
+				BSDFSample.Initialize(material);
+			}
+
+			sampleRadiance += throughput * emissiveColor;
 
 #if SHARC_UPDATE
-			sampleMaterial.Roughness = max(sampleMaterial.Roughness, g_graphicsSettings.RTXGI.SHARC.RoughnessThreshold);
+			BSDFSample.Roughness = max(BSDFSample.Roughness, g_graphicsSettings.RTXGI.SHARC.RoughnessThreshold);
 
 			if (!SharcUpdateHit(sharcState, sharcHitData, sampleRadiance, STL::Rng::Hash::GetFloat()))
 			{
@@ -236,14 +238,18 @@ void RayGeneration()
 				throughput /= probability;
 			}
 
-			scatterResult = sampleMaterial.Scatter(sampleHitInfo, sampleRayDesc.Direction);
-
-			if (all(scatterResult.Throughput == 0))
+			float PDF, weight;
+			if (!BSDFSample.Sample(hitInfo, -rayDesc.Direction, lobeType, L, PDF, weight))
 			{
 				break;
 			}
 
-			throughput *= scatterResult.Throughput;
+			const float3 currentThroughput = BSDFSample.Evaluate(lobeType, hitInfo.Normal, -rayDesc.Direction, L) * weight;
+			if (all(currentThroughput == 0))
+			{
+				break;
+			}
+			throughput *= currentThroughput;
 
 #if SHARC_UPDATE
 			SharcSetThroughput(sharcState, throughput);
@@ -253,7 +259,7 @@ void RayGeneration()
 				break;
 			}
 #if SHARC_QUERY
-			previousRoughness += scatterResult.Type == ScatterType::DiffuseReflection ? 1 : sampleMaterial.Roughness;
+			previousRoughness += lobeType == LobeType::DiffuseReflection ? 1 : BSDFSample.Roughness;
 #endif
 #endif
 		}
@@ -263,22 +269,24 @@ void RayGeneration()
 
 #if !SHARC_UPDATE
 	radiance = NRD_IsValidRadiance(radiance) ? radiance / samplesPerPixel : 0;
-
-	if (isHit && g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
-	{
-		const float4 radianceHitDistance = float4(max(radiance - material.EmissiveColor, 0), hitDistance);
-		PackNoisySignals(
-			g_graphicsSettings.NRD,
-			NoV, linearDepth,
-			albedo, Rf0, material.Roughness,
-			0, 0, 1.#INF,
-			isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
-			noisyDiffuse, noisySpecular
-		);
-	}
-
 	g_color[pixelPosition] = radiance;
-	g_noisyDiffuse[pixelPosition] = noisyDiffuse;
-	g_noisySpecular[pixelPosition] = noisySpecular;
+
+	if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
+	{
+		if (isPrimarySurfaceHit)
+		{
+			const float4 radianceHitDistance = float4(max(radiance - primarySurfaceMaterial.EmissiveColor, 0), hitDistance);
+			PackNoisySignals(
+				g_graphicsSettings.NRD,
+				NoV, linearDepth,
+				primarySurfaceBRDFSample,
+				0, 0, 1.#INF,
+				isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
+				noisyDiffuse, noisySpecular
+			);
+		}
+		g_noisyDiffuse[pixelPosition] = noisyDiffuse;
+		g_noisySpecular[pixelPosition] = noisySpecular;
+	}
 #endif
 }

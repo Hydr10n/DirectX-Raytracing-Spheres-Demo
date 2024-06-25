@@ -2,6 +2,8 @@
 
 #include "Math.hlsli"
 
+#include "HitInfo.hlsli"
+
 #include "ShadingHelpers.hlsli"
 
 template <uint Flags>

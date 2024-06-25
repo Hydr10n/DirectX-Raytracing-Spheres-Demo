@@ -35,14 +35,14 @@ void main(uint2 globalIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 		int2 temporalSamplePixelPos;
 		reservoir = RTXDI_LoadDIReservoir(parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.initialSamplingOutputBufferIndex);
 		reservoir = RTXDI_DITemporalResampling(pixelPosition, surface, reservoir, rng, g_graphicsSettings.RTXDI.Runtime, parameters.reservoirBufferParams, temporalParameters, temporalSamplePixelPos, lightSample);
-	}
 
 #ifdef RTXDI_ENABLE_BOILING_FILTER
-	if (parameters.temporalResamplingParams.enableBoilingFilter)
-	{
-		RTXDI_BoilingFilter(localIndex, parameters.temporalResamplingParams.boilingFilterStrength, reservoir);
-	}
+		if (parameters.temporalResamplingParams.enableBoilingFilter)
+		{
+			RTXDI_BoilingFilter(localIndex, parameters.temporalResamplingParams.boilingFilterStrength, reservoir);
+		}
 #endif
+	}
 
 	RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.temporalResamplingOutputBufferIndex);
 }

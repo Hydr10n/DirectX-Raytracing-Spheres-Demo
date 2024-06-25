@@ -34,10 +34,10 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Samples/Pixel
 - NVIDIA Shader Execution Reordering
 	- NVIDIA RTX Dynamic Illumination
-		- ReGIR
-			- Cell Size
-			- Cell Visualization
 		- ReSTIR DI
+			- ReGIR
+				- Cell Size
+				- Cell Visualization
 			- Initial Sampling
 				- Local Light
 					- Mode: Uniform | Power RIS | ReGIR RIS
