@@ -1,6 +1,6 @@
 #pragma once
 
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 namespace Math
 {
@@ -28,7 +28,7 @@ namespace Math
 
 	float2 ToLatLongCoordinate(float3 direction)
 	{
-		const float Pi = STL::Math::Pi(1);
+		const float Pi = Math::Pi(1);
 		return float2((1 + atan2(direction.x, direction.z) / Pi) / 2, acos(direction.y) / Pi);
 	}
 

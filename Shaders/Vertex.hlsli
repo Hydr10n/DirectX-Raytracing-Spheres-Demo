@@ -1,6 +1,6 @@
 #pragma once
 
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 struct VertexDesc
 {
@@ -20,7 +20,7 @@ struct VertexDesc
 
 	float3 LoadNormal(ByteAddressBuffer buffer, uint index)
 	{
-		return STL::Packing::DecodeUnitVector(buffer.Load<float2>(Stride * index + NormalOffset), true);
+		return Packing::DecodeUnitVector(buffer.Load<float2>(Stride * index + NormalOffset), true);
 	}
 
 	void LoadNormals(ByteAddressBuffer buffer, uint3 indices, out float3 attributes[3])
@@ -32,7 +32,7 @@ struct VertexDesc
 
 	float2 LoadTextureCoordinate(ByteAddressBuffer buffer, uint index)
 	{
-		return STL::Packing::UintToRg16f(buffer.Load(Stride * index + TextureCoordinateOffset));
+		return Packing::UintToRg16f(buffer.Load(Stride * index + TextureCoordinateOffset));
 	}
 
 	void LoadTextureCoordinates(ByteAddressBuffer buffer, uint3 indices, out float2 attributes[3])
@@ -44,7 +44,7 @@ struct VertexDesc
 
 	float3 LoadTangent(ByteAddressBuffer buffer, uint index)
 	{
-		return STL::Packing::DecodeUnitVector(buffer.Load<float2>(Stride * index + TangentOffset), true);
+		return Packing::DecodeUnitVector(buffer.Load<float2>(Stride * index + TangentOffset), true);
 	}
 
 	void LoadTangents(ByteAddressBuffer buffer, uint3 indices, out float3 attributes[3])

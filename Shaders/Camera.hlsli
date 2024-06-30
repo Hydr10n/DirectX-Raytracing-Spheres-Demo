@@ -1,6 +1,6 @@
 #pragma once
 
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 struct Camera
 {
@@ -29,7 +29,7 @@ struct Camera
 
 	RayDesc GenerateThinLensRay(float2 NDC)
 	{
-		const float2 value = STL::ImportanceSampling::Uniform::GetRay(STL::Rng::Hash::GetFloat2()).xy;
+		const float2 value = ImportanceSampling::Uniform::GetRay(Rng::Hash::GetFloat2()).xy;
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
 		rayDesc.Origin = Position + offset;
@@ -44,11 +44,11 @@ struct Camera
 	{
 		if (isPrevious)
 		{
-			float4 projection = STL::Geometry::ProjectiveTransform(PreviousProjectionToView, float4(NDC, 0.5f, 1));
+			float4 projection = Geometry::ProjectiveTransform(PreviousProjectionToView, float4(NDC, 0.5f, 1));
 			projection.xy /= projection.z;
 			projection.zw = 1;
 			projection.xyz *= linearDepth;
-			return STL::Geometry::AffineTransform(PreviousViewToWorld, projection);
+			return Geometry::AffineTransform(PreviousViewToWorld, projection);
 		}
 		const float3 direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
 		return Position + direction * linearDepth / dot(normalize(ForwardDirection), direction);

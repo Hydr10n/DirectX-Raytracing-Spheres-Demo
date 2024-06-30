@@ -35,7 +35,7 @@ void RayGeneration()
 {
 	const uint2 pixelPosition = DispatchRaysIndex().xy, pixelDimensions = DispatchRaysDimensions().xy;
 
-	STL::Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
+	Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
 
 	float linearDepth = 1.#INF, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
 	float3 motionVector = 0;
@@ -49,13 +49,13 @@ void RayGeneration()
 
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions,
 #if SHARC_UPDATE
-		STL::Rng::Hash::GetFloat()
+		Rng::Hash::GetFloat()
 #else
 		g_camera.Jitter
 #endif
 	);
 	const RayDesc primaryRayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
-	const bool isPrimarySurfaceHit = CastRay(primaryRayDesc, primarySurfaceHitInfo, false);
+	const bool isPrimarySurfaceHit = CastRay(primaryRayDesc, primarySurfaceHitInfo);
 	if (isPrimarySurfaceHit)
 	{
 		NoV = abs(dot(primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction));
@@ -64,10 +64,10 @@ void RayGeneration()
 		primarySurfaceBRDFSample.Initialize(primarySurfaceMaterial);
 
 		linearDepth = dot(primarySurfaceHitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
-		const float4 projection = STL::Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
+		const float4 projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
 		normalizedDepth = projection.z / projection.w;
 		motionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, primarySurfaceHitInfo);
-		normals = float4(STL::Packing::EncodeUnitVector(primarySurfaceHitInfo.Normal, true), STL::Packing::EncodeUnitVector(primarySurfaceHitInfo.GeometricNormal, true));
+		normals = float4(Packing::EncodeUnitVector(primarySurfaceHitInfo.Normal, true), Packing::EncodeUnitVector(primarySurfaceHitInfo.GeometricNormal, true));
 		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(primarySurfaceHitInfo.Normal, primarySurfaceMaterial.Roughness, EstimateDiffuseProbability(primarySurfaceBRDFSample.Albedo, primarySurfaceBRDFSample.Rf0, max(primarySurfaceBRDFSample.Roughness, MinRoughness), NoV) == 0);
 	}
 
@@ -193,13 +193,13 @@ void RayGeneration()
 
 			const uint gridLevel = GetGridLevel(hitInfo.Position, sharcState.gridParameters);
 			const float voxelSize = GetVoxelSize(gridLevel, sharcState.gridParameters);
-			bool isValidHit = hitInfo.Distance > voxelSize * lerp(1, 2, STL::Rng::Hash::GetFloat());
+			bool isValidHit = hitInfo.Distance > voxelSize * lerp(1, 2, Rng::Hash::GetFloat());
 
 			previousRoughness = min(previousRoughness, 0.99f);
 			const float
 				alpha = previousRoughness * previousRoughness,
 				footprint = hitInfo.Distance * sqrt(0.5f * alpha * alpha / (1 - alpha * alpha));
-			isValidHit &= footprint * lerp(1, 1.5f, STL::Rng::Hash::GetFloat()) > voxelSize;
+			isValidHit &= footprint * lerp(1, 1.5f, Rng::Hash::GetFloat()) > voxelSize;
 
 			float3 sharcRadiance;
 			if (isValidHit && SharcGetCachedRadiance(sharcState, sharcHitData, sharcRadiance, false))
@@ -222,7 +222,7 @@ void RayGeneration()
 #if SHARC_UPDATE
 			BSDFSample.Roughness = max(BSDFSample.Roughness, g_graphicsSettings.RTXGI.SHARC.RoughnessThreshold);
 
-			if (!SharcUpdateHit(sharcState, sharcHitData, sampleRadiance, STL::Rng::Hash::GetFloat()))
+			if (!SharcUpdateHit(sharcState, sharcHitData, sampleRadiance, Rng::Hash::GetFloat()))
 			{
 				break;
 			}
@@ -231,7 +231,7 @@ void RayGeneration()
 			if (g_graphicsSettings.IsRussianRouletteEnabled && bounceIndex > 3)
 			{
 				const float probability = max(throughput.r, max(throughput.g, throughput.b));
-				if (STL::Rng::Hash::GetFloat() >= probability)
+				if (Rng::Hash::GetFloat() >= probability)
 				{
 					break;
 				}
@@ -254,7 +254,7 @@ void RayGeneration()
 #if SHARC_UPDATE
 			SharcSetThroughput(sharcState, throughput);
 #else
-			if (STL::Color::Luminance(throughput) <= g_graphicsSettings.ThroughputThreshold)
+			if (Color::Luminance(throughput) <= g_graphicsSettings.ThroughputThreshold)
 			{
 				break;
 			}

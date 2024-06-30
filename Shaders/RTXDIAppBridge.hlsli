@@ -216,15 +216,15 @@ struct RAB_Surface
 
 	bool Sample(inout RAB_RandomSamplerState rng, out float3 L)
 	{
-		const float3x3 basis = STL::Geometry::GetBasis(Normal);
+		const float3x3 basis = Geometry::GetBasis(Normal);
 		const float2 randomValue = float2(RAB_GetNextRandom(rng), RAB_GetNextRandom(rng));
 		if (RAB_GetNextRandom(rng) < DiffuseProbability)
 		{
-			L = STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::Cosine::GetRay(randomValue));
+			L = Geometry::RotateVectorInverse(basis, ImportanceSampling::Cosine::GetRay(randomValue));
 		}
 		else
 		{
-			L = reflect(-ViewDirection, STL::Geometry::RotateVectorInverse(basis, STL::ImportanceSampling::VNDF::GetRay(randomValue, max(BRDFSample.Roughness, MinRoughness), STL::Geometry::RotateVector(basis, ViewDirection))));
+			L = reflect(-ViewDirection, Geometry::RotateVectorInverse(basis, ImportanceSampling::VNDF::GetRay(randomValue, max(BRDFSample.Roughness, MinRoughness), Geometry::RotateVector(basis, ViewDirection))));
 		}
 		return dot(Normal, L) > 0;
 	}
@@ -237,8 +237,8 @@ struct RAB_Surface
 			const float
 				NoV = abs(dot(Normal, ViewDirection)),
 				NoH = abs(dot(Normal, normalize(ViewDirection + L))),
-				diffusePDF = STL::ImportanceSampling::Cosine::GetPDF(NoL),
-				specularPDF = STL::ImportanceSampling::VNDF::GetPDF(STL::Geometry::RotateVector(STL::Geometry::GetBasis(Normal), ViewDirection), NoH, max(BRDFSample.Roughness, MinRoughness));
+				diffusePDF = ImportanceSampling::Cosine::GetPDF(NoL),
+				specularPDF = ImportanceSampling::VNDF::GetPDF(Geometry::RotateVector(Geometry::GetBasis(Normal), ViewDirection), NoH, max(BRDFSample.Roughness, MinRoughness));
 			return lerp(specularPDF, diffusePDF, DiffuseProbability);
 		}
 		return 0;
@@ -255,9 +255,9 @@ struct RAB_Surface
 				VoH = abs(dot(ViewDirection, H)),
 				NoH = abs(dot(Normal, H)),
 				roughness = max(BRDFSample.Roughness, minRoughness);
-			const float3 F = STL::BRDF::FresnelTerm(BRDFSample.Rf0, VoH);
-			diffuse = (1 - F) * STL::BRDF::DiffuseTerm(roughness, NoL, NoV, VoH) * BRDFSample.Albedo * NoL;
-			specular = F * STL::BRDF::DistributionTerm(roughness, NoH) * STL::BRDF::GeometryTermMod(roughness, NoL, NoV, VoH, NoH) * NoL;
+			const float3 F = BRDF::FresnelTerm(BRDFSample.Rf0, VoH);
+			diffuse = (1 - F) * BRDF::DiffuseTerm(roughness, NoL, NoV, VoH) * BRDFSample.Albedo * NoL;
+			specular = F * BRDF::DistributionTerm(roughness, NoH) * BRDF::GeometryTermMod(roughness, NoL, NoV, VoH, NoH) * NoL;
 			return true;
 		}
 		diffuse = specular = 0;
@@ -328,8 +328,8 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			roughness = g_roughness[pixelPosition];
 		}
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
-		surface.Normal = STL::Packing::DecodeUnitVector(normals.xy, true);
-		surface.GeometricNormal = STL::Packing::DecodeUnitVector(normals.zw, true);
+		surface.Normal = Packing::DecodeUnitVector(normals.xy, true);
+		surface.GeometricNormal = Packing::DecodeUnitVector(normals.zw, true);
 		surface.ViewDirection = normalize(g_camera.Position - surface.Position);
 		surface.BRDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, roughness);
 		surface.DiffuseProbability = EstimateDiffuseProbability(surface.BRDFSample.Albedo, surface.BRDFSample.Rf0, max(surface.BRDFSample.Roughness, MinRoughness), abs(dot(surface.Normal, surface.ViewDirection)));
@@ -365,8 +365,8 @@ float RAB_GetSurfaceLinearDepth(RAB_Surface surface)
 bool RAB_AreMaterialsSimilar(RAB_Surface a, RAB_Surface b)
 {
 	return RTXDI_CompareRelativeDifference(a.BRDFSample.Roughness, b.BRDFSample.Roughness, 0.5f)
-		&& abs(STL::Color::Luminance(a.BRDFSample.Rf0) - STL::Color::Luminance(b.BRDFSample.Rf0)) <= 0.25f
-		&& abs(STL::Color::Luminance(a.BRDFSample.Albedo) - STL::Color::Luminance(b.BRDFSample.Albedo)) <= 0.25f;
+		&& abs(Color::Luminance(a.BRDFSample.Rf0) - Color::Luminance(b.BRDFSample.Rf0)) <= 0.25f
+		&& abs(Color::Luminance(a.BRDFSample.Albedo) - Color::Luminance(b.BRDFSample.Albedo)) <= 0.25f;
 }
 
 void RAB_GetLightDirDistance(RAB_Surface surface, RAB_LightSample lightSample, out float3 o_lightDir, out float o_lightDistance)
@@ -390,7 +390,7 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
 {
 	float3 diffuse, specular;
 	surface.Shade(lightSample, diffuse, specular);
-	return STL::Color::Luminance(diffuse + specular);
+	return Color::Luminance(diffuse + specular);
 }
 
 float RAB_GetLightTargetPdfForVolume(RAB_LightInfo light, float3 volumeCenter, float volumeRadius)

@@ -10,7 +10,7 @@ template <uint Flags>
 void TraceRay(
 	inout RayQuery<Flags> q, RayDesc rayDesc, uint flags, uint mask
 #ifdef NV_SHADER_EXTN_SLOT
-	, bool enableShaderExecutionReordering
+	, bool enableShaderExecutionReordering = false
 #endif
 )
 {
@@ -40,7 +40,7 @@ void TraceRay(
 bool CastRay(
 	RayDesc rayDesc, out HitInfo hitInfo
 #ifdef NV_SHADER_EXTN_SLOT
-	, bool enableShaderExecutionReordering
+	, bool enableShaderExecutionReordering = false
 #endif
 )
 {
@@ -83,7 +83,7 @@ bool CastRay(
 				T = normalize(Vertex::Interpolate(tangents, hitInfo.Barycentrics));
 			}
 			const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
-			hitInfo.Normal = normalize(STL::Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
+			hitInfo.Normal = normalize(Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
 		}
 	}
 	return isHit;

@@ -70,12 +70,12 @@ struct TriangleLight
 
 	void Load(LightInfo lightInfo)
 	{
-		const float2 scalars = STL::Packing::UintToRg16f(lightInfo.Scalars);
+		const float2 scalars = Packing::UintToRg16f(lightInfo.Scalars);
 		const float3
 			edge0 = RTXDI_DecodeNormalizedVectorFromSnorm2x16(lightInfo.Directions[0]) * scalars[0],
 			edge1 = RTXDI_DecodeNormalizedVectorFromSnorm2x16(lightInfo.Directions[1]) * scalars[1],
 			base = lightInfo.Center - (edge0 + edge1) / 3,
-			radiance = float3(STL::Packing::UintToRg16f(lightInfo.Radiance.x), STL::Packing::UintToRg16f(lightInfo.Radiance.y).x);
+			radiance = float3(Packing::UintToRg16f(lightInfo.Radiance.x), Packing::UintToRg16f(lightInfo.Radiance.y).x);
 		Initialize(base, edge0, edge1, radiance);
 	}
 
@@ -83,10 +83,10 @@ struct TriangleLight
 	{
 		lightInfo.Center = Base + (Edges[0] + Edges[1]) / 3;
 		const float2 scalars = float2(length(Edges[0]), length(Edges[1]));
-		lightInfo.Scalars = STL::Packing::Rg16fToUint(scalars);
+		lightInfo.Scalars = Packing::Rg16fToUint(scalars);
 		lightInfo.Directions[0] = RTXDI_EncodeNormalizedVectorToSnorm2x16(Edges[0] / scalars[0]);
 		lightInfo.Directions[1] = RTXDI_EncodeNormalizedVectorToSnorm2x16(Edges[1] / scalars[1]);
-		lightInfo.Radiance = uint2(STL::Packing::Rg16fToUint(Radiance.rg), STL::Packing::Rg16fToUint(float2(Radiance.b, 0)));
+		lightInfo.Radiance = uint2(Packing::Rg16fToUint(Radiance.rg), Packing::Rg16fToUint(float2(Radiance.b, 0)));
 	}
 
 	float CalculateSolidAnglePDF(float3 viewPosition, float3 lightSamplePosition, float3 lightSampleNormal)
@@ -109,7 +109,7 @@ struct TriangleLight
 	
 	float CalculatePower()
 	{
-		return Area * STL::Math::Pi(1) * STL::Color::Luminance(Radiance);
+		return Area * Math::Pi(1) * Color::Luminance(Radiance);
 	}
 
 	float CalculateWeightForVolume(float3 volumeCenter, float volumeRadius)
@@ -120,7 +120,7 @@ struct TriangleLight
 		}
 		const float
 			distance = CalculateAverageDistanceToVolume(length(Base + (Edges[0] + Edges[1]) / 3 - volumeCenter), volumeRadius),
-			approximateSolidAngle = min(Area / (distance * distance), STL::Math::Pi(2));
-		return approximateSolidAngle * STL::Color::Luminance(Radiance);
+			approximateSolidAngle = min(Area / (distance * distance), Math::Pi(2));
+		return approximateSolidAngle * Color::Luminance(Radiance);
 	}
 };

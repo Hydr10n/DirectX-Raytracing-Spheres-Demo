@@ -1,7 +1,5 @@
 #pragma once
 
-#include "STL.hlsli"
-
 enum class AlphaMode
 {
 	Opaque, Blend, Mask

@@ -78,7 +78,7 @@ float3 GetEnvironmentLightColor(float3 worldRayDirection)
 	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
 	if (resourceDescriptorIndices.InEnvironmentLightTexture != ~0u)
 	{
-		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
+		worldRayDirection = normalize(Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentLightTextureCubeMap)
 		{
 			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentLightTexture];
@@ -100,7 +100,7 @@ bool GetEnvironmentColor(float3 worldRayDirection, out float3 color)
 	bool ret;
 	if ((ret = resourceDescriptorIndices.InEnvironmentTexture != ~0u))
 	{
-		worldRayDirection = normalize(STL::Geometry::RotateVector((float3x3)g_sceneData.EnvironmentTextureTransform, worldRayDirection));
+		worldRayDirection = normalize(Geometry::RotateVector((float3x3)g_sceneData.EnvironmentTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentTextureCubeMap)
 		{
 			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentTexture];
@@ -137,7 +137,7 @@ float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth
 			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
 			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
 		}
-		previousPosition = STL::Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
+		previousPosition = Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
-	return float3((STL::Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions, STL::Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
+	return float3((Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions, Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
 }

@@ -27,7 +27,7 @@ struct HitInfo
 		float3 objectNormal;
 		SelfIntersectionAvoidance::GetSafeTriangleSpawnPoint(ObjectPosition, SafePosition, objectNormal, SafeNormal, SafeOffset, positions, barycentrics, objectToWorld, worldToObject);
 		Position = worldRayOrigin + worldRayDirection * distance;
-		Normal = normalize(STL::Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
+		Normal = normalize(Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
 		if (!(IsFrontFace = dot(Normal, worldRayDirection) < 0))
 		{
 			Normal = -Normal;
@@ -40,6 +40,6 @@ struct HitInfo
 
 	float3 GetSafeWorldRayOrigin(float3 worldRayDirection)
 	{
-		return SelfIntersectionAvoidance::OffsetSpawnPoint(SafePosition, SafeNormal * STL::Math::Sign(dot(worldRayDirection, SafeNormal)), SafeOffset);
+		return SelfIntersectionAvoidance::OffsetSpawnPoint(SafePosition, SafeNormal * Math::Sign(dot(worldRayDirection, SafeNormal)), SafeOffset);
 	}
 };

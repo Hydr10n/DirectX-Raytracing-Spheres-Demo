@@ -7,7 +7,8 @@ module;
 #include "directxtk12/ResourceUploadBatch.h"
 #include "directxtk12/VertexTypes.h"
 
-#include "MathLib.h"
+#include "ml.h"
+#include "ml.hlsli"
 
 export module Model;
 
@@ -17,7 +18,7 @@ import GPUBuffer;
 import Vertex;
 
 using namespace DirectX;
-using namespace Packed;
+using namespace Packing;
 using namespace std;
 
 export struct Mesh {
@@ -45,7 +46,7 @@ export struct Mesh {
 		vector<VertexType> newVertices;
 		newVertices.reserve(vertices.size());
 		for (const auto vertex : vertices) {
-			newVertices.emplace_back(vertex.position, sf2_to_h2(vertex.textureCoordinate.x, vertex.textureCoordinate.y), reinterpret_cast<const XMFLOAT2&>(EncodeUnitVector(reinterpret_cast<const float3&>(vertex.normal), true)));
+			newVertices.emplace_back(vertex.position, float2_to_sfloat_16_16(reinterpret_cast<const float2&>(vertex.textureCoordinate)), reinterpret_cast<const XMFLOAT2&>(EncodeUnitVector(reinterpret_cast<const float3&>(vertex.normal), true)));
 		}
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);

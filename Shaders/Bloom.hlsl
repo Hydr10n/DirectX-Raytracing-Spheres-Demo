@@ -27,7 +27,7 @@ float3 Sample(float x, float y)
 
 float KarisAverage(float3 rgb)
 {
-	return 1 / (1 + STL::Color::Luminance(STL::Color::ToSrgb(rgb)) * 0.25f);
+	return 1 / (1 + Color::Luminance(Color::ToSrgb(rgb)) * 0.25f);
 }
 
 float3 Downsample()

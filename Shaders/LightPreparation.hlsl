@@ -77,9 +77,9 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 
 	float3 positions[3];
 	vertexDesc.LoadPositions(vertices, indices, positions);
-	positions[0] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[0]);
-	positions[1] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[1]);
-	positions[2] = STL::Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
+	positions[0] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[0]);
+	positions[1] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[1]);
+	positions[2] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	float3 emissiveColor;
 	if (resourceDescriptorIndices.TextureMaps.EmissiveColor == ~0u)
