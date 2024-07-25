@@ -37,9 +37,9 @@ export struct Raytracing {
 		NRDSettings NRD;
 	};
 
-	struct SHARCSettings {
+	struct SHARCSettings : SHARC::Constants {
 		UINT DownscaleFactor;
-		float SceneScale, RoughnessThreshold;
+		float RoughnessThreshold;
 		BOOL IsHashGridVisualizationEnabled;
 	};
 
@@ -141,7 +141,7 @@ export struct Raytracing {
 
 		SHARC.GPUBuffers.Camera = GPUBuffers.Camera;
 
-		SHARC.Process(pCommandList, { .SceneScale = SHARCSettings.SceneScale });
+		SHARC.Process(pCommandList, SHARCSettings);
 
 		{
 			const auto barriers = {

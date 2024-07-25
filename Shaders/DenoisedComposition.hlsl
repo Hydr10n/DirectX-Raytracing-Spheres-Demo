@@ -49,7 +49,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	BRDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, normalRoughness.w);
 
 	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_constants.RenderSize, g_camera.Jitter));
-	const float3 V = -normalize(NDC.x * g_camera.RightDirection + NDC.y * g_camera.UpDirection + g_camera.ForwardDirection);
+	const float3 V = -normalize(g_camera.GenerateRayDirection(NDC));
 	float4 diffuseHitDistance = g_denoisedDiffuse[pixelPosition], specularHitDistance = g_denoisedSpecular[pixelPosition];
 	UnpackDenoisedSignals(
 		g_constants.NRDDenoiser,

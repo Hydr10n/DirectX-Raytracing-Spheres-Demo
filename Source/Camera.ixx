@@ -118,17 +118,7 @@ export {
 		auto GetNearDepth() const { return m_nearDepth; }
 		auto GetFarDepth() const { return m_farDepth; }
 
-		const auto& GetViewToProjection() const {
-			if (m_isProjectionChanged) {
-				float4x4 viewToProjection;
-				if (m_farDepth == numeric_limits<float>::infinity()) viewToProjection.SetupByHalfFovxInf(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_projectionFlags);
-				else viewToProjection.SetupByHalfFovx(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_farDepth, m_projectionFlags);
-				m_viewToProjection = reinterpret_cast<const Matrix&>(viewToProjection);
-
-				m_isProjectionChanged = false;
-			}
-			return m_viewToProjection;
-		}
+		const auto& GetViewToProjection() const { return m_viewToProjection; }
 
 		auto GetProjectionToView() const { return GetViewToProjection().Invert(); }
 
@@ -141,7 +131,10 @@ export {
 			m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 
-			m_isProjectionChanged = true;
+			float4x4 viewToProjection;
+			if (m_farDepth == numeric_limits<float>::infinity()) viewToProjection.SetupByHalfFovxInf(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_projectionFlags);
+			else viewToProjection.SetupByHalfFovx(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_farDepth, m_projectionFlags);
+			m_viewToProjection = reinterpret_cast<const Matrix&>(viewToProjection);
 		}
 
 		void SetLens(float horizontalFieldOfView, float aspectRatio, float nearDepth, float farDepth = numeric_limits<float>::infinity()) {
@@ -161,7 +154,6 @@ export {
 		Quaternion m_rotation;
 		mutable Matrix m_worldToView;
 
-		mutable bool m_isProjectionChanged = true;
 		uint32_t m_projectionFlags;
 		float m_horizontalFieldOfView{}, m_aspectRatio{}, m_nearDepth = 1e-2f, m_farDepth = numeric_limits<float>::infinity();
 		mutable Matrix m_viewToProjection;

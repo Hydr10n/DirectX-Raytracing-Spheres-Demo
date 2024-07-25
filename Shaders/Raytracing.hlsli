@@ -8,16 +8,9 @@
 
 #if defined(SHARC_UPDATE) || defined(SHARC_QUERY)
 #define ENABLE_SHARC 1
-#if SHARC_UPDATE
-#define SHARC_QUERY 0
-#else
-#define SHARC_UPDATE 0
-#endif
 #include "SharcCommon.h"
 #else
 #define ENABLE_SHARC 0
-#define SHARC_QUERY 0
-#define SHARC_UPDATE 0
 #endif
 
 #define NV_SHADER_EXTN_SLOT u1024

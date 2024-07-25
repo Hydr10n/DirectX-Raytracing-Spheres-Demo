@@ -16,11 +16,16 @@ struct Camera
 	float2 Jitter;
 	float4x4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousProjectionToView, PreviousViewToWorld, WorldToProjection;
 
+	float3 GenerateRayDirection(float2 NDC)
+	{
+		return NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection;
+	}
+
 	RayDesc GeneratePinholeRay(float2 NDC)
 	{
 		RayDesc rayDesc;
 		rayDesc.Origin = Position;
-		rayDesc.Direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
+		rayDesc.Direction = normalize(GenerateRayDirection(NDC));
 		const float invCos = 1 / dot(normalize(ForwardDirection), rayDesc.Direction);
 		rayDesc.TMin = NearDepth * invCos;
 		rayDesc.TMax = FarDepth * invCos;
@@ -33,7 +38,7 @@ struct Camera
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
 		rayDesc.Origin = Position + offset;
-		rayDesc.Direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection - offset);
+		rayDesc.Direction = normalize(GenerateRayDirection(NDC) - offset);
 		const float invCos = 1 / dot(normalize(ForwardDirection), rayDesc.Direction);
 		rayDesc.TMin = NearDepth * invCos;
 		rayDesc.TMax = FarDepth * invCos;

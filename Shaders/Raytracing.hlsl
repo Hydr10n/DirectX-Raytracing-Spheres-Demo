@@ -193,13 +193,13 @@ void RayGeneration()
 
 			const uint gridLevel = GetGridLevel(hitInfo.Position, sharcState.gridParameters);
 			const float voxelSize = GetVoxelSize(gridLevel, sharcState.gridParameters);
-			bool isValidHit = hitInfo.Distance > voxelSize * lerp(1, 2, Rng::Hash::GetFloat());
+			bool isValidHit = hitInfo.Distance > voxelSize * sqrt(3);
 
 			previousRoughness = min(previousRoughness, 0.99f);
 			const float
 				alpha = previousRoughness * previousRoughness,
 				footprint = hitInfo.Distance * sqrt(0.5f * alpha * alpha / (1 - alpha * alpha));
-			isValidHit &= footprint * lerp(1, 1.5f, Rng::Hash::GetFloat()) > voxelSize;
+			isValidHit &= footprint > voxelSize;
 
 			float3 sharcRadiance;
 			if (isValidHit && SharcGetCachedRadiance(sharcState, sharcHitData, sharcRadiance, false))

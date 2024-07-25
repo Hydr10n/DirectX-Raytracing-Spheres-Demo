@@ -19,7 +19,10 @@ using namespace std;
 
 export {
 	struct SHARC {
-		struct Constants { float SceneScale; };
+		struct Constants {
+			UINT AccumulationFrames = 10, MaxStaleFrames = 64;
+			float SceneScale;
+		};
 
 		struct {
 			unique_ptr<DefaultBuffer<UINT64>> HashEntries;
@@ -49,7 +52,7 @@ export {
 			GPUBuffers.VoxelData = make_unique<DefaultBuffer<XMUINT4>>(m_device, capacity);
 		}
 
-		void Process(ID3D12GraphicsCommandList* pCommandList, Constants constants) {
+		void Process(ID3D12GraphicsCommandList* pCommandList, const Constants& constants) {
 			pCommandList->SetComputeRootSignature(m_rootSignature.Get());
 			pCommandList->SetPipelineState(m_pipelineState.Get());
 
@@ -80,9 +83,15 @@ export {
 
 				const struct {
 					BOOL IsResolve;
-					UINT Capacity;
+					UINT Capacity, AccumulationFrames, MaxStaleFrames;
 					float SceneScale;
-				} _constants{ .IsResolve = isResolve, .Capacity = capacity, .SceneScale = constants.SceneScale };
+				} _constants{
+					.IsResolve = isResolve,
+					.Capacity = capacity,
+					.AccumulationFrames = constants.AccumulationFrames,
+					.MaxStaleFrames = constants.MaxStaleFrames,
+					.SceneScale = constants.SceneScale
+				};
 				pCommandList->SetComputeRoot32BitConstants(0, sizeof(_constants) / 4, &_constants, 0);
 
 				pCommandList->Dispatch((capacity + 255) / 256, 1, 1);

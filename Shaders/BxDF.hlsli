@@ -187,4 +187,13 @@ struct BSDFSample : BRDFSample
 		}
 		return ret;
 	}
+
+	float3 Evaluate(LobeType lobeType, float3 N, float3 V, float3 L, float minRoughness = MinRoughness)
+	{
+		if (lobeType == LobeType::Transmission)
+		{
+			return Albedo;
+		}
+		return BRDFSample::Evaluate(lobeType, N, V, L, minRoughness);
+	}
 };

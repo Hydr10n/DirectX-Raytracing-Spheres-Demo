@@ -46,7 +46,7 @@ export struct Mesh {
 		vector<VertexType> newVertices;
 		newVertices.reserve(vertices.size());
 		for (const auto vertex : vertices) {
-			newVertices.emplace_back(vertex.position, float2_to_sfloat_16_16(reinterpret_cast<const float2&>(vertex.textureCoordinate)), reinterpret_cast<const XMFLOAT2&>(EncodeUnitVector(reinterpret_cast<const float3&>(vertex.normal), true)));
+			newVertices.emplace_back(vertex.position, float2_to_float16_t2(reinterpret_cast<const float2&>(vertex.textureCoordinate)).xy, reinterpret_cast<const XMFLOAT2&>(EncodeUnitVector(reinterpret_cast<const float3&>(vertex.normal), true)));
 		}
 		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
 			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);

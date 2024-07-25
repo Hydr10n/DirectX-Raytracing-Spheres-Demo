@@ -19,7 +19,7 @@ void TraceRay(
 	{
 		if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE)
 		{
-			const uint objectIndex = g_instanceData[q.CandidateInstanceIndex()].FirstGeometryIndex + q.CandidateGeometryIndex();
+			const uint objectIndex = q.CandidateInstanceContributionToHitGroupIndex() + q.CandidateGeometryIndex();
 			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
 			if (IsOpaque(objectIndex, textureCoordinate))
 			{
@@ -31,7 +31,7 @@ void TraceRay(
 	if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT && enableShaderExecutionReordering)
 	{
 		const BuiltInTriangleIntersectionAttributes attributes = { q.CommittedTriangleBarycentrics() };
-		const NvHitObject hitObject = NvMakeHit(g_scene, q.CommittedInstanceIndex(), q.CommittedGeometryIndex(), q.CommittedPrimitiveIndex(), 0, 0, 0, rayDesc, attributes);
+		const NvHitObject hitObject = NvMakeHit(g_scene, q.CommittedInstanceIndex(), q.CommittedGeometryIndex(), q.CommittedPrimitiveIndex(), 0, 0, 1, rayDesc, attributes);
 		NvReorderThread(hitObject);
 	}
 #endif
@@ -55,7 +55,7 @@ bool CastRay(
 	if (isHit)
 	{
 		hitInfo.InstanceIndex = q.CommittedInstanceIndex();
-		hitInfo.ObjectIndex = g_instanceData[hitInfo.InstanceIndex].FirstGeometryIndex + q.CommittedGeometryIndex();
+		hitInfo.ObjectIndex = q.CommittedInstanceContributionToHitGroupIndex() + q.CommittedGeometryIndex();
 		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
 
 		const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices;

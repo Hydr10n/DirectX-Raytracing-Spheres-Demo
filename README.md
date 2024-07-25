@@ -44,7 +44,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 					- Samples
 				- BRDF Samples
 	- NVIDIA RTX Global Illumination
-		- Spatially Hashed Radiance Cache
+		- SHARC
 			- Downscale Factor
 			- Scene Scale
 			- Roughness Threshold
