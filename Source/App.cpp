@@ -423,7 +423,7 @@ private:
 		{
 			NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAPS caps;
 			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
-				&& caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD
+				&& (caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD)
 				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(device, 1024, 0) == NVAPI_OK;
 		}
 

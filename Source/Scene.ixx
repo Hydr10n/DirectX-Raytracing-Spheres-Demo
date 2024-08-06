@@ -248,6 +248,7 @@ export {
 				for (UINT instanceIndex = 0; const auto & renderObject : RenderObjects) {
 					const auto& instanceData = m_instanceData[instanceIndex++];
 					auto& instanceDesc = instanceDescs.emplace_back(D3D12_RAYTRACING_INSTANCE_DESC{
+						.InstanceID = instanceData.FirstGeometryIndex,
 						.InstanceMask = renderObject.IsVisible ? ~0u : 0,
 						.InstanceContributionToHitGroupIndex = instanceData.FirstGeometryIndex,
 						.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,

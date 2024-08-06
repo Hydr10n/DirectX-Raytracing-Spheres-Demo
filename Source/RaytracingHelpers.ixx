@@ -165,7 +165,7 @@ export namespace DirectX::RaytracingHelpers {
 			m_hitGroups.assign_range(hitGroups);
 			m_hitGroupStride = GetStride(hitGroups);
 
-			m_buffer = make_unique<ConstantBuffer<uint8_t>>(pDevice, (GetRayGenerationSize() + GetMissSize() + GetHitGroupSize() + D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1) / D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+			m_buffer = make_unique<ConstantBuffer<uint8_t>>(pDevice, GetRayGenerationSize() + GetMissSize() + GetHitGroupSize());
 
 			auto pData = &m_buffer->At(0);
 			const auto Copy = [&](span<const Entry> entries, UINT stride) {
@@ -194,11 +194,11 @@ export namespace DirectX::RaytracingHelpers {
 		UINT GetRayGenerationStride() const { return m_rayGenerationStride; }
 		UINT GetRayGenerationSize() const { return m_rayGenerationStride * static_cast<UINT>(size(m_rayGenerationEntries)); }
 
-		D3D12_GPU_VIRTUAL_ADDRESS GetMissAddress() const { return GetRayGenerationAddress() + GetMissSize(); }
+		D3D12_GPU_VIRTUAL_ADDRESS GetMissAddress() const { return GetRayGenerationAddress() + GetRayGenerationSize(); }
 		UINT GetMissStride() const { return m_missStride; }
 		UINT GetMissSize() const { return m_missStride * static_cast<UINT>(size(m_missEntries)); }
 
-		D3D12_GPU_VIRTUAL_ADDRESS GetHitGroupAddress() const { return GetMissAddress() + GetHitGroupSize(); }
+		D3D12_GPU_VIRTUAL_ADDRESS GetHitGroupAddress() const { return GetMissAddress() + GetMissSize(); }
 		UINT GetHitGroupStride() const { return m_hitGroupStride; }
 		UINT GetHitGroupSize() const { return m_hitGroupStride * static_cast<UINT>(size(m_hitGroups)); }
 

@@ -9,6 +9,8 @@ enum class LobeType
 	DiffuseReflection, SpecularReflection, Transmission
 };
 
+static const float MinRoughness = 5e-2f;
+
 static float EstimateDiffuseProbability(float3 albedo, float3 Rf0, float roughness, float NoV)
 {
 	const float3 Fenvironment = BRDF::EnvironmentTerm_Ross(Rf0, NoV, roughness);

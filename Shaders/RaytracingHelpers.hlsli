@@ -19,7 +19,7 @@ void TraceRay(
 	{
 		if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE)
 		{
-			const uint objectIndex = q.CandidateInstanceContributionToHitGroupIndex() + q.CandidateGeometryIndex();
+			const uint objectIndex = q.CandidateInstanceID() + q.CandidateGeometryIndex();
 			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
 			if (IsOpaque(objectIndex, textureCoordinate))
 			{
@@ -55,7 +55,7 @@ bool CastRay(
 	if (isHit)
 	{
 		hitInfo.InstanceIndex = q.CommittedInstanceIndex();
-		hitInfo.ObjectIndex = q.CommittedInstanceContributionToHitGroupIndex() + q.CommittedGeometryIndex();
+		hitInfo.ObjectIndex = q.CommittedInstanceID() + q.CommittedGeometryIndex();
 		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
 
 		const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices;

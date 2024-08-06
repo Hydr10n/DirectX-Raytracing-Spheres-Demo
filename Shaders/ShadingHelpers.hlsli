@@ -65,7 +65,7 @@ Material GetMaterial(uint objectIndex, float2 textureCoordinate)
 {
 	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
 
-	Material material;
+	Material material = g_objectData[objectIndex].Material;
 
 	uint index;
 
@@ -74,19 +74,11 @@ Material GetMaterial(uint objectIndex, float2 textureCoordinate)
 		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
 		material.BaseColor = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
-	else
-	{
-		material.BaseColor = g_objectData[objectIndex].Material.BaseColor;
-	}
 
 	if ((index = resourceDescriptorIndices.TextureMaps.EmissiveColor) != ~0u)
 	{
 		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
 		material.EmissiveColor = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
-	}
-	else
-	{
-		material.EmissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
 	}
 
 	{
@@ -106,28 +98,15 @@ Material GetMaterial(uint objectIndex, float2 textureCoordinate)
 			const Texture2D<float3> texture = ResourceDescriptorHeap[metallicMapIndex];
 			material.Metallic = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0)[metallicMapChannel];
 		}
-		else
-		{
-			material.Metallic = g_objectData[objectIndex].Material.Metallic;
-		}
 
 		if (roughnessMapIndex != ~0u)
 		{
 			const Texture2D<float3> texture = ResourceDescriptorHeap[roughnessMapIndex];
 			material.Roughness = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).g;
 		}
-		else
-		{
-			material.Roughness = g_objectData[objectIndex].Material.Roughness;
-		}
 	}
 
 	material.Transmission = GetTransmission(objectIndex, textureCoordinate, material.BaseColor.a);
-
-	material.IOR = g_objectData[objectIndex].Material.IOR;
-
-	material.AlphaMode = g_objectData[objectIndex].Material.AlphaMode;
-	material.AlphaThreshold = g_objectData[objectIndex].Material.AlphaThreshold;
 
 	return material;
 }
