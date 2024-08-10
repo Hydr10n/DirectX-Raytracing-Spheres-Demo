@@ -76,7 +76,6 @@ export {
 
 	constexpr auto ToString(ToneMapPostProcess::Operator value) {
 		switch (value) {
-			case ToneMapPostProcess::None: return "None";
 			case ToneMapPostProcess::Saturate: return "Saturate";
 			case ToneMapPostProcess::Reinhard: return "Reinhard";
 			case ToneMapPostProcess::ACESFilmic: return "ACES Filmic";

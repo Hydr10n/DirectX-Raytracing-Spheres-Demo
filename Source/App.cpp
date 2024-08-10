@@ -210,7 +210,9 @@ struct App::Impl : IDeviceNotify {
 
 		m_mipmapGeneration.reset();
 
-		m_alphaBlending.reset();
+		m_textureAlphaBlending.reset();
+
+		m_textureCopy.reset();
 
 		for (auto& toneMapping : m_toneMapping) toneMapping.reset();
 
@@ -370,9 +372,11 @@ private:
 
 	unique_ptr<Bloom> m_bloom;
 
-	unique_ptr<ToneMapPostProcess> m_toneMapping[ToneMapPostProcess::Operator_Max + 1];
+	unique_ptr<ToneMapPostProcess> m_toneMapping[ToneMapPostProcess::Operator_Max];
 
-	unique_ptr<SpriteBatch> m_alphaBlending;
+	unique_ptr<BasicPostProcess> m_textureCopy;
+
+	unique_ptr<SpriteBatch> m_textureAlphaBlending;
 
 	unique_ptr<MipmapGeneration> m_mipmapGeneration;
 
@@ -728,23 +732,32 @@ private:
 		m_bloom = make_unique<Bloom>(device);
 
 		{
-			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN);
+			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
 
-			for (const auto Operator : { ToneMapPostProcess::None, ToneMapPostProcess::Saturate, ToneMapPostProcess::Reinhard, ToneMapPostProcess::ACESFilmic, ToneMapPostProcess::Operator_Max }) {
-				m_toneMapping[Operator] = make_unique<ToneMapPostProcess>(
+			for (const auto Operator : {
+				ToneMapPostProcess::Saturate,
+				ToneMapPostProcess::Reinhard,
+				ToneMapPostProcess::ACESFilmic,
+				ToneMapPostProcess::Operator_Max }) {
+				m_toneMapping[Operator - 1] = make_unique<ToneMapPostProcess>(
 					device,
 					renderTargetState,
 					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::None : Operator,
-					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::ST2084 :
-					Operator == ToneMapPostProcess::None ? ToneMapPostProcess::Linear : ToneMapPostProcess::SRGB
+					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::ST2084 : ToneMapPostProcess::SRGB
 					);
 			}
+		}
+
+		{
+			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN);
+
+			m_textureCopy = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::Copy);
 
 			{
 				ResourceUploadBatch resourceUploadBatch(device);
 				resourceUploadBatch.Begin();
 
-				m_alphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
+				m_textureAlphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
 
 				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
 			}
@@ -1279,12 +1292,18 @@ private:
 			swap(inColor, outColor);
 		}
 
+		if (postProcessingSettings.ToneMapping.IsEnabled) {
+			ToneMap(*inColor, *outColor);
+
+			swap(inColor, outColor);
+		}
+
+		CopyTexture(*inColor);
+
 		if (IsDLSSFrameGenerationEnabled()) ProcessDLSSFrameGeneration(*inColor);
 
-		ProcessToneMapping(*inColor);
-
 		if (isNRDEnabled && postProcessingSettings.NRD.IsValidationOverlayEnabled) {
-			ProcessAlphaBlending(*m_textures.at(TextureNames::Validation));
+			AlphaBlendTexture(*m_textures.at(TextureNames::Validation));
 		}
 	}
 
@@ -1491,7 +1510,7 @@ private:
 		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
-	void ProcessToneMapping(Texture& inColor) {
+	void ToneMap(Texture& inColor, Texture& outColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
@@ -1499,7 +1518,7 @@ private:
 		const auto isHDREnabled = m_deviceResources->IsHDREnabled();
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
 
-		auto& toneMapping = *m_toneMapping[isHDREnabled ? ToneMapPostProcess::Operator_Max : toneMappingSettings.NonHDR.Operator];
+		auto& toneMapping = *m_toneMapping[(isHDREnabled ? ToneMapPostProcess::Operator_Max : toneMappingSettings.NonHDR.Operator) - 1];
 
 		if (isHDREnabled) {
 			toneMapping.SetST2084Parameter(toneMappingSettings.HDR.PaperWhiteNits);
@@ -1509,18 +1528,33 @@ private:
 
 		toneMapping.SetHDRSourceTexture(inColor.GetSRVDescriptor().GPUHandle);
 
+		auto renderTargetView = outColor.GetRTVDescriptor().CPUHandle;
+		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
+
 		toneMapping.Process(commandList);
+
+		renderTargetView = m_deviceResources->GetRenderTargetView();
+		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
 	}
 
-	void ProcessAlphaBlending(Texture& inColor) {
+	void CopyTexture(Texture& inColor) {
 		const auto commandList = m_deviceResources->GetCommandList();
 
 		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
 
-		m_alphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
-		m_alphaBlending->Begin(commandList);
-		m_alphaBlending->Draw(inColor.GetSRVDescriptor().GPUHandle, GetTextureSize(inColor), XMFLOAT2());
-		m_alphaBlending->End();
+		m_textureCopy->SetSourceTexture(inColor.GetSRVDescriptor().GPUHandle, inColor);
+		m_textureCopy->Process(commandList);
+	}
+
+	void AlphaBlendTexture(Texture& inColor) {
+		const auto commandList = m_deviceResources->GetCommandList();
+
+		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+
+		m_textureAlphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
+		m_textureAlphaBlending->Begin(commandList);
+		m_textureAlphaBlending->Draw(inColor.GetSRVDescriptor().GPUHandle, GetTextureSize(inColor), XMFLOAT2());
+		m_textureAlphaBlending->End();
 	}
 
 	void RenderUI() {
@@ -1927,48 +1961,49 @@ private:
 					if (ImGui::TreeNodeEx("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& toneMappingSettings = postProcessingSetttings.ToneMapping;
 
-						if (m_deviceResources->IsHDREnabled()) {
-							auto& HDRSettings = toneMappingSettings.HDR;
+						ImGui::Checkbox("Enable", &toneMappingSettings.IsEnabled);
 
-							ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+						if (toneMappingSettings.IsEnabled) {
+							if (m_deviceResources->IsHDREnabled()) {
+								auto& HDRSettings = toneMappingSettings.HDR;
 
-							if (ImGui::BeginCombo("Color Primary Rotation", ToString(HDRSettings.ColorPrimaryRotation))) {
-								for (const auto ColorPrimaryRotation : {
-									ToneMapPostProcess::HDTV_to_UHDTV,
-									ToneMapPostProcess::DCI_P3_D65_to_UHDTV,
-									ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
-									const auto isSelected = HDRSettings.ColorPrimaryRotation == ColorPrimaryRotation;
+								ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
-									if (ImGui::Selectable(ToString(ColorPrimaryRotation), isSelected)) {
-										HDRSettings.ColorPrimaryRotation = ColorPrimaryRotation;
+								if (ImGui::BeginCombo("Color Primary Rotation", ToString(HDRSettings.ColorPrimaryRotation))) {
+									for (const auto ColorPrimaryRotation : {
+										ToneMapPostProcess::HDTV_to_UHDTV,
+										ToneMapPostProcess::DCI_P3_D65_to_UHDTV,
+										ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
+										const auto isSelected = HDRSettings.ColorPrimaryRotation == ColorPrimaryRotation;
+
+										if (ImGui::Selectable(ToString(ColorPrimaryRotation), isSelected)) {
+											HDRSettings.ColorPrimaryRotation = ColorPrimaryRotation;
+										}
+
+										if (isSelected) ImGui::SetItemDefaultFocus();
 									}
 
-									if (isSelected) ImGui::SetItemDefaultFocus();
+									ImGui::EndCombo();
+								}
+							}
+							else {
+								auto& nonHDRSettings = toneMappingSettings.NonHDR;
+
+								if (ImGui::BeginCombo("Operator", ToString(nonHDRSettings.Operator))) {
+									for (const auto Operator : {
+										ToneMapPostProcess::Saturate,
+										ToneMapPostProcess::Reinhard,
+										ToneMapPostProcess::ACESFilmic }) {
+										const auto isSelected = nonHDRSettings.Operator == Operator;
+
+										if (ImGui::Selectable(ToString(Operator), isSelected)) nonHDRSettings.Operator = Operator;
+
+										if (isSelected) ImGui::SetItemDefaultFocus();
+									}
+
+									ImGui::EndCombo();
 								}
 
-								ImGui::EndCombo();
-							}
-						}
-						else {
-							auto& nonHDRSettings = toneMappingSettings.NonHDR;
-
-							if (ImGui::BeginCombo("Operator", ToString(nonHDRSettings.Operator))) {
-								for (const auto Operator : {
-									ToneMapPostProcess::None,
-									ToneMapPostProcess::Saturate,
-									ToneMapPostProcess::Reinhard,
-									ToneMapPostProcess::ACESFilmic }) {
-									const auto isSelected = nonHDRSettings.Operator == Operator;
-
-									if (ImGui::Selectable(ToString(Operator), isSelected)) nonHDRSettings.Operator = Operator;
-
-									if (isSelected) ImGui::SetItemDefaultFocus();
-								}
-
-								ImGui::EndCombo();
-							}
-
-							if (nonHDRSettings.Operator != ToneMapPostProcess::None) {
 								ImGui::SliderFloat("Exposure", &nonHDRSettings.Exposure, nonHDRSettings.MinExposure, nonHDRSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 							}
 						}
