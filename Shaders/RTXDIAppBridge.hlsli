@@ -450,7 +450,7 @@ bool RAB_TraceRayForLocalLight(float3 origin, float3 direction, float tMin, floa
 	const bool hit = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (hit)
 	{
-		o_lightIndex = g_lightIndices[g_instanceData[q.CommittedInstanceIndex()].FirstGeometryIndex + q.CommittedGeometryIndex()];
+		o_lightIndex = g_lightIndices[q.CommittedInstanceID() + q.CommittedGeometryIndex()];
 		if (o_lightIndex != RTXDI_InvalidLightIndex)
 		{
 			o_lightIndex += q.CommittedPrimitiveIndex();

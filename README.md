@@ -97,10 +97,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	> git submodule update --init --recursive
 	```
 
-- Windows 11 SDK (10.0.22621.0)
-
 ## Minimum System Requirements
-- OS: Microsoft Windows 10 64-bit, version 2004
+- OS: Microsoft Windows 10 64-bit (22H2) with latest drivers
 - Graphics:
 	- Basic: Any GPU capable of DirectX Raytracing Tier 1.1
 	- NVIDIA
@@ -108,3 +106,4 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 		- DLSS
 			- Super Resolution: GeForce RTX 20 Series
 			- Frame Generation: GeForce RTX 40 Series
+	- GPU Upload Heap: Any integrated GPU, or discrete GPU & BIOS that support Resizable BAR

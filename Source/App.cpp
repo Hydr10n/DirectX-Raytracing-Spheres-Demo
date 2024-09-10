@@ -15,8 +15,6 @@ module;
 #include "directxtk12/SimpleMath.h"
 #include "directxtk12/SpriteBatch.h"
 
-#include "D3D12MemAlloc.h"
-
 #include "nvapi.h"
 
 #include "rtxdi/ImportanceSamplingContext.h"
@@ -37,16 +35,15 @@ module;
 module App;
 
 import Camera;
+import CommandList;
 import CommonShaderData;
 import DescriptorHeap;
 import DeviceResources;
 import ErrorHelpers;
 import GPUBuffer;
-import GPUMemoryAllocator;
 import HaltonSamplePattern;
 import LightPreparation;
 import Material;
-import Model;
 import MyScene;
 import PostProcessing.Bloom;
 import PostProcessing.ChromaticAberration;
@@ -85,8 +82,8 @@ namespace {
 	constexpr auto& g_controlsSettings = MyAppData::Settings::Controls;
 }
 
-#define MAKE_NAME(name) static constexpr LPCSTR name = #name;
-#define MAKE_NAMEW(name) static constexpr LPCWSTR name = L#name;
+#define MAKE_NAME(Name) static constexpr LPCSTR Name = #Name;
+#define MAKE_NAMEW(Name) static constexpr LPCWSTR Name = L#Name;
 
 struct App::Impl : IDeviceNotify {
 	Impl(WindowModeHelper& windowModeHelper) noexcept(false) : m_windowModeHelper(windowModeHelper) {
@@ -110,12 +107,10 @@ struct App::Impl : IDeviceNotify {
 		{
 			m_deviceResources->RegisterDeviceNotify(this);
 
-			m_deviceResources->SetWindow(windowModeHelper.hWnd, windowModeHelper.GetResolution());
-
 			m_deviceResources->CreateDeviceResources();
 			CreateDeviceDependentResources();
 
-			m_deviceResources->CreateWindowSizeDependentResources();
+			m_deviceResources->SetWindow(windowModeHelper.hWnd, windowModeHelper.GetResolution());
 			CreateWindowSizeDependentResources();
 
 			m_deviceResources->EnableVSync(g_graphicsSettings.IsVSyncEnabled);
@@ -130,7 +125,7 @@ struct App::Impl : IDeviceNotify {
 	}
 
 	~Impl() {
-		m_deviceResources->WaitForGpu();
+		m_deviceResources->WaitForGPU();
 
 		{
 			if (ImGui::GetIO().BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
@@ -149,13 +144,19 @@ struct App::Impl : IDeviceNotify {
 		if (const auto pFuture = m_futures.find(FutureNames::Scene);
 			pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) {
 			m_futures.erase(pFuture);
-
-			if (m_scene) OnSceneLoaded();
 		}
 
-		m_stepTimer.Tick([&] { Update(); });
+		{
+			m_deviceResources->Prepare();
 
-		Render();
+			m_stepTimer.Tick([&] { Update(); });
+
+			Render();
+
+			m_deviceResources->WaitForGPU();
+
+			m_graphicsMemory->Commit(m_deviceResources->GetDeviceContext().CommandQueue);
+		}
 
 		erase_if(
 			m_futures,
@@ -235,11 +236,8 @@ struct App::Impl : IDeviceNotify {
 
 		m_SHARC.reset();
 
-		m_renderDescriptorHeap.reset();
-		m_resourceDescriptorHeap.reset();
-		m_defaultDescriptorHeap.reset();
+		m_fontDescriptor.reset();
 
-		m_GPUMemoryAllocator.reset();
 		m_graphicsMemory.reset();
 	}
 
@@ -254,12 +252,17 @@ struct App::Impl : IDeviceNotify {
 private:
 	WindowModeHelper& m_windowModeHelper;
 
-	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_UNKNOWN, 2, D3D_FEATURE_LEVEL_12_1, D3D12_RAYTRACING_TIER_1_1, DeviceResources::c_DisableGpuTimeout);
+	unique_ptr<DeviceResources> m_deviceResources = make_unique<DeviceResources>(DeviceResources::CreationDesc{
+		.MinFeatureLevel = D3D_FEATURE_LEVEL_12_1,
+		.MinRaytracingTier = D3D12_RAYTRACING_TIER_1_1,
+		.BackBufferFormat = DXGI_FORMAT_R10G10B10A2_UNORM,
+		.DepthStencilBufferFormat = DXGI_FORMAT_UNKNOWN,
+		.OptionFlags = DeviceResources::OptionFlags::ReverseDepth | DeviceResources::OptionFlags::DisableGPUTimeout
+		});
 
 	StepTimer m_stepTimer;
 
 	unique_ptr<GraphicsMemory> m_graphicsMemory;
-	unique_ptr<GPUMemoryAllocator> m_GPUMemoryAllocator;
 
 	const struct {
 		unique_ptr<GamePad> Gamepad = make_unique<::GamePad>();
@@ -289,67 +292,7 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
-	struct DefaultDescriptorIndex {
-		enum {
-			SHARCHashEntries,
-			SHARCHashCopyOffset,
-			SHARCPreviousVoxelData,
-			SHARCVoxelData,
-			Capacity
-		};
-	};
-	unique_ptr<DescriptorHeapEx> m_defaultDescriptorHeap;
-
-	struct ResourceDescriptorIndex {
-		enum {
-			RColor, RWColor,
-			RFinalColor, RWFinalColor,
-			RPreviousLinearDepth, RWPreviousLinearDepth,
-			RLinearDepth, RWLinearDepth,
-			RNormalizedDepth, RWNormalizedDepth,
-			RMotionVectors, RWMotionVectors,
-			RPreviousBaseColorMetalness, RWPreviousBaseColorMetalness,
-			RBaseColorMetalness, RWBaseColorMetalness,
-			REmissiveColor, RWEmissiveColor,
-			RPreviousNormals, RWPreviousNormals,
-			RNormals, RWNormals,
-			RPreviousRoughness, RWPreviousRoughness,
-			RRoughness, RWRoughness,
-			RNormalRoughness, RWNormalRoughness,
-			RNoisyDiffuse, RWNoisySpecular,
-			RDenoisedDiffuse, RWDenoisedDiffuse,
-			RDenoisedSpecular, RWDenoisedSpecular,
-			RValidation, RWValidation,
-			RWSHARCHashEntries,
-			RWSHARCHashCopyOffset,
-			RWSHARCPreviousVoxelData,
-			RWSHARCVoxelData,
-			RLocalLightPDF, RWLocalLightPDF,
-			RRTXDINeighborOffsets,
-			RFont,
-			Reserve,
-			Capacity = 1 << 16
-		};
-	};
-	unique_ptr<DescriptorHeapEx> m_resourceDescriptorHeap;
-
-	struct RenderDescriptorIndex {
-		enum {
-			Color,
-			FinalColor,
-			PreviousLinearDepth,
-			LinearDepth,
-			PreviousBaseColorMetalness,
-			BaseColorMetalness,
-			PreviousNormals,
-			Normals,
-			PreviousRoughness,
-			Roughness,
-			LocalLightPDF,
-			Capacity
-		};
-	};
-	unique_ptr<DescriptorHeapEx> m_renderDescriptorHeap;
+	unique_ptr<Descriptor> m_fontDescriptor;
 
 	unique_ptr<SHARC> m_SHARC;
 
@@ -380,6 +323,7 @@ private:
 
 	unique_ptr<MipmapGeneration> m_mipmapGeneration;
 
+	static constexpr DXGI_FORMAT m_HDRTextureFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	struct TextureNames {
 		MAKE_NAMEW(Color);
 		MAKE_NAMEW(FinalColor);
@@ -403,35 +347,28 @@ private:
 	};
 	map<wstring, shared_ptr<Texture>, less<>> m_textures;
 
-	struct {
-		shared_ptr<ConstantBuffer<Camera>> Camera;
-		shared_ptr<ConstantBuffer<SceneData>> SceneData;
-		shared_ptr<UploadBuffer<InstanceData>> InstanceData;
-		shared_ptr<UploadBuffer<ObjectData>> ObjectData;
-	} m_GPUBuffers;
+	struct { unique_ptr<GPUBuffer> Camera, SceneData, InstanceData, ObjectData; } m_GPUBuffers;
 
 	Camera m_camera;
 	CameraController m_cameraController;
 
-	shared_ptr<Scene> m_scene;
+	unique_ptr<Scene> m_scene;
 
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
 
 	void CreateDeviceDependentResources() {
-		const auto device = m_deviceResources->GetDevice();
+		const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
-		m_graphicsMemory = make_unique<GraphicsMemory>(device);
+		m_graphicsMemory = make_unique<GraphicsMemory>(deviceContext.Device);
 
-		m_GPUMemoryAllocator = make_unique<GPUMemoryAllocator>(ALLOCATOR_DESC{ .pDevice = device, .pAdapter = m_deviceResources->GetAdapter() });
+		m_fontDescriptor = deviceContext.ResourceDescriptorHeap->Allocate();
 
 		{
 			NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAPS caps;
-			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
+			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(deviceContext.Device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
 				&& (caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD)
-				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(device, 1024, 0) == NVAPI_OK;
+				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(deviceContext.Device, 1024, 0) == NVAPI_OK;
 		}
-
-		CreateDescriptorHeaps();
 
 		CreatePipelineStates();
 
@@ -439,53 +376,62 @@ private:
 	}
 
 	void CreateWindowSizeDependentResources() {
-		const auto device = m_deviceResources->GetDevice();
+		const auto& deviceResourcesCreationDesc = m_deviceResources->GetCreationDesc();
+		const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, UINT SRVDescriptorIndex = ~0u, UINT UAVDescriptorIndex = ~0u, UINT RTVDescriptorIndex = ~0u) {
+			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, bool RTV = false, bool SRV = true, bool UAV = true) {
+				Texture::CreationDesc creationDesc{
+					.Format = format,
+					.Width = static_cast<UINT>(outputSize.cx),
+					.Height = static_cast<UINT>(outputSize.cy),
+					.KeepInitialState = true
+				};
+				if (UAV) creationDesc.AsUnorderedAccess();
+				if (RTV) creationDesc.AsRenderTarget();
 				auto& texture = m_textures[name];
-				texture = make_shared<Texture>(device, format, XMUINT2(outputSize.cx, outputSize.cy));
+				texture = make_shared<Texture>(deviceContext, creationDesc);
 				texture->GetNative()->SetName(name);
-				if (SRVDescriptorIndex != ~0u) texture->CreateSRV(*m_resourceDescriptorHeap, SRVDescriptorIndex);
-				if (UAVDescriptorIndex != ~0u) texture->CreateUAV(*m_resourceDescriptorHeap, UAVDescriptorIndex);
-				if (RTVDescriptorIndex != ~0u) texture->CreateRTV(*m_renderDescriptorHeap, RTVDescriptorIndex);
+				if (SRV) texture->CreateSRV();
+				if (UAV) texture->CreateUAV();
+				if (RTV) texture->CreateRTV();
 			};
 
-			CreateTexture(TextureNames::Color, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RColor, ResourceDescriptorIndex::RWColor, RenderDescriptorIndex::Color);
-			CreateTexture(TextureNames::FinalColor, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RFinalColor, ResourceDescriptorIndex::RWFinalColor, RenderDescriptorIndex::FinalColor);
-			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::RPreviousLinearDepth, ResourceDescriptorIndex::RWPreviousLinearDepth, RenderDescriptorIndex::PreviousLinearDepth);
-			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::RLinearDepth, ResourceDescriptorIndex::RWLinearDepth, RenderDescriptorIndex::LinearDepth);
-			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, ResourceDescriptorIndex::RNormalizedDepth, ResourceDescriptorIndex::RWNormalizedDepth);
-			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RMotionVectors, ResourceDescriptorIndex::RWMotionVectors);
-			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::RPreviousBaseColorMetalness, ResourceDescriptorIndex::RWPreviousBaseColorMetalness, RenderDescriptorIndex::PreviousBaseColorMetalness);
-			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::RBaseColorMetalness, ResourceDescriptorIndex::RWBaseColorMetalness, RenderDescriptorIndex::BaseColorMetalness);
-			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, ResourceDescriptorIndex::REmissiveColor, ResourceDescriptorIndex::RWEmissiveColor);
-			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::RPreviousNormals, ResourceDescriptorIndex::RWPreviousNormals, RenderDescriptorIndex::PreviousNormals);
-			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM, ResourceDescriptorIndex::RNormals, ResourceDescriptorIndex::RWNormals, RenderDescriptorIndex::Normals);
-			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::RPreviousRoughness, ResourceDescriptorIndex::RWPreviousRoughness, RenderDescriptorIndex::PreviousRoughness);
-			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM, ResourceDescriptorIndex::RRoughness, ResourceDescriptorIndex::RWRoughness, RenderDescriptorIndex::Roughness);
-			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), ResourceDescriptorIndex::RNormalRoughness, ResourceDescriptorIndex::RWNormalRoughness);
+			CreateTexture(TextureNames::Color, m_HDRTextureFormat, true);
+			CreateTexture(TextureNames::FinalColor, m_HDRTextureFormat, true);
+			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, true);
+			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, true);
+			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT);
+			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT);
+			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, true);
+			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, true);
+			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT);
+			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM, true);
+			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM, true);
+			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM, true);
+			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM, true);
+			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding));
 
 			if (m_NRD = make_unique<NRD>(
-				device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetCommandList(),
+				m_deviceResources->GetCommandList(),
 				static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy),
-				m_deviceResources->GetBackBufferCount(),
+				deviceResourcesCreationDesc.BackBufferCount,
 				initializer_list<DenoiserDesc>{
 					{ static_cast<Identifier>(NRDDenoiser::ReBLUR), Denoiser::REBLUR_DIFFUSE_SPECULAR },
 					{ static_cast<Identifier>(NRDDenoiser::ReLAX), Denoiser::RELAX_DIFFUSE_SPECULAR }
 			}
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::RNoisyDiffuse);
-				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ~0u, ResourceDescriptorIndex::RWNoisySpecular);
-				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RDenoisedDiffuse, ResourceDescriptorIndex::RWDenoisedDiffuse);
-				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, ResourceDescriptorIndex::RDenoisedSpecular, ResourceDescriptorIndex::RWDenoisedSpecular);
-				CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM, ResourceDescriptorIndex::RValidation, ResourceDescriptorIndex::RWValidation);
+				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, false, false);
+				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, false, false);
+				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT);
+				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT);
+				CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM);
 			}
 
-			m_XeSS = make_unique<XeSS>(device, xess_2d_t{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE);
+			m_XeSS = make_unique<XeSS>(deviceContext, xess_2d_t{ static_cast<uint32_t>(outputSize.cx), static_cast<uint32_t>(outputSize.cy) }, XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE);
 
 			SelectSuperResolutionUpscaler();
 			SetSuperResolutionOptions();
@@ -497,7 +443,7 @@ private:
 			const auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-			ImGui_ImplDX12_Init(device, m_deviceResources->GetBackBufferCount(), m_deviceResources->GetBackBufferFormat(), m_resourceDescriptorHeap->Heap(), m_resourceDescriptorHeap->GetCpuHandle(ResourceDescriptorIndex::RFont), m_resourceDescriptorHeap->GetGpuHandle(ResourceDescriptorIndex::RFont));
+			ImGui_ImplDX12_Init(deviceContext.Device, deviceResourcesCreationDesc.BackBufferCount, deviceResourcesCreationDesc.BackBufferFormat, *deviceContext.ResourceDescriptorHeap, *m_fontDescriptor, *m_fontDescriptor);
 
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", static_cast<float>(outputSize.cy) * 0.022f);
@@ -510,6 +456,7 @@ private:
 		if (isPCLAvailable) ignore = m_streamline->SetPCLMarker(PCLMarker::eSimulationStart);
 
 		{
+			m_camera.IsNormalizedDepthReversed = true;
 			m_camera.PreviousPosition = m_cameraController.GetPosition();
 			m_camera.PreviousWorldToView = m_cameraController.GetWorldToView();
 			m_camera.PreviousViewToProjection = m_cameraController.GetViewToProjection();
@@ -528,7 +475,7 @@ private:
 			m_camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 			m_camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 
-			m_GPUBuffers.Camera->At(0) = m_camera;
+			m_deviceResources->GetCommandList().Write(*m_GPUBuffers.Camera, initializer_list{ m_camera });
 		}
 
 		if (IsSceneReady()) UpdateScene();
@@ -537,8 +484,6 @@ private:
 	}
 
 	void Render() {
-		if (!m_stepTimer.GetFrameCount()) return;
-
 		const auto isSceneReady = IsSceneReady();
 
 		if (IsDLSSFrameGenerationEnabled()) {
@@ -547,17 +492,15 @@ private:
 		}
 		else if (m_isDLSSFrameGenerationEnabled) SetDLSSFrameGenerationOptions(false);
 
-		m_deviceResources->Prepare();
-
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
 		const auto isPCLAvailable = m_streamline->IsFeatureAvailable(kFeaturePCL);
 
 		if (isPCLAvailable) ignore = m_streamline->SetPCLMarker(PCLMarker::eRenderSubmitStart);
 
-		const auto renderTargetView = m_deviceResources->GetRenderTargetView();
-		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
-		commandList->ClearRenderTargetView(renderTargetView, Colors::Black, 0, nullptr);
+		auto& backBuffer = m_deviceResources->GetBackBuffer();
+		commandList.SetRenderTarget(backBuffer);
+		commandList.Clear(backBuffer);
 
 		const auto viewport = m_deviceResources->GetScreenViewport();
 		const auto scissorRect = m_deviceResources->GetScissorRect();
@@ -566,9 +509,6 @@ private:
 
 		{
 			const ScopedPixEvent scopedPixEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
-
-			const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 			if (isSceneReady) {
 				if (m_resetHistory) ResetHistory();
@@ -601,10 +541,6 @@ private:
 		m_deviceResources->Present();
 
 		if (isPCLAvailable) ignore = m_streamline->SetPCLMarker(PCLMarker::ePresentEnd);
-
-		m_deviceResources->WaitForGpu();
-
-		m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 	}
 
 	void OnRenderSizeChanged() {
@@ -618,30 +554,28 @@ private:
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
 
 			{
-				const auto device = m_deviceResources->GetDevice();
+				auto& commandList = m_deviceResources->GetCommandList();
+				commandList.Begin();
 
-				ResourceUploadBatch resourceUploadBatch(device);
-				resourceUploadBatch.Begin();
+				m_RTXDIResources.CreateRenderSizeDependentResources(commandList);
 
-				m_RTXDIResources.CreateRenderSizeDependentResources(device, resourceUploadBatch, *m_resourceDescriptorHeap, ResourceDescriptorIndex::RRTXDINeighborOffsets);
-
-				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+				commandList.End();
 			}
 		}
 	}
 
 	void ResetHistory() {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
-		m_textures.at(TextureNames::PreviousLinearDepth)->Clear(commandList);
-		m_textures.at(TextureNames::PreviousBaseColorMetalness)->Clear(commandList);
-		m_textures.at(TextureNames::PreviousNormals)->Clear(commandList);
-		m_textures.at(TextureNames::PreviousRoughness)->Clear(commandList);
+		commandList.Clear(*m_textures.at(TextureNames::PreviousLinearDepth));
+		commandList.Clear(*m_textures.at(TextureNames::PreviousBaseColorMetalness));
+		commandList.Clear(*m_textures.at(TextureNames::PreviousNormals));
+		commandList.Clear(*m_textures.at(TextureNames::PreviousRoughness));
 
 		if (g_graphicsSettings.Raytracing.RTXGI.Technique == RTXGITechnique::SHARC) {
-			m_SHARC->GPUBuffers.HashEntries->Clear(commandList);
-			m_SHARC->GPUBuffers.HashCopyOffset->Clear(commandList);
-			m_SHARC->GPUBuffers.PreviousVoxelData->Clear(commandList);
+			commandList.Clear(*m_SHARC->GPUBuffers.HashEntries);
+			commandList.Clear(*m_SHARC->GPUBuffers.HashCopyOffset);
+			commandList.Clear(*m_SHARC->GPUBuffers.PreviousVoxelData);
 		}
 	}
 
@@ -651,9 +585,10 @@ private:
 	void LoadScene() {
 		m_futures[FutureNames::Scene] = StartDetachedFuture([&] {
 			try {
-			UINT descriptorIndex = ResourceDescriptorIndex::Reserve;
-			m_scene = make_shared<MyScene>(m_deviceResources->GetDevice(), m_deviceResources->GetCommandQueue());
-			m_scene->Load(MySceneDesc(), *m_resourceDescriptorHeap, descriptorIndex);
+			m_scene = make_unique<MyScene>(m_deviceResources->GetDeviceContext());
+			m_scene->Load(MySceneDesc());
+
+			OnSceneLoaded();
 		}
 		catch (...) {
 			const scoped_lock lock(m_exceptionMutex);
@@ -671,40 +606,28 @@ private:
 		PrepareLightResources();
 	}
 
-	void CreateDescriptorHeaps() {
-		const auto device = m_deviceResources->GetDevice();
-
-		m_defaultDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, DefaultDescriptorIndex::Capacity);
-
-		m_resourceDescriptorHeap = make_unique<DescriptorHeapEx>(device, ResourceDescriptorIndex::Capacity, ResourceDescriptorIndex::Reserve);
-
-		m_renderDescriptorHeap = make_unique<DescriptorHeapEx>(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, RenderDescriptorIndex::Capacity);
-	}
-
 	void CreatePipelineStates() {
-		const auto device = m_deviceResources->GetDevice();
+		const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
 		{
-			m_SHARC = make_unique<SHARC>(device);
+			m_SHARC = make_unique<SHARC>(deviceContext);
 			m_SHARC->Configure();
-
-			const auto CreateUAV = [&](auto& buffer, UINT resourceDescriptorIndex, UINT defaultDescriptorIndex) {
-				buffer->CreateRawUAV(*m_resourceDescriptorHeap, resourceDescriptorIndex);
-				buffer->CreateRawUAV(*m_defaultDescriptorHeap, defaultDescriptorIndex);
-			};
-			CreateUAV(m_SHARC->GPUBuffers.HashEntries, ResourceDescriptorIndex::RWSHARCHashEntries, DefaultDescriptorIndex::SHARCHashEntries);
-			CreateUAV(m_SHARC->GPUBuffers.HashCopyOffset, ResourceDescriptorIndex::RWSHARCHashCopyOffset, DefaultDescriptorIndex::SHARCHashCopyOffset);
-			CreateUAV(m_SHARC->GPUBuffers.PreviousVoxelData, ResourceDescriptorIndex::RWSHARCPreviousVoxelData, DefaultDescriptorIndex::SHARCPreviousVoxelData);
-			CreateUAV(m_SHARC->GPUBuffers.VoxelData, ResourceDescriptorIndex::RWSHARCVoxelData, DefaultDescriptorIndex::SHARCVoxelData);
 		}
 
-		m_raytracing = make_unique<Raytracing>(device);
+		{
+			CommandList commandList(deviceContext);
+			commandList.Begin();
 
-		m_lightPreparation = make_unique<LightPreparation>(device);
-		m_RTXDI = make_unique<RTXDI>(device);
+			m_raytracing = make_unique<Raytracing>(commandList);
+
+			commandList.End();
+		}
+
+		m_lightPreparation = make_unique<LightPreparation>(deviceContext);
+		m_RTXDI = make_unique<RTXDI>(deviceContext);
 
 		{
-			ignore = slSetD3DDevice(device);
+			ignore = slSetD3DDevice(deviceContext.Device);
 
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
@@ -723,16 +646,16 @@ private:
 	}
 
 	void CreatePostProcessing() {
-		const auto device = m_deviceResources->GetDevice();
+		const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
-		m_denoisedComposition = make_unique<DenoisedComposition>(device);
+		m_denoisedComposition = make_unique<DenoisedComposition>(deviceContext);
 
-		m_chromaticAberration = make_unique<ChromaticAberration>(device);
+		m_chromaticAberration = make_unique<ChromaticAberration>(deviceContext);
 
-		m_bloom = make_unique<Bloom>(device);
+		m_bloom = make_unique<Bloom>(deviceContext);
 
 		{
-			const RenderTargetState renderTargetState(DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_UNKNOWN);
+			const RenderTargetState renderTargetState(m_HDRTextureFormat, DXGI_FORMAT_UNKNOWN);
 
 			for (const auto Operator : {
 				ToneMapPostProcess::Saturate,
@@ -740,7 +663,7 @@ private:
 				ToneMapPostProcess::ACESFilmic,
 				ToneMapPostProcess::Operator_Max }) {
 				m_toneMapping[Operator - 1] = make_unique<ToneMapPostProcess>(
-					device,
+					deviceContext.Device,
 					renderTargetState,
 					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::None : Operator,
 					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::ST2084 : ToneMapPostProcess::SRGB
@@ -749,33 +672,41 @@ private:
 		}
 
 		{
-			const RenderTargetState renderTargetState(m_deviceResources->GetBackBufferFormat(), DXGI_FORMAT_UNKNOWN);
+			const RenderTargetState renderTargetState(m_deviceResources->GetCreationDesc().BackBufferFormat, DXGI_FORMAT_UNKNOWN);
 
-			m_textureCopy = make_unique<BasicPostProcess>(device, renderTargetState, BasicPostProcess::Copy);
+			m_textureCopy = make_unique<BasicPostProcess>(deviceContext.Device, renderTargetState, BasicPostProcess::Copy);
 
 			{
-				ResourceUploadBatch resourceUploadBatch(device);
+				ResourceUploadBatch resourceUploadBatch(deviceContext.Device);
 				resourceUploadBatch.Begin();
 
-				m_textureAlphaBlending = make_unique<SpriteBatch>(device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
+				m_textureAlphaBlending = make_unique<SpriteBatch>(deviceContext.Device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
 
-				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+				resourceUploadBatch.End(deviceContext.CommandQueue).get();
 			}
 		}
 
-		m_mipmapGeneration = make_unique<MipmapGeneration>(device);
+		m_mipmapGeneration = make_unique<MipmapGeneration>(deviceContext);
 	}
 
 	void CreateConstantBuffers() {
-		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data) { buffer = make_shared<T>(m_deviceResources->GetDevice(), initializer_list{ data }); };
-		CreateBuffer(m_GPUBuffers.Camera, Camera{ .IsNormalizedDepthReversed = true });
-		CreateBuffer(m_GPUBuffers.SceneData, SceneData());
+		const auto CreateBuffer = [&]<typename T>(auto & buffer) {
+			buffer = GPUBuffer::CreateConstant<T, false>(m_deviceResources->GetDeviceContext());
+		};
+		CreateBuffer.operator() < Camera > (m_GPUBuffers.Camera);
+		CreateBuffer.operator() < SceneData > (m_GPUBuffers.SceneData);
 	}
 
 	void CreateStructuredBuffers() {
-		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, size_t capacity) { buffer = make_shared<T>(m_deviceResources->GetDevice(), capacity); };
-		if (const auto instanceCount = size(m_scene->GetInstanceData())) CreateBuffer(m_GPUBuffers.InstanceData, instanceCount);
-		if (const auto objectCount = m_scene->GetObjectCount()) CreateBuffer(m_GPUBuffers.ObjectData, objectCount);
+		const auto CreateBuffer = [&]<typename T>(T, auto & buffer, UINT64 capacity) {
+			buffer = GPUBuffer::CreateDefault<T>(m_deviceResources->GetDeviceContext(), capacity);
+		};
+		if (const auto instanceCount = size(m_scene->GetInstanceData())) {
+			CreateBuffer(InstanceData(), m_GPUBuffers.InstanceData, instanceCount);
+		}
+		if (const auto objectCount = m_scene->GetObjectCount()) {
+			CreateBuffer(ObjectData(), m_GPUBuffers.ObjectData, objectCount);
+		}
 	}
 
 	void ProcessInput() {
@@ -893,12 +824,14 @@ private:
 	void UpdateScene() {
 		m_scene->Tick(m_stepTimer.GetElapsedSeconds(), m_inputDeviceStateTrackers.Gamepad, m_inputDeviceStateTrackers.Keyboard, m_inputDeviceStateTrackers.Mouse);
 
+		auto& commandList = m_deviceResources->GetCommandList();
+
 		{
-			auto& sceneData = m_GPUBuffers.SceneData->At(0);
-
-			sceneData.IsStatic = m_scene->IsStatic();
-
-			sceneData.ResourceDescriptorIndices = {};
+			SceneData sceneData{
+				.IsStatic = m_scene->IsStatic(),
+				.EnvironmentLightColor = m_scene->EnvironmentLightColor,
+				.EnvironmentColor = m_scene->EnvironmentColor,
+			};
 
 			const auto IsCubeMap = [](ID3D12Resource* pResource) {
 				if (pResource == nullptr) return false;
@@ -907,47 +840,44 @@ private:
 			};
 			if (m_scene->EnvironmentLightTexture.Texture) {
 				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(*m_scene->EnvironmentLightTexture.Texture);
-				sceneData.ResourceDescriptorIndices.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor().Index;
+				sceneData.ResourceDescriptorIndices.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
 			}
 			if (m_scene->EnvironmentTexture.Texture) {
 				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(*m_scene->EnvironmentTexture.Texture);
-				sceneData.ResourceDescriptorIndices.InEnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor().Index;
+				sceneData.ResourceDescriptorIndices.InEnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 			}
 
-			sceneData.EnvironmentLightColor = m_scene->EnvironmentLightColor;
-			sceneData.EnvironmentColor = m_scene->EnvironmentColor;
+			commandList.Write(*m_GPUBuffers.SceneData, initializer_list{ sceneData });
 		}
 
+		vector<InstanceData> instanceData(size(m_scene->GetInstanceData()));
+		vector<ObjectData> objectData(m_scene->GetObjectCount());
 		for (UINT instanceIndex = 0; const auto & renderObject : m_scene->RenderObjects) {
-			const auto& instanceData = m_scene->GetInstanceData()[instanceIndex];
-			m_GPUBuffers.InstanceData->At(instanceIndex) = {
-				.FirstGeometryIndex = instanceData.FirstGeometryIndex,
-				.PreviousObjectToWorld = instanceData.PreviousObjectToWorld,
-				.ObjectToWorld = instanceData.ObjectToWorld
+			const auto& _instanceData = m_scene->GetInstanceData()[instanceIndex];
+			instanceData[instanceIndex++] = {
+				.FirstGeometryIndex = _instanceData.FirstGeometryIndex,
+				.PreviousObjectToWorld = _instanceData.PreviousObjectToWorld,
+				.ObjectToWorld = _instanceData.ObjectToWorld
 			};
-			instanceIndex++;
 
 			const auto& mesh = renderObject.Mesh;
 
-			auto& objectData = m_GPUBuffers.ObjectData->At(instanceData.FirstGeometryIndex);
+			auto& _objectData = objectData[_instanceData.FirstGeometryIndex];
 
-			objectData.VertexDesc = mesh->GetVertexDesc();
+			_objectData.VertexDesc = mesh->GetVertexDesc();
 
-			objectData.Material = renderObject.Material;
+			_objectData.Material = renderObject.Material;
 
-			auto& resourceDescriptorIndices = objectData.ResourceDescriptorIndices;
-			resourceDescriptorIndices = {
-				.Mesh{
-					.Vertices = mesh->Vertices->GetRawSRVDescriptor().Index,
-					.Indices = mesh->Indices->GetStructuredSRVDescriptor().Index
-				}
+			_objectData.ResourceDescriptorIndices.Mesh = {
+				.Vertices = mesh->Vertices->GetSRVDescriptor(BufferSRVType::Raw),
+				.Indices = mesh->Indices->GetSRVDescriptor(BufferSRVType::Structured)
 			};
 
 			for (const auto& [Type, Texture] : renderObject.Textures) {
-				const auto index = Texture->GetSRVDescriptor().Index;
-				switch (auto& indices = resourceDescriptorIndices.Textures; Type) {
+				const auto index = Texture->GetSRVDescriptor().GetIndex();
+				switch (auto& indices = _objectData.ResourceDescriptorIndices.Textures; Type) {
 					case TextureMapType::BaseColor: indices.BaseColorMap = index; break;
 					case TextureMapType::EmissiveColor: indices.EmissiveColorMap = index; break;
 					case TextureMapType::Metallic: indices.MetallicMap = index; break;
@@ -958,36 +888,36 @@ private:
 					case TextureMapType::Normal: indices.NormalMap = index; break;
 					default: Throw<out_of_range>("Unsupported texture map type");
 				}
+				_objectData.Material.HasTexture = true;
 			}
 		}
+		commandList.Write(*m_GPUBuffers.InstanceData, instanceData);
+		commandList.Write(*m_GPUBuffers.ObjectData, objectData);
 	}
 
 	void PrepareLightResources() {
 		m_lightPreparation->SetScene(m_scene.get());
 		if (const auto emissiveTriangleCount = m_lightPreparation->GetEmissiveTriangleCount()) {
-			const auto device = m_deviceResources->GetDevice();
+			const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
-			m_RTXDIResources.CreateLightResources(device, emissiveTriangleCount, m_scene->GetObjectCount());
-			m_RTXDIResources.LocalLightPDF->CreateSRV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::RLocalLightPDF);
-			m_RTXDIResources.LocalLightPDF->CreateUAV(*m_resourceDescriptorHeap, ResourceDescriptorIndex::RWLocalLightPDF);
-			m_RTXDIResources.LocalLightPDF->CreateRTV(*m_renderDescriptorHeap, RenderDescriptorIndex::LocalLightPDF);
+			m_RTXDIResources.CreateLightResources(deviceContext, emissiveTriangleCount, m_scene->GetObjectCount());
 
 			{
-				ResourceUploadBatch resourceUploadBatch(device);
-				resourceUploadBatch.Begin();
+				CommandList commandList(deviceContext);
+				commandList.Begin();
 
-				m_lightPreparation->PrepareResources(resourceUploadBatch, *m_RTXDIResources.LightIndices);
+				m_lightPreparation->PrepareResources(commandList, *m_RTXDIResources.LightIndices);
 
-				resourceUploadBatch.End(m_deviceResources->GetCommandQueue()).get();
+				commandList.End();
 			}
 		}
 	}
 
 	void PrepareReSTIRDI() {
 		if (m_lightPreparation->GetEmissiveTriangleCount()) {
-			const auto commandList = m_deviceResources->GetCommandList();
+			auto& commandList = m_deviceResources->GetCommandList();
 
-			commandList->ClearRenderTargetView(m_RTXDIResources.LocalLightPDF->GetRTVDescriptor().CPUHandle, Colors::Black, 0, nullptr);
+			commandList.Clear(*m_RTXDIResources.LocalLightPDF);
 
 			{
 				m_lightPreparation->GPUBuffers = {
@@ -1004,9 +934,6 @@ private:
 			m_mipmapGeneration->SetTexture(*m_RTXDIResources.LocalLightPDF);
 
 			m_mipmapGeneration->Process(commandList);
-
-			const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-			commandList->SetDescriptorHeaps(1, &descriptorHeap);
 		}
 
 		m_RTXDIResources.Context->setLightBufferParams(m_lightPreparation->GetLightBufferParameters());
@@ -1045,7 +972,7 @@ private:
 	}
 
 	void RenderScene() {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
@@ -1104,7 +1031,7 @@ private:
 
 				case RTXGITechnique::SHARC:
 				{
-					m_SHARC->GPUBuffers.VoxelData->Clear(commandList);
+					commandList.Clear(*m_SHARC->GPUBuffers.VoxelData);
 
 					m_SHARC->GPUBuffers.Camera = m_GPUBuffers.Camera.get();
 
@@ -1330,7 +1257,7 @@ private:
 	}
 
 	void ProcessNRD() {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
 		const auto& NRDSettings = g_graphicsSettings.PostProcessing.NRD;
 
@@ -1345,7 +1272,7 @@ private:
 		{
 			m_NRD->NewFrame();
 
-			const auto Tag = [&](nrd::ResourceType resourceType, const Texture& texture) { m_NRD->Tag(resourceType, texture, texture.GetState()); };
+			const auto Tag = [&](nrd::ResourceType resourceType, Texture& texture) { m_NRD->Tag(resourceType, texture); };
 			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
 			Tag(nrd::ResourceType::IN_MV, *m_textures.at(TextureNames::MotionVectors));
 			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
@@ -1397,8 +1324,7 @@ private:
 			}
 			m_NRD->Denoise(initializer_list<Identifier>{ denoiser });
 
-			const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-			commandList->SetDescriptorHeaps(1, &descriptorHeap);
+			commandList.SetResourceDescriptorHeap();
 		}
 
 		m_denoisedComposition->GPUBuffers = { .Camera = m_GPUBuffers.Camera.get() };
@@ -1425,8 +1351,7 @@ private:
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagDescs));
 
-		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
+		m_deviceResources->GetCommandList().SetResourceDescriptorHeap();
 	}
 
 	void ProcessDLSSFrameGeneration(Texture& inColor) {
@@ -1439,7 +1364,7 @@ private:
 	}
 
 	void ProcessXeSSSuperResolution() {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
 		const XeSSSettings settings{
 			.InputSize = reinterpret_cast<const xess_2d_t&>(m_renderSize),
@@ -1452,26 +1377,20 @@ private:
 			XeSSResourceType Type;
 			Texture& Texture;
 			D3D12_RESOURCE_STATES State = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-		} resources[]{
+		};
+		for (auto& [Type, Texture, State] : initializer_list<XeSSResource>{
 			{ XeSSResourceType::Depth, *m_textures.at(TextureNames::NormalizedDepth) },
 			{ XeSSResourceType::Velocity, *m_textures.at(TextureNames::MotionVectors) },
 			{ XeSSResourceType::Color, *m_textures.at(TextureNames::Color) },
 			{ XeSSResourceType::Output, *m_textures.at(TextureNames::FinalColor), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
-		};
-
-		for (auto& [Type, Texture, State] : resources) {
-			const auto state = Texture.GetState();
-			Texture.TransitionTo(commandList, State);
+			}) {
+			commandList.SetState(Texture, State);
 			m_XeSS->Tag(Type, Texture);
-			State = state;
 		}
 
 		ignore = m_XeSS->Execute(commandList);
 
-		for (const auto& [_, Texture, State] : resources) Texture.TransitionTo(commandList, State);
-
-		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		commandList->SetDescriptorHeaps(1, &descriptorHeap);
+		m_deviceResources->GetCommandList().SetResourceDescriptorHeap();
 	}
 
 	void ProcessNIS(Texture& inColor, Texture& outColor) {
@@ -1486,8 +1405,7 @@ private:
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagDescs));
 
-		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		m_deviceResources->GetCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
+		m_deviceResources->GetCommandList().SetResourceDescriptorHeap();
 	}
 
 	void ProcessChromaticAberration(Texture& inColor, Texture& outColor) {
@@ -1500,20 +1418,18 @@ private:
 	}
 
 	void ProcessBloom(Texture& inColor, Texture& outColor) {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
 		m_bloom->SetTextures(inColor, outColor);
 
 		m_bloom->Process(commandList, { .Strength = g_graphicsSettings.PostProcessing.Bloom.Strength });
-
-		const auto descriptorHeap = m_resourceDescriptorHeap->Heap();
-		commandList->SetDescriptorHeaps(1, &descriptorHeap);
 	}
 
 	void ToneMap(Texture& inColor, Texture& outColor) {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		commandList.SetState(inColor, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(outColor, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		const auto isHDREnabled = m_deviceResources->IsHDREnabled();
 		const auto toneMappingSettings = g_graphicsSettings.PostProcessing.ToneMapping;
@@ -1526,34 +1442,32 @@ private:
 		}
 		else toneMapping.SetExposure(toneMappingSettings.NonHDR.Exposure);
 
-		toneMapping.SetHDRSourceTexture(inColor.GetSRVDescriptor().GPUHandle);
+		toneMapping.SetHDRSourceTexture(inColor.GetSRVDescriptor());
 
-		auto renderTargetView = outColor.GetRTVDescriptor().CPUHandle;
-		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
+		commandList.SetRenderTarget(outColor);
 
 		toneMapping.Process(commandList);
 
-		renderTargetView = m_deviceResources->GetRenderTargetView();
-		commandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
+		commandList.SetRenderTarget(m_deviceResources->GetBackBuffer());
 	}
 
 	void CopyTexture(Texture& inColor) {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		commandList.SetState(inColor, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
-		m_textureCopy->SetSourceTexture(inColor.GetSRVDescriptor().GPUHandle, inColor);
+		m_textureCopy->SetSourceTexture(inColor.GetSRVDescriptor(), inColor);
 		m_textureCopy->Process(commandList);
 	}
 
 	void AlphaBlendTexture(Texture& inColor) {
-		const auto commandList = m_deviceResources->GetCommandList();
+		auto& commandList = m_deviceResources->GetCommandList();
 
-		const ScopedBarrier scopedBarrier(commandList, { inColor.TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) });
+		commandList.SetState(inColor, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
 		m_textureAlphaBlending->SetViewport(m_deviceResources->GetScreenViewport());
 		m_textureAlphaBlending->Begin(commandList);
-		m_textureAlphaBlending->Draw(inColor.GetSRVDescriptor().GPUHandle, GetTextureSize(inColor), XMFLOAT2());
+		m_textureAlphaBlending->Draw(inColor.GetSRVDescriptor(), GetTextureSize(inColor), XMFLOAT2());
 		m_textureAlphaBlending->End();
 	}
 

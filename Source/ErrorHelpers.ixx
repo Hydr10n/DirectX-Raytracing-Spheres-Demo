@@ -11,7 +11,7 @@ using namespace std;
 
 #define PARAMETERS string_view message = {}, const stacktrace& stacktrace = stacktrace::current()
 
-#define MESSAGE format("{}{}{}", message, empty(message) ? "" : "\n\n", to_string(stacktrace))
+#define MESSAGE string(message) + (empty(message) ? "" : "\n\n") + to_string(stacktrace)
 
 #define THROW(Type, Succeeded, Code) \
 	void ThrowIfFailed(same_as<Type> auto value, PARAMETERS) { \

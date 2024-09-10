@@ -40,6 +40,11 @@ namespace {
 	exception_ptr g_exception;
 }
 
+extern "C" {
+	__declspec(dllexport) extern const UINT D3D12SDKVersion = D3D12_SDK_VERSION;
+	__declspec(dllexport) extern const char* D3D12SDKPath = D3D12_AGILITY_SDK_PATH;
+}
+
 int WINAPI wWinMain(
 	[[maybe_unused]] _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
 	[[maybe_unused]] _In_ LPWSTR lpCmdLine, [[maybe_unused]] _In_ int nShowCmd

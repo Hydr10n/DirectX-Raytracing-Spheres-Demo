@@ -1,11 +1,9 @@
 module;
 
 #include <ranges>
+#include <stdexcept>
 
 #include "directx/d3dx12.h"
-
-#include "directxtk12/DirectXHelpers.h"
-#include "directxtk12/ResourceUploadBatch.h"
 
 #include "D3D12MemAlloc.h"
 
@@ -14,8 +12,8 @@ module;
 export module GPUBuffer;
 
 import DescriptorHeap;
+import DeviceContext;
 import ErrorHelpers;
-import GPUMemoryAllocator;
 import GPUResource;
 
 using namespace D3D12MA;
@@ -24,355 +22,323 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
-namespace {
-	auto GetDevice(ID3D12Resource* pResource) {
-		ComPtr<ID3D12Device> device;
-		ThrowIfFailed(pResource->GetDevice(IID_PPV_ARGS(&device)));
-		return device;
-	}
-
-	void CreateSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count, UINT stride = 0, D3D12_BUFFER_SRV_FLAGS flags = D3D12_BUFFER_SRV_FLAG_NONE) {
-		const D3D12_SHADER_RESOURCE_VIEW_DESC desc{
-			.Format = format,
-			.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-			.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-			.Buffer{
-				.NumElements = count,
-				.StructureByteStride = stride,
-				.Flags = flags
-			}
-		};
-		GetDevice(pResource)->CreateShaderResourceView(pResource, &desc, descriptor);
-	}
-
-	void CreateUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count, UINT stride = 0, D3D12_BUFFER_UAV_FLAGS flags = D3D12_BUFFER_UAV_FLAG_NONE) {
-		const D3D12_UNORDERED_ACCESS_VIEW_DESC desc{
-			.Format = format,
-			.ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-			.Buffer{
-				.NumElements = count,
-				.StructureByteStride = stride,
-				.Flags = flags
-			}
-		};
-		GetDevice(pResource)->CreateUnorderedAccessView(pResource, nullptr, &desc, descriptor);
-	}
-}
-
-#define DEFAULT_BUFFER_BASE TGPUBuffer<T, D3D12_HEAP_TYPE_DEFAULT, Alignment>
-#define MAPPABLE_BUFFER_BASE TGPUBuffer<T, IsUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_READBACK, Alignment>
-#define MAPPABLE_BUFFER_INITIAL_STATE IsUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST
-#define DEFAULT_ALIGNMENT size_t Alignment = is_arithmetic_v<T> || is_enum_v<T> ? sizeof(T) : 2
-
-#define DESCRIPTOR(descriptor) \
-	m_descriptors.ShaderVisible.descriptor.Index = index; \
-	m_descriptors.ShaderVisible.descriptor.CPUHandle = descriptorHeap.GetCpuHandle(index); \
-	m_descriptors.ShaderVisible.descriptor.GPUHandle = descriptorHeap.GetGpuHandle(index);
-
 export namespace DirectX {
-	void CreateCBV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
-		const D3D12_CONSTANT_BUFFER_VIEW_DESC desc{
-			.BufferLocation = pResource->GetGPUVirtualAddress(),
-			.SizeInBytes = size ? size : static_cast<UINT>(pResource->GetDesc().Width)
-		};
-		GetDevice(pResource)->CreateConstantBufferView(&desc, descriptor);
-	}
+	struct BufferRange {
+		UINT64 Offset{}, Size = ~0ull;
 
-	void CreateStructuredSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT stride, UINT count) {
-		CreateSRV(pResource, descriptor, DXGI_FORMAT_UNKNOWN, count, stride);
-	}
+		constexpr bool IsEntire(UINT64 size) const { return !Offset && (Size == ~0ull || size == Size); }
 
-	void CreateRawSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
-		CreateSRV(pResource, descriptor, DXGI_FORMAT_R32_TYPELESS, ((size ? size : static_cast<UINT>(pResource->GetDesc().Width)) + 3) / 4, 0, D3D12_BUFFER_SRV_FLAG_RAW);
-	}
+		constexpr BufferRange Resolve(UINT64 size) const {
+			BufferRange ret;
+			ret.Offset = min(Offset, size);
+			ret.Size = Size ? min(Size, size - ret.Offset) : size - ret.Offset;
+			return ret;
+		}
+	};
 
-	void CreateTypedSRV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count) {
-		const auto size = GetBits(format) / 8;
-		CreateSRV(pResource, descriptor, format, (size * count + size - 1) / size);
-	}
+	enum class GPUBufferType { Default, Upload, Readback, RaytracingAccelerationStructure };
 
-	void CreateStructuredUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT stride, UINT count) {
-		CreateUAV(pResource, descriptor, DXGI_FORMAT_UNKNOWN, count, stride);
-	}
-
-	void CreateRawUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, UINT size = 0) {
-		CreateUAV(pResource, descriptor, DXGI_FORMAT_R32_TYPELESS, ((size ? size : static_cast<UINT>(pResource->GetDesc().Width)) + 3) / 4, 0, D3D12_BUFFER_UAV_FLAG_RAW);
-	}
-
-	void CreateTypedUAV(ID3D12Resource* pResource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, UINT count) {
-		const auto size = GetBits(format) / 8;
-		CreateUAV(pResource, descriptor, format, (size * count + size - 1) / size);
-	}
+	enum class BufferSRVType { Raw, Structured, Typed };
+	enum class BufferUAVType { Raw, Structured, Typed, Clear };
 
 	class GPUBuffer : public GPUResource {
 	public:
-		GPUBuffer(GPUBuffer&& source) noexcept = default;
-		GPUBuffer& operator=(GPUBuffer&& source) noexcept = default;
+		struct CreationDesc {
+			GPUBufferType Type = GPUBufferType::Default;
+			DXGI_FORMAT Format = DXGI_FORMAT_UNKNOWN;
+			UINT64 Size{};
+			UINT Stride{};
+			D3D12_RESOURCE_FLAGS Flags = D3D12_RESOURCE_FLAG_NONE;
+			D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_COMMON;
+			bool KeepInitialState{};
+		};
 
 		GPUBuffer(
-			ID3D12Device* pDevice,
+			const DeviceContext& deviceContext,
 			ID3D12Resource* pResource,
-			D3D12_RESOURCE_STATES state,
-			size_t stride, size_t count = 0
-		) noexcept(false) : GPUResource(pResource, state), m_device(pDevice) {
-			const auto desc = pResource->GetDesc();
-			if (desc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) throw invalid_argument("Resource is not buffer");
-			m_stride = stride;
-			m_capacity = m_count = count ? count : desc.Width / stride;
+			D3D12_RESOURCE_STATES initialState, bool keepInitialState,
+			UINT stride,
+			DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN
+		) noexcept(false) :
+			GPUResource(deviceContext, pResource, initialState, keepInitialState),
+			m_type(
+				initialState == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE ?
+				GPUBufferType::RaytracingAccelerationStructure : GetBufferType(GetHeapType(pResource))
+			),
+			m_format(format),
+			m_stride(stride) {
+			if ((*this)->GetDesc().Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) Throw<invalid_argument>("Resource is not buffer");
+
+			CheckStride(pResource->GetDesc().Width);
 		}
 
-		GPUBuffer(
-			ID3D12Device* pDevice,
-			D3D12_HEAP_TYPE heapType,
-			size_t stride, size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUResource(initialState), m_device(pDevice), m_stride(stride), m_capacity(capacity), m_count(capacity) {
-			const ALLOCATION_DESC allocationDesc{ .HeapType = heapType };
-			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(stride * capacity, flags);
-			ThrowIfFailed(GPUMemoryAllocator::Get(pDevice)->CreateResource(&allocationDesc, &resourceDesc, initialState, nullptr, &m_allocation, IID_PPV_ARGS(&m_resource)));
+		GPUBuffer(const DeviceContext& deviceContext, const CreationDesc& creationDesc) noexcept(false) :
+			GPUResource(deviceContext, creationDesc.InitialState, creationDesc.KeepInitialState),
+			m_type(creationDesc.Type),
+			m_format(creationDesc.Format),
+			m_stride(creationDesc.Stride) {
+			CheckStride(creationDesc.Size);
+
+			const ALLOCATION_DESC allocationDesc{ .HeapType = GetHeapType(creationDesc.Type) };
+			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(creationDesc.Size, creationDesc.Flags);
+			ThrowIfFailed(deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, creationDesc.InitialState, nullptr, &m_allocation, IID_NULL, nullptr));
 		}
 
-		size_t GetStride() const noexcept { return m_stride; }
-
-		size_t GetCapacity() const noexcept { return m_capacity; }
-		size_t GetCount() const noexcept { return m_count; }
-
-		void Clear(ID3D12GraphicsCommandList* pCommandList, UINT value = 0) {
-			TransitionTo(pCommandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			pCommandList->ClearUnorderedAccessViewUint(m_descriptors.ShaderVisible.UAV.Raw.GPUHandle, m_descriptors.Default.RawUAV.CPUHandle, m_resource.Get(), data(initializer_list{ value, value, value, value }), 0, nullptr);
-			InsertUAVBarrier(pCommandList);
+		template<typename T>
+		static unique_ptr<GPUBuffer> CreateDefault(
+			const DeviceContext& deviceContext,
+			UINT64 capacity,
+			DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN,
+			bool keepInitialState = false
+		) {
+			return make_unique<GPUBuffer>(
+				deviceContext,
+				CreationDesc{
+					.Format = format,
+					.Size = sizeof(T) * capacity,
+					.Stride = sizeof(T),
+					.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+					.KeepInitialState = keepInitialState
+				}
+			);
 		}
 
-		const auto& GetCBVDescriptor() const noexcept { return m_descriptors.ShaderVisible.CBV; }
-		auto& GetCBVDescriptor() noexcept { return m_descriptors.ShaderVisible.CBV; }
-
-		const auto& GetStructuredSRVDescriptor() const noexcept { return m_descriptors.ShaderVisible.SRV.Structured; }
-		auto& GetStructuredSRVDescriptor() noexcept { return m_descriptors.ShaderVisible.SRV.Structured; }
-
-		const auto& GetRawSRVDescriptor() const noexcept { return m_descriptors.ShaderVisible.SRV.Raw; }
-		auto& GetRawSRVDescriptor() noexcept { return m_descriptors.ShaderVisible.SRV.Raw; }
-
-		const auto& GetTypedSRVDescriptor() const noexcept { return m_descriptors.ShaderVisible.SRV.Typed; }
-		auto& GetTypedSRVDescriptor() noexcept { return m_descriptors.ShaderVisible.SRV.Typed; }
-
-		const auto& GetStructuredUAVDescriptor() const noexcept { return m_descriptors.ShaderVisible.UAV.Structured; }
-		auto& GetStructuredUAVDescriptor() noexcept { return m_descriptors.ShaderVisible.UAV.Structured; }
-
-		template <bool IsDefault = false>
-		const auto& GetRawUAVDescriptor() const noexcept {
-			if constexpr (IsDefault) return m_descriptors.Default.RawUAV;
-			return m_descriptors.ShaderVisible.UAV.Raw;
+		template <typename T>
+		static unique_ptr<GPUBuffer> CreateUpload(
+			const DeviceContext& deviceContext,
+			UINT64 capacity,
+			DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN,
+			bool keepInitialState = false
+		) {
+			return make_unique<GPUBuffer>(
+				deviceContext,
+				CreationDesc{
+					.Type = GPUBufferType::Upload,
+					.Format = format,
+					.Size = sizeof(T) * capacity,
+					.Stride = sizeof(T),
+					.InitialState = D3D12_RESOURCE_STATE_GENERIC_READ,
+					.KeepInitialState = keepInitialState
+				}
+			);
 		}
 
-		template <bool IsDefault = false>
-		auto& GetRawUAVDescriptor() noexcept {
-			return const_cast<conditional_t<IsDefault, DefaultDescriptor, ShaderVisibleDescriptor>&>(as_const(*this).GetRawUAVDescriptor<IsDefault>());
+		template <typename T, bool IsDefault = true> requires (sizeof(T) % D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT == 0)
+			static unique_ptr<GPUBuffer> CreateConstant(
+				const DeviceContext& deviceContext, UINT64 capacity = 1,
+				bool keepInitialState = false
+			) {
+			return make_unique<GPUBuffer>(
+				deviceContext,
+				CreationDesc{
+					.Type = IsDefault ? GPUBufferType::Default : GPUBufferType::Upload,
+					.Size = sizeof(T) * capacity,
+					.Stride = sizeof(T),
+					.InitialState = IsDefault ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_GENERIC_READ,
+					.KeepInitialState = keepInitialState
+				}
+			);
 		}
 
-		const auto& GetTypedUAVDescriptor() const noexcept { return m_descriptors.ShaderVisible.UAV.Typed; }
-		auto& GetTypedUAVDescriptor() noexcept { return m_descriptors.ShaderVisible.UAV.Typed; }
-
-		void CreateStructuredSRV(const DescriptorHeapEx& descriptorHeap, UINT index) {
-			DESCRIPTOR(SRV.Structured);
-			DirectX::CreateStructuredSRV(*this, m_descriptors.ShaderVisible.SRV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
+		static unique_ptr<GPUBuffer> CreateReadback(
+			const DeviceContext& deviceContext,
+			UINT64 size,
+			bool keepInitialState = false
+		) {
+			return make_unique<GPUBuffer>(
+				deviceContext,
+				CreationDesc{
+					.Type = GPUBufferType::Readback,
+					.Size = size,
+					.InitialState = D3D12_RESOURCE_STATE_COPY_DEST,
+					.KeepInitialState = keepInitialState
+				}
+			);
 		}
 
-		void CreateRawSRV(const DescriptorHeapEx& descriptorHeap, UINT index) {
-			DESCRIPTOR(SRV.Raw);
-			DirectX::CreateRawSRV(*this, m_descriptors.ShaderVisible.SRV.Raw.CPUHandle, static_cast<UINT>(m_stride * m_count));
+		static unique_ptr<GPUBuffer> CreateRaytracingAccelerationStructure(
+			const DeviceContext& deviceContext,
+			UINT64 size,
+			bool keepInitialState = false
+		) {
+			return make_unique<GPUBuffer>(
+				deviceContext,
+				CreationDesc{
+					.Type = GPUBufferType::RaytracingAccelerationStructure,
+					.Size = size,
+					.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+					.InitialState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+					.KeepInitialState = keepInitialState
+				}
+			);
 		}
 
-		void CreateTypedSRV(const DescriptorHeapEx& descriptorHeap, UINT index, DXGI_FORMAT format) {
-			DESCRIPTOR(SRV.Typed);
-			DirectX::CreateTypedSRV(*this, m_descriptors.ShaderVisible.SRV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
+		GPUBufferType GetType() const noexcept { return m_type; }
+
+		UINT GetStride() const noexcept { return m_stride; }
+
+		size_t GetCapacity() const noexcept { return (*this)->GetDesc().Width / m_stride; }
+
+		bool IsMappable() const {
+			return m_type == GPUBufferType::Upload || m_type == GPUBufferType::Readback || m_deviceContext.MemoryAllocator->IsGPUUploadHeapSupported();
 		}
 
-		void CreateStructuredUAV(const DescriptorHeapEx& descriptorHeap, UINT index) {
-			DESCRIPTOR(UAV.Structured);
-			DirectX::CreateStructuredUAV(*this, m_descriptors.ShaderVisible.UAV.Structured.CPUHandle, static_cast<UINT>(m_stride), static_cast<UINT>(m_count));
-		}
-
-		void CreateRawUAV(const DescriptorHeapEx& descriptorHeap, UINT index) {
-			const auto size = static_cast<UINT>(m_stride * m_count);
-			if (descriptorHeap.Heap()->GetDesc().Flags == D3D12_DESCRIPTOR_HEAP_FLAG_NONE) {
-				auto& descriptor = m_descriptors.Default.RawUAV;
-				descriptor = {
-					.Index = index,
-					.CPUHandle = descriptorHeap.GetCpuHandle(index)
-				};
-				DirectX::CreateRawUAV(*this, descriptor.CPUHandle, size);
-			}
-			else {
-				DESCRIPTOR(UAV.Raw);
-				DirectX::CreateRawUAV(*this, m_descriptors.ShaderVisible.UAV.Raw.CPUHandle, size);
-			}
-		}
-
-		void CreateTypedUAV(const DescriptorHeapEx& descriptorHeap, UINT index, DXGI_FORMAT format) {
-			DESCRIPTOR(UAV.Typed);
-			DirectX::CreateTypedUAV(*this, m_descriptors.ShaderVisible.UAV.Typed.CPUHandle, format, static_cast<UINT>(m_count));
-		}
-
-	protected:
-		ID3D12Device* m_device;
-
-		size_t m_stride{}, m_capacity{}, m_count{};
-
-		GPUBuffer(const GPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) :
-			GPUResource(initialState), m_device(source.m_device), m_stride(source.m_stride), m_capacity(source.m_capacity), m_count(source.m_count) {
-			D3D12_HEAP_PROPERTIES heapProperties;
-			ThrowIfFailed(source->GetHeapProperties(&heapProperties, nullptr));
-			const ALLOCATION_DESC allocationDesc{ .HeapType = heapProperties.Type };
-			const auto resourceDesc = source->GetDesc();
-			ThrowIfFailed(GPUMemoryAllocator::Get(m_device)->CreateResource(&allocationDesc, &resourceDesc, initialState, nullptr, &m_allocation, IID_PPV_ARGS(&m_resource)));
-		}
-
-	private:
-		struct {
-			struct { DefaultDescriptor RawUAV; } Default;
-			struct {
-				ShaderVisibleDescriptor CBV;
-				struct { ShaderVisibleDescriptor Structured, Raw, Typed; } SRV, UAV;
-			} ShaderVisible;
-		} m_descriptors;
-	};
-
-	template <typename T, D3D12_HEAP_TYPE HeapType, DEFAULT_ALIGNMENT>
-	class TGPUBuffer : public GPUBuffer {
-	public:
-		static_assert(IsPowerOf2(Alignment));
-
-		using ElementType = T;
-
-		TGPUBuffer(TGPUBuffer&& source) noexcept = default;
-		TGPUBuffer& operator=(TGPUBuffer&& source) noexcept = default;
-
-		explicit TGPUBuffer(
-			ID3D12Device* pDevice,
-			size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : GPUBuffer(pDevice, HeapType, (sizeof(T) + Alignment - 1) & ~(Alignment - 1), capacity, initialState, flags) {}
-
-	protected:
-		TGPUBuffer(const TGPUBuffer& source, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON) noexcept(false) :
-			GPUBuffer(source, initialState) {}
-	};
-
-	template <typename T, DEFAULT_ALIGNMENT>
-	struct DefaultBuffer : DEFAULT_BUFFER_BASE {
-		using DEFAULT_BUFFER_BASE::TGPUBuffer;
-
-		DefaultBuffer(
-			ID3D12Device* pDevice,
-			size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : DEFAULT_BUFFER_BASE(pDevice, capacity, initialState, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {}
-
-		DefaultBuffer(
-			ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch,
-			span<const T> data,
-			D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAGS additionalFlags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : DEFAULT_BUFFER_BASE(pDevice, size(data), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | additionalFlags) {
-			Write(resourceUploadBatch, data);
-			resourceUploadBatch.Transition(*this, this->m_state, afterState);
-			this->m_state = afterState;
-		}
-
-		DefaultBuffer(const DefaultBuffer& source, ID3D12GraphicsCommandList* pCommandList) noexcept(false) : DEFAULT_BUFFER_BASE(source) {
-			if (pCommandList != nullptr) {
-				const ScopedBarrier scopedBarrier(pCommandList, { source.TransitionBarrier(D3D12_RESOURCE_STATE_COPY_SOURCE) });
-				this->TransitionTo(pCommandList, D3D12_RESOURCE_STATE_COPY_DEST);
-				pCommandList->CopyBufferRegion(*this, 0, source, 0, this->m_stride * source.m_count);
-				this->TransitionTo(pCommandList, source.m_state);
-			}
-		}
-
-		void Write(ResourceUploadBatch& resourceUploadBatch, span<const T> data) {
-			const auto count = size(data);
-			if (count > this->m_capacity) *this = DefaultBuffer(this->m_device, count);
-			else this->m_count = count;
-			D3D12_SUBRESOURCE_DATA subresourceData{ .RowPitch = static_cast<LONG_PTR>(this->m_stride * count) };
-			vector<uint8_t> newData;
-			if (sizeof(T) % Alignment == 0) subresourceData.pData = ::data(data);
-			else {
-				newData = vector<uint8_t>(this->m_stride * count);
-				for (const auto i : views::iota(static_cast<size_t>(0), count)) *reinterpret_cast<T*>(::data(newData) + this->m_stride * i) = data[i];
-				subresourceData.pData = ::data(newData);
-			}
-			resourceUploadBatch.Transition(*this, this->m_state, D3D12_RESOURCE_STATE_COPY_DEST);
-			resourceUploadBatch.Upload(*this, 0, &subresourceData, 1);
-			resourceUploadBatch.Transition(*this, D3D12_RESOURCE_STATE_COPY_DEST, this->m_state);
-		}
-	};
-
-	template <typename T, bool IsUpload = true, DEFAULT_ALIGNMENT>
-	class MappableBuffer : public MAPPABLE_BUFFER_BASE {
-	public:
-		MappableBuffer(MappableBuffer&& source) noexcept = default;
-		MappableBuffer& operator=(MappableBuffer&& source) noexcept = default;
-
-		MappableBuffer(
-			ID3D12Device* pDevice,
-			size_t capacity = 1,
-			D3D12_RESOURCE_STATES initialState = MAPPABLE_BUFFER_INITIAL_STATE, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : MAPPABLE_BUFFER_BASE(pDevice, capacity, initialState, flags) {
+		void* GetMappedData() {
 			Map();
-		}
-
-		MappableBuffer(
-			ID3D12Device* pDevice,
-			span<const T> data,
-			D3D12_RESOURCE_STATES initialState = MAPPABLE_BUFFER_INITIAL_STATE, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE
-		) noexcept(false) : MAPPABLE_BUFFER_BASE(pDevice, size(data), initialState, flags) {
-			Map();
-			Write(data);
-		}
-
-		MappableBuffer(const MappableBuffer& source) noexcept(false) : MAPPABLE_BUFFER_BASE(source, MAPPABLE_BUFFER_INITIAL_STATE) {
-			Map();
-			for (const auto i : views::iota(static_cast<size_t>(0), this->m_count)) (*this)[i] = source[i];
-		}
-
-		void Write(span<const T> data) {
-			const auto count = size(data);
-			if (count > this->m_capacity) *this = MappableBuffer(this->m_device, count);
-			else this->m_count = count;
-			if (sizeof(T) % Alignment == 0) ranges::copy(data, reinterpret_cast<T*>(m_data));
-			else {
-				for (const auto i : views::iota(static_cast<size_t>(0), count)) (*this)[i] = data[i];
-			}
+			return m_mappedData;
 		}
 
 		void Map() {
-			if (m_data == nullptr) ThrowIfFailed((*this)->Map(0, nullptr, reinterpret_cast<void**>(&m_data)));
+			if (m_mappedData == nullptr) ThrowIfFailed((*this)->Map(0, nullptr, &m_mappedData));
 		}
 
 		void Unmap() {
-			if (m_data != nullptr) {
+			if (m_mappedData != nullptr) {
 				(*this)->Unmap(0, nullptr);
-				m_data = nullptr;
+				m_mappedData = nullptr;
 			}
 		}
 
-		const T& operator[](size_t index) const { return *reinterpret_cast<const T*>(m_data + this->m_stride * index); }
-		T& operator[](size_t index) { return const_cast<T&>(as_const(*this)[index]); }
+		const Descriptor& GetCBVDescriptor() const noexcept { return *m_descriptors.CBV; }
+		const Descriptor& GetSRVDescriptor(BufferSRVType type) const noexcept { return *m_descriptors.SRV[to_underlying(type)]; }
+		const Descriptor& GetUAVDescriptor(BufferUAVType type) const noexcept { return *m_descriptors.UAV[to_underlying(type)]; }
 
-		const T& At(size_t index) const {
-			if (index >= this->m_count) throw out_of_range("Index out of range");
-			return (*this)[index];
+		void CreateCBV(BufferRange range = {}) {
+			const auto resource = GetNative();
+
+			range = range.Resolve(resource->GetDesc().Width);
+
+			const D3D12_CONSTANT_BUFFER_VIEW_DESC desc{
+				.BufferLocation = resource->GetGPUVirtualAddress() + range.Offset,
+				.SizeInBytes = static_cast<UINT>(range.Size)
+			};
+
+			auto& descriptor = m_descriptors.CBV;
+			descriptor = m_deviceContext.ResourceDescriptorHeap->Allocate();
+			m_deviceContext.Device->CreateConstantBufferView(&desc, *descriptor);
 		}
-		T& At(size_t index) { return const_cast<T&>(as_const(*this).At(index)); }
+
+		void CreateSRV(BufferSRVType type, BufferRange range = {}) {
+			const auto resource = GetNative();
+
+			D3D12_SHADER_RESOURCE_VIEW_DESC desc{
+				.ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
+			};
+			UINT stride;
+			switch (type) {
+				case BufferSRVType::Raw:
+				{
+					desc.Format = DXGI_FORMAT_R32_TYPELESS;
+					desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+					stride = sizeof(UINT32);
+				}
+				break;
+
+				case BufferSRVType::Structured:
+				{
+					desc.Buffer.StructureByteStride = m_stride;
+					stride = m_stride;
+				}
+				break;
+
+				case BufferSRVType::Typed:
+				{
+					desc.Format = m_format;
+					stride = GetBits(m_format) / 8;
+				}
+				break;
+			}
+			range = range.Resolve(resource->GetDesc().Width);
+			desc.Buffer.FirstElement = range.Offset / stride;
+			desc.Buffer.NumElements = static_cast<UINT>(range.Size) / stride;
+
+			auto& descriptor = m_descriptors.SRV[to_underlying(type)];
+			descriptor = m_deviceContext.ResourceDescriptorHeap->Allocate();
+			m_deviceContext.Device->CreateShaderResourceView(resource, &desc, *descriptor);
+		}
+
+		void CreateUAV(BufferUAVType type, BufferRange range = {}) {
+			const auto resource = GetNative();
+
+			D3D12_UNORDERED_ACCESS_VIEW_DESC desc{ .ViewDimension = D3D12_UAV_DIMENSION_BUFFER };
+			UINT stride;
+			switch (type) {
+				case BufferUAVType::Clear:
+				case BufferUAVType::Raw:
+				{
+					desc.Format = DXGI_FORMAT_R32_TYPELESS;
+					desc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+					stride = sizeof(UINT32);
+				}
+				break;
+
+				case BufferUAVType::Structured:
+				{
+					desc.Buffer.StructureByteStride = m_stride;
+					stride = m_stride;
+				}
+				break;
+
+				case BufferUAVType::Typed:
+				{
+					desc.Format = m_format;
+					stride = GetBits(m_format) / 8;
+				}
+				break;
+			}
+			range = range.Resolve(resource->GetDesc().Width);
+			desc.Buffer.FirstElement = range.Offset / stride;
+			desc.Buffer.NumElements = static_cast<UINT>(range.Size) / stride;
+
+			auto& descriptor = m_descriptors.UAV[to_underlying(type)];
+			descriptor = (type == BufferUAVType::Clear ? m_deviceContext.DefaultDescriptorHeap : m_deviceContext.ResourceDescriptorHeap)->Allocate();
+			m_deviceContext.Device->CreateUnorderedAccessView(resource, nullptr, &desc, *descriptor);
+
+			if (type == BufferUAVType::Clear && !m_descriptors.UAV[to_underlying(BufferUAVType::Raw)]) {
+				CreateUAV(BufferUAVType::Raw);
+			}
+		}
 
 	private:
-		uint8_t* m_data{};
+		GPUBufferType m_type;
+
+		DXGI_FORMAT m_format;
+
+		UINT m_stride;
+
+		void* m_mappedData{};
+
+		struct { unique_ptr<Descriptor> CBV, SRV[3], UAV[4]; } m_descriptors;
+
+		static D3D12_HEAP_TYPE GetHeapType(ID3D12Resource* pResource) {
+			D3D12_HEAP_PROPERTIES heapProperties;
+			ThrowIfFailed(pResource->GetHeapProperties(&heapProperties, nullptr));
+			return heapProperties.Type;
+		}
+
+		D3D12_HEAP_TYPE GetHeapType(GPUBufferType type) const {
+			const auto isGPUUploadHeapSupported = m_deviceContext.MemoryAllocator->IsGPUUploadHeapSupported();
+			switch (type) {
+				case GPUBufferType::Upload: return isGPUUploadHeapSupported ? D3D12_HEAP_TYPE_GPU_UPLOAD : D3D12_HEAP_TYPE_UPLOAD;
+				case GPUBufferType::Readback: return D3D12_HEAP_TYPE_READBACK;
+				default: return isGPUUploadHeapSupported ? D3D12_HEAP_TYPE_GPU_UPLOAD : D3D12_HEAP_TYPE_DEFAULT;
+			}
+		}
+
+		static constexpr GPUBufferType GetBufferType(D3D12_HEAP_TYPE type) {
+			switch (type) {
+				case D3D12_HEAP_TYPE_UPLOAD: return GPUBufferType::Upload;
+				case D3D12_HEAP_TYPE_READBACK: return GPUBufferType::Readback;
+				default: return GPUBufferType::Default;
+			}
+		}
+
+		void CheckStride(UINT64 size) const {
+			if (m_type == GPUBufferType::Default || m_type == GPUBufferType::Upload) {
+				if (!m_stride) Throw<invalid_argument>("Buffer stride cannot be 0");
+				if (size % m_stride != 0) Throw<invalid_argument>("Buffer size unaligned to stride");
+			}
+		}
 	};
-
-	template <typename T, DEFAULT_ALIGNMENT>
-	using UploadBuffer = MappableBuffer<T, true, Alignment>;
-
-	template <typename T, DEFAULT_ALIGNMENT>
-	using ReadBackBuffer = MappableBuffer<T, false, Alignment>;
-
-	template <typename T>
-	using ConstantBuffer = UploadBuffer<T, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>;
 }

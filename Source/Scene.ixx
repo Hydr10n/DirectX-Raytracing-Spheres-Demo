@@ -17,7 +17,7 @@ module;
 export module Scene;
 
 import CommandList;
-import DescriptorHeap;
+import DeviceContext;
 import Event;
 import Math;
 import Material;
@@ -101,32 +101,36 @@ export {
 
 		vector<RenderObject> RenderObjects;
 
-		Scene(ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue) : m_device(pDevice), m_commandQueue(pCommandQueue), m_commandList(pDevice), m_observer(*this) {}
+		Scene(const DeviceContext& deviceContext) : m_commandList(deviceContext), m_observer(*this) {}
 
 		virtual bool IsStatic() const { return false; }
 
 		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) {}
 
-		void Load(const SceneDesc& sceneDesc, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex) {
+		void Load(const SceneDesc& sceneDesc) {
 			reinterpret_cast<SceneBase&>(*this) = sceneDesc;
 
-			ResourceUploadBatch resourceUploadBatch(m_device);
+			const auto& deviceContext = m_commandList.GetDeviceContext();
+
+			m_commandList.Begin();
+
+			ResourceUploadBatch resourceUploadBatch(deviceContext.Device);
 			resourceUploadBatch.Begin();
 
 			{
 				if (!empty(sceneDesc.EnvironmentLightTexture.FilePath)) {
-					EnvironmentLightTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
+					EnvironmentLightTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), deviceContext, resourceUploadBatch);
 					EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
 				}
 				if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
-					EnvironmentTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
+					EnvironmentTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), deviceContext, resourceUploadBatch);
 					EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 				}
 			}
 
 			{
 				for (const auto& [URI, Mesh] : sceneDesc.Meshes) {
-					Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
+					Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, deviceContext, m_commandList);
 				}
 
 				for (const auto& renderObjectDesc : sceneDesc.RenderObjects) {
@@ -136,14 +140,16 @@ export {
 					renderObject.Mesh = Meshes.at(renderObjectDesc.MeshURI);
 
 					for (const auto& [TextureMapType, FilePath] : renderObjectDesc.Textures) {
-						renderObject.Textures[TextureMapType] = LoadTexture(ResolveResourcePath(FilePath), m_device, resourceUploadBatch, descriptorHeap, descriptorIndex);
+						renderObject.Textures[TextureMapType] = LoadTexture(ResolveResourcePath(FilePath), deviceContext, resourceUploadBatch);
 					}
 
 					RenderObjects.emplace_back(renderObject);
 				}
 			}
 
-			resourceUploadBatch.End(m_commandQueue).get();
+			resourceUploadBatch.End(deviceContext.CommandQueue).get();
+
+			m_commandList.End();
 
 			Refresh();
 
@@ -193,6 +199,8 @@ export {
 		const auto& GetTopLevelAccelerationStructure() const { return *m_topLevelAccelerationStructure; }
 
 		void CreateAccelerationStructures(bool updateOnly) {
+			const auto& deviceContext = m_commandList.GetDeviceContext();
+
 			vector<uint64_t> newBottomLevelAccelerationStructureIDs;
 
 			{
@@ -201,7 +209,7 @@ export {
 				if (!updateOnly) {
 					m_bottomLevelAccelerationStructureIDs = {};
 
-					m_accelerationStructureManager = make_unique<DxAccelStructManager>(m_device);
+					m_accelerationStructureManager = make_unique<DxAccelStructManager>(deviceContext.Device);
 					m_accelerationStructureManager->Initialize();
 				}
 
@@ -227,21 +235,25 @@ export {
 
 				if (!empty(newBuildBottomLevelAccelerationStructureInputs)) {
 					m_accelerationStructureManager->PopulateBuildCommandList(m_commandList, data(newBuildBottomLevelAccelerationStructureInputs), size(newBuildBottomLevelAccelerationStructureInputs), newBottomLevelAccelerationStructureIDs);
-					for (UINT i = 0; const auto & meshNode : newMeshes) m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
+					for (UINT i = 0; const auto & meshNode : newMeshes) {
+						m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
+					}
 					m_accelerationStructureManager->PopulateUAVBarriersCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
 					m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
 				}
 
-				m_commandList.End(m_commandQueue).get();
+				m_commandList.End();
 			}
 
 			{
 				m_commandList.Begin();
 
-				if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->PopulateCompactionCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
+				if (!empty(newBottomLevelAccelerationStructureIDs)) {
+					m_accelerationStructureManager->PopulateCompactionCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
+				}
 
 				if (!updateOnly) {
-					m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(m_device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
+					m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
 				}
 				vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
 				instanceDescs.reserve(size(m_instanceData));
@@ -258,16 +270,16 @@ export {
 				}
 				m_topLevelAccelerationStructure->Build(m_commandList, instanceDescs, updateOnly);
 
-				m_commandList.End(m_commandQueue).get();
+				m_commandList.End();
 			}
 
-			if (!empty(newBottomLevelAccelerationStructureIDs)) m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
+			if (!empty(newBottomLevelAccelerationStructureIDs)) {
+				m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
+			}
 		}
 
 	private:
-		ID3D12Device5* m_device;
-		ID3D12CommandQueue* m_commandQueue;
-		CommandList<ID3D12GraphicsCommandList4> m_commandList;
+		CommandList m_commandList;
 
 		vector<InstanceData> m_instanceData;
 		UINT m_objectCount{};

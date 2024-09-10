@@ -90,13 +90,13 @@ Material GetMaterial(uint objectIndex, float2 textureCoordinate)
 		const uint
 			metallicMapIndex = resourceDescriptorIndices.TextureMaps.Metallic,
 			roughnessMapIndex = resourceDescriptorIndices.TextureMaps.Roughness,
-			ambientOcclusionMapIndex = resourceDescriptorIndices.TextureMaps.AmbientOcclusion;
-		const uint metallicMapChannel = metallicMapIndex == roughnessMapIndex && roughnessMapIndex == ambientOcclusionMapIndex ? 2 : 0;
+			ambientOcclusionMapIndex = resourceDescriptorIndices.TextureMaps.AmbientOcclusion,
+			metallicChannel = metallicMapIndex == roughnessMapIndex && roughnessMapIndex == ambientOcclusionMapIndex ? 2 : 0;
 
 		if (metallicMapIndex != ~0u)
 		{
 			const Texture2D<float3> texture = ResourceDescriptorHeap[metallicMapIndex];
-			material.Metallic = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0)[metallicMapChannel];
+			material.Metallic = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0)[metallicChannel];
 		}
 
 		if (roughnessMapIndex != ~0u)

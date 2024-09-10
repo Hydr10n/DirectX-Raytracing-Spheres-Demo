@@ -2,6 +2,8 @@ module;
 
 #include <DirectXMath.h>
 
+#include <Windows.h>
+
 export module Material;
 
 using namespace DirectX;
@@ -15,6 +17,7 @@ export {
 		float Metallic{}, Roughness = 0.5f, Transmission{}, IOR = 1;
 		AlphaMode AlphaMode = AlphaMode::Opaque;
 		float AlphaThreshold = 0.5f;
-		XMFLOAT3 _;
+		BOOL HasTexture{};
+		XMFLOAT2 _;
 	};
 }

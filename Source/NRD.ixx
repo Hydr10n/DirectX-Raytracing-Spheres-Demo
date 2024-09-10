@@ -17,6 +17,9 @@ struct AGSContext;
 
 export module NRD;
 
+import CommandList;
+import Texture;
+
 using namespace DirectX;
 using namespace nrd;
 using namespace nri;
@@ -36,16 +39,17 @@ export {
 		NRD& operator=(const NRD&) = delete;
 
 		NRD(
-			ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, ID3D12GraphicsCommandList* pCommandList,
+			CommandList& commandList,
 			uint16_t resourceWidth, uint16_t resourceHeight,
 			uint32_t backBufferCount,
 			span<const DenoiserDesc> denoiserDescs
 		) : m_NRD(backBufferCount, true) {
-			if (nriCreateDeviceFromD3D12Device({ .d3d12Device = pDevice, .d3d12GraphicsQueue = pCommandQueue }, m_device) == nri::Result::SUCCESS
+			if (const auto& deviceContext = commandList.GetDeviceContext();
+				nriCreateDeviceFromD3D12Device({ .d3d12Device = deviceContext.Device, .d3d12GraphicsQueue = deviceContext.CommandQueue }, m_device) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::CoreInterface), static_cast<CoreInterface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::HelperInterface), static_cast<HelperInterface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
-				&& m_NRI.CreateCommandBufferD3D12(*m_device, CommandBufferD3D12Desc{ .d3d12CommandList = pCommandList }, m_commandBuffer) == nri::Result::SUCCESS) {
+				&& m_NRI.CreateCommandBufferD3D12(*m_device, { .d3d12CommandList = commandList }, m_commandBuffer) == nri::Result::SUCCESS) {
 				m_isAvailable = m_NRD.Initialize(resourceWidth, resourceHeight, { .denoisers = data(denoiserDescs), .denoisersNum = static_cast<uint32_t>(size(denoiserDescs)) }, *m_device, m_NRI, m_NRI);
 				if (m_isAvailable) m_textureBarrierDescs.resize(NrdUserPool().max_size());
 			}
@@ -55,7 +59,9 @@ export {
 			if (m_isAvailable) m_NRD.Destroy();
 
 			for (const auto& textureBarrierDesc : m_textureBarrierDescs) {
-				if (textureBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureBarrierDesc.texture));
+				if (textureBarrierDesc.texture != nullptr) {
+					m_NRI.DestroyTexture(const_cast<nri::Texture&>(*textureBarrierDesc.texture));
+				}
 			}
 
 			if (m_commandBuffer != nullptr) m_NRI.DestroyCommandBuffer(*m_commandBuffer);
@@ -67,12 +73,13 @@ export {
 
 		void NewFrame() { m_NRD.NewFrame(); }
 
-		auto Tag(ResourceType type, ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
-			if (!m_isAvailable || pResource == nullptr) return false;
+		auto Tag(ResourceType type, DirectX::Texture& texture) {
+			if (!m_isAvailable) return false;
 
 			AccessBits accessBits;
 			Layout layout;
-			if (state & D3D12_RESOURCE_STATE_RENDER_TARGET) {
+			if (const auto state = texture.GetState();
+				state & D3D12_RESOURCE_STATE_RENDER_TARGET) {
 				accessBits = AccessBits::COLOR_ATTACHMENT;
 				layout = Layout::COLOR_ATTACHMENT;
 			}
@@ -90,16 +97,16 @@ export {
 
 			textureBarrierDesc.initial = textureBarrierDesc.after = { accessBits, layout };
 
-			if (textureBarrierDesc.resource == pResource) return true;
+			if (textureBarrierDesc.resource == &texture) return true;
 
-			Texture* texture;
-			if (m_NRI.CreateTextureD3D12(*m_device, { pResource }, texture) != nri::Result::SUCCESS) return false;
-			if (textureBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<Texture&>(*textureBarrierDesc.texture));
-			textureBarrierDesc.texture = texture;
+			nri::Texture* pTexture;
+			if (m_NRI.CreateTextureD3D12(*m_device, { texture }, pTexture) != nri::Result::SUCCESS) return false;
+			if (textureBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<nri::Texture&>(*textureBarrierDesc.texture));
+			textureBarrierDesc.texture = pTexture;
 
-			NrdIntegration_SetResource(m_userPool, type, { &textureBarrierDesc, nriConvertDXGIFormatToNRI(pResource->GetDesc().Format) });
+			NrdIntegration_SetResource(m_userPool, type, { &textureBarrierDesc, nriConvertDXGIFormatToNRI(texture.GetNative()->GetDesc().Format) });
 
-			textureBarrierDesc.resource = pResource;
+			textureBarrierDesc.resource = &texture;
 
 			return true;
 		}
@@ -150,7 +157,7 @@ export {
 		struct NriInterface : CoreInterface, HelperInterface, WrapperD3D12Interface {} m_NRI{};
 
 		struct TextureBarrierDescEx : TextureBarrierDesc {
-			ID3D12Resource* resource;
+			DirectX::Texture* resource;
 			AccessLayoutStage initial;
 		};
 		vector<TextureBarrierDescEx> m_textureBarrierDescs;

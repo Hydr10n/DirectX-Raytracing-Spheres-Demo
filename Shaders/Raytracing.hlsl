@@ -110,7 +110,7 @@ void RayGeneration()
 	for (uint sampleIndex = 0; sampleIndex < samplesPerPixel; sampleIndex++)
 	{
 		RayDesc rayDesc = primaryRayDesc;
-		bool isHit = isPrimarySurfaceHit;
+		bool isHit = isPrimarySurfaceHit, hasTexture = primarySurfaceMaterial.HasTexture;
 		HitInfo hitInfo = primarySurfaceHitInfo;
 
 		float3 emissiveColor = primarySurfaceMaterial.EmissiveColor;
@@ -139,17 +139,19 @@ void RayGeneration()
 				rayDesc.Direction = L;
 				rayDesc.TMin = 0;
 				rayDesc.TMax = 1.#INF;
-				isHit = CastRay(rayDesc, hitInfo, g_graphicsSettings.IsShaderExecutionReorderingEnabled);
+				isHit = CastRay(
+					rayDesc,
+					hitInfo
+#if !SHARC_QUERY
+					, g_graphicsSettings.IsShaderExecutionReorderingEnabled && (lobeType == LobeType::DiffuseReflection || hasTexture)
+#endif
+				);
 			}
 
 			if (!sampleIndex && bounceIndex == 1)
 			{
 				isDiffuse = lobeType == LobeType::DiffuseReflection;
-
-				if (isHit)
-				{
-					hitDistance = hitInfo.Distance;
-				}
+				hitDistance = hitInfo.Distance;
 			}
 
 			if (!isHit)
@@ -213,6 +215,7 @@ void RayGeneration()
 			if (bounceIndex)
 			{
 				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
+				hasTexture = material.HasTexture;
 				emissiveColor = material.EmissiveColor;
 				BSDFSample.Initialize(material);
 			}

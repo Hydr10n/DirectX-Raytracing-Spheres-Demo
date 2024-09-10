@@ -8,6 +8,8 @@ module;
 
 export module RaytracingHelpers;
 
+import CommandList;
+import DeviceContext;
 import ErrorHelpers;
 import GPUBuffer;
 
@@ -17,24 +19,30 @@ using namespace std;
 
 export namespace DirectX::RaytracingHelpers {
 	struct BottomLevelAccelerationStructureBuffers {
-		shared_ptr<DefaultBuffer<uint8_t>> Scratch, Result;
+		shared_ptr<GPUBuffer> Scratch, Result;
 
 		BottomLevelAccelerationStructureBuffers() = default;
 
-		BottomLevelAccelerationStructureBuffers(ID3D12Device* pDevice, size_t scratchSize, size_t resultSize) noexcept(false) {
-			Scratch = make_shared<DefaultBuffer<uint8_t>>(pDevice, scratchSize);
-			Result = make_shared<DefaultBuffer<uint8_t>>(pDevice, resultSize, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-		}
+		BottomLevelAccelerationStructureBuffers(
+			const DeviceContext& deviceContext,
+			size_t scratchSize, size_t resultSize
+		) noexcept(false) :
+			Scratch(GPUBuffer::CreateDefault<uint8_t>(deviceContext, scratchSize)),
+			Result(GPUBuffer::CreateRaytracingAccelerationStructure(deviceContext, resultSize)) {}
 	};
 
 	struct TopLevelAccelerationStructureBuffers : BottomLevelAccelerationStructureBuffers {
-		shared_ptr<UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC>> InstanceDescs;
+		shared_ptr<GPUBuffer> InstanceDescs;
 
 		TopLevelAccelerationStructureBuffers() = default;
 
-		TopLevelAccelerationStructureBuffers(ID3D12Device* pDevice, size_t scratchSize, size_t resultSize, size_t instanceDescCount) :
-			BottomLevelAccelerationStructureBuffers(pDevice, scratchSize, resultSize) {
-			if (instanceDescCount) InstanceDescs = make_shared<UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC>>(pDevice, instanceDescCount);
+		TopLevelAccelerationStructureBuffers(
+			const DeviceContext& deviceContext,
+			size_t scratchSize, size_t resultSize, size_t instanceDescCount
+		) : BottomLevelAccelerationStructureBuffers(deviceContext, scratchSize, resultSize) {
+			if (instanceDescCount) {
+				InstanceDescs = GPUBuffer::CreateDefault<D3D12_RAYTRACING_INSTANCE_DESC>(deviceContext, instanceDescCount);
+			}
 		}
 	};
 
@@ -44,13 +52,19 @@ export namespace DirectX::RaytracingHelpers {
 		AccelerationStructure(const AccelerationStructure&) = delete;
 		AccelerationStructure& operator=(const AccelerationStructure&) = delete;
 
-		AccelerationStructure(ID3D12Device5* pDevice, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) : m_device(pDevice), m_flags(flags) {}
+		AccelerationStructure(
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE
+		) : m_flags(flags) {}
 
-		ID3D12Resource* GetBuffer() const noexcept { return *m_buffers.Result; }
+		ID3D12Resource* GetBuffer() const { return *m_buffers.Result; }
 
-		UINT GetDescCount() const noexcept { return m_descCount; }
+		UINT GetDescCount() const { return m_descCount; }
 
-		void Build(ID3D12GraphicsCommandList4* pCommandList, span<const conditional_t<IsTop, D3D12_RAYTRACING_INSTANCE_DESC, D3D12_RAYTRACING_GEOMETRY_DESC>> descs, bool updateOnly) {
+		void Build(
+			CommandList& commandList,
+			span<const conditional_t<IsTop, D3D12_RAYTRACING_INSTANCE_DESC, D3D12_RAYTRACING_GEOMETRY_DESC>> descs,
+			bool updateOnly
+		) {
 			m_descCount = static_cast<UINT>(size(descs));
 
 			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
@@ -69,14 +83,16 @@ export namespace DirectX::RaytracingHelpers {
 				desc.SourceAccelerationStructureData = m_buffers.Result->GetNative()->GetGPUVirtualAddress();
 			}
 			else {
+				const auto& m_deviceContext = commandList.GetDeviceContext();
+
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-				m_device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
+				m_deviceContext.Device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
 
 				if constexpr (IsTop) {
-					m_buffers = TopLevelAccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, desc.Inputs.NumDescs);
+					m_buffers = TopLevelAccelerationStructureBuffers(m_deviceContext, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, desc.Inputs.NumDescs);
 				}
 				else {
-					m_buffers = BottomLevelAccelerationStructureBuffers(m_device, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes);
+					m_buffers = BottomLevelAccelerationStructureBuffers(m_deviceContext, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes);
 				}
 
 				desc.SourceAccelerationStructureData = NULL;
@@ -84,22 +100,19 @@ export namespace DirectX::RaytracingHelpers {
 
 			if constexpr (IsTop) {
 				if (m_buffers.InstanceDescs) {
-					m_buffers.InstanceDescs->Write(descs);
-
+					commandList.Write(*m_buffers.InstanceDescs, descs);
+					commandList.SetState(*m_buffers.InstanceDescs, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetNative()->GetGPUVirtualAddress();
 				}
 			}
 
 			desc.DestAccelerationStructureData = m_buffers.Result->GetNative()->GetGPUVirtualAddress();
 			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetNative()->GetGPUVirtualAddress();
-			pCommandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
-
-			m_buffers.Result->InsertUAVBarrier(pCommandList);
+			commandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
+			commandList.SetUAVBarrier(*m_buffers.Result);
 		}
 
 	private:
-		ID3D12Device5* m_device;
-
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
 
 		UINT m_descCount{};
@@ -110,23 +123,26 @@ export namespace DirectX::RaytracingHelpers {
 	using BottomLevelAccelerationStructure = AccelerationStructure<false>;
 	using TopLevelAccelerationStructure = AccelerationStructure<true>;
 
-	template <typename Vertex, D3D12_HEAP_TYPE VertexHeapType, size_t VertexAlignment, typename Index, D3D12_HEAP_TYPE IndexHeapType> requires same_as<Index, UINT16> || same_as<Index, UINT32>
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
-		const TGPUBuffer<Vertex, VertexHeapType, VertexAlignment>&vertices, const TGPUBuffer<Index, IndexHeapType>&indices,
+		const GPUBuffer& vertices, const GPUBuffer& indices,
 		D3D12_RAYTRACING_GEOMETRY_FLAGS flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
 		D3D12_GPU_VIRTUAL_ADDRESS transform3x4 = NULL,
 		DXGI_FORMAT vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT
 	) {
-		const auto vertexCount = vertices.GetCount(), indexCount = indices.GetCount();
+		const auto indexStride = indices.GetStride();
+		if (indexStride != sizeof(uint16_t) && indexStride != sizeof(uint32_t)) {
+			Throw<invalid_argument>("Triangle index format must be either uint16 or uint32");
+		}
+		const auto indexCount = indices.GetCapacity();
 		if (indexCount % 3 != 0) Throw<invalid_argument>("Triangle index count must be divisible by 3");
 		return {
 			.Flags = flags,
 			.Triangles{
 				.Transform3x4 = transform3x4,
-				.IndexFormat = is_same_v<Index, UINT16> ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
+				.IndexFormat = indexStride == sizeof(uint16_t) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT,
 				.VertexFormat = vertexFormat,
 				.IndexCount = static_cast<UINT>(indexCount),
-				.VertexCount = static_cast<UINT>(vertexCount),
+				.VertexCount = static_cast<UINT>(vertices.GetCapacity()),
 				.IndexBuffer = indices->GetGPUVirtualAddress(),
 				.VertexBuffer{
 					.StartAddress = vertices->GetGPUVirtualAddress(),
@@ -140,24 +156,24 @@ export namespace DirectX::RaytracingHelpers {
 	public:
 		struct Entry {
 			wstring Name;
-			vector<UINT64> Data{ 0 };
+			vector<UINT64> Data;
 		};
 
 		ShaderBindingTable(const ShaderBindingTable&) = delete;
 		ShaderBindingTable& operator=(const ShaderBindingTable&) = delete;
 
 		ShaderBindingTable(
-			ID3D12Device* pDevice, ID3D12StateObjectProperties* pStateObjectProperties,
-			span<Entry> rayGenerationEntries, span<Entry> missEntries, span<Entry> hitGroups
-		) {
-			constexpr auto GetStride = [](span<Entry> entries) {
+			CommandList& commandList, ID3D12StateObjectProperties* pStateObjectProperties,
+			Entry rayGeneration, span<Entry> missEntries, span<Entry> hitGroups
+		) noexcept(false) {
+			constexpr auto GetStride = [](const auto& entries) {
 				size_t maxCount = 0;
 				for (const auto& entry : entries) maxCount = max(maxCount, size(entry.Data));
 				return static_cast<UINT>(AlignUp(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT + sizeof(UINT64) * maxCount, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
 			};
 
-			m_rayGenerationEntries.assign_range(rayGenerationEntries);
-			m_rayGenerationStride = GetStride(rayGenerationEntries);
+			m_rayGeneration = rayGeneration;
+			m_rayGenerationStride = GetStride(initializer_list{ rayGeneration });
 
 			m_missEntries.assign_range(missEntries);
 			m_missStride = GetStride(missEntries);
@@ -165,10 +181,10 @@ export namespace DirectX::RaytracingHelpers {
 			m_hitGroups.assign_range(hitGroups);
 			m_hitGroupStride = GetStride(hitGroups);
 
-			m_buffer = make_unique<ConstantBuffer<uint8_t>>(pDevice, GetRayGenerationSize() + GetMissSize() + GetHitGroupSize());
-
-			auto pData = &m_buffer->At(0);
-			const auto Copy = [&](span<const Entry> entries, UINT stride) {
+			vector<uint8_t> buffer(AlignRayGenerationSize() + AlignMissSize() + AlignHitGroupSize());
+			auto pData = data(buffer);
+			const auto Copy = [&](const auto& entries, UINT stride) {
+				UINT offset = 0;
 				for (const auto& [Name, Data] : entries) {
 					const auto ID = pStateObjectProperties->GetShaderIdentifier(Name.c_str());
 					if (ID == nullptr) {
@@ -176,36 +192,43 @@ export namespace DirectX::RaytracingHelpers {
 						const auto size = WideCharToMultiByte(CP_ACP, 0, data(message), static_cast<int>(std::size(message)), nullptr, 0, nullptr, nullptr);
 						string str(size, 0);
 						WideCharToMultiByte(CP_ACP, 0, data(message), static_cast<int>(std::size(message)), data(str), size, nullptr, nullptr);
-						throw logic_error(str);
+						Throw<runtime_error>(str);
 					}
 
-					memcpy(pData, ID, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-					memcpy(pData + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT, data(Data), sizeof(UINT64) * size(Data));
-
-					pData += stride;
+					memcpy(memcpy(pData + offset, ID, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT), data(Data), sizeof(UINT64) * size(Data));
+					offset += stride;
 				}
+				pData += AlignEntrySize(offset);
 			};
-			Copy(m_rayGenerationEntries, m_rayGenerationStride);
-			Copy(m_missEntries, m_missStride);
-			Copy(m_hitGroups, m_hitGroupStride);
+			Copy(initializer_list{ rayGeneration }, m_rayGenerationStride);
+			Copy(missEntries, m_missStride);
+			Copy(hitGroups, m_hitGroupStride);
+
+			m_buffer = GPUBuffer::CreateDefault<uint8_t>(commandList.GetDeviceContext(), size(buffer));
+			commandList.Write(*m_buffer, buffer);
 		}
 
-		D3D12_GPU_VIRTUAL_ADDRESS GetRayGenerationAddress() const { return m_buffer->GetNative()->GetGPUVirtualAddress(); }
-		UINT GetRayGenerationStride() const { return m_rayGenerationStride; }
-		UINT GetRayGenerationSize() const { return m_rayGenerationStride * static_cast<UINT>(size(m_rayGenerationEntries)); }
+		D3D12_GPU_VIRTUAL_ADDRESS GetRayGenerationAddress() const noexcept { return m_buffer->GetNative()->GetGPUVirtualAddress(); }
+		UINT GetRayGenerationSize() const noexcept { return m_rayGenerationStride; }
 
-		D3D12_GPU_VIRTUAL_ADDRESS GetMissAddress() const { return GetRayGenerationAddress() + GetRayGenerationSize(); }
-		UINT GetMissStride() const { return m_missStride; }
-		UINT GetMissSize() const { return m_missStride * static_cast<UINT>(size(m_missEntries)); }
+		D3D12_GPU_VIRTUAL_ADDRESS GetMissAddress() const noexcept { return GetRayGenerationAddress() + AlignRayGenerationSize(); }
+		UINT GetMissStride() const noexcept { return m_missStride; }
+		UINT GetMissSize() const noexcept { return m_missStride * static_cast<UINT>(size(m_missEntries)); }
 
-		D3D12_GPU_VIRTUAL_ADDRESS GetHitGroupAddress() const { return GetMissAddress() + GetMissSize(); }
-		UINT GetHitGroupStride() const { return m_hitGroupStride; }
-		UINT GetHitGroupSize() const { return m_hitGroupStride * static_cast<UINT>(size(m_hitGroups)); }
+		D3D12_GPU_VIRTUAL_ADDRESS GetHitGroupAddress() const noexcept { return GetMissAddress() + AlignMissSize(); }
+		UINT GetHitGroupStride() const noexcept { return m_hitGroupStride; }
+		UINT GetHitGroupSize() const noexcept { return m_hitGroupStride * static_cast<UINT>(size(m_hitGroups)); }
 
 	private:
-		vector<Entry> m_rayGenerationEntries, m_missEntries, m_hitGroups;
+		Entry m_rayGeneration;
+		vector<Entry> m_missEntries, m_hitGroups;
 		UINT m_rayGenerationStride{}, m_missStride{}, m_hitGroupStride{};
 
-		unique_ptr<ConstantBuffer<uint8_t>> m_buffer;
+		unique_ptr<GPUBuffer> m_buffer;
+
+		static UINT AlignEntrySize(UINT size) { return AlignUp(max(size, 1u), D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT); }
+		UINT AlignRayGenerationSize() const noexcept { return AlignEntrySize(GetRayGenerationSize()); }
+		UINT AlignMissSize() const noexcept { return AlignEntrySize(GetMissSize()); }
+		UINT AlignHitGroupSize() const noexcept { return AlignEntrySize(GetHitGroupSize()); }
 	};
 }

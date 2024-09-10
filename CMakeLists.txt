@@ -8,11 +8,10 @@ set(project "RaytracingSpheres")
 
 project(${project})
 
-set(DXC_PATH "$ENV{VCPKG_ROOT}/packages/directx-dxc_x64-windows/tools/directx-dxc/dxc.exe" CACHE STRING "")
+find_package(directx-dxc CONFIG REQUIRED)
+set(DXC_PATH ${DIRECTX_DXC_TOOL} CACHE STRING "")
 
 set(AMD_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/AMD/")
-
-add_subdirectory("${AMD_library_path}MemoryAllocator/D3D12")
 
 set(Intel_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/Intel/")
 
@@ -46,6 +45,7 @@ add_executable(${project} WIN32
 	${source}
 	"Source/App.rc"
 	"Source/App.manifest"
+	"${AMD_library_path}MemoryAllocator/D3D12/src/D3D12MemAlloc.cpp"
 	"${NVIDIA_library_path}NRD/Integration/NRDIntegration.hpp"
 	"${NVIDIA_library_path}ShaderMake/src/ShaderBlob.cpp")
 target_sources(${project} PRIVATE FILE_SET cxx_modules TYPE CXX_MODULES FILES ${modules})
@@ -53,7 +53,10 @@ target_sources(${project} PRIVATE FILE_SET cxx_modules TYPE CXX_MODULES FILES ${
 set_target_properties(${project} PROPERTIES CXX_STANDARD 23)
 set_target_properties(${project} PROPERTIES CXX_STANDARD_REQUIRED ON)
 
-target_compile_definitions(${project} PRIVATE NOMINMAX)
+target_compile_definitions(${project} PRIVATE
+	NOMINMAX
+	D3D12MA_USING_DIRECTX_HEADERS D3D12MA_OPTIONS16_SUPPORTED
+)
 
 set(AMD_CXX_include_directories "MemoryAllocator/D3D12/include")
 list(TRANSFORM AMD_CXX_include_directories PREPEND ${AMD_library_path})
@@ -98,7 +101,6 @@ CompileShaders(target ${project}_Shaders
 add_dependencies(${project} ${project}_Shaders)
 
 target_link_libraries(${project} PRIVATE
-	D3D12MemoryAllocator
 	NRD
 	NRI
 	rtxdi-sdk
@@ -107,7 +109,12 @@ target_link_libraries(${project} PRIVATE
 	"${Intel_library_path}XeSS/lib/libxess.lib"
 	"${NVIDIA_library_path}NVAPI/amd64/nvapi64.lib")
 
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+	"${Intel_library_path}XeSS/bin/libxess.dll"
+	"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
 set(packages
+	directx12-agility
 	directxtex
 	directxtk12
 	imgui
@@ -116,17 +123,23 @@ set(packages
 foreach(package ${packages})
 	find_package(${package} CONFIG REQUIRED)
 endforeach()
+
 target_link_libraries(${project} PRIVATE
+	Microsoft::DirectX12-Agility
 	Microsoft::DirectXTex
 	Microsoft::DirectXTK12
 	imgui::imgui
 	nlohmann_json::nlohmann_json
 	unofficial::omniverse-physx-sdk::sdk)
 
-add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-	"${Intel_library_path}XeSS/bin/libxess.dll"
-	"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-
 add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
 	"${CMAKE_CURRENT_SOURCE_DIR}/Assets"
 	"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets")
+
+set(D3D12_AGILITY_SDK_PATH "D3D12")
+target_compile_definitions(${project} PRIVATE D3D12_AGILITY_SDK_PATH="${D3D12_AGILITY_SDK_PATH}")
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${D3D12_AGILITY_SDK_PATH}")
+add_custom_command(TARGET ${project} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+	$<TARGET_PROPERTY:Microsoft::DirectX12-Core,IMPORTED_LOCATION_RELEASE>
+	$<TARGET_PROPERTY:Microsoft::DirectX12-Layers,IMPORTED_LOCATION_DEBUG>
+	"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${D3D12_AGILITY_SDK_PATH}")

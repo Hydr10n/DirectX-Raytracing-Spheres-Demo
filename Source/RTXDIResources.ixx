@@ -4,14 +4,13 @@ module;
 
 #include "directx/d3d12.h"
 
-#include "directxtk12/ResourceUploadBatch.h"
-
 #include "rtxdi/ImportanceSamplingContext.h"
 #include "rtxdi/RISBufferSegmentAllocator.h"
 
 export module RTXDIResources;
 
-import DescriptorHeap;
+import CommandList;
+import DeviceContext;
 import GPUBuffer;
 import Texture;
 
@@ -29,38 +28,52 @@ export {
 	struct RTXDIResources {
 		unique_ptr<ImportanceSamplingContext> Context;
 
-		unique_ptr<DefaultBuffer<XMUINT2>> RIS;
-		unique_ptr<DefaultBuffer<XMUINT4>> RISLightInfo;
-		unique_ptr<DefaultBuffer<LightInfo>> LightInfo;
-		unique_ptr<DefaultBuffer<UINT>> LightIndices;
+		unique_ptr<GPUBuffer>
+			RIS,
+			RISLightInfo,
+			LightInfo,
+			LightIndices,
+			NeighborOffsets,
+			DIReservoir;
+
 		unique_ptr<Texture> LocalLightPDF;
 
-		unique_ptr<DefaultBuffer<UINT16>> NeighborOffsets;
-
-		unique_ptr<DefaultBuffer<RTXDI_PackedDIReservoir>> DIReservoir;
-
-		void CreateLightResources(ID3D12Device* pDevice, UINT emissiveTriangleCount, UINT objectCount) {
+		void CreateLightResources(const DeviceContext& deviceContext, UINT emissiveTriangleCount, UINT objectCount) {
 			const auto RISBufferSegmentSize = Context->getRISBufferSegmentAllocator().getTotalSizeInElements();
-			RIS = make_unique<DefaultBuffer<XMUINT2>>(pDevice, RISBufferSegmentSize);
-			RISLightInfo = make_unique<DefaultBuffer<XMUINT4>>(pDevice, RISBufferSegmentSize * 2);
+			RIS = GPUBuffer::CreateDefault<XMUINT2>(deviceContext, RISBufferSegmentSize);
+			RISLightInfo = GPUBuffer::CreateDefault<XMUINT4>(deviceContext, RISBufferSegmentSize * 2);
 
-			LightInfo = make_unique<DefaultBuffer<::LightInfo>>(pDevice, emissiveTriangleCount);
-			LightIndices = make_unique<DefaultBuffer<UINT>>(pDevice, objectCount);
+			LightInfo = GPUBuffer::CreateDefault<::LightInfo>(deviceContext, emissiveTriangleCount);
+			LightIndices = GPUBuffer::CreateDefault<UINT>(deviceContext, objectCount);
 
-			XMUINT2 textureSize;
-			UINT mipLevels;
-			ComputePdfTextureSize(emissiveTriangleCount, textureSize.x, textureSize.y, mipLevels);
-			LocalLightPDF = make_unique<Texture>(pDevice, DXGI_FORMAT_R32_FLOAT, textureSize, static_cast<UINT16>(mipLevels));
+			uint32_t width, height, mipLevels;
+			ComputePdfTextureSize(emissiveTriangleCount, width, height, mipLevels);
+			LocalLightPDF = make_unique<Texture>(
+				deviceContext,
+				Texture::CreationDesc{
+					.Format = DXGI_FORMAT_R32_FLOAT,
+					.Width = width,
+					.Height = height,
+					.MipLevels = static_cast<UINT16>(mipLevels)
+				}.AsUnorderedAccess().AsRenderTarget()
+				);
+			LocalLightPDF->CreateSRV();
+			LocalLightPDF->CreateUAV();
+			LocalLightPDF->CreateRTV();
 		}
 
-		void CreateRenderSizeDependentResources(ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, const DescriptorHeapEx& descriptorHeap, UINT descriptorIndex) {
+		void CreateRenderSizeDependentResources(CommandList& commandList) {
+			const auto& deviceContext = commandList.GetDeviceContext();
+
 			const auto neighborOffsetCount = Context->getNeighborOffsetCount();
 			vector<UINT16> offsets(neighborOffsetCount);
 			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
-			NeighborOffsets = make_unique<DefaultBuffer<UINT16>>(pDevice, resourceUploadBatch, offsets);
-			NeighborOffsets->CreateTypedSRV(descriptorHeap, descriptorIndex, DXGI_FORMAT_R8G8_SNORM);
+			NeighborOffsets = GPUBuffer::CreateDefault<UINT16>(deviceContext, neighborOffsetCount, DXGI_FORMAT_R8G8_SNORM);
+			NeighborOffsets->CreateSRV(BufferSRVType::Typed);
+			commandList.Write(*NeighborOffsets, offsets);
+			commandList.SetState(*NeighborOffsets, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
-			DIReservoir = make_unique<DefaultBuffer<RTXDI_PackedDIReservoir>>(pDevice, Context->getReSTIRDIContext().getReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);
+			DIReservoir = GPUBuffer::CreateDefault<RTXDI_PackedDIReservoir>(deviceContext, Context->getReSTIRDIContext().getReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);
 		}
 	};
 }

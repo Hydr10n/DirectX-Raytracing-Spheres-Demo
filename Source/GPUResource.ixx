@@ -1,14 +1,12 @@
 module;
 
-#include "directx/d3dx12.h"
-
-#include "directxtk12/DirectXHelpers.h"
+#include <wrl.h>
 
 #include "D3D12MemAlloc.h"
 
 export module GPUResource;
 
-import ErrorHelpers;
+import DeviceContext;
 
 using namespace D3D12MA;
 using namespace Microsoft::WRL;
@@ -19,43 +17,45 @@ export namespace DirectX {
 		GPUResource(GPUResource&) = delete;
 		GPUResource& operator=(const GPUResource&) = delete;
 
-		GPUResource(GPUResource&& source) noexcept = default;
-		GPUResource& operator=(GPUResource&& source) noexcept = default;
-
-		GPUResource(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) : m_resource(pResource), m_state(state) {}
+		GPUResource(
+			const DeviceContext& deviceContext,
+			ID3D12Resource* pResource,
+			D3D12_RESOURCE_STATES initialState, bool keepInitialState
+		) : GPUResource(deviceContext, initialState, keepInitialState) {
+			m_resource = pResource;
+		}
 
 		virtual ~GPUResource() {}
 
-		ID3D12Resource* GetNative() const noexcept { return m_resource.Get(); }
-		ID3D12Resource* operator->() const noexcept { return m_resource.Get(); }
-		operator ID3D12Resource* () const noexcept { return m_resource.Get(); }
+		ID3D12Resource* GetNative() const noexcept { return m_allocation ? m_allocation->GetResource() : m_resource.Get(); }
+		ID3D12Resource* operator->() const noexcept { return GetNative(); }
+		operator ID3D12Resource* () const noexcept { return GetNative(); }
+
+		const DeviceContext& GetDeviceContext() const { return m_deviceContext; }
+
+		bool IsOwner() const noexcept { return m_allocation; }
+
+		D3D12_RESOURCE_STATES GetInitialState() const noexcept { return m_initialState; }
+		bool KeepInitialState() const { return m_keepInitialState; }
 
 		D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
 		void SetState(D3D12_RESOURCE_STATES state) noexcept { m_state = state; }
 
-		D3D12_RESOURCE_BARRIER TransitionBarrier(D3D12_RESOURCE_STATES state) const {
-			return CD3DX12_RESOURCE_BARRIER::Transition(m_resource.Get(), m_state, state);
-		}
-
-		void TransitionTo(ID3D12GraphicsCommandList* pCommandList, D3D12_RESOURCE_STATES state) {
-			if (state != m_state) {
-				TransitionResource(pCommandList, GetNative(), m_state, state);
-				m_state = state;
-			}
-			else if (state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) InsertUAVBarrier(pCommandList);
-		}
-
-		void InsertUAVBarrier(ID3D12GraphicsCommandList* pCommandList) {
-			const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_resource.Get());
-			pCommandList->ResourceBarrier(1, &barrier);
-		}
-
 	protected:
+		const DeviceContext& m_deviceContext;
+
 		ComPtr<Allocation> m_allocation;
 		ComPtr<ID3D12Resource> m_resource;
 
-		D3D12_RESOURCE_STATES m_state = D3D12_RESOURCE_STATE_COMMON;
+		D3D12_RESOURCE_STATES m_state;
 
-		explicit GPUResource(D3D12_RESOURCE_STATES state) : m_state(state) {}
+		explicit GPUResource(const DeviceContext& deviceContext, D3D12_RESOURCE_STATES initialState, bool keepInitialState) :
+			m_deviceContext(deviceContext),
+			m_state(initialState),
+			m_initialState(initialState), m_keepInitialState(keepInitialState) {}
+
+	private:
+		D3D12_RESOURCE_STATES m_initialState;
+		bool m_keepInitialState;
 	};
 }

@@ -12,17 +12,23 @@
 
 struct Constants
 {
-	uint MipLevel, MipLevels;
+	uint MipLevels, MipLevelIndices[16];
 };
-ConstantBuffer<Constants> g_constants;
+ConstantBuffer<Constants> g_constants : register(b0);
+
+cbuffer _ : register(b1)
+{
+	uint g_mipLevel;
+};
 
 groupshared float s_weights[16];
 
-#define TEXTURE(offset) RWTexture2D<float> texture = ResourceDescriptorHeap[g_constants.MipLevel + offset];
+#define TEXTURE(offset) RWTexture2D<float> texture = ResourceDescriptorHeap[g_constants.MipLevelIndices[g_mipLevel + offset]];
 
 [RootSignature(
 	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
-	"RootConstants(num32BitConstants=2, b0)"
+	"RootConstants(num32BitConstants=17, b0),"
+	"RootConstants(num32BitConstants=1, b1)"
 )]
 // Warning: do not change the group size. The algorithm is hardcoded to process 16x16 tiles.
 [numthreads(256, 1, 1)]
@@ -43,9 +49,11 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 		sourceWeights.w = texture[sourcePos + int2(1, 1)];
 	}
 
-	uint mipLevelsToWrite = g_constants.MipLevels - g_constants.MipLevel - 1;
+	uint mipLevelsToWrite = g_constants.MipLevels - g_mipLevel - 1;
 	if (mipLevelsToWrite < 1)
+	{
 		return;
+	}
 
 	// Average those weights and write out the first mip.
 	float weight = (sourceWeights.x + sourceWeights.y + sourceWeights.z + sourceWeights.w) * 0.25;
@@ -56,7 +64,9 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 	}
 
 	if (mipLevelsToWrite < 2)
+	{
 		return;
+	}
 
 	// The following sequence is an optimized hierarchical downsampling algorithm using wave ops.
 	// It assumes that the wave size is at least 16 lanes, which is true for both NV and AMD GPUs.
@@ -76,7 +86,9 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 	}
 
 	if (mipLevelsToWrite < 3)
+	{
 		return;
+	}
 
 	// Step 2: Average the previous results from 2 pixels away.
 	weight = (weight
@@ -94,7 +106,9 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 	}
 
 	if (mipLevelsToWrite < 4)
+	{
 		return;
+	}
 
 	GroupMemoryBarrierWithGroupSync();
 
@@ -121,7 +135,9 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 	}
 
 	if (mipLevelsToWrite < 5)
+	{
 		return;
+	}
 
 	// Step 4: Average the previous results from 8 pixels away.
 	weight = (weight

@@ -1,5 +1,7 @@
 module;
 
+#include <d3d12.h>
+
 #include "directxtk12/SimpleMath.h"
 
 #include "ml.h"
@@ -11,7 +13,7 @@ using namespace DirectX::SimpleMath;
 using namespace std;
 
 export {
-	struct Camera {
+	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) Camera {
 		BOOL IsNormalizedDepthReversed;
 		XMFLOAT3 PreviousPosition, Position;
 		float _;

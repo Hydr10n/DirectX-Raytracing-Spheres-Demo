@@ -1,9 +1,10 @@
 module;
 
+#include <memory>
+
 #include <DirectXMath.h>
 
 #include "directxtk12/DirectXHelpers.h"
-#include "directxtk12/ResourceUploadBatch.h"
 
 #include "rtxdi/RtxdiParameters.h"
 
@@ -11,10 +12,11 @@ module;
 
 export module LightPreparation;
 
-import CommonShaderData;
+import CommandList;
+import DeviceContext;
 import ErrorHelpers;
 import GPUBuffer;
-import RTXDIResources;
+import Model;
 import Scene;
 import Texture;
 
@@ -23,29 +25,18 @@ using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
 
-namespace {
-	auto IsEmissive(const RenderObject& renderObject) {
-		constexpr auto Max = [](const XMFLOAT3& value) { return max({ value.x, value.y, value.z }); };
-		return Max(renderObject.Material.EmissiveColor) > 0 || renderObject.Textures.contains(TextureMapType::EmissiveColor);
-	}
-}
-
 export struct LightPreparation {
-	struct {
-		UploadBuffer<InstanceData>* InstanceData;
-		UploadBuffer<ObjectData>* ObjectData;
-		DefaultBuffer<LightInfo>* LightInfo;
-	} GPUBuffers{};
+	struct { GPUBuffer* InstanceData, * ObjectData, * LightInfo; } GPUBuffers{};
 
 	struct { Texture* LocalLightPDF; } Textures{};
 
-	explicit LightPreparation(ID3D12Device* pDevice) noexcept(false) : m_device(pDevice) {
+	explicit LightPreparation(const DeviceContext& deviceContext) noexcept(false) {
 		constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LightPreparation_dxil, size(g_LightPreparation_dxil) };
 
-		ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
+		ThrowIfFailed(deviceContext.Device->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 
 		const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS = ShaderByteCode };
-		ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
+		ThrowIfFailed(deviceContext.Device->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&m_pipelineState)));
 		m_pipelineState->SetName(L"LightPreparation");
 	}
 
@@ -63,7 +54,7 @@ export struct LightPreparation {
 		for (const auto& renderObject : m_scene->RenderObjects) {
 			if (IsEmissive(renderObject)) {
 				emissiveMeshCount++;
-				emissiveTriangleCount += static_cast<UINT>(renderObject.Mesh->Indices->GetCount() / 3);
+				emissiveTriangleCount += static_cast<UINT>(renderObject.Mesh->Indices->GetCapacity()) / 3;
 			}
 		}
 		m_emissiveMeshCount = emissiveMeshCount;
@@ -78,14 +69,14 @@ export struct LightPreparation {
 		};
 	}
 
-	void PrepareResources(ResourceUploadBatch& resourceUploadBatch, DefaultBuffer<UINT>& lightIndices) {
+	void PrepareResources(CommandList& commandList, GPUBuffer& lightIndices) {
 		vector _lightIndices(m_scene->GetObjectCount(), RTXDI_INVALID_LIGHT_INDEX);
 		vector<Task> tasks;
 		for (UINT instanceIndex = 0, lightBufferOffset = 0; const auto & renderObject : m_scene->RenderObjects) {
 			UINT geometryIndex = 0;
 			if (IsEmissive(renderObject)) {
 				_lightIndices[m_scene->GetInstanceData()[instanceIndex].FirstGeometryIndex + geometryIndex] = lightBufferOffset;
-				const auto triangleCount = static_cast<UINT>(renderObject.Mesh->Indices->GetCount() / 3);
+				const auto triangleCount = static_cast<UINT>(renderObject.Mesh->Indices->GetCapacity()) / 3;
 				tasks.emplace_back(Task{
 					.InstanceIndex = instanceIndex,
 					.GeometryIndex = geometryIndex,
@@ -96,33 +87,37 @@ export struct LightPreparation {
 			}
 			instanceIndex++;
 		}
-		lightIndices.Write(resourceUploadBatch, _lightIndices);
-		if (m_GPUBuffers.Tasks) m_GPUBuffers.Tasks->Write(resourceUploadBatch, tasks);
-		else m_GPUBuffers.Tasks = make_unique<DefaultBuffer<Task>>(m_device, resourceUploadBatch, tasks);
+
+		commandList.Write(lightIndices, _lightIndices);
+		commandList.SetState(lightIndices, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+
+		if (const auto size = ::size(tasks); !m_GPUBuffers.Tasks || size > m_GPUBuffers.Tasks->GetCapacity()) {
+			m_GPUBuffers.Tasks = GPUBuffer::CreateDefault<Task>(commandList.GetDeviceContext(), size);
+		}
+		commandList.Write(*m_GPUBuffers.Tasks, tasks);
 	}
 
-	void Process(ID3D12GraphicsCommandList* pCommandList) {
-		const ScopedBarrier scopedBarrier(
-			pCommandList,
-			{ Textures.LocalLightPDF->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS) }
-		);
+	void Process(CommandList& commandList) {
+		commandList->SetComputeRootSignature(m_rootSignature.Get());
+		commandList->SetPipelineState(m_pipelineState.Get());
 
-		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
-		pCommandList->SetPipelineState(m_pipelineState.Get());
+		commandList.SetState(*m_GPUBuffers.Tasks, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*GPUBuffers.LightInfo, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.LocalLightPDF, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-		pCommandList->SetComputeRoot32BitConstant(0, m_emissiveMeshCount, 0);
-		pCommandList->SetComputeRootShaderResourceView(1, m_GPUBuffers.Tasks->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(2, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(3, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.LightInfo->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootDescriptorTable(5, Textures.LocalLightPDF->GetUAVDescriptor().GPUHandle);
+		commandList->SetComputeRoot32BitConstant(0, m_emissiveMeshCount, 0);
+		commandList->SetComputeRootShaderResourceView(1, m_GPUBuffers.Tasks->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(2, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(3, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.LightInfo->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootDescriptorTable(5, Textures.LocalLightPDF->GetUAVDescriptor());
 
-		pCommandList->Dispatch((m_emissiveTriangleCount + 255) / 256, 1, 1);
+		commandList->Dispatch((m_emissiveTriangleCount + 255) / 256, 1, 1);
 	}
 
 private:
-	ID3D12Device* m_device;
-
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineState;
 
@@ -132,5 +127,10 @@ private:
 	RTXDI_LightBufferParameters m_lightBufferParameters{};
 
 	struct Task { UINT InstanceIndex, GeometryIndex, TriangleCount, LightBufferOffset; };
-	struct { unique_ptr<DefaultBuffer<Task>> Tasks; } m_GPUBuffers;
+	struct { unique_ptr<GPUBuffer> Tasks; } m_GPUBuffers;
+
+	constexpr bool IsEmissive(const RenderObject& renderObject) {
+		constexpr auto Max = [](const XMFLOAT3& value) { return max(max(value.x, value.y), value.z); };
+		return Max(renderObject.Material.EmissiveColor) > 0 || renderObject.Textures.contains(TextureMapType::EmissiveColor);
+	}
 };

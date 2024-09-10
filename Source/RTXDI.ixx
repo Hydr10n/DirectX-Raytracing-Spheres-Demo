@@ -17,8 +17,8 @@ module;
 
 export module RTXDI;
 
-import Camera;
-import CommonShaderData;
+import CommandList;
+import DeviceContext;
 import ErrorHelpers;
 import GPUBuffer;
 import NRD;
@@ -34,11 +34,7 @@ using namespace rtxdi;
 using namespace std;
 
 export struct RTXDI {
-	struct {
-		ConstantBuffer<Camera>* Camera;
-		UploadBuffer<InstanceData>* InstanceData;
-		UploadBuffer<ObjectData>* ObjectData;
-	} GPUBuffers{};
+	struct { GPUBuffer* Camera, * InstanceData, * ObjectData; } GPUBuffers{};
 
 	struct {
 		Texture
@@ -56,15 +52,17 @@ export struct RTXDI {
 			* NoisySpecular;
 	} Textures{};
 
-	explicit RTXDI(ID3D12Device* pDevice) noexcept(false) : m_GPUBuffers{ .GraphicsSettings = ConstantBuffer<GraphicsSettings>(pDevice) } {
+	explicit RTXDI(const DeviceContext& deviceContext) noexcept(false) : m_GPUBuffers{
+		.GraphicsSettings = GPUBuffer::CreateConstant<GraphicsSettings>(deviceContext)
+	} {
 		{
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LocalLightPresampling_dxil, size(g_LocalLightPresampling_dxil) };
-			ThrowIfFailed(pDevice->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
+			ThrowIfFailed(deviceContext.Device->CreateRootSignature(0, ShaderByteCode.pShaderBytecode, ShaderByteCode.BytecodeLength, IID_PPV_ARGS(&m_rootSignature)));
 		}
 
 		const auto CreatePipelineState = [&](ComPtr<ID3D12PipelineState>& pipelineState, auto name, span<const uint8_t> shaderByteCode) {
 			const D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineStateDesc{ .pRootSignature = m_rootSignature.Get(), .CS{ data(shaderByteCode), size(shaderByteCode) } };
-			ThrowIfFailed(pDevice->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&pipelineState)));
+			ThrowIfFailed(deviceContext.Device->CreateComputePipelineState(&pipelineStateDesc, IID_PPV_ARGS(&pipelineState)));
 			pipelineState->SetName(name);
 		};
 		CreatePipelineState(m_localLightPresampling, L"LocalLightPresampling", g_LocalLightPresampling_dxil);
@@ -120,7 +118,7 @@ export struct RTXDI {
 
 		const auto& ReSTIRDIContext = context.getReSTIRDIContext();
 		const auto& ReSTIRDIStaticParameters = ReSTIRDIContext.getStaticParameters();
-		m_GPUBuffers.GraphicsSettings.At(0) = {
+		m_graphicsSettings = {
 			.RenderSize{ ReSTIRDIStaticParameters.RenderWidth, ReSTIRDIStaticParameters.RenderHeight },
 			.IsReGIRCellVisualizationEnabled = isReGIRCellVisualizationEnabled,
 			.RTXDI{
@@ -142,64 +140,70 @@ export struct RTXDI {
 		};
 	}
 
-	void Render(ID3D12GraphicsCommandList* pCommandList, const TopLevelAccelerationStructure& scene) {
-		const ScopedBarrier scopedBarrier(
-			pCommandList,
-			{
-				m_resources->LightInfo->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				m_resources->LocalLightPDF->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.PreviousLinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.LinearDepth->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.MotionVectors->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.PreviousBaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.BaseColorMetalness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.PreviousNormals->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.Normals->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.PreviousRoughness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.Roughness->TransitionBarrier(D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE),
-				Textures.Color->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.NoisyDiffuse->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				Textures.NoisySpecular->TransitionBarrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-			}
-		);
+	void Render(CommandList& commandList, const TopLevelAccelerationStructure& scene) {
+		commandList->SetComputeRootSignature(m_rootSignature.Get());
 
-		pCommandList->SetComputeRootSignature(m_rootSignature.Get());
+		commandList.Write(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
+		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+
+		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*m_resources->LightInfo, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*m_resources->LightIndices, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*m_resources->NeighborOffsets, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*m_resources->LocalLightPDF, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.PreviousLinearDepth, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.LinearDepth, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.MotionVectors, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.PreviousBaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.PreviousNormals, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.Normals, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.PreviousRoughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.Roughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*m_resources->RIS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*m_resources->RISLightInfo, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*m_resources->DIReservoir, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*Textures.Color, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		UINT i = 0;
-		pCommandList->SetComputeRootShaderResourceView(i++, scene.GetBuffer()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings.GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, m_resources->LightInfo->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootShaderResourceView(i++, m_resources->LightIndices->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootDescriptorTable(i++, m_resources->NeighborOffsets->GetTypedSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, m_resources->LocalLightPDF->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.PreviousLinearDepth->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.PreviousBaseColorMetalness->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.PreviousNormals->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.PreviousRoughness->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetSRVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootUnorderedAccessView(i++, m_resources->RIS->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootUnorderedAccessView(i++, m_resources->RISLightInfo->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor().GPUHandle);
-		pCommandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor().GPUHandle);
+		commandList->SetComputeRootShaderResourceView(i++, scene.GetBuffer()->GetGPUVirtualAddress());
+		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(i++, m_resources->LightInfo->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(i++, m_resources->LightIndices->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootDescriptorTable(i++, m_resources->NeighborOffsets->GetSRVDescriptor(BufferSRVType::Typed));
+		commandList->SetComputeRootDescriptorTable(i++, m_resources->LocalLightPDF->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousLinearDepth->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousBaseColorMetalness->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousNormals->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousRoughness->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetSRVDescriptor());
+		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->RIS->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->RISLightInfo->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor());
 
 		const auto& context = *m_resources->Context;
 
 		if (context.getLightBufferParameters().localLightBufferRegion.numLights) {
 			const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState, XMUINT2 size) {
-				pCommandList->SetPipelineState(pipelineState.Get());
+				commandList->SetPipelineState(pipelineState.Get());
 
-				pCommandList->Dispatch((size.x + 255) / 256, size.y, 1);
+				commandList->Dispatch((size.x + 255) / 256, size.y, 1);
 
-				m_resources->RIS->InsertUAVBarrier(pCommandList);
+				commandList.SetUAVBarrier(*m_resources->RIS);
 			};
 
 			if (context.isLocalLightPowerRISEnabled()) {
@@ -213,13 +217,13 @@ export struct RTXDI {
 		}
 
 		const auto Dispatch = [&](const ComPtr<ID3D12PipelineState>& pipelineState) {
-			pCommandList->SetPipelineState(pipelineState.Get());
+			commandList->SetPipelineState(pipelineState.Get());
 
 			const auto& parameters = context.getReSTIRDIContext().getStaticParameters();
 			const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
-			pCommandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
+			commandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
 
-			m_resources->DIReservoir->InsertUAVBarrier(pCommandList);
+			commandList.SetUAVBarrier(*m_resources->DIReservoir);
 		};
 
 		Dispatch(m_DIInitialSampling);
@@ -229,7 +233,7 @@ export struct RTXDI {
 	}
 
 private:
-	struct GraphicsSettings {
+	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) GraphicsSettings {
 		XMUINT2 RenderSize;
 		BOOL IsReGIRCellVisualizationEnabled;
 		UINT _;
@@ -243,7 +247,7 @@ private:
 		NRDSettings NRD;
 	};
 
-	struct { ConstantBuffer<GraphicsSettings> GraphicsSettings; } m_GPUBuffers;
+	struct { unique_ptr<GPUBuffer> GraphicsSettings; } m_GPUBuffers;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState>
@@ -251,4 +255,6 @@ private:
 		m_DIInitialSampling, m_DITemporalResampling, m_DISpatialResampling, m_DIFinalShading;
 
 	const RTXDIResources* m_resources{};
+
+	GraphicsSettings m_graphicsSettings;
 };

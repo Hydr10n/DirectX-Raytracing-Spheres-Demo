@@ -1,5 +1,7 @@
 module;
 
+#include <d3d12.h>
+
 #include "directxtk12/SimpleMath.h"
 
 export module CommonShaderData;
@@ -15,7 +17,7 @@ export {
 		XMUINT2 _;
 	};
 
-	struct SceneData {
+	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneData {
 		BOOL IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 		BOOL _;
 		SceneResourceDescriptorIndices ResourceDescriptorIndices;

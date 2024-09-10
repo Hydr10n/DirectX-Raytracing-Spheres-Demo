@@ -51,6 +51,7 @@ bool CastRay(
 		, enableShaderExecutionReordering
 #endif
 	);
+	hitInfo.Distance = 1.#INF;
 	const bool isHit = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (isHit)
 	{

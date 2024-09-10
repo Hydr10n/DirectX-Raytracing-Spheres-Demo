@@ -1,76 +1,131 @@
 module;
 
+#include <mutex>
+#include <vector>
+
 #include "directxtk12/DescriptorHeap.h"
 
 export module DescriptorHeap;
 
+import ErrorHelpers;
+
+using namespace ErrorHelpers;
 using namespace std;
 
 export namespace DirectX {
-	struct DefaultDescriptor {
-		uint32_t Index = ~0u;
-		D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle{};
-	};
+	class DescriptorHeapEx;
 
-	struct ShaderVisibleDescriptor : DefaultDescriptor { D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle{}; };
+	class Descriptor {
+	public:
+		~Descriptor();
+
+		bool IsValid() const { return m_index != ~0u && m_count; }
+
+		uint32_t GetIndex() const { return m_index; }
+		operator uint32_t() const { return m_index; }
+
+		uint32_t GetCount() const { return m_count; }
+
+		D3D12_CPU_DESCRIPTOR_HANDLE GetCPUHandle() const;
+		operator D3D12_CPU_DESCRIPTOR_HANDLE() const { return GetCPUHandle(); }
+
+		D3D12_GPU_DESCRIPTOR_HANDLE GetGPUHandle() const;
+		operator D3D12_GPU_DESCRIPTOR_HANDLE() const { return GetGPUHandle(); }
+
+		const DescriptorHeapEx& GetHeap() const { return m_heap; }
+		DescriptorHeapEx& GetHeap() { return m_heap; }
+
+	private:
+		friend DescriptorHeapEx;
+		DescriptorHeapEx& m_heap;
+
+		uint32_t m_index = ~0u, m_count{};
+
+		Descriptor(DescriptorHeapEx& heap, uint32_t index, uint32_t count) : m_heap(heap), m_index(index), m_count(count) {}
+	};
 
 	class DescriptorHeapEx : public DescriptorHeap {
 	public:
-		DescriptorHeapEx(ID3D12DescriptorHeap* pExistingHeap, uint32_t reserve = 0) noexcept(false) :
-			DescriptorHeap(pExistingHeap), m_top(reserve) {
-			if (reserve > 0 && m_top >= Count()) throw out_of_range("Descriptor heap reserve out of range");
-		}
-
-		DescriptorHeapEx(ID3D12Device* device, const D3D12_DESCRIPTOR_HEAP_DESC* pDesc, uint32_t reserve = 0) noexcept(false) :
-			DescriptorHeap(device, pDesc), m_top(reserve) {
-			if (reserve > 0 && m_top >= Count()) throw out_of_range("Descriptor heap reserve out of range");
-		}
-
-		DescriptorHeapEx(ID3D12Device* device, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags, uint32_t capacity, uint32_t reserve = 0) noexcept(false) :
-			DescriptorHeap(device, type, flags, capacity), m_top(reserve) {
-			if (reserve > 0 && m_top >= Count()) throw out_of_range("Descriptor heap reserve out of range");
-		}
-
-		DescriptorHeapEx(ID3D12Device* device, uint32_t count, uint32_t reserve = 0) noexcept(false) :
-			DescriptorHeapEx(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, count, reserve) {}
-
 		DescriptorHeapEx(const DescriptorHeapEx&) = delete;
 		DescriptorHeapEx& operator=(const DescriptorHeapEx&) = delete;
 
-		DescriptorHeapEx(DescriptorHeapEx&&) = default;
-		DescriptorHeapEx& operator=(DescriptorHeapEx&&) = default;
+		DescriptorHeapEx(ID3D12DescriptorHeap* pExistingHeap) noexcept :
+			DescriptorHeap(pExistingHeap),
+			m_availableDescriptorCount(pExistingHeap->GetDesc().NumDescriptors),
+			m_descriptors(m_availableDescriptorCount) {}
 
-		uint32_t GetTop() const { return m_top; }
+		DescriptorHeapEx(ID3D12Device* pDevice, const D3D12_DESCRIPTOR_HEAP_DESC& desc) noexcept(false) :
+			DescriptorHeap(pDevice, &desc),
+			m_availableDescriptorCount(desc.NumDescriptors),
+			m_descriptors(m_availableDescriptorCount) {}
 
-		uint32_t Allocate(uint32_t count = 1, uint32_t index = ~0u) {
-			if (!count) throw invalid_argument("Cannot allocate 0 descriptors");
-			if (index == ~0u) index = m_top;
-			index += count;
-			if (index > Count()) throw out_of_range("Descriptor heap allocation out of range");
-			if (index > m_top) m_top = index;
-			return index;
+		DescriptorHeapEx(
+			ID3D12Device* pDevice,
+			uint32_t capacity,
+			D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+			D3D12_DESCRIPTOR_HEAP_FLAGS flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
+		) : DescriptorHeap(pDevice, type, flags, capacity),
+			m_availableDescriptorCount(capacity),
+			m_descriptors(m_availableDescriptorCount) {}
+
+		ID3D12DescriptorHeap* operator->() const { return Heap(); }
+		operator ID3D12DescriptorHeap* () const { return Heap(); }
+
+		uint32_t GetAvailableDescriptorCount() const {
+			const scoped_lock lock(m_mutex);
+
+			return m_availableDescriptorCount;
 		}
 
-		void AllocateTo(uint32_t index) {
-			if (index == m_top) throw invalid_argument("Cannot allocate 0 descriptors");
-			if (index < m_top || index > Count()) throw out_of_range("Descriptor heap allocation out of range");
-			m_top = index;
+		unique_ptr<Descriptor> Allocate(uint32_t count = 1) {
+			if (!count) Throw<out_of_range>("Cannot allocate 0 descriptors");
+
+			const scoped_lock lock(m_mutex);
+
+			if (count <= m_availableDescriptorCount) {
+				for (uint32_t i = 0; i < size(m_descriptors); i++) {
+					if (!m_descriptors[i]) {
+						auto found = true;
+						for (uint32_t j = i + 1; j < count - 1; j++) {
+							if (m_descriptors[j]) {
+								i = j;
+								found = false;
+								break;
+							}
+						}
+						if (found) {
+							for (uint32_t j = 0; j < count; j++) m_descriptors[i + j] = true;
+							m_availableDescriptorCount -= count;
+							return unique_ptr<Descriptor>(new Descriptor(*this, i, count));
+						}
+					}
+				}
+			}
+
+			Throw<runtime_error>("Not enough available descriptors");
 		}
 
-		uint32_t Free(uint32_t count = 1) {
-			if (!count) throw invalid_argument("Cannot free 0 descriptors");
-			const auto index = m_top - count;
-			if (index > m_top) throw out_of_range("Descriptor heap free out of range");
-			return m_top = index;
-		}
+		void Free(Descriptor& descriptor) {
+			if (!descriptor.IsValid() || &descriptor.m_heap != this) return;
 
-		void FreeTo(uint32_t index) {
-			if (index == m_top) throw invalid_argument("Cannot free 0 descriptors");
-			if (index > m_top) throw out_of_range("Descriptor heap free out of range");
-			m_top = index;
+			const scoped_lock lock(m_mutex);
+
+			if (const auto size = static_cast<uint32_t>(::size(m_descriptors)); descriptor.m_index < size) {
+				const auto count = min(size, descriptor.m_count);
+				for (uint32_t i = 0; i < count; i++) m_descriptors[descriptor.m_index + i] = false;
+				descriptor.m_index = ~0u;
+				descriptor.m_count = 0;
+				m_availableDescriptorCount += count;
+			}
 		}
 
 	private:
-		uint32_t m_top;
+		mutable mutex m_mutex;
+		uint32_t m_availableDescriptorCount{};
+		vector<bool> m_descriptors;
 	};
+
+	Descriptor::~Descriptor() { m_heap.Free(*this); }
+	D3D12_CPU_DESCRIPTOR_HANDLE Descriptor::GetCPUHandle() const { return m_heap.GetCpuHandle(m_index); }
+	D3D12_GPU_DESCRIPTOR_HANDLE Descriptor::GetGPUHandle() const { return m_heap.GetGpuHandle(m_index); }
 }

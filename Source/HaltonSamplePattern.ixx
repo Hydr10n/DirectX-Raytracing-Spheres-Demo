@@ -6,13 +6,16 @@ module;
 
 export module HaltonSamplePattern;
 
+import ErrorHelpers;
+
 using namespace DirectX;
+using namespace ErrorHelpers;
 using namespace std;
 
 export class HaltonSamplePattern {
 public:
 	explicit HaltonSamplePattern(uint32_t sampleCount = ~0u) noexcept(false) : m_sampleCount(sampleCount) {
-		if (!sampleCount) throw invalid_argument("Sample count cannot be 0");
+		if (!sampleCount) Throw<out_of_range>("Sample count cannot be 0");
 	}
 
 	static constexpr float Get(uint32_t index, uint32_t base) {

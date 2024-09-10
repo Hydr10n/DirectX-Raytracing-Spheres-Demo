@@ -2,17 +2,17 @@ module;
 
 #include <memory>
 #include <span>
-#include <string>
 
-#include "directxtk12/ResourceUploadBatch.h"
 #include "directxtk12/VertexTypes.h"
+#include "directxtk12/ResourceUploadBatch.h"
 
 #include "ml.h"
 #include "ml.hlsli"
 
 export module Model;
 
-import DescriptorHeap;
+import CommandList;
+import DeviceContext;
 import Event;
 import GPUBuffer;
 import Vertex;
@@ -27,8 +27,8 @@ export struct Mesh {
 
 	string Name;
 
-	shared_ptr<DefaultBuffer<VertexType>> Vertices;
-	shared_ptr<DefaultBuffer<IndexType>> Indices;
+	shared_ptr<GPUBuffer> Vertices;
+	shared_ptr<GPUBuffer> Indices;
 
 	inline static Event<const Mesh*> DeleteEvent;
 
@@ -42,17 +42,17 @@ export struct Mesh {
 
 	~Mesh() { DeleteEvent.Raise(this); }
 
-	static auto Create(span<const DirectX::VertexPositionNormalTexture> vertices, span<const IndexType> indices, ID3D12Device* pDevice, ResourceUploadBatch& resourceUploadBatch, DescriptorHeapEx& descriptorHeap, _Inout_ UINT& descriptorIndex) {
+	static auto Create(const vector<DirectX::VertexPositionNormalTexture>& vertices, const vector<IndexType>& indices, const DeviceContext& deviceContext, CommandList& commandList) {
 		vector<VertexType> newVertices;
 		newVertices.reserve(vertices.size());
 		for (const auto vertex : vertices) {
 			newVertices.emplace_back(vertex.position, reinterpret_cast<const uint32_t&>(float2_to_float16_t2(reinterpret_cast<const float2&>(vertex.textureCoordinate))), reinterpret_cast<const XMFLOAT2&>(EncodeUnitVector(reinterpret_cast<const float3&>(vertex.normal), true)));
 		}
-		const auto CreateBuffer = [&]<typename T>(shared_ptr<T>&buffer, const auto & data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
-			buffer = make_shared<T>(pDevice, resourceUploadBatch, data, afterState);
-			descriptorIndex = descriptorHeap.Allocate(1, descriptorIndex);
-			if (isStructuredSRV) buffer->CreateStructuredSRV(descriptorHeap, descriptorIndex - 1);
-			else buffer->CreateRawSRV(descriptorHeap, descriptorIndex - 1);
+		const auto CreateBuffer = [&]<typename T>(auto & buffer, const vector<T> &data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
+			buffer = GPUBuffer::CreateDefault<T>(deviceContext, size(data));
+			buffer->CreateSRV(isStructuredSRV ? BufferSRVType::Structured : BufferSRVType::Raw);
+			commandList.Write(*buffer, data);
+			commandList.SetState(*buffer, afterState);
 		};
 		const auto mesh = make_shared<Mesh>();
 		CreateBuffer(mesh->Vertices, newVertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, false);

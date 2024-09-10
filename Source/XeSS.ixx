@@ -4,6 +4,11 @@ module;
 
 export module XeSS;
 
+import CommandList;
+import DeviceContext;
+
+using namespace DirectX;
+
 export {
 	enum class XeSSResourceType { Depth, Velocity, ExposureScale, ResponsivePixelMask, Color, Output };
 
@@ -15,8 +20,8 @@ export {
 	};
 
 	struct XeSS {
-		XeSS(ID3D12Device* pDevice, xess_2d_t outputResolution, uint32_t flags) : m_outputResolution(outputResolution) {
-			if (xessD3D12CreateContext(pDevice, &m_context) == XESS_RESULT_SUCCESS) {
+		XeSS(const DeviceContext& deviceContext, xess_2d_t outputResolution, uint32_t flags) : m_outputResolution(outputResolution) {
+			if (xessD3D12CreateContext(deviceContext.Device, &m_context) == XESS_RESULT_SUCCESS) {
 				const xess_d3d12_init_params_t initParams{
 					.outputResolution = outputResolution,
 					.qualitySetting = XESS_QUALITY_SETTING_ULTRA_PERFORMANCE,
@@ -42,7 +47,6 @@ export {
 				case XeSSResourceType::ResponsivePixelMask: m_executeParams.pResponsivePixelMaskTexture = pResource; break;
 				case XeSSResourceType::Color: m_executeParams.pColorTexture = pResource; break;
 				case XeSSResourceType::Output: m_executeParams.pOutputTexture = pResource; break;
-				default: throw;
 			}
 		}
 
@@ -58,7 +62,7 @@ export {
 			m_executeParams.inputHeight = settings.InputSize.y;
 		}
 
-		auto Execute(ID3D12GraphicsCommandList* pCommandList) { return xessD3D12Execute(m_context, pCommandList, &m_executeParams); }
+		auto Execute(CommandList& commandList) { return xessD3D12Execute(m_context, commandList, &m_executeParams); }
 
 	private:
 		xess_2d_t m_outputResolution;

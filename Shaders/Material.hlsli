@@ -12,5 +12,6 @@ struct Material
 	float Metallic, Roughness, Transmission, IOR;
 	AlphaMode AlphaMode;
 	float AlphaThreshold;
-	float3 _;
+	bool HasTexture;
+	float2 _;
 };

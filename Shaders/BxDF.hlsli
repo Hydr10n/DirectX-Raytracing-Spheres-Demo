@@ -71,17 +71,13 @@ struct BRDFSample
 			NoL = abs(dot(N, L));
 		}
 
-		const bool ret = dot(hitInfo.GeometricNormal, L) > 0;
-		if (ret)
+		if (dot(hitInfo.GeometricNormal, L) > 0)
 		{
 			PDF = lerp(ImportanceSampling::VNDF::GetPDF(Vlocal, NoH, roughness), ImportanceSampling::Cosine::GetPDF(NoL), diffuseProbability);
+			return true;
 		}
-		else
-		{
-			PDF = 0;
-			weight = 0;
-		}
-		return ret;
+		PDF = weight = 0;
+		return false;
 	}
 
 	float3 Evaluate(LobeType lobeType, float3 N, float3 V, float3 L, float minRoughness = MinRoughness)
@@ -177,17 +173,13 @@ struct BSDFSample : BRDFSample
 			}
 		}
 
-		const bool ret = lobeType == LobeType::Transmission || dot(hitInfo.GeometricNormal, L) > 0;
-		if (ret)
+		if (lobeType == LobeType::Transmission || dot(hitInfo.GeometricNormal, L) > 0)
 		{
 			PDF = lerp(ImportanceSampling::VNDF::GetPDF(Vlocal, NoH, roughness), ImportanceSampling::Cosine::GetPDF(NoL), diffuseProbability);
+			return true;
 		}
-		else
-		{
-			PDF = 0;
-			weight = 0;
-		}
-		return ret;
+		PDF = weight = 0;
+		return false;
 	}
 
 	float3 Evaluate(LobeType lobeType, float3 N, float3 V, float3 L, float minRoughness = MinRoughness)
