@@ -56,6 +56,8 @@ export namespace DirectX {
 			ThrowIfFailed(deviceContext.MemoryAllocator->CreatePool(&poolDesc, &m_pool));
 		}
 
+		virtual ~CommandList() { Wait(); }
+
 		auto GetNative() const noexcept { return m_commandList.Get(); }
 		auto operator->() const noexcept { return m_commandList.Get(); }
 		operator ID3D12GraphicsCommandList4* () const noexcept { return m_commandList.Get(); }
