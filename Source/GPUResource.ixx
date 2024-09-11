@@ -31,12 +31,12 @@ export namespace DirectX {
 		ID3D12Resource* operator->() const noexcept { return GetNative(); }
 		operator ID3D12Resource* () const noexcept { return GetNative(); }
 
-		const DeviceContext& GetDeviceContext() const { return m_deviceContext; }
+		const DeviceContext& GetDeviceContext() const noexcept { return m_deviceContext; }
 
 		bool IsOwner() const noexcept { return m_allocation; }
 
 		D3D12_RESOURCE_STATES GetInitialState() const noexcept { return m_initialState; }
-		bool KeepInitialState() const { return m_keepInitialState; }
+		bool KeepInitialState() const noexcept { return m_keepInitialState; }
 
 		D3D12_RESOURCE_STATES GetState() const noexcept { return m_state; }
 		void SetState(D3D12_RESOURCE_STATES state) noexcept { m_state = state; }

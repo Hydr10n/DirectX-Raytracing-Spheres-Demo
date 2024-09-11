@@ -42,6 +42,26 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
 );
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
+	ReSTIRDI_TemporalBiasCorrectionMode,
+	{
+		{ ReSTIRDI_TemporalBiasCorrectionMode::Off, "Off" },
+		{ ReSTIRDI_TemporalBiasCorrectionMode::Basic, "Basic" },
+		{ ReSTIRDI_TemporalBiasCorrectionMode::Pairwise, "Pairwise" },
+		{ ReSTIRDI_TemporalBiasCorrectionMode::Raytraced, "Raytraced" }
+	}
+);
+
+NLOHMANN_JSON_SERIALIZE_ENUM(
+	ReSTIRDI_SpatialBiasCorrectionMode,
+	{
+		{ ReSTIRDI_SpatialBiasCorrectionMode::Off, "Off" },
+		{ ReSTIRDI_SpatialBiasCorrectionMode::Basic, "Basic" },
+		{ ReSTIRDI_SpatialBiasCorrectionMode::Pairwise, "Pairwise" },
+		{ ReSTIRDI_SpatialBiasCorrectionMode::Raytraced, "Raytraced" }
+	}
+);
+
+NLOHMANN_JSON_SERIALIZE_ENUM(
 	RTXGITechnique,
 	{
 		{ RTXGITechnique::None, "None" },
@@ -176,12 +196,19 @@ public:
 						bool IsEnabled = true;
 
 						struct ReGIR {
-							static constexpr float MinCellSize = 0.1f, MaxCellSize = 10;
-							float CellSize = 1;
+							struct Cell {
+								static constexpr float MinSize = 0.1f, MaxSize = 10;
+								float Size = 1;
 
-							bool IsCellVisualizationEnabled{};
+								bool IsVisualizationEnabled{};
 
-							FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, CellSize, IsCellVisualizationEnabled);
+								FRIEND_JSON_CONVERSION_FUNCTIONS(Cell, Size, IsVisualizationEnabled);
+							} Cell;
+
+							static constexpr UINT MaxBuildSamples = 32;
+							UINT BuildSamples = 8;
+
+							FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, Cell, BuildSamples);
 						} ReGIR;
 
 						struct InitialSampling {
@@ -200,7 +227,30 @@ public:
 							FRIEND_JSON_CONVERSION_FUNCTIONS(InitialSampling, LocalLight, BRDFSamples);
 						} InitialSampling;
 
-						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, ReGIR, InitialSampling);
+						struct TemporalSampling {
+							ReSTIRDI_TemporalBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
+
+							struct BoilingFilter {
+								bool IsEnabled = false;
+
+								float Strength = 0.2f;
+
+								FRIEND_JSON_CONVERSION_FUNCTIONS(BoilingFilter, IsEnabled, Strength);
+							} BoilingFilter;
+
+							FRIEND_JSON_CONVERSION_FUNCTIONS(TemporalSampling, BiasCorrectionMode, BoilingFilter);
+						} TemporalSampling;
+
+						struct SpatialSampling {
+							ReSTIRDI_SpatialBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_SpatialBiasCorrectionMode::Raytraced;
+
+							static constexpr UINT MaxSamples = 32;
+							UINT Samples = 1;
+
+							FRIEND_JSON_CONVERSION_FUNCTIONS(SpatialSampling, BiasCorrectionMode, Samples);
+						} SpatialSampling;
+
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, ReGIR, InitialSampling, TemporalSampling, SpatialSampling);
 					} ReSTIRDI;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReSTIRDI);
@@ -305,9 +355,12 @@ public:
 					Raytracing.SamplesPerPixel = clamp(Raytracing.SamplesPerPixel, 1u, Raytracing.MaxSamplesPerPixel);
 
 					{
-						Raytracing.RTXDI.ReSTIRDI.ReGIR.CellSize = clamp(Raytracing.RTXDI.ReSTIRDI.ReGIR.CellSize, Raytracing.RTXDI.ReSTIRDI.ReGIR.MinCellSize, Raytracing.RTXDI.ReSTIRDI.ReGIR.MaxCellSize);
-						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.MaxSamples);
-						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = max(Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples, Raytracing.RTXDI.ReSTIRDI.InitialSampling.MaxBRDFSamples);
+						Raytracing.RTXDI.ReSTIRDI.ReGIR.Cell.Size = clamp(Raytracing.RTXDI.ReSTIRDI.ReGIR.Cell.Size, Raytracing.RTXDI.ReSTIRDI.ReGIR.Cell.MinSize, Raytracing.RTXDI.ReSTIRDI.ReGIR.Cell.MaxSize);
+						Raytracing.RTXDI.ReSTIRDI.ReGIR.BuildSamples = clamp(Raytracing.RTXDI.ReSTIRDI.ReGIR.BuildSamples, 1u, Raytracing.RTXDI.ReSTIRDI.ReGIR.MaxBuildSamples);
+						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = clamp(Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples, 1u, Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.MaxSamples);
+						Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples = clamp(Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples, 1u, Raytracing.RTXDI.ReSTIRDI.InitialSampling.MaxBRDFSamples);
+						Raytracing.RTXDI.ReSTIRDI.TemporalSampling.BoilingFilter.Strength = clamp(Raytracing.RTXDI.ReSTIRDI.TemporalSampling.BoilingFilter.Strength, 0.0f, 1.0f);
+						Raytracing.RTXDI.ReSTIRDI.SpatialSampling.Samples = clamp(Raytracing.RTXDI.ReSTIRDI.SpatialSampling.Samples, 1u, Raytracing.RTXDI.ReSTIRDI.SpatialSampling.MaxSamples);
 					}
 
 					{

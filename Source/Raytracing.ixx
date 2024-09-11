@@ -91,7 +91,7 @@ export struct Raytracing {
 		CreateShader(m_SHARCQuery, { "SHARC_QUERY", "1" });
 	}
 
-	void SetConstants(const GraphicsSettings& graphicsSettings) {
+	void SetConstants(const GraphicsSettings& graphicsSettings) noexcept {
 		m_renderSize = graphicsSettings.RenderSize;
 		m_graphicsSettings = {
 			.FrameIndex = graphicsSettings.FrameIndex,
@@ -172,7 +172,7 @@ private:
 	_GraphicsSettings m_graphicsSettings{};
 
 	void SetConstants(CommandList& commandList) {
-		commandList.Write(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
+		commandList.Copy(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 

@@ -68,7 +68,12 @@ bool CastRay(
 		vertexDesc.LoadPositions(vertices, indices, positions);
 		vertexDesc.LoadNormals(vertices, indices, normals);
 		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
-		hitInfo.Initialize(positions, normals, textureCoordinates, q.CommittedTriangleBarycentrics(), q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(), rayDesc.Origin, rayDesc.Direction, q.CommittedRayT());
+		hitInfo.Initialize(
+			positions, normals, textureCoordinates,
+			q.CommittedTriangleBarycentrics(),
+			q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(),
+			rayDesc.Direction, q.CommittedRayT()
+		);
 		if (resourceDescriptorIndices.TextureMaps.Normal != ~0u)
 		{
 			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.TextureMaps.Normal];

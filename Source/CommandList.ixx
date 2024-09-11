@@ -26,9 +26,9 @@ using namespace Microsoft::WRL;
 using namespace Microsoft::WRL::Wrappers;
 using namespace std;
 
-#define WRITE() \
+#define COPY() \
 	if (sizeof(T) != buffer.GetStride()) Throw<runtime_error>("Buffer tride mismatch"); \
-	Write(buffer, ::data(data), sizeof(T) * size(data), offset);
+	Copy(buffer, ::data(data), sizeof(T) * size(data), offset);
 
 export namespace DirectX {
 	class CommandList {
@@ -128,42 +128,11 @@ export namespace DirectX {
 			(*this)->CopyBufferRegion(destination, destinationOffset, source, sourceOffset, size);
 		}
 
-		void Write(GPUBuffer& buffer, const void* pData, size_t size, size_t offset = 0) {
-			/*D3D12_HEAP_PROPERTIES heapProperties;
-			ThrowIfFailed(buffer->GetHeapProperties(&heapProperties, nullptr));
-
+		void Copy(GPUBuffer& buffer, const void* pData, size_t size, size_t offset = 0) {
 			const auto bufferRange = BufferRange{ offset, size }.Resolve(buffer->GetDesc().Width);
 
-			const auto Copy = [&](ID3D12Resource* pResource) {
-				void* data;
-				ThrowIfFailed(pResource->Map(0, nullptr, &data));
-				memcpy(data, pData, bufferRange.Size);
-			};
-
-			if (heapProperties.Type == D3D12_HEAP_TYPE_UPLOAD || heapProperties.Type == D3D12_HEAP_TYPE_GPU_UPLOAD) {*/
-
-
-			const auto bufferRange = BufferRange{ offset, size }.Resolve(buffer->GetDesc().Width);
-
-			const auto Copy = [&](ID3D12Resource* pResource) {
-				void* data;
-				ThrowIfFailed(pResource->Map(0, nullptr, &data));
-				memcpy(data, pData, bufferRange.Size);
-			};
-
-			if (buffer.GetType() == GPUBufferType::Upload) {
+			if (buffer.IsMappable()) {
 				memcpy(buffer.GetMappedData(), pData, bufferRange.Size);
-
-
-
-				/*Copy(buffer);*/
-
-
-
-				//buffer->Unmap(0, nullptr);
-
-
-
 
 				return;
 			}
@@ -185,7 +154,10 @@ export namespace DirectX {
 			ThrowIfFailed(m_deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &allocation, IID_NULL, nullptr));
 			const auto resource = allocation->GetResource();
 
-			Copy(resource);
+			constexpr D3D12_RANGE range{};
+			void* data;
+			ThrowIfFailed(resource->Map(0, &range, &data));
+			memcpy(data, pData, bufferRange.Size);
 
 			SetState(buffer, D3D12_RESOURCE_STATE_COPY_DEST);
 			(*this)->CopyBufferRegion(buffer, bufferRange.Offset, resource, 0, bufferRange.Size);
@@ -194,13 +166,13 @@ export namespace DirectX {
 		}
 
 		template <typename T>
-		void Write(GPUBuffer& buffer, initializer_list<T> data, size_t offset = 0) { WRITE(); }
+		void Copy(GPUBuffer& buffer, initializer_list<T> data, size_t offset = 0) { COPY(); }
 
 		template <typename T>
-		void Write(GPUBuffer& buffer, span<const T> data, size_t offset = 0) { WRITE(); }
+		void Copy(GPUBuffer& buffer, span<const T> data, size_t offset = 0) { COPY(); }
 
 		template <typename T>
-		void Write(GPUBuffer& buffer, const vector<T>& data, size_t offset = 0) { WRITE(); }
+		void Copy(GPUBuffer& buffer, const vector<T>& data, size_t offset = 0) { COPY(); }
 
 		void SetRenderTarget(Texture& texture) {
 			SetState(texture, D3D12_RESOURCE_STATE_RENDER_TARGET);

@@ -70,7 +70,7 @@ export {
 			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
 			NeighborOffsets = GPUBuffer::CreateDefault<UINT16>(deviceContext, neighborOffsetCount, DXGI_FORMAT_R8G8_SNORM);
 			NeighborOffsets->CreateSRV(BufferSRVType::Typed);
-			commandList.Write(*NeighborOffsets, offsets);
+			commandList.Copy(*NeighborOffsets, offsets);
 			commandList.SetState(*NeighborOffsets, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
 			DIReservoir = GPUBuffer::CreateDefault<RTXDI_PackedDIReservoir>(deviceContext, Context->getReSTIRDIContext().getReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);

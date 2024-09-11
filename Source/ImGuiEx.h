@@ -1,5 +1,8 @@
 #pragma once
 
+#include <functional>
+#include <string>
+
 #include "imgui_internal.h"
 
 namespace ImGuiEx {
@@ -52,6 +55,29 @@ namespace ImGuiEx {
 				e.Type == type && (type != ImGuiInputEventType_Key || e.Key.Key == arg) && (type != ImGuiInputEventType_MouseButton || e.MouseButton.Button == arg)) return &e;
 		}
 		return nullptr;
+	}
+
+	template <typename T, template <typename> typename U = std::initializer_list>
+	auto Combo(
+		const char* label,
+		const U<T>& values, T previewValue, T& value,
+		std::function<std::string(T)> ToString,
+		std::function<ImGuiSelectableFlags(T)> ToSelectableFlags = nullptr,
+		ImGuiComboFlags flags = ImGuiComboFlags_None
+	) {
+		auto ret = false;
+		if (ImGui::BeginCombo(label, ToString(previewValue).c_str(), flags)) {
+			for (const auto v : values) {
+				const auto isSelected = value == v;
+				if (ImGui::Selectable(ToString(v).c_str(), isSelected, ToSelectableFlags == nullptr ? ImGuiSelectableFlags_None : ToSelectableFlags(v))) {
+					value = v;
+					ret = true;
+				}
+				if (isSelected) ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+		return ret;
 	}
 
 	inline void Spinner(const char* label, ImU32 color, float radius, float thickness = 1) {

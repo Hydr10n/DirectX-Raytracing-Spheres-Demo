@@ -179,7 +179,7 @@ export namespace DirectX {
 
 		size_t GetCapacity() const noexcept { return (*this)->GetDesc().Width / m_stride; }
 
-		bool IsMappable() const {
+		bool IsMappable() const noexcept {
 			return m_type == GPUBufferType::Upload || m_type == GPUBufferType::Readback || m_deviceContext.MemoryAllocator->IsGPUUploadHeapSupported();
 		}
 

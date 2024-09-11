@@ -1,5 +1,7 @@
 module;
 
+#include <set>
+
 #include "directx/d3dx12.h"
 
 #include <shellapi.h>
@@ -62,6 +64,7 @@ import ThreadHelpers;
 using namespace D3D12MA;
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
+using namespace DisplayHelpers;
 using namespace DX;
 using namespace ErrorHelpers;
 using namespace nrd;
@@ -475,7 +478,7 @@ private:
 			m_camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 			m_camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 
-			m_deviceResources->GetCommandList().Write(*m_GPUBuffers.Camera, initializer_list{ m_camera });
+			m_deviceResources->GetCommandList().Copy(*m_GPUBuffers.Camera, initializer_list{ m_camera });
 		}
 
 		if (IsSceneReady()) UpdateScene();
@@ -849,7 +852,7 @@ private:
 				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 			}
 
-			commandList.Write(*m_GPUBuffers.SceneData, initializer_list{ sceneData });
+			commandList.Copy(*m_GPUBuffers.SceneData, initializer_list{ sceneData });
 		}
 
 		vector<InstanceData> instanceData(size(m_scene->GetInstanceData()));
@@ -891,8 +894,8 @@ private:
 				_objectData.Material.HasTexture = true;
 			}
 		}
-		commandList.Write(*m_GPUBuffers.InstanceData, instanceData);
-		commandList.Write(*m_GPUBuffers.ObjectData, objectData);
+		commandList.Copy(*m_GPUBuffers.InstanceData, instanceData);
+		commandList.Copy(*m_GPUBuffers.ObjectData, objectData);
 	}
 
 	void PrepareLightResources() {
@@ -944,8 +947,9 @@ private:
 			auto& context = m_RTXDIResources.Context->getReGIRContext();
 
 			auto dynamicParameters = context.getReGIRDynamicParameters();
-			dynamicParameters.regirCellSize = settings.ReGIR.CellSize;
+			dynamicParameters.regirCellSize = settings.ReGIR.Cell.Size;
 			dynamicParameters.center = reinterpret_cast<const rtxdi::float3&>(m_cameraController.GetPosition());
+			dynamicParameters.regirNumBuildSamples = settings.ReGIR.BuildSamples;
 			context.setDynamicParameters(dynamicParameters);
 		}
 
@@ -962,11 +966,14 @@ private:
 			context.setInitialSamplingParameters(initialSamplingParameters);
 
 			auto temporalResamplingParameters = context.getTemporalResamplingParameters();
-			temporalResamplingParameters.temporalBiasCorrection = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
+			temporalResamplingParameters.temporalBiasCorrection = settings.TemporalSampling.BiasCorrectionMode;
+			temporalResamplingParameters.enableBoilingFilter = settings.TemporalSampling.BoilingFilter.IsEnabled;
+			temporalResamplingParameters.boilingFilterStrength = settings.TemporalSampling.BoilingFilter.Strength;
 			context.setTemporalResamplingParameters(temporalResamplingParameters);
 
 			auto spatialResamplingParameters = context.getSpatialResamplingParameters();
-			spatialResamplingParameters.spatialBiasCorrection = ReSTIRDI_SpatialBiasCorrectionMode::Raytraced;
+			spatialResamplingParameters.spatialBiasCorrection = settings.SpatialSampling.BiasCorrectionMode;
+			spatialResamplingParameters.numSpatialSamples = settings.SpatialSampling.Samples;
 			context.setSpatialResamplingParameters(spatialResamplingParameters);
 		}
 	}
@@ -1077,7 +1084,7 @@ private:
 				.NoisySpecular = noisySpecular
 			};
 
-			m_RTXDI->SetConstants(m_RTXDIResources, ReSTIRDISettings.ReGIR.IsCellVisualizationEnabled, NRDSettings);
+			m_RTXDI->SetConstants(m_RTXDIResources, ReSTIRDISettings.ReGIR.Cell.IsVisualizationEnabled, NRDSettings);
 
 			m_RTXDI->Render(commandList, scene);
 		}
@@ -1538,41 +1545,28 @@ private:
 				{
 					auto isChanged = false;
 
-					if (ImGui::BeginCombo("Window Mode", ToString(g_graphicsSettings.WindowMode))) {
-						for (const auto WindowMode : { WindowMode::Windowed, WindowMode::Borderless, WindowMode::Fullscreen }) {
-							const auto isSelected = g_graphicsSettings.WindowMode == WindowMode;
+					if (ImGuiEx::Combo<WindowMode>(
+						"Window Mode",
+						{ WindowMode::Windowed, WindowMode::Borderless, WindowMode::Fullscreen },
+						g_graphicsSettings.WindowMode,
+						g_graphicsSettings.WindowMode,
+						static_cast<string(*)(WindowMode)>(ToString)
+						)) {
+						m_windowModeHelper.SetMode(g_graphicsSettings.WindowMode);
 
-							if (ImGui::Selectable(ToString(WindowMode), isSelected)) {
-								g_graphicsSettings.WindowMode = WindowMode;
-
-								m_windowModeHelper.SetMode(WindowMode);
-
-								isChanged = true;
-							}
-
-							if (isSelected) ImGui::SetItemDefaultFocus();
-						}
-
-						ImGui::EndCombo();
+						isChanged = true;
 					}
 
-					if (const auto ToString = [](SIZE value) { return format("{} × {}", value.cx, value.cy); };
-						ImGui::BeginCombo("Resolution", ToString(g_graphicsSettings.Resolution).c_str())) {
-						for (const auto& resolution : g_displayResolutions) {
-							const auto isSelected = g_graphicsSettings.Resolution == resolution;
+					if (ImGuiEx::Combo<Resolution, set>(
+						"Resolution",
+						g_displayResolutions,
+						g_graphicsSettings.Resolution,
+						g_graphicsSettings.Resolution,
+						[](Resolution value) { return format("{} × {}", value.cx, value.cy); }
+						)) {
+						m_windowModeHelper.SetResolution(g_graphicsSettings.Resolution);
 
-							if (ImGui::Selectable(ToString(resolution).c_str(), isSelected)) {
-								g_graphicsSettings.Resolution = resolution;
-
-								m_windowModeHelper.SetResolution(resolution);
-
-								isChanged = true;
-							}
-
-							if (isSelected) ImGui::SetItemDefaultFocus();
-						}
-
-						ImGui::EndCombo();
+						isChanged = true;
 					}
 
 					if (isChanged) {
@@ -1600,23 +1594,15 @@ private:
 					}
 				}
 
-				{
-					if (const ImGuiEx::ScopedEnablement scopedEnablement(m_isReflexLowLatencyAvailable);
-						ImGui::BeginCombo("NVIDIA Reflex", ToString(m_isReflexLowLatencyAvailable ? g_graphicsSettings.ReflexMode : ReflexMode::eOff))) {
-						for (const auto ReflexMode : { ReflexMode::eOff, ReflexMode::eLowLatency, ReflexMode::eLowLatencyWithBoost }) {
-							const auto isSelected = g_graphicsSettings.ReflexMode == ReflexMode;
-
-							if (ImGui::Selectable(ToString(ReflexMode), isSelected)) {
-								g_graphicsSettings.ReflexMode = ReflexMode;
-
-								m_futures["ReflexSetting"] = async(launch::deferred, [&] { SetReflexOptions(); });
-							}
-
-							if (isSelected) ImGui::SetItemDefaultFocus();
-						}
-
-						ImGui::EndCombo();
-					}
+				if (const ImGuiEx::ScopedEnablement scopedEnablement(m_isReflexLowLatencyAvailable);
+					ImGuiEx::Combo<ReflexMode>(
+						"NVIDIA Reflex",
+						{ ReflexMode::eOff, ReflexMode::eLowLatency, ReflexMode::eLowLatencyWithBoost },
+						m_isReflexLowLatencyAvailable ? g_graphicsSettings.ReflexMode : ReflexMode::eOff,
+						g_graphicsSettings.ReflexMode,
+						static_cast<string(*)(ReflexMode)>(ToString)
+						)) {
+					m_futures["ReflexSetting"] = async(launch::deferred, [&] { SetReflexOptions(); });
 				}
 
 				if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1660,9 +1646,17 @@ private:
 									&& ImGui::TreeNodeEx("ReGIR", ImGuiTreeNodeFlags_DefaultOpen)) {
 									auto& ReGIRSettings = ReSTIRDISettings.ReGIR;
 
-									m_resetHistory |= ImGui::SliderFloat("Cell Size", &ReGIRSettings.CellSize, ReGIRSettings.MinCellSize, ReGIRSettings.MaxCellSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+									if (ImGui::TreeNodeEx("Cell", ImGuiTreeNodeFlags_DefaultOpen)) {
+										auto& cellSettings = ReGIRSettings.Cell;
 
-									m_resetHistory |= ImGui::Checkbox("Cell Visualization", &ReGIRSettings.IsCellVisualizationEnabled);
+										m_resetHistory |= ImGui::SliderFloat("Size", &cellSettings.Size, cellSettings.MinSize, cellSettings.MaxSize, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+										m_resetHistory |= ImGui::Checkbox("Visualization", &cellSettings.IsVisualizationEnabled);
+
+										ImGui::TreePop();
+									}
+
+									m_resetHistory |= ImGui::SliderInt("Build Samples", reinterpret_cast<int*>(&ReGIRSettings.BuildSamples), 1, ReGIRSettings.MaxBuildSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 									ImGui::TreePop();
 								}
@@ -1673,31 +1667,74 @@ private:
 									if (ImGui::TreeNodeEx("Local Light", ImGuiTreeNodeFlags_DefaultOpen)) {
 										auto& localLightSettings = initialSamplingSettings.LocalLight;
 
-										if (ImGui::BeginCombo("Mode", ToString(localLightSettings.Mode))) {
-											for (const auto SamplingMode : {
+										m_resetHistory |= ImGuiEx::Combo<ReSTIRDI_LocalLightSamplingMode>(
+											"Mode",
+											{
 												ReSTIRDI_LocalLightSamplingMode::Uniform,
 												ReSTIRDI_LocalLightSamplingMode::Power_RIS,
-												ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS }) {
-												const auto isSelected = localLightSettings.Mode == SamplingMode;
+												ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS
+											},
+											localLightSettings.Mode,
+											localLightSettings.Mode,
+											static_cast<string(*)(ReSTIRDI_LocalLightSamplingMode)>(ToString)
+											);
 
-												if (ImGui::Selectable(ToString(SamplingMode), isSelected)) {
-													localLightSettings.Mode = SamplingMode;
-
-													m_resetHistory = true;
-												}
-
-												if (isSelected) ImGui::SetItemDefaultFocus();
-											}
-
-											ImGui::EndCombo();
-										}
-
-										m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&localLightSettings.Samples), 0, localLightSettings.MaxSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
+										m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&localLightSettings.Samples), 1, localLightSettings.MaxSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 										ImGui::TreePop();
 									}
 
-									m_resetHistory |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&initialSamplingSettings.BRDFSamples), 0, initialSamplingSettings.MaxBRDFSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
+									m_resetHistory |= ImGui::SliderInt("BRDF Samples", reinterpret_cast<int*>(&initialSamplingSettings.BRDFSamples), 1, initialSamplingSettings.MaxBRDFSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
+
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNodeEx("Temporal Sampling", ImGuiTreeNodeFlags_DefaultOpen)) {
+									auto& temporalSamplingSettings = ReSTIRDISettings.TemporalSampling;
+
+									m_resetHistory |= ImGuiEx::Combo<ReSTIRDI_TemporalBiasCorrectionMode>(
+										"Bias Correction Mode",
+										{
+											ReSTIRDI_TemporalBiasCorrectionMode::Off,
+											ReSTIRDI_TemporalBiasCorrectionMode::Basic,
+											ReSTIRDI_TemporalBiasCorrectionMode::Pairwise,
+											ReSTIRDI_TemporalBiasCorrectionMode::Raytraced
+										},
+										temporalSamplingSettings.BiasCorrectionMode,
+										temporalSamplingSettings.BiasCorrectionMode,
+										static_cast<string(*)(ReSTIRDI_TemporalBiasCorrectionMode)>(ToString)
+										);
+
+									if (ImGui::TreeNodeEx("Boiling Filter", ImGuiTreeNodeFlags_DefaultOpen)) {
+										auto& boilingFilterSettings = temporalSamplingSettings.BoilingFilter;
+
+										m_resetHistory |= ImGui::Checkbox("Enable", &boilingFilterSettings.IsEnabled);
+
+										m_resetHistory |= ImGui::SliderFloat("Strength", &boilingFilterSettings.Strength, 0, 1, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+										ImGui::TreePop();
+									}
+
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNodeEx("Spatial Sampling", ImGuiTreeNodeFlags_DefaultOpen)) {
+									auto& spatialSampling = ReSTIRDISettings.SpatialSampling;
+
+									m_resetHistory |= ImGuiEx::Combo<ReSTIRDI_SpatialBiasCorrectionMode>(
+										"Bias Correction Mode",
+										{
+											ReSTIRDI_SpatialBiasCorrectionMode::Off,
+											ReSTIRDI_SpatialBiasCorrectionMode::Basic,
+											ReSTIRDI_SpatialBiasCorrectionMode::Pairwise,
+											ReSTIRDI_SpatialBiasCorrectionMode::Raytraced
+										},
+										spatialSampling.BiasCorrectionMode,
+										spatialSampling.BiasCorrectionMode,
+										static_cast<string(*)(ReSTIRDI_SpatialBiasCorrectionMode)>(ToString)
+										);
+
+									m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&spatialSampling.Samples), 1, spatialSampling.MaxSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 									ImGui::TreePop();
 								}
@@ -1712,26 +1749,18 @@ private:
 					if (ImGui::TreeNodeEx("NVIDIA RTX Global Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& RTXGISettings = raytracingSettings.RTXGI;
 
-						if (ImGui::BeginCombo("Technique", ToString(RTXGISettings.Technique))) {
-							for (const auto RTXGITechnique : { RTXGITechnique::None, RTXGITechnique::SHARC }) {
-								const auto isSelected = RTXGISettings.Technique == RTXGITechnique;
-
-								if (ImGui::Selectable(ToString(RTXGITechnique), isSelected)) {
-									RTXGISettings.Technique = RTXGITechnique;
-
-									m_resetHistory = true;
-								}
-
-								if (isSelected) ImGui::SetItemDefaultFocus();
-							}
-
-							ImGui::EndCombo();
-						}
+						m_resetHistory |= ImGuiEx::Combo<RTXGITechnique>(
+							"Technique",
+							{ RTXGITechnique::None, RTXGITechnique::SHARC },
+							RTXGISettings.Technique,
+							RTXGISettings.Technique,
+							static_cast<string(*)(RTXGITechnique)>(ToString)
+							);
 
 						if (RTXGISettings.Technique == RTXGITechnique::SHARC) {
 							auto& SHARCSettings = RTXGISettings.SHARC;
 
-							m_resetHistory |= ImGui::SliderInt("Downscale Factor", reinterpret_cast<int*>(&SHARCSettings.DownscaleFactor), 1, SHARCSettings.MaxDownscaleFactor, "%d", ImGuiSliderFlags_AlwaysClamp);
+							m_resetHistory |= ImGui::SliderInt("Downscale Factor", reinterpret_cast<int*>(&SHARCSettings.DownscaleFactor), 1, SHARCSettings.MaxDownscaleFactor, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 							m_resetHistory |= ImGui::SliderFloat("Scene Scale", &SHARCSettings.SceneScale, SHARCSettings.MinSceneScale, SHARCSettings.MaxSceneScale, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
@@ -1755,21 +1784,13 @@ private:
 							ImGui::TreeNodeEx("NVIDIA Real-Time Denoisers", isAvailable ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None)) {
 							auto& NRDSettings = postProcessingSetttings.NRD;
 
-							if (ImGui::BeginCombo("Denoiser", ToString(NRDSettings.Denoiser))) {
-								for (const auto Denoiser : { NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX }) {
-									const auto isSelected = NRDSettings.Denoiser == Denoiser;
-
-									if (ImGui::Selectable(ToString(Denoiser), isSelected)) {
-										NRDSettings.Denoiser = Denoiser;
-
-										m_resetHistory = true;
-									}
-
-									if (isSelected) ImGui::SetItemDefaultFocus();
-								}
-
-								ImGui::EndCombo();
-							}
+							m_resetHistory |= ImGuiEx::Combo<NRDDenoiser>(
+								"Denoiser",
+								{ NRDDenoiser::None, NRDDenoiser::ReBLUR, NRDDenoiser::ReLAX },
+								NRDSettings.Denoiser,
+								NRDSettings.Denoiser,
+								static_cast<string(*)(NRDDenoiser)>(ToString)
+								);
 
 							if (NRDSettings.Denoiser != NRDDenoiser::None) {
 								ImGui::Checkbox("Validation Overlay", &NRDSettings.IsValidationOverlayEnabled);
@@ -1784,47 +1805,38 @@ private:
 
 						auto isChanged = false;
 
-						if (ImGui::BeginCombo("Upscaler", ToString(superResolutionSettings.Upscaler))) {
-							for (const auto Upscaler : { Upscaler::None, Upscaler::DLSS, Upscaler::XeSS }) {
-								const auto IsSelectable = [&] {
-									return Upscaler == Upscaler::None
-										|| (Upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS))
-										|| (Upscaler == Upscaler::XeSS && m_XeSS->IsAvailable());
-								};
-								const auto isSelected = superResolutionSettings.Upscaler == Upscaler;
-
-								if (ImGui::Selectable(ToString(Upscaler), isSelected, IsSelectable() ? ImGuiSelectableFlags_None : ImGuiSelectableFlags_Disabled)) {
-									superResolutionSettings.Upscaler = Upscaler;
-
-									isChanged = true;
-								}
-
-								if (isSelected) ImGui::SetItemDefaultFocus();
-							}
-
-							ImGui::EndCombo();
+						{
+							const auto IsSelectable = [&](Upscaler upscaler) {
+								return upscaler == Upscaler::None
+									|| (upscaler == Upscaler::DLSS && m_streamline->IsFeatureAvailable(kFeatureDLSS))
+									|| (upscaler == Upscaler::XeSS && m_XeSS->IsAvailable()) ?
+									ImGuiSelectableFlags_None : ImGuiSelectableFlags_Disabled;
+							};
+							isChanged |= ImGuiEx::Combo<Upscaler>(
+								"Upscaler",
+								{ Upscaler::None, Upscaler::DLSS, Upscaler::XeSS },
+								superResolutionSettings.Upscaler,
+								superResolutionSettings.Upscaler,
+								static_cast<string(*)(Upscaler)>(ToString),
+								IsSelectable
+								);
 						}
 
-						if (superResolutionSettings.Upscaler != Upscaler::None && ImGui::BeginCombo("Mode", ToString(superResolutionSettings.Mode))) {
-							for (const auto Mode : {
-								SuperResolutionMode::Auto,
-								SuperResolutionMode::Native,
-								SuperResolutionMode::Quality,
-								SuperResolutionMode::Balanced,
-								SuperResolutionMode::Performance,
-								SuperResolutionMode::UltraPerformance }) {
-								const auto isSelected = superResolutionSettings.Mode == Mode;
-
-								if (ImGui::Selectable(ToString(Mode), isSelected)) {
-									superResolutionSettings.Mode = Mode;
-
-									isChanged = true;
-								}
-
-								if (isSelected) ImGui::SetItemDefaultFocus();
-							}
-
-							ImGui::EndCombo();
+						if (superResolutionSettings.Upscaler != Upscaler::None) {
+							isChanged |= ImGuiEx::Combo<SuperResolutionMode>(
+								"Mode",
+								{
+									SuperResolutionMode::Auto,
+									SuperResolutionMode::Native,
+									SuperResolutionMode::Quality,
+									SuperResolutionMode::Balanced,
+									SuperResolutionMode::Performance,
+									SuperResolutionMode::UltraPerformance
+								},
+								superResolutionSettings.Mode,
+								superResolutionSettings.Mode,
+								static_cast<string(*)(SuperResolutionMode)>(ToString)
+								);
 						}
 
 						if (isChanged) {
@@ -1883,40 +1895,32 @@ private:
 
 								ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
-								if (ImGui::BeginCombo("Color Primary Rotation", ToString(HDRSettings.ColorPrimaryRotation))) {
-									for (const auto ColorPrimaryRotation : {
+								ImGuiEx::Combo<ToneMapPostProcess::ColorPrimaryRotation>(
+									"Color Primary Rotation",
+									{
 										ToneMapPostProcess::HDTV_to_UHDTV,
 										ToneMapPostProcess::DCI_P3_D65_to_UHDTV,
-										ToneMapPostProcess::HDTV_to_DCI_P3_D65 }) {
-										const auto isSelected = HDRSettings.ColorPrimaryRotation == ColorPrimaryRotation;
-
-										if (ImGui::Selectable(ToString(ColorPrimaryRotation), isSelected)) {
-											HDRSettings.ColorPrimaryRotation = ColorPrimaryRotation;
-										}
-
-										if (isSelected) ImGui::SetItemDefaultFocus();
-									}
-
-									ImGui::EndCombo();
-								}
+										ToneMapPostProcess::HDTV_to_DCI_P3_D65
+									},
+									HDRSettings.ColorPrimaryRotation,
+									HDRSettings.ColorPrimaryRotation,
+									static_cast<string(*)(ToneMapPostProcess::ColorPrimaryRotation)>(ToString)
+									);
 							}
 							else {
 								auto& nonHDRSettings = toneMappingSettings.NonHDR;
 
-								if (ImGui::BeginCombo("Operator", ToString(nonHDRSettings.Operator))) {
-									for (const auto Operator : {
+								ImGuiEx::Combo<ToneMapPostProcess::Operator>(
+									"Operator",
+									{
 										ToneMapPostProcess::Saturate,
 										ToneMapPostProcess::Reinhard,
-										ToneMapPostProcess::ACESFilmic }) {
-										const auto isSelected = nonHDRSettings.Operator == Operator;
-
-										if (ImGui::Selectable(ToString(Operator), isSelected)) nonHDRSettings.Operator = Operator;
-
-										if (isSelected) ImGui::SetItemDefaultFocus();
-									}
-
-									ImGui::EndCombo();
-								}
+										ToneMapPostProcess::ACESFilmic
+									},
+									nonHDRSettings.Operator,
+									nonHDRSettings.Operator,
+									static_cast<string(*)(ToneMapPostProcess::Operator)>(ToString)
+									);
 
 								ImGui::SliderFloat("Exposure", &nonHDRSettings.Exposure, nonHDRSettings.MinExposure, nonHDRSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 							}

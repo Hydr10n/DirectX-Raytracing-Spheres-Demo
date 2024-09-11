@@ -11,7 +11,7 @@ struct HitInfo
 
 	float3 ObjectPosition, GeometricNormal;
 
-	float3 SafePosition, SafeNormal;
+	float3 SafeNormal;
 	float SafeOffset;
 
 	float2 Barycentrics;
@@ -22,11 +22,18 @@ struct HitInfo
 
 	uint InstanceIndex, ObjectIndex, PrimitiveIndex;
 
-	void Initialize(float3 positions[3], float3 normals[3], float2 textureCoordinates[3], float2 barycentrics, float3x4 objectToWorld, float3x4 worldToObject, float3 worldRayOrigin, float3 worldRayDirection, float distance)
+	void Initialize(
+		float3 positions[3], float3 normals[3], float2 textureCoordinates[3],
+		float2 barycentrics,
+		float3x4 objectToWorld, float3x4 worldToObject,
+		float3 worldRayDirection, float distance
+	)
 	{
 		float3 objectNormal;
-		SelfIntersectionAvoidance::GetSafeTriangleSpawnPoint(ObjectPosition, SafePosition, objectNormal, SafeNormal, SafeOffset, positions, barycentrics, objectToWorld, worldToObject);
-		Position = worldRayOrigin + worldRayDirection * distance;
+		SelfIntersectionAvoidance::GetSafeTriangleSpawnPoint(
+			ObjectPosition, Position, objectNormal, SafeNormal, SafeOffset,
+			positions, barycentrics, objectToWorld, worldToObject
+		);
 		Normal = normalize(Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
 		if (!(IsFrontFace = dot(Normal, worldRayDirection) < 0))
 		{
@@ -40,6 +47,6 @@ struct HitInfo
 
 	float3 GetSafeWorldRayOrigin(float3 worldRayDirection)
 	{
-		return SelfIntersectionAvoidance::OffsetSpawnPoint(SafePosition, SafeNormal * Math::Sign(dot(worldRayDirection, SafeNormal)), SafeOffset);
+		return SelfIntersectionAvoidance::OffsetSpawnPoint(Position, SafeNormal * Math::Sign(dot(worldRayDirection, SafeNormal)), SafeOffset);
 	}
 };

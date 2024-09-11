@@ -103,7 +103,7 @@ export namespace DX
 			return true;
 		}
 
-		void SetWindow(HWND window, SIZE size) noexcept
+		void SetWindow(HWND window, SIZE size)
 		{
 			m_window = window;
 			ResizeWindow(size);

@@ -100,7 +100,7 @@ export namespace DirectX::RaytracingHelpers {
 
 			if constexpr (IsTop) {
 				if (m_buffers.InstanceDescs) {
-					commandList.Write(*m_buffers.InstanceDescs, descs);
+					commandList.Copy(*m_buffers.InstanceDescs, descs);
 					commandList.SetState(*m_buffers.InstanceDescs, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetNative()->GetGPUVirtualAddress();
 				}
@@ -205,7 +205,7 @@ export namespace DirectX::RaytracingHelpers {
 			Copy(hitGroups, m_hitGroupStride);
 
 			m_buffer = GPUBuffer::CreateDefault<uint8_t>(commandList.GetDeviceContext(), size(buffer));
-			commandList.Write(*m_buffer, buffer);
+			commandList.Copy(*m_buffer, buffer);
 		}
 
 		D3D12_GPU_VIRTUAL_ADDRESS GetRayGenerationAddress() const noexcept { return m_buffer->GetNative()->GetGPUVirtualAddress(); }

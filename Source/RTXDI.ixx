@@ -53,7 +53,7 @@ export struct RTXDI {
 	} Textures{};
 
 	explicit RTXDI(const DeviceContext& deviceContext) noexcept(false) : m_GPUBuffers{
-		.GraphicsSettings = GPUBuffer::CreateConstant<GraphicsSettings>(deviceContext)
+		.GraphicsSettings = GPUBuffer::CreateConstant<GraphicsSettings, false>(deviceContext)
 	} {
 		{
 			constexpr D3D12_SHADER_BYTECODE ShaderByteCode{ g_LocalLightPresampling_dxil, size(g_LocalLightPresampling_dxil) };
@@ -73,7 +73,7 @@ export struct RTXDI {
 		CreatePipelineState(m_DIFinalShading, L"DIFinalShading", g_DIFinalShading_dxil);
 	}
 
-	void SetConstants(const RTXDIResources& resources, bool isReGIRCellVisualizationEnabled, const NRDSettings& NRDSettings) {
+	void SetConstants(const RTXDIResources& resources, bool isReGIRCellVisualizationEnabled, const NRDSettings& NRDSettings) noexcept {
 		m_resources = &resources;
 
 		const auto& context = *m_resources->Context;
@@ -143,7 +143,7 @@ export struct RTXDI {
 	void Render(CommandList& commandList, const TopLevelAccelerationStructure& scene) {
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
 
-		commandList.Write(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
+		commandList.Copy(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);

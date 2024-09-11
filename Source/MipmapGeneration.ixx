@@ -39,14 +39,14 @@ export namespace PostProcessing {
 		}
 
 		void Process(CommandList& commandList) {
-			commandList.SetState(*m_texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetPipelineState(m_pipelineState.Get());
 
-			const auto mipLevels = min<uint32_t>(m_texture->GetNative()->GetDesc().MipLevels, 16);
+			commandList.SetState(*m_texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			struct { UINT MipLevels, MipLevelDescriptorIndices[16]; } constants{ mipLevels };
+			const auto mipLevels = min<UINT16>(m_texture->GetNative()->GetDesc().MipLevels, 16);
+
+			struct { UINT MipLevelDescriptorIndices[16], MipLevels; } constants{ .MipLevels = mipLevels };
 			for (const auto i : views::iota(0u, mipLevels)) {
 				constants.MipLevelDescriptorIndices[i] = m_texture->GetUAVDescriptor(i);
 			}
@@ -56,7 +56,7 @@ export namespace PostProcessing {
 			for (UINT mipLevel = 0; mipLevel < mipLevels; mipLevel += 5) {
 				commandList->SetComputeRoot32BitConstant(1, mipLevel, 0);
 
-				commandList->Dispatch((size.x >> mipLevel + 31) / 32, (size.y >> mipLevel + 31) / 32, 1);
+				commandList->Dispatch((size.x + 31) / 32, (size.y + 31) / 32, 1);
 
 				size.x = max(1u, size.x >> 5);
 				size.y = max(1u, size.y >> 5);

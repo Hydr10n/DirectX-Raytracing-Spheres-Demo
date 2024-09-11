@@ -12,7 +12,8 @@
 
 struct Constants
 {
-	uint MipLevels, MipLevelIndices[16];
+	row_major uint4x4 MipLevelIndices;
+	uint MipLevels;
 };
 ConstantBuffer<Constants> g_constants : register(b0);
 
@@ -23,7 +24,10 @@ cbuffer _ : register(b1)
 
 groupshared float s_weights[16];
 
-#define TEXTURE(offset) RWTexture2D<float> texture = ResourceDescriptorHeap[g_constants.MipLevelIndices[g_mipLevel + offset]];
+#define TEXTURE(offset) \
+	RWTexture2D<float> texture = ResourceDescriptorHeap[ \
+		g_constants.MipLevelIndices[(g_mipLevel + offset) / 4][(g_mipLevel + offset) % 4] \
+	];
 
 [RootSignature(
 	"RootFlags(CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED),"
@@ -114,7 +118,9 @@ void main(uint2 GroupIndex : SV_GroupID, uint ThreadIndex : SV_GroupThreadID)
 
 	// The rest operates on a 4x4 group of values for the entire thread group
 	if (ThreadIndex >= 16)
+	{
 		return;
+	}
 
 	// Load the intermediate results
 	weight = s_weights[ThreadIndex];
