@@ -1,10 +1,11 @@
 module;
 
-#include <memory>
 #include <span>
-#include <stdexcept>
+#include <string>
 
 #include "directxtk12/DirectXHelpers.h"
+
+#include "rtxmu/D3D12AccelStructManager.h"
 
 export module RaytracingHelpers;
 
@@ -18,110 +19,57 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX::RaytracingHelpers {
-	struct BottomLevelAccelerationStructureBuffers {
-		shared_ptr<GPUBuffer> Scratch, Result;
+	struct TopLevelAccelerationStructure {
+		uint64_t ID = ~0ull;
 
-		BottomLevelAccelerationStructureBuffers() = default;
-
-		BottomLevelAccelerationStructureBuffers(
-			const DeviceContext& deviceContext,
-			size_t scratchSize, size_t resultSize
-		) noexcept(false) :
-			Scratch(GPUBuffer::CreateDefault<uint8_t>(deviceContext, scratchSize)),
-			Result(GPUBuffer::CreateRaytracingAccelerationStructure(deviceContext, resultSize)) {}
-	};
-
-	struct TopLevelAccelerationStructureBuffers : BottomLevelAccelerationStructureBuffers {
 		shared_ptr<GPUBuffer> InstanceDescs;
-
-		TopLevelAccelerationStructureBuffers() = default;
-
-		TopLevelAccelerationStructureBuffers(
-			const DeviceContext& deviceContext,
-			size_t scratchSize, size_t resultSize, size_t instanceDescCount
-		) : BottomLevelAccelerationStructureBuffers(deviceContext, scratchSize, resultSize) {
-			if (instanceDescCount) {
-				InstanceDescs = GPUBuffer::CreateDefault<D3D12_RAYTRACING_INSTANCE_DESC>(deviceContext, instanceDescCount);
-			}
-		}
 	};
 
-	template <bool IsTop>
-	class AccelerationStructure {
-	public:
-		AccelerationStructure(const AccelerationStructure&) = delete;
-		AccelerationStructure& operator=(const AccelerationStructure&) = delete;
+	void BuildTopLevelAccelerationStructure(
+		CommandList& commandList,
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags,
+		span<const D3D12_RAYTRACING_INSTANCE_DESC> descs,
+		bool resize,
+		TopLevelAccelerationStructure& accelerationStructure
+	) {
+		const auto& deviceContext = commandList.GetDeviceContext();
 
-		AccelerationStructure(
-			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE
-		) : m_flags(flags) {}
+		const bool isValid = deviceContext.AccelerationStructureManager->IsValid(accelerationStructure.ID);
 
-		ID3D12Resource* GetBuffer() const { return *m_buffers.Result; }
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs{
+			.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
+			.Flags = flags,
+			.NumDescs = static_cast<UINT>(size(descs))
+		};
 
-		UINT GetDescCount() const { return m_descCount; }
-
-		void Build(
-			CommandList& commandList,
-			span<const conditional_t<IsTop, D3D12_RAYTRACING_INSTANCE_DESC, D3D12_RAYTRACING_GEOMETRY_DESC>> descs,
-			bool updateOnly
-		) {
-			m_descCount = static_cast<UINT>(size(descs));
-
-			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc;
-			desc.Inputs = {
-				.Flags = m_flags,
-				.NumDescs = m_descCount
-			};
-			if constexpr (IsTop) desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-			else {
-				desc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-				desc.Inputs.pGeometryDescs = data(descs);
-			}
-
-			if (updateOnly && m_flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE && m_buffers.Result) {
-				desc.Inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-				desc.SourceAccelerationStructureData = m_buffers.Result->GetNative()->GetGPUVirtualAddress();
-			}
-			else {
-				const auto& m_deviceContext = commandList.GetDeviceContext();
-
-				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-				m_deviceContext.Device->GetRaytracingAccelerationStructurePrebuildInfo(&desc.Inputs, &info);
-
-				if constexpr (IsTop) {
-					m_buffers = TopLevelAccelerationStructureBuffers(m_deviceContext, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes, desc.Inputs.NumDescs);
-				}
-				else {
-					m_buffers = BottomLevelAccelerationStructureBuffers(m_deviceContext, info.ScratchDataSizeInBytes, info.ResultDataMaxSizeInBytes);
-				}
-
-				desc.SourceAccelerationStructureData = NULL;
-			}
-
-			if constexpr (IsTop) {
-				if (m_buffers.InstanceDescs) {
-					commandList.Copy(*m_buffers.InstanceDescs, descs);
-					commandList.SetState(*m_buffers.InstanceDescs, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-					desc.Inputs.InstanceDescs = m_buffers.InstanceDescs->GetNative()->GetGPUVirtualAddress();
+		if (!resize && (flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE) && isValid) {
+			inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+		}
+		else {
+			if (inputs.NumDescs) {
+				if (resize
+					|| !accelerationStructure.InstanceDescs || accelerationStructure.InstanceDescs->GetCapacity() < inputs.NumDescs) {
+					accelerationStructure.InstanceDescs = GPUBuffer::CreateDefault<D3D12_RAYTRACING_INSTANCE_DESC>(deviceContext, inputs.NumDescs);
 				}
 			}
-
-			desc.DestAccelerationStructureData = m_buffers.Result->GetNative()->GetGPUVirtualAddress();
-			desc.ScratchAccelerationStructureData = m_buffers.Scratch->GetNative()->GetGPUVirtualAddress();
-			commandList->BuildRaytracingAccelerationStructure(&desc, 0, nullptr);
-			commandList.SetUAVBarrier(*m_buffers.Result);
+			else if (resize && accelerationStructure.InstanceDescs) accelerationStructure.InstanceDescs.reset();
 		}
 
-	private:
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_flags;
+		if (inputs.NumDescs) {
+			commandList.Copy(*accelerationStructure.InstanceDescs, descs);
+			commandList.SetState(*accelerationStructure.InstanceDescs, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+			inputs.InstanceDescs = accelerationStructure.InstanceDescs->GetNative()->GetGPUVirtualAddress();
+		}
 
-		UINT m_descCount{};
-
-		conditional_t<IsTop, TopLevelAccelerationStructureBuffers, BottomLevelAccelerationStructureBuffers> m_buffers;
-	};
-
-	using BottomLevelAccelerationStructure = AccelerationStructure<false>;
-	using TopLevelAccelerationStructure = AccelerationStructure<true>;
+		if (isValid) {
+			if (!resize) {
+				commandList.UpdateAccelerationStructures(initializer_list{ inputs }, { accelerationStructure.ID });
+				return;
+			}
+			deviceContext.AccelerationStructureManager->RemoveAccelerationStructures({ accelerationStructure.ID });
+		}
+		accelerationStructure.ID = commandList.BuildAccelerationStructures(initializer_list{ inputs })[0];
+	}
 
 	D3D12_RAYTRACING_GEOMETRY_DESC CreateGeometryDesc(
 		const GPUBuffer& vertices, const GPUBuffer& indices,
@@ -206,6 +154,7 @@ export namespace DirectX::RaytracingHelpers {
 
 			m_buffer = GPUBuffer::CreateDefault<uint8_t>(commandList.GetDeviceContext(), size(buffer));
 			commandList.Copy(*m_buffer, buffer);
+			commandList.SetUAVBarrier(*m_buffer);
 		}
 
 		D3D12_GPU_VIRTUAL_ADDRESS GetRayGenerationAddress() const noexcept { return m_buffer->GetNative()->GetGPUVirtualAddress(); }

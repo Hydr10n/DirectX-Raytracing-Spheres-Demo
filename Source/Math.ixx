@@ -7,11 +7,13 @@ export module Math;
 using namespace DirectX::SimpleMath;
 
 export namespace Math {
-	struct Transform {
+	struct AffineTransform {
 		Vector3 Translation;
 		Quaternion Rotation;
 		Vector3 Scaling{ 1, 1, 1 };
 
-		auto operator()() const { return Matrix::CreateScale(Scaling) * Matrix::CreateFromQuaternion(Rotation) * Matrix::CreateTranslation(Translation); }
+		auto operator()() const {
+			return Matrix::CreateScale(Scaling) * Matrix::CreateFromQuaternion(Rotation) * Matrix::CreateTranslation(Translation);
+		}
 	};
 }

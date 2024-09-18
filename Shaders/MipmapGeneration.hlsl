@@ -24,9 +24,9 @@ cbuffer _ : register(b1)
 
 groupshared float s_weights[16];
 
-#define TEXTURE(offset) \
+#define TEXTURE(Offset) \
 	RWTexture2D<float> texture = ResourceDescriptorHeap[ \
-		g_constants.MipLevelIndices[(g_mipLevel + offset) / 4][(g_mipLevel + offset) % 4] \
+		g_constants.MipLevelIndices[(g_mipLevel + Offset) / 4][(g_mipLevel + Offset) % 4] \
 	];
 
 [RootSignature(

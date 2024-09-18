@@ -64,18 +64,16 @@ export namespace DirectX {
 			uint32_t capacity,
 			D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
 			D3D12_DESCRIPTOR_HEAP_FLAGS flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
-		) : DescriptorHeap(pDevice, type, flags, capacity),
+		) noexcept(false) :
+			DescriptorHeap(pDevice, type, flags, capacity),
 			m_availableDescriptorCount(capacity),
 			m_descriptors(m_availableDescriptorCount) {}
 
-		ID3D12DescriptorHeap* operator->() const { return Heap(); }
-		operator ID3D12DescriptorHeap* () const { return Heap(); }
+		ID3D12DescriptorHeap* operator->() const noexcept(false) { return Heap(); }
+		operator ID3D12DescriptorHeap* () const noexcept(false) { return Heap(); }
 
-		uint32_t GetAvailableDescriptorCount() const {
-			const scoped_lock lock(m_mutex);
-
-			return m_availableDescriptorCount;
-		}
+		// May be fragmented
+		uint32_t GetAvailableDescriptorCount() const noexcept(false) { return m_availableDescriptorCount; }
 
 		unique_ptr<Descriptor> Allocate(uint32_t count = 1) {
 			if (!count) Throw<out_of_range>("Cannot allocate 0 descriptors");
@@ -121,7 +119,7 @@ export namespace DirectX {
 
 	private:
 		mutable mutex m_mutex;
-		uint32_t m_availableDescriptorCount{};
+		atomic_uint32_t m_availableDescriptorCount{};
 		vector<bool> m_descriptors;
 	};
 

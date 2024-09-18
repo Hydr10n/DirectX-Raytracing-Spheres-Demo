@@ -104,15 +104,15 @@ export struct Raytracing {
 		};
 	}
 
-	void Render(CommandList& commandList, const TopLevelAccelerationStructure& scene) {
+	void Render(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure) {
 		SetConstants(commandList);
 
-		SetShader(commandList, scene, m_default);
+		SetShader(commandList, topLevelAccelerationStructure, m_default);
 
 		DispatchRays(commandList, *m_default.BindingTable, m_renderSize);
 	}
 
-	void Render(CommandList& commandList, const TopLevelAccelerationStructure& scene, SHARC& SHARC, const SHARCSettings& SHARCSettings) {
+	void Render(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure, SHARC& SHARC, const SHARCSettings& SHARCSettings) {
 		m_graphicsSettings.RTXGI.SHARC = {
 			.Capacity = static_cast<UINT>(SHARC.GPUBuffers.HashEntries->GetCapacity()),
 			.SceneScale = SHARCSettings.SceneScale,
@@ -122,7 +122,7 @@ export struct Raytracing {
 		SetConstants(commandList);
 
 		const auto DispatchRays = [&](const Shader& shader, XMUINT2 renderSize) {
-			UINT i = SetShader(commandList, scene, shader);
+			UINT i = SetShader(commandList, topLevelAccelerationStructure, shader);
 
 			commandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.HashEntries->GetNative()->GetGPUVirtualAddress());
 			commandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.PreviousVoxelData->GetNative()->GetGPUVirtualAddress());
@@ -168,7 +168,7 @@ private:
 		unique_ptr<ShaderBindingTable> BindingTable;
 	} m_default, m_SHARCUpdate, m_SHARCQuery;
 
-	XMUINT2 m_renderSize;
+	XMUINT2 m_renderSize{};
 	_GraphicsSettings m_graphicsSettings{};
 
 	void SetConstants(CommandList& commandList) {
@@ -176,7 +176,7 @@ private:
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 
-	UINT SetShader(CommandList& commandList, const TopLevelAccelerationStructure& scene, const Shader& shader) {
+	UINT SetShader(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure, const Shader& shader) {
 		commandList->SetComputeRootSignature(shader.RootSignature.Get());
 		commandList->SetPipelineState1(shader.PipelineState.Get());
 
@@ -197,7 +197,7 @@ private:
 		commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		UINT i = 0;
-		commandList->SetComputeRootShaderResourceView(i++, scene.GetBuffer()->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
@@ -217,7 +217,7 @@ private:
 		return i;
 	}
 
-	void DispatchRays(ID3D12GraphicsCommandList4* pCommandList, const ShaderBindingTable& shaderBindingTable, XMUINT2 renderSize) {
+	void DispatchRays(CommandList& commandList, const ShaderBindingTable& shaderBindingTable, XMUINT2 renderSize) {
 		const D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc{
 			.RayGenerationShaderRecord{
 				.StartAddress = shaderBindingTable.GetRayGenerationAddress(),
@@ -237,6 +237,6 @@ private:
 			.Height = renderSize.y,
 			.Depth = 1
 		};
-		pCommandList->DispatchRays(&dispatchRaysDesc);
+		commandList->DispatchRays(&dispatchRaysDesc);
 	}
 };

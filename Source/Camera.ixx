@@ -24,7 +24,15 @@ export {
 		XMFLOAT3 ForwardDirection;
 		float ApertureRadius, NearDepth, FarDepth;
 		XMFLOAT2 Jitter;
-		XMFLOAT4X4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousProjectionToView, PreviousViewToWorld, WorldToProjection;
+		XMFLOAT4X4
+			PreviousWorldToView,
+			PreviousViewToProjection,
+			PreviousWorldToProjection,
+			PreviousProjectionToView,
+			PreviousViewToWorld,
+			WorldToProjection,
+			ProjectionToView,
+			ViewToWorld;
 	};
 
 	struct CameraController {
@@ -134,8 +142,12 @@ export {
 			m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 
 			float4x4 viewToProjection;
-			if (m_farDepth == numeric_limits<float>::infinity()) viewToProjection.SetupByHalfFovxInf(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_projectionFlags);
-			else viewToProjection.SetupByHalfFovx(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_farDepth, m_projectionFlags);
+			if (m_farDepth == numeric_limits<float>::infinity()) {
+				viewToProjection.SetupByHalfFovxInf(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_projectionFlags);
+			}
+			else {
+				viewToProjection.SetupByHalfFovx(m_horizontalFieldOfView / 2, m_aspectRatio, m_nearDepth, m_farDepth, m_projectionFlags);
+			}
 			m_viewToProjection = reinterpret_cast<const Matrix&>(viewToProjection);
 		}
 

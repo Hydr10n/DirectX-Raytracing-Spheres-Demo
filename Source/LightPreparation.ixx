@@ -130,6 +130,6 @@ private:
 
 	constexpr bool IsEmissive(const RenderObject& renderObject) {
 		constexpr auto Max = [](const XMFLOAT3& value) { return max(max(value.x, value.y), value.z); };
-		return Max(renderObject.Material.EmissiveColor) > 0 || renderObject.Textures.contains(TextureMapType::EmissiveColor);
+		return Max(renderObject.Material.EmissiveColor) > 0 || renderObject.Textures[to_underlying(TextureMapType::EmissiveColor)];
 	}
 };

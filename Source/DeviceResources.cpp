@@ -2,8 +2,8 @@ module;
 
 #include <format>
 
-#include "directx/d3dx12.h"
 #include <dxgi1_6.h>
+#include "directx/d3dx12.h"
 
 #ifdef _DEBUG
 #include <dxgidebug.h>
@@ -13,19 +13,35 @@ module;
 
 #include "D3D12MemAlloc.h"
 
+#include "rtxmu/D3D12AccelStructManager.h"
+
 module DeviceResources;
 
 import DescriptorHeap;
 import ErrorHelpers;
 import Texture;
 
-using namespace D3D12MA;
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 using namespace DX;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
+
+DeviceResources::DeviceResources(const CreationDesc& creationDesc) noexcept(false) : m_creationDesc(creationDesc)
+{
+	if (creationDesc.BackBufferCount < MinBackBufferCount || creationDesc.BackBufferCount > MaxBackBufferCount)
+	{
+		Throw<out_of_range>("Invalid back buffer count");
+	}
+
+	if (creationDesc.MinFeatureLevel < D3D_FEATURE_LEVEL_12_0)
+	{
+		Throw<out_of_range>("Min feature level too low");
+	}
+}
+
+DeviceResources::~DeviceResources() { WaitForGPU(); }
 
 void DeviceResources::CreateDeviceResources()
 {
@@ -115,8 +131,19 @@ void DeviceResources::CreateDeviceResources()
 		m_featureLevel = m_creationDesc.MinFeatureLevel;
 	}
 
-	const ALLOCATOR_DESC desc{ .pDevice = m_device.Get(), .pAdapter = GetAdapter() };
-	ThrowIfFailed(CreateAllocator(&desc, &m_memoryAllocator));
+	const D3D12MA::ALLOCATOR_DESC desc{ .pDevice = m_device.Get(), .pAdapter = GetAdapter() };
+	ThrowIfFailed(D3D12MA::CreateAllocator(&desc, &m_memoryAllocator));
+
+	if (m_raytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
+	{
+		m_accelerationStructureManager = make_unique<rtxmu::DxAccelStructManager>(
+			m_device.Get()
+#ifdef _DEBUG
+			, Logger::Level::DBG
+#endif
+			);
+		m_accelerationStructureManager->Initialize();
+	}
 
 	const D3D12_COMMAND_QUEUE_DESC commandQueueDesc
 	{
@@ -134,6 +161,7 @@ void DeviceResources::CreateDeviceResources()
 		m_device.Get(),
 		m_commandQueue.Get(),
 		m_memoryAllocator.Get(),
+		m_accelerationStructureManager.get(),
 		m_defaultDescriptorHeap.get(),
 		m_resourceDescriptorHeap.get(),
 		m_renderDescriptorHeap.get(),
@@ -538,6 +566,8 @@ void DeviceResources::OnDeviceLost()
 
 	m_commandList.reset();
 	m_commandQueue.Reset();
+
+	m_accelerationStructureManager.reset();
 
 	m_memoryAllocator.Reset();
 

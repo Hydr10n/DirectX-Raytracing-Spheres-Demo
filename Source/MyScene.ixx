@@ -130,10 +130,10 @@ export {
 					renderObject.Material = Material;
 
 					if (auto& textures = renderObject.Textures; Name == ObjectNames::AlienMetal) {
-						textures[TextureMapType::BaseColor] = directoryPath / L"Alien-Metal_Albedo.png";
-						textures[TextureMapType::Metallic] = directoryPath / L"Alien-Metal_Metallic.png";
-						textures[TextureMapType::Roughness] = directoryPath / L"Alien-Metal_Roughness.png";
-						textures[TextureMapType::Normal] = directoryPath / L"Alien-Metal_Normal.png";
+						textures[to_underlying(TextureMapType::BaseColor)] = directoryPath / L"Alien-Metal_Albedo.png";
+						textures[to_underlying(TextureMapType::Metallic)] = directoryPath / L"Alien-Metal_Metallic.png";
+						textures[to_underlying(TextureMapType::Roughness)] = directoryPath / L"Alien-Metal_Roughness.png";
+						textures[to_underlying(TextureMapType::Normal)] = directoryPath / L"Alien-Metal_Normal.png";
 					}
 
 					AddRenderObject(renderObject, Position, PxSphereGeometry(0.5f));
@@ -252,15 +252,15 @@ export {
 						rigidDynamic.setLinearVelocity(linearSpeed * PxVec3(-normalized.z, 0, normalized.x));
 						rigidDynamic.setAngularVelocity({ 0, linearSpeed / magnitude, 0 });
 
-						textures[TextureMapType::BaseColor] = directoryPath / L"Moon_BaseColor.jpg";
-						textures[TextureMapType::Normal] = directoryPath / L"Moon_Normal.jpg";
+						textures[to_underlying(TextureMapType::BaseColor)] = directoryPath / L"Moon_BaseColor.jpg";
+						textures[to_underlying(TextureMapType::Normal)] = directoryPath / L"Moon_Normal.jpg";
 					}
 					else if (renderObject.Name == ObjectNames::Earth) {
 						rigidDynamic.setAngularVelocity({ 0, PxTwoPi / RotationPeriod, 0 });
 						PxRigidBodyExt::setMassAndUpdateInertia(rigidDynamic, &Mass, 1);
 
-						textures[TextureMapType::BaseColor] = directoryPath / L"Earth_BaseColor.jpg";
-						textures[TextureMapType::Normal] = directoryPath / L"Earth_Normal.jpg";
+						textures[to_underlying(TextureMapType::BaseColor)] = directoryPath / L"Earth_BaseColor.jpg";
+						textures[to_underlying(TextureMapType::Normal)] = directoryPath / L"Earth_Normal.jpg";
 					}
 					else if (renderObject.Name == ObjectNames::Star) rigidDynamic.setMass(0);
 
@@ -295,6 +295,13 @@ struct MyScene : Scene {
 
 		if (IsStatic()) return;
 
+		Tick(elapsedSeconds);
+
+		Refresh();
+	}
+
+protected:
+	void Tick(double elapsedSeconds) override {
 		for (auto& renderObject : RenderObjects) {
 			const auto& shape = *renderObject.Shape;
 
@@ -333,8 +340,6 @@ struct MyScene : Scene {
 		}
 
 		PhysX->Tick(static_cast<float>(min(1.0 / 60, elapsedSeconds)));
-
-		Refresh();
 	}
 
 private:

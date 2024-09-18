@@ -477,6 +477,8 @@ private:
 			m_camera.FarDepth = m_cameraController.GetFarDepth();
 			m_camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
 			m_camera.WorldToProjection = m_cameraController.GetWorldToProjection();
+			m_camera.ProjectionToView = m_cameraController.GetProjectionToView();
+			m_camera.ViewToWorld = m_cameraController.GetViewToWorld();
 
 			m_deviceResources->GetCommandList().Copy(*m_GPUBuffers.Camera, initializer_list{ m_camera });
 		}
@@ -516,7 +518,12 @@ private:
 			if (isSceneReady) {
 				if (m_resetHistory) ResetHistory();
 
-				if (!m_scene->IsStatic()) m_scene->CreateAccelerationStructures(true);
+				if (!m_scene->IsStatic()) {
+					m_scene->CreateAccelerationStructures(commandList);
+					commandList.CompactAccelerationStructures();
+				}
+
+				m_scene->CollectGarbage();
 
 				RenderScene();
 
@@ -878,20 +885,23 @@ private:
 				.Indices = mesh->Indices->GetSRVDescriptor(BufferSRVType::Structured)
 			};
 
-			for (const auto& [Type, Texture] : renderObject.Textures) {
-				const auto index = Texture->GetSRVDescriptor().GetIndex();
-				switch (auto& indices = _objectData.ResourceDescriptorIndices.Textures; Type) {
-					case TextureMapType::BaseColor: indices.BaseColorMap = index; break;
-					case TextureMapType::EmissiveColor: indices.EmissiveColorMap = index; break;
-					case TextureMapType::Metallic: indices.MetallicMap = index; break;
-					case TextureMapType::Roughness: indices.RoughnessMap = index; break;
-					case TextureMapType::AmbientOcclusion: indices.AmbientOcclusionMap = index; break;
-					case TextureMapType::Transmission: indices.TransmissionMap = index; break;
-					case TextureMapType::Opacity: indices.OpacityMap = index; break;
-					case TextureMapType::Normal: indices.NormalMap = index; break;
-					default: Throw<out_of_range>("Unsupported texture map type");
+			for (size_t i = 0; const auto & texture : renderObject.Textures) {
+				if (texture) {
+					const auto index = texture->GetSRVDescriptor().GetIndex();
+					switch (auto& indices = _objectData.ResourceDescriptorIndices.Textures; static_cast<TextureMapType>(i)) {
+						case TextureMapType::BaseColor: indices.BaseColorMap = index; break;
+						case TextureMapType::EmissiveColor: indices.EmissiveColorMap = index; break;
+						case TextureMapType::Metallic: indices.MetallicMap = index; break;
+						case TextureMapType::Roughness: indices.RoughnessMap = index; break;
+						case TextureMapType::AmbientOcclusion: indices.AmbientOcclusionMap = index; break;
+						case TextureMapType::Transmission: indices.TransmissionMap = index; break;
+						case TextureMapType::Opacity: indices.OpacityMap = index; break;
+						case TextureMapType::Normal: indices.NormalMap = index; break;
+						default: Throw<out_of_range>("Unsupported texture map type");
+					}
+					_objectData.Material.HasTexture = true;
 				}
-				_objectData.Material.HasTexture = true;
+				i++;
 			}
 		}
 		commandList.Copy(*m_GPUBuffers.InstanceData, instanceData);

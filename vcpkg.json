@@ -16,6 +16,7 @@
                 "win32-binding"
             ]
         },
+        "eventpp",
         "nlohmann-json",
         "physx"
     ]

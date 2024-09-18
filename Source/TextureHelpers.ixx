@@ -37,11 +37,11 @@ using namespace std::filesystem;
 	ComPtr<ID3D12Resource> resource; \
 	ThrowIfFailed(__VA_ARGS__); \
 	if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap; \
-	auto texture = make_shared<Texture>(deviceContext, resource.Get(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, false); \
+	auto texture = make_unique<Texture>(deviceContext, resource.Get(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, false); \
 	texture->CreateSRV(isCubeMap); \
 	return texture;
 
-export namespace TextureHelpers {
+export namespace DirectX::TextureHelpers {
 	HRESULT LoadTexture(
 		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
 		const ScratchImage& image,
@@ -99,7 +99,7 @@ export namespace TextureHelpers {
 		LOAD(LoadFromTGAFile, filePath.c_str(), flags);
 	}
 
-	shared_ptr<Texture> LoadTexture(
+	unique_ptr<Texture> LoadTexture(
 		const path& filePath,
 		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
 		bool* pIsCubeMap = nullptr
@@ -124,7 +124,7 @@ export namespace TextureHelpers {
 		);
 	}
 
-	shared_ptr<Texture> LoadTexture(
+	unique_ptr<Texture> LoadTexture(
 		string_view format, const void* pData, size_t size,
 		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
 		bool* pIsCubeMap = nullptr

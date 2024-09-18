@@ -6,27 +6,29 @@ module;
 #include "directxtk12/VertexTypes.h"
 #include "directxtk12/ResourceUploadBatch.h"
 
+#include "eventpp/callbacklist.h"
+
 export module Model;
 
 import CommandList;
 import DeviceContext;
-import Event;
 import GPUBuffer;
 import Vertex;
 
 using namespace DirectX;
+using namespace eventpp;
 using namespace std;
 
 export struct Mesh {
-	using VertexType = ::VertexPositionNormalTexture;
-	using IndexType = UINT16;
-
 	string Name;
 
+	using VertexType = ::VertexPositionNormalTexture;
+	using IndexType = UINT16;
 	shared_ptr<GPUBuffer> Vertices;
 	shared_ptr<GPUBuffer> Indices;
 
-	inline static Event<const Mesh*> DeleteEvent;
+	using DestroyEvent = CallbackList<void(Mesh*)>;
+	DestroyEvent OnDestroyed;
 
 	static constexpr VertexDesc GetVertexDesc() {
 		return {
@@ -36,7 +38,7 @@ export struct Mesh {
 		};
 	}
 
-	~Mesh() { DeleteEvent.Raise(this); }
+	~Mesh() { OnDestroyed(this); }
 
 	static auto Create(const vector<DirectX::VertexPositionNormalTexture>& vertices, const vector<IndexType>& indices, const DeviceContext& deviceContext, CommandList& commandList) {
 		vector<VertexType> newVertices;

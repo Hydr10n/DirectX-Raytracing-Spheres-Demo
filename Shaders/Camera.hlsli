@@ -14,7 +14,15 @@ struct Camera
 	float3 ForwardDirection;
 	float ApertureRadius, NearDepth, FarDepth;
 	float2 Jitter;
-	float4x4 PreviousWorldToView, PreviousViewToProjection, PreviousWorldToProjection, PreviousProjectionToView, PreviousViewToWorld, WorldToProjection;
+	float4x4
+		PreviousWorldToView,
+		PreviousViewToProjection,
+		PreviousWorldToProjection,
+		PreviousProjectionToView,
+		PreviousViewToWorld,
+		WorldToProjection,
+		ProjectionToView,
+		ViewToWorld;
 
 	float3 GenerateRayDirection(float2 NDC)
 	{
@@ -47,15 +55,10 @@ struct Camera
 
 	float3 ReconstructWorldPosition(float2 NDC, float linearDepth, bool isPrevious)
 	{
-		if (isPrevious)
-		{
-			float4 projection = Geometry::ProjectiveTransform(PreviousProjectionToView, float4(NDC, 0.5f, 1));
-			projection.xy /= projection.z;
-			projection.zw = 1;
-			projection.xyz *= linearDepth;
-			return Geometry::AffineTransform(PreviousViewToWorld, projection);
-		}
-		const float3 direction = normalize(NDC.x * RightDirection + NDC.y * UpDirection + ForwardDirection);
-		return Position + direction * linearDepth / dot(normalize(ForwardDirection), direction);
+		float4 position = Geometry::ProjectiveTransform(isPrevious ? PreviousProjectionToView : ProjectionToView, float3(NDC, 0.5f));
+		position.xy /= position.z;
+		position.zw = 1;
+		position.xyz *= linearDepth;
+		return Geometry::AffineTransform(isPrevious ? PreviousViewToWorld : ViewToWorld, position);
 	}
 };

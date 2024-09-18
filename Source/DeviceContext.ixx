@@ -1,18 +1,31 @@
 module;
 
-#include "D3D12MemAlloc.h"
+#include <d3d12.h>
 
 export module DeviceContext;
 
 import DescriptorHeap;
 
-using namespace D3D12MA;
+export {
+	namespace D3D12MA {
+		class Allocator;
+	}
 
-export namespace DirectX {
-	struct DeviceContext {
-		ID3D12Device5* Device;
-		ID3D12CommandQueue* CommandQueue;
-		Allocator* MemoryAllocator;
-		DescriptorHeapEx* DefaultDescriptorHeap, * ResourceDescriptorHeap, * RenderDescriptorHeap, * DepthStencilDescriptorHeap;
-	};
+	namespace rtxmu {
+		class DxAccelStructManager;
+	}
+
+	namespace DirectX {
+		struct DeviceContext {
+			ID3D12Device5* const Device;
+			ID3D12CommandQueue* const CommandQueue;
+			D3D12MA::Allocator* const MemoryAllocator;
+			rtxmu::DxAccelStructManager* const AccelerationStructureManager;
+			DescriptorHeapEx
+				* const DefaultDescriptorHeap,
+				* const ResourceDescriptorHeap,
+				* const RenderDescriptorHeap,
+				* const DepthStencilDescriptorHeap;
+		};
+	}
 }

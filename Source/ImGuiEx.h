@@ -57,10 +57,10 @@ namespace ImGuiEx {
 		return nullptr;
 	}
 
-	template <typename T, template <typename> typename U = std::initializer_list>
+	template <typename T, template <typename> typename Container = std::initializer_list>
 	auto Combo(
 		const char* label,
-		const U<T>& values, T previewValue, T& value,
+		const Container<T>& values, T previewValue, T& value,
 		std::function<std::string(T)> ToString,
 		std::function<ImGuiSelectableFlags(T)> ToSelectableFlags = nullptr,
 		ImGuiComboFlags flags = ImGuiComboFlags_None

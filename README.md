@@ -101,9 +101,9 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 - OS: Microsoft Windows 10 64-bit (22H2) with latest drivers
 - Graphics:
 	- Basic: Any GPU capable of DirectX Raytracing Tier 1.1
+	- GPU Upload Heap: Any integrated GPU, or discrete GPU & BIOS that support Resizable BAR
 	- NVIDIA
 		- Shader Execution Reordering: GeForce RTX 40 Series
 		- DLSS
 			- Super Resolution: GeForce RTX 20 Series
 			- Frame Generation: GeForce RTX 40 Series
-	- GPU Upload Heap: Any integrated GPU, or discrete GPU & BIOS that support Resizable BAR

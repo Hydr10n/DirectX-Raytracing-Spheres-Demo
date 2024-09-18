@@ -1,7 +1,6 @@
 module;
 
 #include <filesystem>
-#include <map>
 
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"
@@ -18,7 +17,6 @@ export module Scene;
 
 import CommandList;
 import DeviceContext;
-import Event;
 import Math;
 import Material;
 import Model;
@@ -51,13 +49,13 @@ export {
 	struct RenderObjectDesc : RenderObjectBase {
 		string MeshURI;
 
-		map<TextureMapType, path> Textures;
+		path Textures[to_underlying(TextureMapType::_2DCount)];
 	};
 
 	struct RenderObject : RenderObjectBase {
 		shared_ptr<Mesh> Mesh;
 
-		map<TextureMapType, shared_ptr<Texture>> Textures;
+		shared_ptr<Texture> Textures[to_underlying(TextureMapType::_2DCount)];
 	};
 
 	struct SceneBase {
@@ -78,7 +76,7 @@ export {
 	struct SceneDesc : SceneBase {
 		struct {
 			path FilePath;
-			Transform Transform;
+			AffineTransform Transform;
 		} EnvironmentLightTexture, EnvironmentTexture;
 
 		unordered_map<string, pair<shared_ptr<vector<DirectX::VertexPositionNormalTexture>>, shared_ptr<vector<Mesh::IndexType>>>> Meshes;
@@ -94,43 +92,57 @@ export {
 
 		struct {
 			shared_ptr<Texture> Texture;
-			Transform Transform;
+			AffineTransform Transform;
 		} EnvironmentLightTexture, EnvironmentTexture;
 
 		unordered_map<string, shared_ptr<Mesh>> Meshes;
 
 		vector<RenderObject> RenderObjects;
 
-		Scene(const DeviceContext& deviceContext) : m_commandList(deviceContext), m_observer(*this) {}
+		explicit Scene(const DeviceContext& deviceContext) : m_deviceContext(deviceContext) {}
+
+		~Scene() override {
+			vector<uint64_t> IDs;
+			IDs.reserve(size(m_bottomLevelAccelerationStructureIDs) + 1);
+			for (const auto& [MeshNode, ID] : m_bottomLevelAccelerationStructureIDs) {
+				IDs.emplace_back(ID.first);
+				MeshNode->OnDestroyed.remove(ID.second);
+			}
+			IDs.emplace_back(m_topLevelAccelerationStructure.ID);
+			m_deviceContext.AccelerationStructureManager->RemoveAccelerationStructures(IDs);
+			m_bottomLevelAccelerationStructureIDs = {};
+			m_topLevelAccelerationStructure = {};
+
+			CollectGarbage();
+		}
 
 		virtual bool IsStatic() const { return false; }
 
-		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) {}
+		virtual void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) = 0;
 
 		void Load(const SceneDesc& sceneDesc) {
 			reinterpret_cast<SceneBase&>(*this) = sceneDesc;
 
-			const auto& deviceContext = m_commandList.GetDeviceContext();
+			CommandList commandList(m_deviceContext);
+			commandList.Begin();
 
-			m_commandList.Begin();
-
-			ResourceUploadBatch resourceUploadBatch(deviceContext.Device);
+			ResourceUploadBatch resourceUploadBatch(m_deviceContext.Device);
 			resourceUploadBatch.Begin();
 
 			{
 				if (!empty(sceneDesc.EnvironmentLightTexture.FilePath)) {
-					EnvironmentLightTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), deviceContext, resourceUploadBatch);
+					EnvironmentLightTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), m_deviceContext, resourceUploadBatch);
 					EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
 				}
 				if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
-					EnvironmentTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), deviceContext, resourceUploadBatch);
+					EnvironmentTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), m_deviceContext, resourceUploadBatch);
 					EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 				}
 			}
 
 			{
 				for (const auto& [URI, Mesh] : sceneDesc.Meshes) {
-					Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, deviceContext, m_commandList);
+					Meshes[URI] = Mesh::Create(*Mesh.first, *Mesh.second, m_deviceContext, commandList);
 				}
 
 				for (const auto& renderObjectDesc : sceneDesc.RenderObjects) {
@@ -139,21 +151,32 @@ export {
 
 					renderObject.Mesh = Meshes.at(renderObjectDesc.MeshURI);
 
-					for (const auto& [TextureMapType, FilePath] : renderObjectDesc.Textures) {
-						renderObject.Textures[TextureMapType] = LoadTexture(ResolveResourcePath(FilePath), deviceContext, resourceUploadBatch);
+					for (size_t i = 0; const auto & filePath : renderObjectDesc.Textures) {
+						if (!empty(filePath)) {
+							renderObject.Textures[i] = LoadTexture(ResolveResourcePath(filePath), m_deviceContext, resourceUploadBatch);
+						}
+						i++;
 					}
 
 					RenderObjects.emplace_back(renderObject);
 				}
 			}
 
-			resourceUploadBatch.End(deviceContext.CommandQueue).get();
+			resourceUploadBatch.End(m_deviceContext.CommandQueue).get();
 
-			m_commandList.End();
+			Tick(0);
 
 			Refresh();
 
-			CreateAccelerationStructures(false);
+			CreateAccelerationStructures(commandList);
+
+			commandList.End();
+
+			commandList.Begin();
+
+			commandList.CompactAccelerationStructures();
+
+			commandList.End();
 		}
 
 		const auto& GetInstanceData() const noexcept { return m_instanceData; }
@@ -181,14 +204,14 @@ export {
 				};
 				InstanceData instanceData;
 				instanceData.FirstGeometryIndex = objectIndex;
-				if (instanceIndex >= size(m_instanceData)) {
-					instanceData.PreviousObjectToWorld = instanceData.ObjectToWorld = Transform();
-					m_instanceData.emplace_back(instanceData);
-				}
-				else {
+				if (instanceIndex < size(m_instanceData)) {
 					instanceData.PreviousObjectToWorld = m_instanceData[instanceIndex].ObjectToWorld;
 					instanceData.ObjectToWorld = Transform();
 					m_instanceData[instanceIndex] = instanceData;
+				}
+				else {
+					instanceData.PreviousObjectToWorld = instanceData.ObjectToWorld = Transform();
+					m_instanceData.emplace_back(instanceData);
 				}
 				instanceIndex++;
 				objectIndex++;
@@ -196,110 +219,84 @@ export {
 			m_objectCount = objectIndex;
 		}
 
-		const auto& GetTopLevelAccelerationStructure() const { return *m_topLevelAccelerationStructure; }
+		auto GetTopLevelAccelerationStructure() const {
+			return m_deviceContext.AccelerationStructureManager->GetAccelStructGPUVA(m_topLevelAccelerationStructure.ID);
+		}
 
-		void CreateAccelerationStructures(bool updateOnly) {
-			const auto& deviceContext = m_commandList.GetDeviceContext();
-
-			vector<uint64_t> newBottomLevelAccelerationStructureIDs;
+		void CreateAccelerationStructures(CommandList& commandList) {
+			auto& accelerationStructureManager = *m_deviceContext.AccelerationStructureManager;
 
 			{
-				m_commandList.Begin();
-
-				if (!updateOnly) {
-					m_bottomLevelAccelerationStructureIDs = {};
-
-					m_accelerationStructureManager = make_unique<DxAccelStructManager>(deviceContext.Device);
-					m_accelerationStructureManager->Initialize();
-				}
-
 				vector<vector<D3D12_RAYTRACING_GEOMETRY_DESC>> geometryDescs;
-				vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> newBuildBottomLevelAccelerationStructureInputs;
-				vector<const Mesh*> newMeshes;
+				vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> newInputs;
+				vector<Mesh*> newMeshes;
 
 				for (const auto& renderObject : RenderObjects) {
 					const auto mesh = renderObject.Mesh.get();
-					if (const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh); second) {
-						auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(*mesh->Vertices, *mesh->Indices, renderObject.Material.AlphaMode == AlphaMode::Opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE) });
-						newBuildBottomLevelAccelerationStructureInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
-							.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
-							.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
-							.NumDescs = static_cast<UINT>(size(_geometryDescs)),
-							.pGeometryDescs = data(_geometryDescs)
-							});
-						newMeshes.emplace_back(mesh);
-					}
-				}
+					const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh);
+					if (!second) continue;
 
-				m_objectCount = static_cast<UINT>(size(RenderObjects));
-
-				if (!empty(newBuildBottomLevelAccelerationStructureInputs)) {
-					m_accelerationStructureManager->PopulateBuildCommandList(m_commandList, data(newBuildBottomLevelAccelerationStructureInputs), size(newBuildBottomLevelAccelerationStructureInputs), newBottomLevelAccelerationStructureIDs);
-					for (UINT i = 0; const auto & meshNode : newMeshes) {
-						m_bottomLevelAccelerationStructureIDs[meshNode] = newBottomLevelAccelerationStructureIDs[i++];
-					}
-					m_accelerationStructureManager->PopulateUAVBarriersCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
-					m_accelerationStructureManager->PopulateCompactionSizeCopiesCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
-				}
-
-				m_commandList.End();
-			}
-
-			{
-				m_commandList.Begin();
-
-				if (!empty(newBottomLevelAccelerationStructureIDs)) {
-					m_accelerationStructureManager->PopulateCompactionCommandList(m_commandList, newBottomLevelAccelerationStructureIDs);
-				}
-
-				if (!updateOnly) {
-					m_topLevelAccelerationStructure = make_unique<TopLevelAccelerationStructure>(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE);
-				}
-				vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
-				instanceDescs.reserve(size(m_instanceData));
-				for (UINT instanceIndex = 0; const auto & renderObject : RenderObjects) {
-					const auto& instanceData = m_instanceData[instanceIndex++];
-					auto& instanceDesc = instanceDescs.emplace_back(D3D12_RAYTRACING_INSTANCE_DESC{
-						.InstanceID = instanceData.FirstGeometryIndex,
-						.InstanceMask = renderObject.IsVisible ? ~0u : 0,
-						.InstanceContributionToHitGroupIndex = instanceData.FirstGeometryIndex,
-						.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,
-						.AccelerationStructure = m_accelerationStructureManager->GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh.get()))
+					auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(*mesh->Vertices, *mesh->Indices, renderObject.Material.AlphaMode == AlphaMode::Opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE) });
+					newInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
+						.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
+						.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
+						.NumDescs = static_cast<UINT>(size(_geometryDescs)),
+						.pGeometryDescs = data(_geometryDescs)
 						});
-					reinterpret_cast<XMFLOAT3X4&>(instanceDesc.Transform) = instanceData.ObjectToWorld;
+					newMeshes.emplace_back(mesh);
 				}
-				m_topLevelAccelerationStructure->Build(m_commandList, instanceDescs, updateOnly);
 
-				m_commandList.End();
+				if (!empty(newInputs)) {
+					const auto IDs = commandList.BuildAccelerationStructures(newInputs);
+
+					for (size_t i = 0; const auto & mesh : newMeshes) {
+						auto& ID = m_bottomLevelAccelerationStructureIDs.at(mesh);
+						ID.first = IDs[i++];
+						ID.second = mesh->OnDestroyed.append([&](Mesh* pMesh) {
+							if (const auto pID = m_bottomLevelAccelerationStructureIDs.find(pMesh);
+							pID != cend(m_bottomLevelAccelerationStructureIDs)) {
+							m_unreferencedBottomLevelAccelerationStructureIDs.emplace_back(pID->second.first);
+							m_bottomLevelAccelerationStructureIDs.erase(pID);
+						}
+							});
+					}
+				}
 			}
 
-			if (!empty(newBottomLevelAccelerationStructureIDs)) {
-				m_accelerationStructureManager->GarbageCollection(newBottomLevelAccelerationStructureIDs);
+			vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
+			instanceDescs.reserve(size(m_instanceData));
+			for (UINT instanceIndex = 0; const auto & renderObject : RenderObjects) {
+				const auto& instanceData = m_instanceData[instanceIndex++];
+				auto& instanceDesc = instanceDescs.emplace_back(D3D12_RAYTRACING_INSTANCE_DESC{
+					.InstanceID = instanceData.FirstGeometryIndex,
+					.InstanceMask = renderObject.IsVisible ? ~0u : 0,
+					.InstanceContributionToHitGroupIndex = instanceData.FirstGeometryIndex,
+					.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,
+					.AccelerationStructure = accelerationStructureManager.GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh.get()).first)
+					});
+				reinterpret_cast<XMFLOAT3X4&>(instanceDesc.Transform) = instanceData.ObjectToWorld;
+			}
+			BuildTopLevelAccelerationStructure(commandList, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE, instanceDescs, false, m_topLevelAccelerationStructure);
+		}
+
+		void CollectGarbage() {
+			if (!empty(m_unreferencedBottomLevelAccelerationStructureIDs)) {
+				m_deviceContext.AccelerationStructureManager->RemoveAccelerationStructures(m_unreferencedBottomLevelAccelerationStructureIDs);
+				m_unreferencedBottomLevelAccelerationStructureIDs.clear();
 			}
 		}
 
+	protected:
+		virtual void Tick(double elapsedSeconds) = 0;
+
 	private:
-		CommandList m_commandList;
+		const DeviceContext& m_deviceContext;
 
 		vector<InstanceData> m_instanceData;
 		UINT m_objectCount{};
 
-		unique_ptr<DxAccelStructManager> m_accelerationStructureManager;
-		unordered_map<const Mesh*, uint64_t> m_bottomLevelAccelerationStructureIDs;
-		unique_ptr<TopLevelAccelerationStructure> m_topLevelAccelerationStructure;
-
-		struct Observer {
-			Observer(Scene& scene) : m_scene(scene) {
-				m_meshDelete = Mesh::DeleteEvent += [&](const Mesh* ptr) {
-					scene.m_bottomLevelAccelerationStructureIDs.erase(ptr);
-				};
-			}
-
-			~Observer() { Mesh::DeleteEvent -= m_meshDelete; }
-
-		private:
-			Scene& m_scene;
-			EventHandle m_meshDelete{};
-		} m_observer;
+		vector<uint64_t> m_unreferencedBottomLevelAccelerationStructureIDs;
+		unordered_map<Mesh*, pair<uint64_t, Mesh::DestroyEvent::Handle>> m_bottomLevelAccelerationStructureIDs;
+		TopLevelAccelerationStructure m_topLevelAccelerationStructure;
 	};
 }

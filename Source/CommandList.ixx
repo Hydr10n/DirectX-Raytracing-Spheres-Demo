@@ -12,6 +12,8 @@ module;
 
 #include "D3D12MemAlloc.h"
 
+#include "rtxmu/D3D12AccelStructManager.h"
+
 export module CommandList;
 
 import DeviceContext;
@@ -56,7 +58,13 @@ export namespace DirectX {
 			ThrowIfFailed(deviceContext.MemoryAllocator->CreatePool(&poolDesc, &m_pool));
 		}
 
-		virtual ~CommandList() { Wait(); }
+		~CommandList() {
+			Wait();
+
+			for (auto& ID : m_compactAccelerationStructureIDs) {
+				if (!empty(ID)) m_deviceContext.AccelerationStructureManager->GarbageCollection(ID);
+			}
+		}
 
 		auto GetNative() const noexcept { return m_commandList.Get(); }
 		auto operator->() const noexcept { return m_commandList.Get(); }
@@ -78,6 +86,11 @@ export namespace DirectX {
 			ThrowIfFailed(m_commandList->Close());
 			m_deviceContext.CommandQueue->ExecuteCommandLists(1, CommandListCast(m_commandList.GetAddressOf()));
 
+			if (!empty(m_compactAccelerationStructureIDs[1])) {
+				m_compactAccelerationStructureIDs[0].append_range(m_compactAccelerationStructureIDs[1]);
+				m_compactAccelerationStructureIDs[1].clear();
+			}
+
 			if (wait) Wait();
 		}
 
@@ -90,6 +103,11 @@ export namespace DirectX {
 			}
 
 			m_trackedAllocations.clear();
+
+			if (!empty(m_builtAccelerationStructureIDs)) {
+				m_deviceContext.AccelerationStructureManager->GarbageCollection(m_builtAccelerationStructureIDs);
+				m_builtAccelerationStructureIDs.clear();
+			}
 		}
 
 		void SetResourceDescriptorHeap() {
@@ -188,6 +206,38 @@ export namespace DirectX {
 			(*this)->ClearRenderTargetView(texture.GetRTVDescriptor(mipLevel), reinterpret_cast<const float*>(&clearColor), 0, nullptr);
 		}
 
+		vector<uint64_t> BuildAccelerationStructures(span<const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> inputs) {
+			vector<uint64_t> IDs;
+			m_deviceContext.AccelerationStructureManager->PopulateBuildCommandList(*this, data(inputs), size(inputs), IDs);
+			m_deviceContext.AccelerationStructureManager->PopulateUAVBarriersCommandList(*this, IDs);
+			m_deviceContext.AccelerationStructureManager->PopulateCompactionSizeCopiesCommandList(*this, IDs);
+
+			for (size_t i = 0; const auto ID : IDs) {
+				if (inputs[i++].Flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION) {
+					m_compactAccelerationStructureIDs[1].emplace_back(ID);
+				}
+				else m_builtAccelerationStructureIDs.emplace_back(ID);
+			}
+
+			return IDs;
+		}
+
+		void UpdateAccelerationStructures(
+			span<const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> inputs,
+			const vector<uint64_t>& IDs
+		) {
+			m_deviceContext.AccelerationStructureManager->PopulateUpdateCommandList(*this, data(inputs), size(inputs), IDs);
+			m_deviceContext.AccelerationStructureManager->PopulateUAVBarriersCommandList(*this, IDs);
+		}
+
+		void CompactAccelerationStructures() {
+			if (!empty(m_compactAccelerationStructureIDs[0])) {
+				m_deviceContext.AccelerationStructureManager->PopulateCompactionCommandList(*this, m_compactAccelerationStructureIDs[0]);
+				m_builtAccelerationStructureIDs.append_range(m_compactAccelerationStructureIDs[0]);
+				m_compactAccelerationStructureIDs[0].clear();
+			}
+		}
+
 	private:
 		const DeviceContext& m_deviceContext;
 
@@ -202,5 +252,7 @@ export namespace DirectX {
 
 		unordered_set<GPUResource*> m_trackedResources;
 		vector<ComPtr<Allocation>> m_trackedAllocations;
+
+		vector<uint64_t> m_builtAccelerationStructureIDs, m_compactAccelerationStructureIDs[2];
 	};
 }
