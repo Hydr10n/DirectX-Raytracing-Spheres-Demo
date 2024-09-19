@@ -22,12 +22,10 @@ import DeviceContext;
 import ErrorHelpers;
 import GPUBuffer;
 import NRD;
-import RaytracingHelpers;
 import RTXDIResources;
 import Texture;
 
 using namespace DirectX;
-using namespace DirectX::RaytracingHelpers;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace rtxdi;
@@ -219,8 +217,7 @@ export struct RTXDI {
 			commandList->SetPipelineState(pipelineState.Get());
 
 			const auto& parameters = context.getReSTIRDIContext().getStaticParameters();
-			const XMUINT2 renderSize{ parameters.RenderWidth, parameters.RenderHeight };
-			commandList->Dispatch((renderSize.x + 7) / 8, (renderSize.y + 7) / 8, 1);
+			commandList->Dispatch((parameters.RenderWidth + 7) / 8, (parameters.RenderHeight + 7) / 8, 1);
 
 			commandList.SetUAVBarrier(*m_resources->DIReservoir);
 		};

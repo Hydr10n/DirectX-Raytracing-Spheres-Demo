@@ -63,8 +63,8 @@ void RayGeneration()
 		primarySurfaceMaterial = GetMaterial(primarySurfaceHitInfo.ObjectIndex, primarySurfaceHitInfo.TextureCoordinate);
 		primarySurfaceBRDFSample.Initialize(primarySurfaceMaterial);
 
-		linearDepth = dot(primarySurfaceHitInfo.Position - g_camera.Position, normalize(g_camera.ForwardDirection));
 		const float4 projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
+		linearDepth = projection.w;
 		normalizedDepth = projection.z / projection.w;
 		motionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, primarySurfaceHitInfo);
 		normals = float4(Packing::EncodeUnitVector(primarySurfaceHitInfo.Normal, true), Packing::EncodeUnitVector(primarySurfaceHitInfo.GeometricNormal, true));

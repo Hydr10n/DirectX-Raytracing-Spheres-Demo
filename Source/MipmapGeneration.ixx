@@ -34,7 +34,7 @@ export namespace PostProcessing {
 		void SetTexture(Texture& texture) {
 			if (m_texture == &texture) return;
 
-			for (const auto i : views::iota(0u, texture->GetDesc().MipLevels)) texture.CreateUAV(i);
+			for (const auto i : views::iota(0u, min<UINT16>(texture->GetDesc().MipLevels, 16))) texture.CreateUAV(i);
 			m_texture = &texture;
 		}
 
@@ -53,10 +53,10 @@ export namespace PostProcessing {
 			commandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 
 			auto size = GetTextureSize(*m_texture);
-			for (UINT mipLevel = 0; mipLevel < mipLevels; mipLevel += 5) {
+			for (UINT16 mipLevel = 0; mipLevel < mipLevels; mipLevel += 5) {
 				commandList->SetComputeRoot32BitConstant(1, mipLevel, 0);
 
-				commandList->Dispatch((size.x + 31) / 32, (size.y + 31) / 32, 1);
+				commandList->Dispatch((max(size.x >> mipLevel, 1u) + 31) / 32, (max(size.y >> mipLevel, 1u) + 31) / 32, 1);
 
 				size.x = max(1u, size.x >> 5);
 				size.y = max(1u, size.y >> 5);
