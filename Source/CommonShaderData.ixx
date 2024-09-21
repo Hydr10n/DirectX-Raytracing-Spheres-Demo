@@ -31,9 +31,23 @@ export {
 		XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 	};
 
+	struct MeshResourceDescriptorIndices { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u, _; };
+
+	struct TextureMapResourceDescriptorIndices {
+		UINT
+			BaseColor = ~0u,
+			EmissiveColor = ~0u,
+			Metallic = ~0u,
+			Roughness = ~0u,
+			AmbientOcclusion = ~0u,
+			Transmission = ~0u,
+			Opacity = ~0u,
+			Normal = ~0u;
+	};
+
 	struct ObjectResourceDescriptorIndices {
-		struct { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u, _; } Mesh;
-		struct { UINT BaseColorMap = ~0u, EmissiveColorMap = ~0u, MetallicMap = ~0u, RoughnessMap = ~0u, AmbientOcclusionMap = ~0u, TransmissionMap = ~0u, OpacityMap = ~0u, NormalMap = ~0u; } Textures;
+		MeshResourceDescriptorIndices Mesh;
+		TextureMapResourceDescriptorIndices Textures;
 	};
 
 	struct ObjectData {

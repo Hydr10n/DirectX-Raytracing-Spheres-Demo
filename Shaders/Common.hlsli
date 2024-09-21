@@ -26,16 +26,28 @@ struct InstanceData
 	row_major float3x4 PreviousObjectToWorld, ObjectToWorld;
 };
 
+struct MeshResourceDescriptorIndices
+{
+	uint Vertices, Indices, MotionVectors, _;
+};
+
+struct TextureMapResourceDescriptorIndices
+{
+	uint
+		BaseColor,
+		EmissiveColor,
+		Metallic,
+		Roughness,
+		AmbientOcclusion,
+		Transmission,
+		Opacity,
+		Normal;
+};
+
 struct ObjectResourceDescriptorIndices
 {
-	struct
-	{
-		uint Vertices, Indices, MotionVectors, _;
-	} Mesh;
-	struct
-	{
-		uint BaseColor, EmissiveColor, Metallic, Roughness, AmbientOcclusion, Transmission, Opacity, Normal;
-	} TextureMaps;
+	MeshResourceDescriptorIndices Mesh;
+	TextureMapResourceDescriptorIndices TextureMaps;
 };
 
 struct ObjectData

@@ -68,16 +68,16 @@ RWStructuredBuffer<uint4> g_sharcVoxelData : register(u13);
 
 float3 GetEnvironmentLightColor(float3 worldRayDirection)
 {
-	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
-	if (resourceDescriptorIndices.InEnvironmentLightTexture != ~0u)
+	const SceneResourceDescriptorIndices indices = g_sceneData.ResourceDescriptorIndices;
+	if (indices.InEnvironmentLightTexture != ~0u)
 	{
 		worldRayDirection = normalize(Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentLightTextureCubeMap)
 		{
-			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentLightTexture];
+			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentLightTexture];
 			return texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
-		const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentLightTexture];
+		const Texture2D<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentLightTexture];
 		return texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 	}
 	if (g_sceneData.EnvironmentLightColor.a >= 0)
@@ -89,19 +89,19 @@ float3 GetEnvironmentLightColor(float3 worldRayDirection)
 
 bool GetEnvironmentColor(float3 worldRayDirection, out float3 color)
 {
-	const SceneResourceDescriptorIndices resourceDescriptorIndices = g_sceneData.ResourceDescriptorIndices;
+	const SceneResourceDescriptorIndices indices = g_sceneData.ResourceDescriptorIndices;
 	bool ret;
-	if ((ret = resourceDescriptorIndices.InEnvironmentTexture != ~0u))
+	if ((ret = indices.InEnvironmentTexture != ~0u))
 	{
 		worldRayDirection = normalize(Geometry::RotateVector((float3x3)g_sceneData.EnvironmentTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentTextureCubeMap)
 		{
-			const TextureCube<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentTexture];
+			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
 		else
 		{
-			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.InEnvironmentTexture];
+			const Texture2D<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 		}
 	}
@@ -122,11 +122,11 @@ float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth
 	else
 	{
 		previousPosition = hitInfo.ObjectPosition;
-		const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices;
-		if (resourceDescriptorIndices.Mesh.MotionVectors != ~0u)
+		const MeshResourceDescriptorIndices meshIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices.Mesh;
+		if (meshIndices.MotionVectors != ~0u)
 		{
-			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.MotionVectors];
-			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
+			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[meshIndices.MotionVectors];
+			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], hitInfo.PrimitiveIndex);
 			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
 			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
 		}

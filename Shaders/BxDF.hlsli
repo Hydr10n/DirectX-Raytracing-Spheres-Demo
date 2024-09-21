@@ -39,9 +39,11 @@ struct BRDFSample
 	bool Sample(HitInfo hitInfo, float3 V, out LobeType lobeType, out float3 L, out float PDF, out float weight, float minRoughness = MinRoughness)
 	{
 		const float3 N = hitInfo.Normal;
-		const float NoV = abs(dot(N, V)), roughness = max(Roughness, MinRoughness);
-		const float diffuseProbability = EstimateDiffuseProbability(Albedo, Rf0, roughness, NoV);
-		if (Rng::Hash::GetFloat() <= diffuseProbability)
+		const float
+			NoV = abs(dot(N, V)),
+			roughness = max(Roughness, MinRoughness),
+			diffuseProbability = EstimateDiffuseProbability(Albedo, Rf0, roughness, NoV);
+		if (Rng::Hash::GetFloat() < diffuseProbability)
 		{
 			lobeType = LobeType::DiffuseReflection;
 			weight = 1 / diffuseProbability;
@@ -118,10 +120,10 @@ struct BSDFSample : BRDFSample
 			NoV = abs(dot(N, V)),
 			roughness = max(Roughness, MinRoughness),
 			diffuseProbability = EstimateDiffuseProbability(Albedo, Rf0, roughness, NoV);
-		if (Rng::Hash::GetFloat() <= diffuseProbability)
+		if (Rng::Hash::GetFloat() < diffuseProbability)
 		{
 			const float transmissiveProbability = diffuseProbability * Transmission;
-			if (Rng::Hash::GetFloat() <= Transmission)
+			if (Rng::Hash::GetFloat() < Transmission)
 			{
 				lobeType = LobeType::Transmission;
 				weight = 1 / transmissiveProbability;
@@ -156,12 +158,11 @@ struct BSDFSample : BRDFSample
 			if (lobeType == LobeType::SpecularReflection)
 			{
 				L = reflect(-V, H);
-				NoL = abs(dot(N, L));
 			}
 			else
 			{
 				const float VoH = abs(dot(V, H)), eta = hitInfo.IsFrontFace ? BRDF::IOR::Vacuum / IOR : IOR;
-				if (eta * sqrt(1 - VoH * VoH) > 1 || Rng::Hash::GetFloat() <= BRDF::FresnelTerm_Dielectric(eta, VoH))
+				if (eta * sqrt(1 - VoH * VoH) > 1 || Rng::Hash::GetFloat() < BRDF::FresnelTerm_Dielectric(eta, VoH))
 				{
 					L = reflect(-V, H);
 				}
@@ -169,11 +170,11 @@ struct BSDFSample : BRDFSample
 				{
 					L = refract(-V, H, eta);
 				}
-				NoL = abs(dot(N, L));
 			}
+			NoL = abs(dot(N, L));
 		}
 
-		if (lobeType == LobeType::Transmission || dot(hitInfo.GeometricNormal, L) > 0)
+		if (Transmission > 0 || dot(hitInfo.GeometricNormal, L) > 0)
 		{
 			PDF = lerp(ImportanceSampling::VNDF::GetPDF(Vlocal, NoH, roughness), ImportanceSampling::Cosine::GetPDF(NoL), diffuseProbability);
 			return true;
@@ -186,8 +187,8 @@ struct BSDFSample : BRDFSample
 	{
 		if (lobeType == LobeType::Transmission)
 		{
-			return Albedo;
+			return Albedo * Transmission;
 		}
-		return BRDFSample::Evaluate(lobeType, N, V, L, minRoughness);
+		return BRDFSample::Evaluate(lobeType, N, V, L, minRoughness) * (Transmission > 0 ? 1 - Transmission : 1);
 	}
 };

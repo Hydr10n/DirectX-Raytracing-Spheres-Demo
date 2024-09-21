@@ -43,7 +43,7 @@ void RayGeneration()
 
 	HitInfo primarySurfaceHitInfo;
 	float NoV;
-
+	
 	Material primarySurfaceMaterial = (Material)0;
 	BRDFSample primarySurfaceBRDFSample;
 
@@ -60,7 +60,7 @@ void RayGeneration()
 	{
 		NoV = abs(dot(primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction));
 
-		primarySurfaceMaterial = GetMaterial(primarySurfaceHitInfo.ObjectIndex, primarySurfaceHitInfo.TextureCoordinate);
+		primarySurfaceMaterial = GetMaterial(g_objectData[primarySurfaceHitInfo.ObjectIndex], primarySurfaceHitInfo.TextureCoordinate);
 		primarySurfaceBRDFSample.Initialize(primarySurfaceMaterial);
 
 		const float4 projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
@@ -214,7 +214,7 @@ void RayGeneration()
 
 			if (bounceIndex)
 			{
-				const Material material = GetMaterial(hitInfo.ObjectIndex, hitInfo.TextureCoordinate);
+				const Material material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate);
 				hasTexture = material.HasTexture;
 				emissiveColor = material.EmissiveColor;
 				BSDFSample.Initialize(material);

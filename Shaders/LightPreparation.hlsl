@@ -70,10 +70,12 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 
 	const InstanceData instanceData = g_instanceData[task.InstanceIndex];
 	const uint objectIndex = instanceData.FirstGeometryIndex + task.GeometryIndex;
-	const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[objectIndex].ResourceDescriptorIndices;
-	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Indices], dispatchThreadID - task.LightBufferOffset);
-	const ByteAddressBuffer vertices = ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Vertices];
-	const VertexDesc vertexDesc = g_objectData[objectIndex].VertexDesc;
+	const ObjectData objectData = g_objectData[objectIndex];
+	const MeshResourceDescriptorIndices meshIndices = objectData.ResourceDescriptorIndices.Mesh;
+	const TextureMapResourceDescriptorIndices textureMapIndices = objectData.ResourceDescriptorIndices.TextureMaps;
+	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], dispatchThreadID - task.LightBufferOffset);
+	const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshIndices.Vertices];
+	const VertexDesc vertexDesc = objectData.VertexDesc;
 
 	float3 positions[3];
 	vertexDesc.LoadPositions(vertices, indices, positions);
@@ -82,9 +84,9 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	positions[2] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	float3 emissiveColor;
-	if (resourceDescriptorIndices.TextureMaps.EmissiveColor == ~0u)
+	if (textureMapIndices.EmissiveColor == ~0u)
 	{
-		emissiveColor = g_objectData[objectIndex].Material.EmissiveColor;
+		emissiveColor = objectData.Material.EmissiveColor;
 	}
 	else
 	{
@@ -114,7 +116,7 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 			longEdges[1] = edges[1];
 		}
 
-		const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.TextureMaps.EmissiveColor];
+		const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.EmissiveColor];
 		emissiveColor = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3).rgb;
 	}
 

@@ -7,21 +7,29 @@
 #include "ShadingHelpers.hlsli"
 
 template <uint Flags>
-void TraceRay(
+float3 TraceRay(
 	inout RayQuery<Flags> q, RayDesc rayDesc, uint flags, uint mask
 #ifdef NV_SHADER_EXTN_SLOT
 	, bool enableShaderExecutionReordering = false
 #endif
 )
 {
+	float3 visibility = 1;
 	q.TraceRayInline(g_scene, flags, mask, rayDesc);
 	while (q.Proceed())
 	{
 		if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE)
 		{
-			const uint objectIndex = q.CandidateInstanceID() + q.CandidateGeometryIndex();
-			const float2 textureCoordinate = GetTextureCoordinate(objectIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
-			if (IsOpaque(objectIndex, textureCoordinate))
+			const ObjectData objectData = g_objectData[q.CandidateInstanceID() + q.CandidateGeometryIndex()];
+			const float2 textureCoordinate = GetTextureCoordinate(objectData, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
+			if (Flags & RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH)
+			{
+				if (IsOpaque(objectData, textureCoordinate, visibility))
+				{
+					q.CommitNonOpaqueTriangleHit();
+				}
+			}
+			else if (IsOpaque(objectData, textureCoordinate))
 			{
 				q.CommitNonOpaqueTriangleHit();
 			}
@@ -35,6 +43,7 @@ void TraceRay(
 		NvReorderThread(hitObject);
 	}
 #endif
+	return visibility;
 }
 
 bool CastRay(
@@ -59,10 +68,12 @@ bool CastRay(
 		hitInfo.ObjectIndex = q.CommittedInstanceID() + q.CommittedGeometryIndex();
 		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
 
-		const ObjectResourceDescriptorIndices resourceDescriptorIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices;
-		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Indices], hitInfo.PrimitiveIndex);
-		const ByteAddressBuffer vertices = ResourceDescriptorHeap[resourceDescriptorIndices.Mesh.Vertices];
-		const VertexDesc vertexDesc = g_objectData[hitInfo.ObjectIndex].VertexDesc;
+		const ObjectData objectData = g_objectData[hitInfo.ObjectIndex];
+		const MeshResourceDescriptorIndices meshIndices = objectData.ResourceDescriptorIndices.Mesh;
+		const TextureMapResourceDescriptorIndices textureMapIndices = objectData.ResourceDescriptorIndices.TextureMaps;
+		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], hitInfo.PrimitiveIndex);
+		const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshIndices.Vertices];
+		const VertexDesc vertexDesc = objectData.VertexDesc;
 		float3 positions[3], normals[3];
 		float2 textureCoordinates[3];
 		vertexDesc.LoadPositions(vertices, indices, positions);
@@ -74,9 +85,9 @@ bool CastRay(
 			q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(),
 			rayDesc.Direction, q.CommittedRayT()
 		);
-		if (resourceDescriptorIndices.TextureMaps.Normal != ~0u)
+		if (textureMapIndices.Normal != ~0u)
 		{
-			const Texture2D<float3> texture = ResourceDescriptorHeap[resourceDescriptorIndices.TextureMaps.Normal];
+			const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.Normal];
 			float3 T;
 			if (vertexDesc.TangentOffset == ~0u)
 			{

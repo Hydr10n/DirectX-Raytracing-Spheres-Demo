@@ -6,7 +6,7 @@
 
 #include "JsonHelpers.h"
 
-#include "rtxdi/ReSTIRDI.h"
+#include "rtxdi/ReSTIRDIParameters.h"
 
 #include "sl_helpers.h"
 
@@ -227,30 +227,30 @@ public:
 							FRIEND_JSON_CONVERSION_FUNCTIONS(InitialSampling, LocalLight, BRDFSamples);
 						} InitialSampling;
 
-						struct TemporalSampling {
-							ReSTIRDI_TemporalBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_TemporalBiasCorrectionMode::Raytraced;
+						struct TemporalResampling {
+							ReSTIRDI_TemporalBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_TemporalBiasCorrectionMode::Basic;
 
 							struct BoilingFilter {
-								bool IsEnabled = false;
+								bool IsEnabled = true;
 
 								float Strength = 0.2f;
 
 								FRIEND_JSON_CONVERSION_FUNCTIONS(BoilingFilter, IsEnabled, Strength);
 							} BoilingFilter;
 
-							FRIEND_JSON_CONVERSION_FUNCTIONS(TemporalSampling, BiasCorrectionMode, BoilingFilter);
-						} TemporalSampling;
+							FRIEND_JSON_CONVERSION_FUNCTIONS(TemporalResampling, BiasCorrectionMode, BoilingFilter);
+						} TemporalResampling;
 
-						struct SpatialSampling {
-							ReSTIRDI_SpatialBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_SpatialBiasCorrectionMode::Raytraced;
+						struct SpatialResampling {
+							ReSTIRDI_SpatialBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_SpatialBiasCorrectionMode::Basic;
 
 							static constexpr UINT MaxSamples = 32;
 							UINT Samples = 1;
 
-							FRIEND_JSON_CONVERSION_FUNCTIONS(SpatialSampling, BiasCorrectionMode, Samples);
-						} SpatialSampling;
+							FRIEND_JSON_CONVERSION_FUNCTIONS(SpatialResampling, BiasCorrectionMode, Samples);
+						} SpatialResampling;
 
-						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, ReGIR, InitialSampling, TemporalSampling, SpatialSampling);
+						FRIEND_JSON_CONVERSION_FUNCTIONS(ReSTIRDI, IsEnabled, ReGIR, InitialSampling, TemporalResampling, SpatialResampling);
 					} ReSTIRDI;
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(RTXDI, ReSTIRDI);
@@ -359,8 +359,8 @@ public:
 						Raytracing.RTXDI.ReSTIRDI.ReGIR.BuildSamples = clamp(Raytracing.RTXDI.ReSTIRDI.ReGIR.BuildSamples, 1u, Raytracing.RTXDI.ReSTIRDI.ReGIR.MaxBuildSamples);
 						Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples = clamp(Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.Samples, 1u, Raytracing.RTXDI.ReSTIRDI.InitialSampling.LocalLight.MaxSamples);
 						Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples = clamp(Raytracing.RTXDI.ReSTIRDI.InitialSampling.BRDFSamples, 1u, Raytracing.RTXDI.ReSTIRDI.InitialSampling.MaxBRDFSamples);
-						Raytracing.RTXDI.ReSTIRDI.TemporalSampling.BoilingFilter.Strength = clamp(Raytracing.RTXDI.ReSTIRDI.TemporalSampling.BoilingFilter.Strength, 0.0f, 1.0f);
-						Raytracing.RTXDI.ReSTIRDI.SpatialSampling.Samples = clamp(Raytracing.RTXDI.ReSTIRDI.SpatialSampling.Samples, 1u, Raytracing.RTXDI.ReSTIRDI.SpatialSampling.MaxSamples);
+						Raytracing.RTXDI.ReSTIRDI.TemporalResampling.BoilingFilter.Strength = clamp(Raytracing.RTXDI.ReSTIRDI.TemporalResampling.BoilingFilter.Strength, 0.0f, 1.0f);
+						Raytracing.RTXDI.ReSTIRDI.SpatialResampling.Samples = clamp(Raytracing.RTXDI.ReSTIRDI.SpatialResampling.Samples, 1u, Raytracing.RTXDI.ReSTIRDI.SpatialResampling.MaxSamples);
 					}
 
 					{

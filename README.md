@@ -45,10 +45,10 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 					- Mode: Uniform | Power RIS | ReGIR RIS
 					- Samples
 				- BRDF Samples
-			- Temporal Sampling
+			- Temporal Resampling
 				- Bias Correction Mode: Basic | Pairwise | Raytraced
 				- Boiling Filter Strength
-			- Spatial Sampling
+			- Spatial Resampling
 				- Bias Correction Mode: Basic | Pairwise | Raytraced
 				- Samples
 	- NVIDIA RTX Global Illumination

@@ -29,7 +29,7 @@ public:
 
 	static constexpr XMFLOAT2 Get(uint32_t index) { return { Get(index, 2), Get(index, 3) }; }
 
-	XMFLOAT2 GetNext() const noexcept {
+	XMFLOAT2 GetNext() noexcept {
 		m_sampleIndex = m_sampleIndex % m_sampleCount + 1;
 		return Get(m_sampleIndex);
 	}
@@ -39,6 +39,5 @@ public:
 	void Reset() noexcept { m_sampleIndex = 0; }
 
 private:
-	uint32_t m_sampleCount;
-	mutable uint32_t m_sampleIndex{};
+	uint32_t m_sampleCount, m_sampleIndex{};
 };

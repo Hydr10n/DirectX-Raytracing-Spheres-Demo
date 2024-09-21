@@ -226,12 +226,12 @@ struct RAB_Surface
 		{
 			L = reflect(-ViewDirection, Geometry::RotateVectorInverse(basis, ImportanceSampling::VNDF::GetRay(randomValue, max(BRDFSample.Roughness, MinRoughness), Geometry::RotateVector(basis, ViewDirection))));
 		}
-		return dot(Normal, L) > 0;
+		return dot(GeometricNormal, L) > 0;
 	}
 
 	float GetPDF(float3 L)
 	{
-		const float NoL = dot(Normal, L);
+		const float NoL = dot(GeometricNormal, L);
 		if (NoL > 0)
 		{
 			const float
@@ -263,7 +263,7 @@ struct RAB_Surface
 		diffuse = specular = 0;
 		return false;
 	}
-
+	
 	bool Shade(float3 samplePosition, float3 radiance, out float3 diffuse, out float3 specular)
 	{
 		const bool ret = Evaluate(normalize(samplePosition - Position), diffuse, specular);
@@ -400,19 +400,27 @@ float RAB_GetLightTargetPdfForVolume(RAB_LightInfo light, float3 volumeCenter, f
 	return triangleLight.CalculateWeightForVolume(volumeCenter, volumeRadius);
 }
 
-bool GetConservativeVisibility(RAB_Surface surface, float3 samplePosition)
+RayDesc CreateVisibilityRay(RAB_Surface surface, float3 samplePosition, float offset = 1e-3f)
 {
 	const float3 L = samplePosition - surface.Position;
 	const float Llength = length(L);
-	const RayDesc rayDesc = { surface.Position, 1e-3f, L / Llength, max(1e-3f, Llength - 1e-3f) };
-	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
-	TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u);
-	return q.CommittedStatus() == COMMITTED_NOTHING;
+	const RayDesc rayDesc = { surface.Position, offset, L / Llength, max(0, Llength - offset) };
+	return rayDesc;
 }
 
-bool GetFinalVisibility(RAB_Surface surface, float3 samplePosition)
+float3 GetFinalVisibility(RAB_Surface surface, float3 samplePosition)
 {
-	return GetConservativeVisibility(surface, samplePosition);
+	const RayDesc rayDesc = CreateVisibilityRay(surface, samplePosition);
+	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_FORCE_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
+	return TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u);
+}
+
+bool GetConservativeVisibility(RAB_Surface surface, float3 samplePosition)
+{
+	const RayDesc rayDesc = CreateVisibilityRay(surface, samplePosition);
+	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_FORCE_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
+	TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u);
+	return q.CommittedStatus() == COMMITTED_NOTHING;
 }
 
 bool RAB_GetConservativeVisibility(RAB_Surface surface, float3 samplePosition)

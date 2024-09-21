@@ -290,7 +290,7 @@ private:
 	struct FutureNames {
 		MAKE_NAME(Scene);
 	};
-	map<string, future<void>, less<>> m_futures;
+	unordered_map<string, future<void>> m_futures;
 
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
@@ -348,7 +348,7 @@ private:
 		MAKE_NAMEW(DenoisedSpecular);
 		MAKE_NAMEW(Validation);
 	};
-	map<wstring, shared_ptr<Texture>, less<>> m_textures;
+	unordered_map<wstring, shared_ptr<Texture>> m_textures;
 
 	struct { unique_ptr<GPUBuffer> Camera, SceneData, InstanceData, ObjectData; } m_GPUBuffers;
 
@@ -385,7 +385,7 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, bool RTV = false, bool SRV = true, bool UAV = true) {
+			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, bool RTV = true, bool SRV = true, bool UAV = true) {
 				Texture::CreationDesc creationDesc{
 					.Format = format,
 					.Width = static_cast<UINT>(outputSize.cx),
@@ -402,20 +402,20 @@ private:
 				if (RTV) texture->CreateRTV();
 			};
 
-			CreateTexture(TextureNames::Color, m_HDRTextureFormat, true);
-			CreateTexture(TextureNames::FinalColor, m_HDRTextureFormat, true);
-			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, true);
-			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, true);
-			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT);
-			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT);
-			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, true);
-			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM, true);
-			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT);
-			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM, true);
-			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM, true);
-			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM, true);
-			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM, true);
-			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding));
+			CreateTexture(TextureNames::Color, m_HDRTextureFormat);
+			CreateTexture(TextureNames::FinalColor, m_HDRTextureFormat);
+			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT);
+			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT);
+			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, false);
+			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
+			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
+			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
+			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, false);
+			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM);
+			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM);
+			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM);
+			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM);
+			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), false);
 
 			if (m_NRD = make_unique<NRD>(
 				m_deviceResources->GetCommandList(),
@@ -429,8 +429,8 @@ private:
 				m_NRD->IsAvailable()) {
 				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, false, false);
 				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, false, false);
-				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT);
-				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT);
+				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
+				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 				CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM);
 			}
 
@@ -889,14 +889,14 @@ private:
 				if (texture) {
 					const auto index = texture->GetSRVDescriptor().GetIndex();
 					switch (auto& indices = _objectData.ResourceDescriptorIndices.Textures; static_cast<TextureMapType>(i)) {
-						case TextureMapType::BaseColor: indices.BaseColorMap = index; break;
-						case TextureMapType::EmissiveColor: indices.EmissiveColorMap = index; break;
-						case TextureMapType::Metallic: indices.MetallicMap = index; break;
-						case TextureMapType::Roughness: indices.RoughnessMap = index; break;
-						case TextureMapType::AmbientOcclusion: indices.AmbientOcclusionMap = index; break;
-						case TextureMapType::Transmission: indices.TransmissionMap = index; break;
-						case TextureMapType::Opacity: indices.OpacityMap = index; break;
-						case TextureMapType::Normal: indices.NormalMap = index; break;
+						case TextureMapType::BaseColor: indices.BaseColor = index; break;
+						case TextureMapType::EmissiveColor: indices.EmissiveColor = index; break;
+						case TextureMapType::Metallic: indices.Metallic = index; break;
+						case TextureMapType::Roughness: indices.Roughness = index; break;
+						case TextureMapType::AmbientOcclusion: indices.AmbientOcclusion = index; break;
+						case TextureMapType::Transmission: indices.Transmission = index; break;
+						case TextureMapType::Opacity: indices.Opacity = index; break;
+						case TextureMapType::Normal: indices.Normal = index; break;
 						default: Throw<out_of_range>("Unsupported texture map type");
 					}
 					_objectData.Material.HasTexture = true;
@@ -976,14 +976,14 @@ private:
 			context.setInitialSamplingParameters(initialSamplingParameters);
 
 			auto temporalResamplingParameters = context.getTemporalResamplingParameters();
-			temporalResamplingParameters.temporalBiasCorrection = settings.TemporalSampling.BiasCorrectionMode;
-			temporalResamplingParameters.enableBoilingFilter = settings.TemporalSampling.BoilingFilter.IsEnabled;
-			temporalResamplingParameters.boilingFilterStrength = settings.TemporalSampling.BoilingFilter.Strength;
+			temporalResamplingParameters.temporalBiasCorrection = settings.TemporalResampling.BiasCorrectionMode;
+			temporalResamplingParameters.enableBoilingFilter = settings.TemporalResampling.BoilingFilter.IsEnabled;
+			temporalResamplingParameters.boilingFilterStrength = settings.TemporalResampling.BoilingFilter.Strength;
 			context.setTemporalResamplingParameters(temporalResamplingParameters);
 
 			auto spatialResamplingParameters = context.getSpatialResamplingParameters();
-			spatialResamplingParameters.spatialBiasCorrection = settings.SpatialSampling.BiasCorrectionMode;
-			spatialResamplingParameters.numSpatialSamples = settings.SpatialSampling.Samples;
+			spatialResamplingParameters.spatialBiasCorrection = settings.SpatialResampling.BiasCorrectionMode;
+			spatialResamplingParameters.numSpatialSamples = settings.SpatialResampling.Samples;
 			context.setSpatialResamplingParameters(spatialResamplingParameters);
 		}
 	}
@@ -1048,19 +1048,22 @@ private:
 
 				case RTXGITechnique::SHARC:
 				{
-					commandList.Clear(*m_SHARC->GPUBuffers.VoxelData);
+					if (raytracingSettings.Bounces) {
+						commandList.Clear(*m_SHARC->GPUBuffers.VoxelData);
 
-					m_SHARC->GPUBuffers.Camera = m_GPUBuffers.Camera.get();
+						m_SHARC->GPUBuffers.Camera = m_GPUBuffers.Camera.get();
 
-					Raytracing::SHARCSettings SHARCSettings{
-						.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
-						.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
-						.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
-					};
-					SHARCSettings.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale;
-					m_raytracing->Render(commandList, scene, *m_SHARC, SHARCSettings);
+						Raytracing::SHARCSettings SHARCSettings{
+							.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
+							.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
+							.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
+						};
+						SHARCSettings.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale;
+						m_raytracing->Render(commandList, scene, *m_SHARC, SHARCSettings);
 
-					swap(m_SHARC->GPUBuffers.PreviousVoxelData, m_SHARC->GPUBuffers.VoxelData);
+						swap(m_SHARC->GPUBuffers.PreviousVoxelData, m_SHARC->GPUBuffers.VoxelData);
+					}
+					else m_raytracing->Render(commandList, scene);
 				}
 				break;
 			}
@@ -1070,7 +1073,7 @@ private:
 		auto isReSTIRDIEnabled = ReSTIRDISettings.IsEnabled;
 		if (isReSTIRDIEnabled) {
 			PrepareReSTIRDI();
-			isReSTIRDIEnabled &= static_cast<bool>(m_RTXDIResources.LightInfo);
+			isReSTIRDIEnabled &= m_RTXDIResources.LightInfo != nullptr;
 		}
 		if (isReSTIRDIEnabled) {
 			m_RTXDI->GPUBuffers = {
@@ -1646,9 +1649,10 @@ private:
 
 					if (ImGui::TreeNodeEx("NVIDIA RTX Dynamic Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& RTXDISettings = raytracingSettings.RTXDI;
-						auto& ReSTIRDISettings = RTXDISettings.ReSTIRDI;
 
 						if (ImGui::TreeNodeEx("ReSTIR DI", ImGuiTreeNodeFlags_DefaultOpen)) {
+							auto& ReSTIRDISettings = RTXDISettings.ReSTIRDI;
+
 							m_resetHistory |= ImGui::Checkbox("Enable", &ReSTIRDISettings.IsEnabled);
 
 							if (ReSTIRDISettings.IsEnabled) {
@@ -1699,8 +1703,8 @@ private:
 									ImGui::TreePop();
 								}
 
-								if (ImGui::TreeNodeEx("Temporal Sampling", ImGuiTreeNodeFlags_DefaultOpen)) {
-									auto& temporalSamplingSettings = ReSTIRDISettings.TemporalSampling;
+								if (ImGui::TreeNodeEx("Temporal Resampling", ImGuiTreeNodeFlags_DefaultOpen)) {
+									auto& temporalResamplingSettings = ReSTIRDISettings.TemporalResampling;
 
 									m_resetHistory |= ImGuiEx::Combo<ReSTIRDI_TemporalBiasCorrectionMode>(
 										"Bias Correction Mode",
@@ -1710,13 +1714,13 @@ private:
 											ReSTIRDI_TemporalBiasCorrectionMode::Pairwise,
 											ReSTIRDI_TemporalBiasCorrectionMode::Raytraced
 										},
-										temporalSamplingSettings.BiasCorrectionMode,
-										temporalSamplingSettings.BiasCorrectionMode,
+										temporalResamplingSettings.BiasCorrectionMode,
+										temporalResamplingSettings.BiasCorrectionMode,
 										static_cast<string(*)(ReSTIRDI_TemporalBiasCorrectionMode)>(ToString)
 										);
 
 									if (ImGui::TreeNodeEx("Boiling Filter", ImGuiTreeNodeFlags_DefaultOpen)) {
-										auto& boilingFilterSettings = temporalSamplingSettings.BoilingFilter;
+										auto& boilingFilterSettings = temporalResamplingSettings.BoilingFilter;
 
 										m_resetHistory |= ImGui::Checkbox("Enable", &boilingFilterSettings.IsEnabled);
 
@@ -1728,8 +1732,8 @@ private:
 									ImGui::TreePop();
 								}
 
-								if (ImGui::TreeNodeEx("Spatial Sampling", ImGuiTreeNodeFlags_DefaultOpen)) {
-									auto& spatialSampling = ReSTIRDISettings.SpatialSampling;
+								if (ImGui::TreeNodeEx("Spatial Resampling", ImGuiTreeNodeFlags_DefaultOpen)) {
+									auto& spatialResamplingSettings = ReSTIRDISettings.SpatialResampling;
 
 									m_resetHistory |= ImGuiEx::Combo<ReSTIRDI_SpatialBiasCorrectionMode>(
 										"Bias Correction Mode",
@@ -1739,12 +1743,12 @@ private:
 											ReSTIRDI_SpatialBiasCorrectionMode::Pairwise,
 											ReSTIRDI_SpatialBiasCorrectionMode::Raytraced
 										},
-										spatialSampling.BiasCorrectionMode,
-										spatialSampling.BiasCorrectionMode,
+										spatialResamplingSettings.BiasCorrectionMode,
+										spatialResamplingSettings.BiasCorrectionMode,
 										static_cast<string(*)(ReSTIRDI_SpatialBiasCorrectionMode)>(ToString)
 										);
 
-									m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&spatialSampling.Samples), 1, spatialSampling.MaxSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
+									m_resetHistory |= ImGui::SliderInt("Samples", reinterpret_cast<int*>(&spatialResamplingSettings.Samples), 1, spatialResamplingSettings.MaxSamples, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 									ImGui::TreePop();
 								}
@@ -1756,7 +1760,8 @@ private:
 						ImGui::TreePop();
 					}
 
-					if (ImGui::TreeNodeEx("NVIDIA RTX Global Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
+					if (raytracingSettings.Bounces
+						&& ImGui::TreeNodeEx("NVIDIA RTX Global Illumination", ImGuiTreeNodeFlags_DefaultOpen)) {
 						auto& RTXGISettings = raytracingSettings.RTXGI;
 
 						m_resetHistory |= ImGuiEx::Combo<RTXGITechnique>(
