@@ -6,27 +6,84 @@
 #include "imgui_internal.h"
 
 namespace ImGuiEx {
-	struct ScopedEnablement {
-		ScopedEnablement(bool value) {
+	struct Enablement {
+		explicit Enablement(bool value) {
 			ImGui::PushItemFlag(ImGuiItemFlags_Disabled, !value);
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * (value ? 1.0f : 0.5f));
 		}
 
-		~ScopedEnablement() {
+		~Enablement() {
 			ImGui::PopStyleVar();
 			ImGui::PopItemFlag();
 		}
 	};
 
-	struct ScopedID {
-		ScopedID(const void* ID) { ImGui::PushID(ID); }
-		ScopedID(int ID) { ImGui::PushID(ID); }
+	class Widget {
+	public:
+		explicit Widget(bool ret) : m_ret(ret) {}
 
-		~ScopedID() { ImGui::PopID(); }
+		operator bool() const { return m_ret; }
+
+	protected:
+		bool m_ret;
+	};
+
+	struct Window : Widget {
+		explicit Window(const char* name, bool* pIsOpen = nullptr, ImGuiWindowFlags flags = ImGuiWindowFlags_None) :
+			Widget(ImGui::Begin(name, pIsOpen, flags)) {}
+
+		~Window() { ImGui::End(); }
+	};
+
+	struct PopupModal : Widget {
+		explicit PopupModal(const char* name, bool* pIsOpen = nullptr, ImGuiWindowFlags flags = ImGuiWindowFlags_None) :
+			Widget(ImGui::BeginPopupModal(name, pIsOpen, flags)) {}
+
+		~PopupModal() {
+			if (m_ret) ImGui::EndPopup();
+		}
+	};
+
+	struct MainMenuBar : Widget {
+		MainMenuBar() : Widget(ImGui::BeginMainMenuBar()) {}
+
+		~MainMenuBar() {
+			if (m_ret) ImGui::EndMainMenuBar();
+		}
+	};
+
+	struct Menu : Widget {
+		explicit Menu(const char* label, bool isEnabled = true) : Widget(ImGui::BeginMenu(label, isEnabled)) {}
+
+		~Menu() {
+			if (m_ret) ImGui::EndMenu();
+		}
+	};
+
+	struct TreeNode : Widget {
+		explicit TreeNode(const char* label, ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_None) :
+			Widget(ImGui::TreeNodeEx(label, flags)) {}
+
+		~TreeNode() {
+			if (m_ret) ImGui::TreePop();
+		}
+	};
+
+	struct Table : Widget {
+		explicit Table(
+			const char* ID, int columns, ImGuiTableFlags flags = ImGuiTableFlags_None,
+			ImVec2 outerSize = {}, float innerWidth = 0
+		) : Widget(ImGui::BeginTable(ID, columns, flags, outerSize, innerWidth)) {}
+
+		~Table() {
+			if (m_ret) ImGui::EndTable();
+		}
 	};
 
 	inline void AlignForWidth(float width, float alignment = 0.5f) {
-		if (const auto offset = (ImGui::GetContentRegionAvail().x - width) * alignment; offset > 0) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+		if (const auto offset = (ImGui::GetContentRegionAvail().x - width) * alignment; offset > 0) {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+		}
 	}
 
 	inline void AddUnderline(const ImColor& color) {
@@ -52,7 +109,11 @@ namespace ImGuiEx {
 	inline ImGuiInputEvent* FindLatestInputEvent(ImGuiContext* context, ImGuiInputEventType type, int arg = -1) {
 		for (auto i = context->InputEventsQueue.Size - 1; i >= 0; i--) {
 			if (auto& e = context->InputEventsQueue[i];
-				e.Type == type && (type != ImGuiInputEventType_Key || e.Key.Key == arg) && (type != ImGuiInputEventType_MouseButton || e.MouseButton.Button == arg)) return &e;
+				e.Type == type
+				&& (type != ImGuiInputEventType_Key || e.Key.Key == arg)
+				&& (type != ImGuiInputEventType_MouseButton || e.MouseButton.Button == arg)) {
+				return &e;
+			}
 		}
 		return nullptr;
 	}
@@ -100,7 +161,8 @@ namespace ImGuiEx {
 		const auto
 			time = static_cast<float>(context.Time),
 			start = ImAbs(ImSin(time * 1.8f) * (SegmentCount - 5)),
-			min = 2 * IM_PI * start / static_cast<float>(SegmentCount - 3), max = 2 * IM_PI * static_cast<float>(SegmentCount) / static_cast<float>(SegmentCount);
+			min = 2 * IM_PI * start / static_cast<float>(SegmentCount - 3),
+			max = 2 * IM_PI * static_cast<float>(SegmentCount) / static_cast<float>(SegmentCount);
 
 		const ImVec2 center(pos.x + radius, pos.y + radius + style.FramePadding.y);
 		for (int i = 0; i < SegmentCount; i++) {
