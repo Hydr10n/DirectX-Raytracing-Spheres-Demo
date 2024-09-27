@@ -843,18 +843,13 @@ private:
 				.EnvironmentColor = m_scene->EnvironmentColor,
 			};
 
-			const auto IsCubeMap = [](ID3D12Resource* pResource) {
-				if (pResource == nullptr) return false;
-				const auto desc = pResource->GetDesc();
-				return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize == 6;
-			};
 			if (m_scene->EnvironmentLightTexture.Texture) {
-				sceneData.IsEnvironmentLightTextureCubeMap = IsCubeMap(*m_scene->EnvironmentLightTexture.Texture);
+				sceneData.IsEnvironmentLightTextureCubeMap = m_scene->EnvironmentLightTexture.Texture->IsCubeMap();
 				sceneData.ResourceDescriptorIndices.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
 			}
 			if (m_scene->EnvironmentTexture.Texture) {
-				sceneData.IsEnvironmentTextureCubeMap = IsCubeMap(*m_scene->EnvironmentTexture.Texture);
+				sceneData.IsEnvironmentTextureCubeMap = m_scene->EnvironmentTexture.Texture->IsCubeMap();
 				sceneData.ResourceDescriptorIndices.InEnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 			}
@@ -1069,6 +1064,8 @@ private:
 			}
 		}
 
+		if (!m_scene->GetObjectCount()) return;
+
 		const auto& ReSTIRDISettings = raytracingSettings.RTXDI.ReSTIRDI;
 		auto isReSTIRDIEnabled = ReSTIRDISettings.IsEnabled;
 		if (isReSTIRDIEnabled) {
@@ -1078,7 +1075,6 @@ private:
 		if (isReSTIRDIEnabled) {
 			m_RTXDI->GPUBuffers = {
 				.Camera = m_GPUBuffers.Camera.get(),
-				.InstanceData = m_GPUBuffers.InstanceData.get(),
 				.ObjectData = m_GPUBuffers.ObjectData.get()
 			};
 

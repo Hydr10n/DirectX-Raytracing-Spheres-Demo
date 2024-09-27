@@ -11,6 +11,8 @@ module;
 
 #include "directxtk12/SimpleMath.h"
 
+#include "DirectXTex.h"
+
 #include "D3D12MemAlloc.h"
 
 #include "rtxmu/D3D12AccelStructManager.h"
@@ -210,17 +212,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
 		m_fenceValues[i] = m_fenceValues[m_backBufferIndex];
 	}
 
-	constexpr auto NoSRGB = [](DXGI_FORMAT format)
-	{
-		switch (format)
-		{
-			case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB: return DXGI_FORMAT_R8G8B8A8_UNORM;
-			case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB: return DXGI_FORMAT_B8G8R8A8_UNORM;
-			case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB: return DXGI_FORMAT_B8G8R8X8_UNORM;
-			default: return format;
-		}
-	};
-	if (const DXGI_FORMAT backBufferFormat = NoSRGB(m_creationDesc.BackBufferFormat);
+	if (const DXGI_FORMAT backBufferFormat = MakeLinear(m_creationDesc.BackBufferFormat);
 		m_swapChain)
 	{
 		HRESULT hr = m_swapChain->ResizeBuffers(

@@ -3,7 +3,7 @@ module;
 #include <span>
 #include <string>
 
-#include "directxtk12/DirectXHelpers.h"
+#include "directx/d3dx12.h"
 
 #include "rtxmu/D3D12AccelStructManager.h"
 
@@ -117,7 +117,7 @@ export namespace DirectX::RaytracingHelpers {
 			constexpr auto GetStride = [](const auto& entries) {
 				size_t maxCount = 0;
 				for (const auto& entry : entries) maxCount = max(maxCount, size(entry.Data));
-				return static_cast<UINT>(AlignUp(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT + sizeof(UINT64) * maxCount, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+				return D3DX12Align<UINT>(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT + sizeof(UINT64) * maxCount, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 			};
 
 			m_rayGeneration = rayGeneration;
@@ -175,7 +175,7 @@ export namespace DirectX::RaytracingHelpers {
 
 		unique_ptr<GPUBuffer> m_buffer;
 
-		static UINT AlignEntrySize(UINT size) { return AlignUp(max(size, 1u), D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT); }
+		static UINT AlignEntrySize(UINT size) { return D3DX12Align<UINT>(max(size, 1u), D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT); }
 		UINT AlignRayGenerationSize() const noexcept { return AlignEntrySize(GetRayGenerationSize()); }
 		UINT AlignMissSize() const noexcept { return AlignEntrySize(GetMissSize()); }
 		UINT AlignHitGroupSize() const noexcept { return AlignEntrySize(GetHitGroupSize()); }

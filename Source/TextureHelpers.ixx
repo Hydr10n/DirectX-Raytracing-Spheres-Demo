@@ -2,141 +2,138 @@ module;
 
 #include <filesystem>
 
-#include <wrl.h>
-
 #include "directx/d3d12.h"
 
 #include "DirectXTexEXR.h"
-
-#include "directxtk12/DDSTextureLoader.h"
-#include "directxtk12/ResourceUploadBatch.h"
-#include "directxtk12/WICTextureLoader.h"
 
 export module TextureHelpers;
 
 export import Texture;
 
+import CommandList;
 import DeviceContext;
 import ErrorHelpers;
 
 using namespace DirectX;
 using namespace ErrorHelpers;
-using namespace Microsoft::WRL;
 using namespace std;
 using namespace std::filesystem;
 
-#define LOAD(Loader, ...) \
-	HRESULT ret; \
-	if (ScratchImage image; SUCCEEDED(ret = Loader(__VA_ARGS__, nullptr, image))) { \
-		ret = LoadTexture(deviceContext, resourceUploadBatch, image, ppResource); \
-	} \
-	return ret;
+#define LOAD_FROM_MEMORY(Loader, forceSRGB, ...) \
+	ScratchImage image; \
+	ThrowIfFailed(Loader(pData, size, __VA_ARGS__, nullptr, image)); \
+	return LoadTexture(commandList, image, forceSRGB);
 
-#define LOAD1(...) \
-	auto isCubeMap = false; \
-	ComPtr<ID3D12Resource> resource; \
-	ThrowIfFailed(__VA_ARGS__); \
-	if (pIsCubeMap != nullptr) *pIsCubeMap = isCubeMap; \
-	auto texture = make_unique<Texture>(deviceContext, resource.Get(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, false); \
-	texture->CreateSRV(isCubeMap); \
-	return texture;
+#define LOAD_FROM_FILE(Loader, forceSRGB, ...) \
+	ScratchImage image; \
+	ThrowIfFailed(Loader(filePath.c_str(), __VA_ARGS__, nullptr, image), filePath.string()); \
+	return LoadTexture(commandList, image, forceSRGB);
 
 export namespace DirectX::TextureHelpers {
-	HRESULT LoadTexture(
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
-		const ScratchImage& image,
-		ID3D12Resource** ppResource
-	) {
-		HRESULT ret;
-		if (vector<D3D12_SUBRESOURCE_DATA> subresourceData;
-			SUCCEEDED(ret = CreateTexture(deviceContext.Device, image.GetMetadata(), ppResource))
-			&& SUCCEEDED(ret = PrepareUpload(deviceContext.Device, image.GetImages(), image.GetImageCount(), image.GetMetadata(), subresourceData))) {
-			resourceUploadBatch.Upload(*ppResource, 0, data(subresourceData), static_cast<uint32_t>(size(subresourceData)));
-			resourceUploadBatch.Transition(*ppResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+	unique_ptr<Texture> LoadTexture(CommandList& commandList, const ScratchImage& image, bool forceSRGB = false) {
+		const auto& deviceContext = commandList.GetDeviceContext();
+
+		vector<D3D12_SUBRESOURCE_DATA> subresourceData;
+		ThrowIfFailed(PrepareUpload(deviceContext.Device, image.GetImages(), image.GetImageCount(), image.GetMetadata(), subresourceData));
+
+		const auto& metadata = image.GetMetadata();
+		TextureDimension dimension;
+		switch (metadata.dimension) {
+			case TEX_DIMENSION_TEXTURE1D: dimension = TextureDimension::_1; break;
+			case TEX_DIMENSION_TEXTURE2D: dimension = TextureDimension::_2; break;
+			case TEX_DIMENSION_TEXTURE3D: dimension = TextureDimension::_3; break;
 		}
-		return ret;
+		auto texture = make_unique<Texture>(
+			deviceContext,
+			Texture::CreationDesc{
+				.Format = forceSRGB ? MakeSRGB(metadata.format) : metadata.format,
+				.Dimension = dimension,
+				.Width = static_cast<UINT>(metadata.width),
+				.Height = static_cast<UINT>(metadata.height),
+				.DepthOrArraySize = static_cast<UINT16>(dimension == TextureDimension::_3 ? metadata.depth : metadata.arraySize),
+				.MipLevels = static_cast<UINT16>(metadata.mipLevels)
+			}
+		);
+
+		commandList.Copy(*texture, subresourceData);
+		commandList.SetState(*texture, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+
+		return texture;
 	}
 
-	HRESULT LoadHDR(
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
+	unique_ptr<Texture> LoadDDS(
+		CommandList& commandList,
 		const void* pData, size_t size,
-		ID3D12Resource** ppResource
+		bool forceSRGB = false, DDS_FLAGS flags = DDS_FLAGS_NONE
 	) {
-		LOAD(LoadFromHDRMemory, pData, size);
+		LOAD_FROM_MEMORY(LoadFromDDSMemoryEx, forceSRGB, flags, nullptr);
 	}
 
-	HRESULT LoadHDR(
-		const DeviceContext& deviceContext,
-		ResourceUploadBatch& resourceUploadBatch,
+	unique_ptr<Texture> LoadDDS(
+		CommandList& commandList,
 		const path& filePath,
-		ID3D12Resource** ppResource
+		bool forceSRGB = false, DDS_FLAGS flags = DDS_FLAGS_NONE
 	) {
-		LOAD(LoadFromHDRFile, filePath.c_str());
+		LOAD_FROM_FILE(LoadFromDDSFileEx, forceSRGB, flags, nullptr);
 	}
 
-	HRESULT LoadEXR(
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
-		const path& filePath, ID3D12Resource** ppResource
-	) {
-		LOAD(LoadFromEXRFile, filePath.c_str());
+	unique_ptr<Texture> LoadWIC(CommandList& commandList, const void* pData, size_t size, WIC_FLAGS flags = WIC_FLAGS_NONE) {
+		LOAD_FROM_MEMORY(LoadFromWICMemory, false, flags);
 	}
 
-	HRESULT LoadTGA(
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
-		const void* pData, size_t size,
-		ID3D12Resource** ppResource,
-		TGA_FLAGS flags = TGA_FLAGS_NONE
-	) {
-		LOAD(LoadFromTGAMemory, pData, size, flags);
+	unique_ptr<Texture> LoadWIC(CommandList& commandList, const path& filePath, WIC_FLAGS flags = WIC_FLAGS_NONE) {
+		LOAD_FROM_FILE(LoadFromWICFile, false, flags);
 	}
 
-	HRESULT LoadTGA(
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
-		const path& filePath,
-		ID3D12Resource** ppResource,
-		TGA_FLAGS flags = TGA_FLAGS_NONE
-	) {
-		LOAD(LoadFromTGAFile, filePath.c_str(), flags);
+	unique_ptr<Texture> LoadHDR(CommandList& commandList, const void* pData, size_t size) {
+		LOAD_FROM_MEMORY(LoadFromHDRMemory, false);
 	}
 
-	unique_ptr<Texture> LoadTexture(
-		const path& filePath,
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
-		bool* pIsCubeMap = nullptr
-	) {
+	unique_ptr<Texture> LoadHDR(CommandList& commandList, const path& filePath) {
+		LOAD_FROM_FILE(LoadFromHDRFile, false);
+	}
+
+	unique_ptr<Texture> LoadEXR(CommandList& commandList, const path& filePath) {
+		LOAD_FROM_FILE(LoadFromEXRFile, false);
+	}
+
+	unique_ptr<Texture> LoadTGA(CommandList& commandList, const void* pData, size_t size, TGA_FLAGS flags = TGA_FLAGS_NONE) {
+		LOAD_FROM_MEMORY(LoadFromTGAMemory, false, flags);
+	}
+
+	unique_ptr<Texture> LoadTGA(CommandList& commandList, const path& filePath, TGA_FLAGS flags = TGA_FLAGS_NONE) {
+		LOAD_FROM_FILE(LoadFromTGAFile, false, flags);
+	}
+
+	unique_ptr<Texture> LoadTexture(CommandList& commandList, const path& filePath, bool forceSRGBIfNecessary = false) {
 		if (empty(filePath)) throw invalid_argument("Texture file path cannot be empty");
 
 		const auto filePathExtension = filePath.extension();
 		if (empty(filePathExtension)) throw invalid_argument(format("{}: Unknown file format", filePath.string()));
 
 		const auto extension = filePathExtension.c_str() + 1;
-		LOAD1(
-			!_wcsicmp(extension, L"dds") ?
-			CreateDDSTextureFromFile(deviceContext.Device, resourceUploadBatch, filePath.c_str(), &resource, false, 0, nullptr, &isCubeMap) :
-			!_wcsicmp(extension, L"hdr") ?
-			LoadHDR(deviceContext, resourceUploadBatch, filePath, &resource) :
-			!_wcsicmp(extension, L"exr") ?
-			LoadEXR(deviceContext, resourceUploadBatch, filePath, &resource) :
-			!_wcsicmp(extension, L"tga") ?
-			LoadTGA(deviceContext, resourceUploadBatch, filePath, &resource) :
-			CreateWICTextureFromFileEx(deviceContext.Device, resourceUploadBatch, filePath.c_str(), 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &resource),
-			filePath.string()
-		);
+		auto texture =
+			!_wcsicmp(extension, L"dds") ? LoadDDS(commandList, filePath, forceSRGBIfNecessary) :
+			!_wcsicmp(extension, L"hdr") ? LoadHDR(commandList, filePath) :
+			!_wcsicmp(extension, L"exr") ? LoadEXR(commandList, filePath) :
+			!_wcsicmp(extension, L"tga") ? LoadTGA(commandList, filePath, forceSRGBIfNecessary ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
+			LoadWIC(commandList, filePath, forceSRGBIfNecessary ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
+		return texture;
 	}
 
 	unique_ptr<Texture> LoadTexture(
+		CommandList& commandList,
 		string_view format, const void* pData, size_t size,
-		const DeviceContext& deviceContext, ResourceUploadBatch& resourceUploadBatch,
-		bool* pIsCubeMap = nullptr
+		bool forceSRGBIfNecessary = false
 	) {
-		LOAD1(
-			!_stricmp(data(format), "dds") ?
-			CreateDDSTextureFromMemory(deviceContext.Device, resourceUploadBatch, static_cast<const uint8_t*>(pData), size, &resource, false, 0, nullptr, &isCubeMap) :
-			!_stricmp(data(format), "hdr") ?
-			LoadHDR(deviceContext, resourceUploadBatch, pData, size, &resource) :
-			!_stricmp(data(format), "tga") ?
-			LoadTGA(deviceContext, resourceUploadBatch, pData, size, &resource) :
-			CreateWICTextureFromMemoryEx(deviceContext.Device, resourceUploadBatch, static_cast<const uint8_t*>(pData), size, 0, D3D12_RESOURCE_FLAG_NONE, WIC_LOADER_FORCE_RGBA32, &resource)
-		);
+		if (empty(format)) throw invalid_argument("Unknown texture format");
+
+		const auto _format = data(format);
+		auto texture =
+			!_stricmp(_format, "dds") ? LoadDDS(commandList, pData, size, forceSRGBIfNecessary) :
+			!_stricmp(_format, "hdr") ? LoadHDR(commandList, pData, size) :
+			!_stricmp(_format, "tga") ? LoadTGA(commandList, pData, size, forceSRGBIfNecessary ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
+			LoadWIC(commandList, pData, size, forceSRGBIfNecessary ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
+		return texture;
 	}
 }

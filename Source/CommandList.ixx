@@ -130,6 +130,16 @@ export namespace DirectX {
 			else if (state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) SetUAVBarrier(resource);
 		}
 
+		void Copy(GPUResource& resource, span<const D3D12_SUBRESOURCE_DATA> subresourceData, UINT firstSubresource = 0) {
+			const auto allocation = CreateUploadBuffer(GetRequiredIntermediateSize(resource, firstSubresource, static_cast<UINT>(size(subresourceData))));
+
+			SetState(resource, D3D12_RESOURCE_STATE_COPY_DEST);
+
+			UpdateSubresources(*this, resource, allocation->GetResource(), 0, firstSubresource, static_cast<UINT>(size(subresourceData)), data(subresourceData));
+
+			m_trackedAllocations.emplace_back(allocation);
+		}
+
 		void Clear(GPUBuffer& buffer, UINT value = 0) {
 			SetState(buffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 			(*this)->ClearUnorderedAccessViewUint(buffer.GetUAVDescriptor(BufferUAVType::Raw), buffer.GetUAVDescriptor(BufferUAVType::Clear), buffer, data(initializer_list{ value, value, value, value }), 0, nullptr);
@@ -157,21 +167,7 @@ export namespace DirectX {
 				return;
 			}
 
-			if (!m_pool) {
-				constexpr POOL_DESC poolDesc{
-					.Flags = POOL_FLAG_ALGORITHM_LINEAR,
-					.HeapProperties{
-						.Type = D3D12_HEAP_TYPE_UPLOAD
-					},
-					.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED
-				};
-				ThrowIfFailed(m_deviceContext.MemoryAllocator->CreatePool(&poolDesc, &m_pool));
-			}
-
-			ComPtr<Allocation> allocation;
-			const ALLOCATION_DESC allocationDesc{ .Flags = ALLOCATION_FLAG_STRATEGY_MIN_TIME, .CustomPool = m_pool.Get() };
-			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferRange.Size);
-			ThrowIfFailed(m_deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &allocation, IID_NULL, nullptr));
+			const auto allocation = CreateUploadBuffer(bufferRange.Size);
 			const auto resource = allocation->GetResource();
 
 			constexpr D3D12_RANGE range{};
@@ -254,5 +250,24 @@ export namespace DirectX {
 		vector<ComPtr<Allocation>> m_trackedAllocations;
 
 		vector<uint64_t> m_builtAccelerationStructureIDs, m_compactAccelerationStructureIDs[2];
+
+		ComPtr<Allocation> CreateUploadBuffer(UINT64 size) {
+			if (!m_pool) {
+				constexpr POOL_DESC poolDesc{
+					.Flags = POOL_FLAG_ALGORITHM_LINEAR,
+					.HeapProperties{
+						.Type = D3D12_HEAP_TYPE_UPLOAD
+					},
+					.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED
+				};
+				ThrowIfFailed(m_deviceContext.MemoryAllocator->CreatePool(&poolDesc, &m_pool));
+			}
+
+			ComPtr<Allocation> allocation;
+			const ALLOCATION_DESC allocationDesc{ .Flags = ALLOCATION_FLAG_STRATEGY_MIN_TIME, .CustomPool = m_pool.Get() };
+			const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size);
+			ThrowIfFailed(m_deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &allocation, IID_NULL, nullptr));
+			return allocation;
+		}
 	};
 }

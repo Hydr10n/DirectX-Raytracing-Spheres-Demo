@@ -20,4 +20,16 @@ export {
 		BOOL HasTexture{};
 		XMFLOAT2 _;
 	};
+
+	enum class TextureMapType {
+		BaseColor,
+		EmissiveColor,
+		Metallic,
+		Roughness,
+		AmbientOcclusion,
+		Transmission,
+		Opacity,
+		Normal,
+		Count
+	};
 }

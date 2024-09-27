@@ -84,7 +84,7 @@ float3 GetEnvironmentLightColor(float3 worldRayDirection)
 	{
 		return g_sceneData.EnvironmentLightColor.rgb;
 	}
-	return lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f);
+	return Color::FromSrgb(lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f));
 }
 
 bool GetEnvironmentColor(float3 worldRayDirection, out float3 color)

@@ -1,6 +1,6 @@
 module;
 
-#include <filesystem>
+#include <stdexcept>
 
 #include "directx/d3dx12.h"
 
@@ -24,19 +24,6 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 export namespace DirectX {
-	enum class TextureMapType {
-		BaseColor,
-		EmissiveColor,
-		Metallic,
-		Roughness,
-		AmbientOcclusion,
-		Transmission,
-		Opacity,
-		Normal,
-		Cube,
-		_2DCount = Cube
-	};
-
 	enum class TextureDimension { _1, _2, _3 };
 
 	class Texture : public GPUResource {
@@ -93,7 +80,12 @@ export namespace DirectX {
 		Texture(const DeviceContext& deviceContext, const CreationDesc& creationDesc) noexcept(false) :
 			GPUResource(deviceContext, creationDesc.InitialState, creationDesc.KeepInitialState),
 			m_clearColor(creationDesc.ClearColor) {
-			const auto& [HeapType, Format, Dimension, Width, Height, DepthOrArraySize, MipLevels, SampleCount, _, Flags, InitialState, _1] = creationDesc;
+			const auto& [HeapType, Format, Dimension, Width, Height, DepthOrArraySize, MipLevels, SampleCount, ClearColor, Flags, InitialState, _1] = creationDesc;
+
+			const auto
+				allowRenderTarget = Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
+				allowDepthStencil = Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
 			const ALLOCATION_DESC allocationDesc{ .HeapType = HeapType };
 			D3D12_RESOURCE_DESC resourceDesc;
 			switch (Dimension)
@@ -110,11 +102,18 @@ export namespace DirectX {
 					resourceDesc = CD3DX12_RESOURCE_DESC::Tex3D(Format, Width, Height, DepthOrArraySize, MipLevels, Flags);
 					break;
 			}
-			ThrowIfFailed(deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, InitialState, nullptr, &m_allocation, IID_NULL, nullptr));
+			D3D12_CLEAR_VALUE clearValue{ .Format = Format };
+			reinterpret_cast<Color&>(clearValue.Color) = ClearColor;
+			ThrowIfFailed(deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, InitialState, allowRenderTarget || allowDepthStencil ? &clearValue : nullptr, &m_allocation, IID_NULL, nullptr));
 
 			if (Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) m_descriptors.UAV.resize(MipLevels);
-			if (Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) m_descriptors.RTV.resize(MipLevels);
-			if (Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) m_descriptors.DSV.resize(MipLevels);
+			if (allowRenderTarget) m_descriptors.RTV.resize(MipLevels);
+			if (allowDepthStencil) m_descriptors.DSV.resize(MipLevels);
+		}
+
+		bool IsCubeMap() const noexcept {
+			const auto desc = (*this)->GetDesc();
+			return desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.DepthOrArraySize % 6 == 0;
 		}
 
 		const Color& GetClearColor() const noexcept { return m_clearColor; }
@@ -125,11 +124,76 @@ export namespace DirectX {
 		const auto& GetRTVDescriptor(UINT16 mipLevel = 0) const noexcept { return *m_descriptors.RTV[mipLevel]; }
 		const auto& GetDSVDescriptor(UINT16 mipLevel = 0) const noexcept { return *m_descriptors.DSV[mipLevel]; }
 
-		void CreateSRV(bool isCubeMap = false) {
+		void CreateSRV() {
 			auto& descriptor = m_descriptors.SRV;
 			if (descriptor) return;
+
+			const auto desc = (*this)->GetDesc();
+			const auto mipLevels = desc.MipLevels ? desc.MipLevels : ~0u;
+			D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc{
+				.Format = desc.Format,
+				.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
+			};
+			if (D3D12_PROPERTY_LAYOUT_FORMAT_TABLE::GetNumComponentsInFormat(desc.Format) == 1) {
+				SRVDesc.Shader4ComponentMapping = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 0, 0, D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1);
+			}
+			switch (desc.Dimension)
+			{
+				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+				{
+					if (desc.DepthOrArraySize > 1) {
+						SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;
+						SRVDesc.Texture1DArray = {
+							.MipLevels = mipLevels,
+							.ArraySize = desc.DepthOrArraySize
+						};
+					}
+					else {
+						SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
+						SRVDesc.Texture1D.MipLevels = mipLevels;
+					}
+				}
+				break;
+
+				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+				{
+					if (desc.DepthOrArraySize % 6 == 0) {
+						if (desc.DepthOrArraySize > 6) {
+							SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
+							SRVDesc.TextureCubeArray = {
+								.MipLevels = mipLevels,
+								.NumCubes = desc.DepthOrArraySize / 6u
+							};
+						}
+						else {
+							SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+							SRVDesc.TextureCube.MipLevels = mipLevels;
+						}
+					}
+					else if (desc.DepthOrArraySize > 1) {
+						SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+						SRVDesc.Texture2DArray = {
+							.MipLevels = mipLevels,
+							.ArraySize = desc.DepthOrArraySize
+						};
+					}
+					else {
+						SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+						SRVDesc.Texture2D.MipLevels = mipLevels;
+					}
+				}
+				break;
+
+				case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+				{
+					SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+					SRVDesc.Texture3D.MipLevels = mipLevels;
+				}
+				break;
+			}
+
 			descriptor = m_deviceContext.ResourceDescriptorHeap->Allocate();
-			CreateShaderResourceView(m_deviceContext.Device, *this, *descriptor, isCubeMap);
+			m_deviceContext.Device->CreateShaderResourceView(*this, &SRVDesc, *descriptor);
 		}
 
 		void CreateUAV(UINT16 mipLevel = 0) {
@@ -191,9 +255,6 @@ export namespace DirectX {
 					}
 				}
 				break;
-
-				default: Throw<runtime_error>("Texture dimension not supported");
-
 			}
 
 			descriptor = m_deviceContext.DepthStencilDescriptorHeap->Allocate();

@@ -5,7 +5,6 @@ module;
 #include "directxtk12/GamePad.h"
 #include "directxtk12/Keyboard.h"
 #include "directxtk12/Mouse.h"
-#include "directxtk12/ResourceUploadBatch.h"
 #include "directxtk12/SimpleMath.h"
 #include "directxtk12/VertexTypes.h"
 
@@ -49,13 +48,13 @@ export {
 	struct RenderObjectDesc : RenderObjectBase {
 		string MeshURI;
 
-		path Textures[to_underlying(TextureMapType::_2DCount)];
+		path Textures[to_underlying(TextureMapType::Count)];
 	};
 
 	struct RenderObject : RenderObjectBase {
 		shared_ptr<Mesh> Mesh;
 
-		shared_ptr<Texture> Textures[to_underlying(TextureMapType::_2DCount)];
+		shared_ptr<Texture> Textures[to_underlying(TextureMapType::Count)];
 	};
 
 	struct SceneBase {
@@ -126,18 +125,15 @@ export {
 			CommandList commandList(m_deviceContext);
 			commandList.Begin();
 
-			ResourceUploadBatch resourceUploadBatch(m_deviceContext.Device);
-			resourceUploadBatch.Begin();
-
-			{
-				if (!empty(sceneDesc.EnvironmentLightTexture.FilePath)) {
-					EnvironmentLightTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), m_deviceContext, resourceUploadBatch);
-					EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
-				}
-				if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
-					EnvironmentTexture.Texture = LoadTexture(ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), m_deviceContext, resourceUploadBatch);
-					EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
-				}
+			if (!empty(sceneDesc.EnvironmentLightTexture.FilePath)) {
+				EnvironmentLightTexture.Texture = LoadTexture(commandList, ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), true);
+				EnvironmentLightTexture.Texture->CreateSRV();
+				EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
+			}
+			if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
+				EnvironmentTexture.Texture = LoadTexture(commandList, ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), true);
+				EnvironmentTexture.Texture->CreateSRV();
+				EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 			}
 
 			{
@@ -153,7 +149,9 @@ export {
 
 					for (size_t i = 0; const auto & filePath : renderObjectDesc.Textures) {
 						if (!empty(filePath)) {
-							renderObject.Textures[i] = LoadTexture(ResolveResourcePath(filePath), m_deviceContext, resourceUploadBatch);
+							const auto textureMapType = static_cast<TextureMapType>(i);
+							renderObject.Textures[i] = LoadTexture(commandList, ResolveResourcePath(filePath), textureMapType == TextureMapType::BaseColor || textureMapType == TextureMapType::EmissiveColor);
+							renderObject.Textures[i]->CreateSRV();
 						}
 						i++;
 					}
@@ -161,8 +159,6 @@ export {
 					RenderObjects.emplace_back(renderObject);
 				}
 			}
-
-			resourceUploadBatch.End(m_deviceContext.CommandQueue).get();
 
 			Tick(0);
 

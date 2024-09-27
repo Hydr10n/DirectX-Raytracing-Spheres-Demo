@@ -41,22 +41,21 @@ ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
 
 ConstantBuffer<Camera> g_camera : register(b1);
 
-StructuredBuffer<InstanceData> g_instanceData : register(t1);
-StructuredBuffer<ObjectData> g_objectData : register(t2);
-StructuredBuffer<LightInfo> g_lightInfo : register(t3);
-StructuredBuffer<uint> g_lightIndices : register(t4);
-Buffer<float2> g_neighborOffsets : register(t5);
+StructuredBuffer<ObjectData> g_objectData : register(t1);
+StructuredBuffer<LightInfo> g_lightInfo : register(t2);
+StructuredBuffer<uint> g_lightIndices : register(t3);
+Buffer<float2> g_neighborOffsets : register(t4);
 
-Texture2D g_localLightPDF : register(t6);
-Texture2D<float> g_previousLinearDepth : register(t7);
-Texture2D<float> g_linearDepth : register(t8);
-Texture2D<float3> g_motionVectors : register(t9);
-Texture2D<float4> g_previousBaseColorMetalness : register(t10);
-Texture2D<float4> g_baseColorMetalness : register(t11);
-Texture2D<float4> g_previousNormals : register(t12);
-Texture2D<float4> g_normals : register(t13);
-Texture2D<float> g_previousRoughness : register(t14);
-Texture2D<float> g_roughness : register(t15);
+Texture2D g_localLightPDF : register(t5);
+Texture2D<float> g_previousLinearDepth : register(t6);
+Texture2D<float> g_linearDepth : register(t7);
+Texture2D<float3> g_motionVectors : register(t8);
+Texture2D<float4> g_previousBaseColorMetalness : register(t9);
+Texture2D<float4> g_baseColorMetalness : register(t10);
+Texture2D<float4> g_previousNormals : register(t11);
+Texture2D<float4> g_normals : register(t12);
+Texture2D<float> g_previousRoughness : register(t13);
+Texture2D<float> g_roughness : register(t14);
 
 RWStructuredBuffer<uint2> g_RIS : register(u0);
 RWStructuredBuffer<uint4> g_RISLightInfo : register(u1);
@@ -80,7 +79,7 @@ RWTexture2D<float4> g_noisySpecular : register(u5);
 		"SRV(t1)," \
 		"SRV(t2)," \
 		"SRV(t3)," \
-		"SRV(t4)," \
+		"DescriptorTable(SRV(t4))," \
 		"DescriptorTable(SRV(t5))," \
 		"DescriptorTable(SRV(t6))," \
 		"DescriptorTable(SRV(t7))," \
@@ -91,7 +90,6 @@ RWTexture2D<float4> g_noisySpecular : register(u5);
 		"DescriptorTable(SRV(t12))," \
 		"DescriptorTable(SRV(t13))," \
 		"DescriptorTable(SRV(t14))," \
-		"DescriptorTable(SRV(t15))," \
 		"UAV(u0)," \
 		"UAV(u1)," \
 		"UAV(u2)," \
@@ -263,7 +261,7 @@ struct RAB_Surface
 		diffuse = specular = 0;
 		return false;
 	}
-	
+
 	bool Shade(float3 samplePosition, float3 radiance, out float3 diffuse, out float3 specular)
 	{
 		const bool ret = Evaluate(normalize(samplePosition - Position), diffuse, specular);

@@ -32,7 +32,7 @@ using namespace rtxdi;
 using namespace std;
 
 export struct RTXDI {
-	struct { GPUBuffer* Camera, * InstanceData, * ObjectData; } GPUBuffers{};
+	struct { GPUBuffer* Camera, * ObjectData; } GPUBuffers{};
 
 	struct {
 		Texture
@@ -145,7 +145,6 @@ export struct RTXDI {
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*m_resources->LightInfo, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*m_resources->LightIndices, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -170,7 +169,6 @@ export struct RTXDI {
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootShaderResourceView(i++, m_resources->LightInfo->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootShaderResourceView(i++, m_resources->LightIndices->GetNative()->GetGPUVirtualAddress());

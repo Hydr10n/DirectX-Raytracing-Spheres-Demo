@@ -7,8 +7,6 @@ module;
 
 #include "D3D12MemAlloc.h"
 
-#include "FormatHelpers.h"
-
 export module GPUBuffer;
 
 import DescriptorHeap;
@@ -17,7 +15,6 @@ import ErrorHelpers;
 import GPUResource;
 
 using namespace D3D12MA;
-using namespace DirectX::FormatHelpers;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
 using namespace std;
@@ -61,10 +58,7 @@ export namespace DirectX {
 			DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN
 		) noexcept(false) :
 			GPUResource(deviceContext, pResource, initialState, keepInitialState),
-			m_type(
-				initialState == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE ?
-				GPUBufferType::RaytracingAccelerationStructure : GetBufferType(GetHeapType(pResource))
-			),
+			m_type(GetType(pResource, initialState)),
 			m_format(format),
 			m_stride(stride) {
 			if ((*this)->GetDesc().Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) Throw<invalid_argument>("Resource is not buffer");
@@ -175,6 +169,8 @@ export namespace DirectX {
 
 		GPUBufferType GetType() const noexcept { return m_type; }
 
+		DXGI_FORMAT GetFormat() const noexcept { return m_format; }
+
 		UINT GetStride() const noexcept { return m_stride; }
 
 		size_t GetCapacity() const noexcept { return (*this)->GetDesc().Width / m_stride; }
@@ -245,7 +241,7 @@ export namespace DirectX {
 				case BufferSRVType::Typed:
 				{
 					desc.Format = m_format;
-					stride = GetBits(m_format) / 8;
+					stride = D3D12_PROPERTY_LAYOUT_FORMAT_TABLE::GetBitsPerUnit(m_format) / 8;
 				}
 				break;
 			}
@@ -283,7 +279,7 @@ export namespace DirectX {
 				case BufferUAVType::Typed:
 				{
 					desc.Format = m_format;
-					stride = GetBits(m_format) / 8;
+					stride = D3D12_PROPERTY_LAYOUT_FORMAT_TABLE::GetBitsPerUnit(m_format) / 8;
 				}
 				break;
 			}
@@ -311,10 +307,15 @@ export namespace DirectX {
 
 		struct { unique_ptr<Descriptor> CBV, SRV[3], UAV[4]; } m_descriptors;
 
-		static D3D12_HEAP_TYPE GetHeapType(ID3D12Resource* pResource) {
+		static GPUBufferType GetType(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
+			if (state == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE) return GPUBufferType::RaytracingAccelerationStructure;
 			D3D12_HEAP_PROPERTIES heapProperties;
 			ThrowIfFailed(pResource->GetHeapProperties(&heapProperties, nullptr));
-			return heapProperties.Type;
+			switch (heapProperties.Type) {
+				case D3D12_HEAP_TYPE_UPLOAD: return GPUBufferType::Upload;
+				case D3D12_HEAP_TYPE_READBACK: return GPUBufferType::Readback;
+				default: return GPUBufferType::Default;
+			}
 		}
 
 		D3D12_HEAP_TYPE GetHeapType(GPUBufferType type) const {
@@ -323,14 +324,6 @@ export namespace DirectX {
 				case GPUBufferType::Upload: return isGPUUploadHeapSupported ? D3D12_HEAP_TYPE_GPU_UPLOAD : D3D12_HEAP_TYPE_UPLOAD;
 				case GPUBufferType::Readback: return D3D12_HEAP_TYPE_READBACK;
 				default: return isGPUUploadHeapSupported ? D3D12_HEAP_TYPE_GPU_UPLOAD : D3D12_HEAP_TYPE_DEFAULT;
-			}
-		}
-
-		static constexpr GPUBufferType GetBufferType(D3D12_HEAP_TYPE type) {
-			switch (type) {
-				case D3D12_HEAP_TYPE_UPLOAD: return GPUBufferType::Upload;
-				case D3D12_HEAP_TYPE_READBACK: return GPUBufferType::Readback;
-				default: return GPUBufferType::Default;
 			}
 		}
 
