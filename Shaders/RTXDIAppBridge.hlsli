@@ -127,36 +127,46 @@ int2 RAB_ClampSamplePositionIntoView(int2 pixelPosition, bool previousFrame)
 struct RAB_RandomSamplerState
 {
 	uint Seed, Index;
+
+	void Initialize(uint2 pixelPosition, uint frameIndex)
+	{
+		Index = 1;
+		Seed = RTXDI_JenkinsHash(RTXDI_ZCurveToLinearIndex(pixelPosition)) + frameIndex;
+	}
+
+	float GetNext()
+	{
+#define ROT32(x, y) ((x << y) | (x >> (32 - y)))
+		// https://en.wikipedia.org/wiki/MurmurHash
+		const uint c1 = 0xcc9e2d51, c2 = 0x1b873593, r1 = 15, r2 = 13, m = 5, n = 0xe6546b64;
+		uint hash = Seed, k = Index++;
+		k *= c1;
+		k = ROT32(k, r1);
+		k *= c2;
+		hash ^= k;
+		hash = ROT32(hash, r2) * m + n;
+		hash ^= 4;
+		hash ^= hash >> 16;
+		hash *= 0x85ebca6b;
+		hash ^= hash >> 13;
+		hash *= 0xc2b2ae35;
+		hash ^= hash >> 16;
+#undef ROT32
+		const uint one = asuint(1.0f), mask = (1 << 23) - 1;
+		return asfloat((mask & hash) | one) - 1;
+	}
 };
 
 RAB_RandomSamplerState RAB_InitRandomSampler(uint2 pixelPos, uint frameIndex)
 {
 	RAB_RandomSamplerState state;
-	state.Seed = RTXDI_JenkinsHash(RTXDI_ZCurveToLinearIndex(pixelPos)) + frameIndex;
-	state.Index = 1;
+	state.Initialize(pixelPos, frameIndex);
 	return state;
 }
 
 float RAB_GetNextRandom(inout RAB_RandomSamplerState rng)
 {
-#define ROT32(x, y) ((x << y) | (x >> (32 - y)))
-	// https://en.wikipedia.org/wiki/MurmurHash
-	const uint c1 = 0xcc9e2d51, c2 = 0x1b873593, r1 = 15, r2 = 13, m = 5, n = 0xe6546b64;
-	uint hash = rng.Seed, k = rng.Index++;
-	k *= c1;
-	k = ROT32(k, r1);
-	k *= c2;
-	hash ^= k;
-	hash = ROT32(hash, r2) * m + n;
-	hash ^= 4;
-	hash ^= hash >> 16;
-	hash *= 0x85ebca6b;
-	hash ^= hash >> 13;
-	hash *= 0xc2b2ae35;
-	hash ^= hash >> 16;
-#undef ROT32
-	const uint one = asuint(1.0f), mask = (1 << 23) - 1;
-	return asfloat((mask & hash) | one) - 1;
+	return rng.GetNext();
 }
 
 int RAB_TranslateLightIndex(uint lightIndex, bool currentToPrevious)
@@ -402,7 +412,7 @@ RayDesc CreateVisibilityRay(RAB_Surface surface, float3 samplePosition, float of
 {
 	const float3 L = samplePosition - surface.Position;
 	const float Llength = length(L);
-	const RayDesc rayDesc = { surface.Position, offset, L / Llength, max(0, Llength - offset) };
+	const RayDesc rayDesc = { surface.Position, offset, L / Llength, max(0, Llength - offset * 2) };
 	return rayDesc;
 }
 
@@ -473,8 +483,8 @@ bool RAB_TraceRayForLocalLight(float3 origin, float3 direction, float tMin, floa
 
 float RAB_EvaluateLocalLightSourcePdf(uint lightIndex)
 {
-	uint mipLevels;
 	uint2 textureSize;
+	uint mipLevels;
 	g_localLightPDF.GetDimensions(0, textureSize.x, textureSize.y, mipLevels);
 
 	// The single texel in the last mip level is effectively the average of all texels in mip 0,

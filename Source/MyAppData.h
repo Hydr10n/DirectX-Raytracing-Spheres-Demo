@@ -317,8 +317,6 @@ public:
 				} Bloom;
 
 				struct ToneMapping {
-					bool IsEnabled = true;
-
 					struct HDR {
 						static constexpr float MinPaperWhiteNits = 50, MaxPaperWhiteNits = 10000;
 						float PaperWhiteNits = 200;
@@ -337,7 +335,7 @@ public:
 						FRIEND_JSON_CONVERSION_FUNCTIONS(NonHDR, Operator, Exposure);
 					} NonHDR;
 
-					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, IsEnabled, HDR, NonHDR);
+					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, HDR, NonHDR);
 				} ToneMapping;
 
 				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);

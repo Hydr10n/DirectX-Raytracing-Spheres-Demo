@@ -419,7 +419,7 @@ private:
 
 			if (m_NRD = make_unique<NRD>(
 				m_deviceResources->GetCommandList(),
-				static_cast<uint16_t>(outputSize.cx), static_cast<uint16_t>(outputSize.cy),
+				outputSize.cx, outputSize.cy,
 				deviceResourcesCreationDesc.BackBufferCount,
 				initializer_list<DenoiserDesc>{
 					{ static_cast<Identifier>(NRDDenoiser::ReBLUR), Denoiser::REBLUR_DIFFUSE_SPECULAR },
@@ -641,7 +641,7 @@ private:
 
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
-			m_streamline = make_unique<Streamline>(m_deviceResources->GetCommandList(), &adapterDesc.AdapterLuid, sizeof(adapterDesc.AdapterLuid), 0);
+			m_streamline = make_unique<Streamline>(&adapterDesc.AdapterLuid, sizeof(adapterDesc.AdapterLuid), m_deviceResources->GetCommandList(), 0);
 
 			if (m_streamline->IsFeatureAvailable(kFeatureReflex)) {
 				ReflexState state;
@@ -1235,7 +1235,7 @@ private:
 			swap(inColor, outColor);
 		}
 
-		if (postProcessingSettings.ToneMapping.IsEnabled) {
+		{
 			ToneMap(*inColor, *outColor);
 
 			swap(inColor, outColor);
@@ -1339,8 +1339,6 @@ private:
 				);
 			}
 			m_NRD->Denoise(initializer_list<Identifier>{ denoiser });
-
-			commandList.SetResourceDescriptorHeap();
 		}
 
 		m_denoisedComposition->GPUBuffers = { .Camera = m_GPUBuffers.Camera.get() };
@@ -1366,8 +1364,6 @@ private:
 			CreateResourceTagDesc(kBufferTypeScalingOutputColor, *m_textures.at(TextureNames::FinalColor), false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagDescs));
-
-		m_deviceResources->GetCommandList().SetResourceDescriptorHeap();
 	}
 
 	void ProcessDLSSFrameGeneration(Texture& inColor) {
@@ -1405,8 +1401,6 @@ private:
 		}
 
 		ignore = m_XeSS->Execute(commandList);
-
-		m_deviceResources->GetCommandList().SetResourceDescriptorHeap();
 	}
 
 	void ProcessNIS(Texture& inColor, Texture& outColor) {
@@ -1420,8 +1414,6 @@ private:
 			CreateResourceTagDesc(kBufferTypeScalingOutputColor, outColor, false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagDescs));
-
-		m_deviceResources->GetCommandList().SetResourceDescriptorHeap();
 	}
 
 	void ProcessChromaticAberration(Texture& inColor, Texture& outColor) {
@@ -1858,43 +1850,39 @@ private:
 					if (ImGuiEx::TreeNode treeNode("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
 						auto& toneMappingSettings = postProcessingSetttings.ToneMapping;
 
-						ImGui::Checkbox("Enable", &toneMappingSettings.IsEnabled);
+						if (m_deviceResources->IsHDREnabled()) {
+							auto& HDRSettings = toneMappingSettings.HDR;
 
-						if (toneMappingSettings.IsEnabled) {
-							if (m_deviceResources->IsHDREnabled()) {
-								auto& HDRSettings = toneMappingSettings.HDR;
+							ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
-								ImGui::SliderFloat("Paper White Nits", &HDRSettings.PaperWhiteNits, HDRSettings.MinPaperWhiteNits, HDRSettings.MaxPaperWhiteNits, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+							ImGuiEx::Combo<ToneMapPostProcess::ColorPrimaryRotation>(
+								"Color Primary Rotation",
+								{
+									ToneMapPostProcess::HDTV_to_UHDTV,
+									ToneMapPostProcess::DCI_P3_D65_to_UHDTV,
+									ToneMapPostProcess::HDTV_to_DCI_P3_D65
+								},
+								HDRSettings.ColorPrimaryRotation,
+								HDRSettings.ColorPrimaryRotation,
+								static_cast<string(*)(ToneMapPostProcess::ColorPrimaryRotation)>(ToString)
+								);
+						}
+						else {
+							auto& nonHDRSettings = toneMappingSettings.NonHDR;
 
-								ImGuiEx::Combo<ToneMapPostProcess::ColorPrimaryRotation>(
-									"Color Primary Rotation",
-									{
-										ToneMapPostProcess::HDTV_to_UHDTV,
-										ToneMapPostProcess::DCI_P3_D65_to_UHDTV,
-										ToneMapPostProcess::HDTV_to_DCI_P3_D65
-									},
-									HDRSettings.ColorPrimaryRotation,
-									HDRSettings.ColorPrimaryRotation,
-									static_cast<string(*)(ToneMapPostProcess::ColorPrimaryRotation)>(ToString)
-									);
-							}
-							else {
-								auto& nonHDRSettings = toneMappingSettings.NonHDR;
+							ImGuiEx::Combo<ToneMapPostProcess::Operator>(
+								"Operator",
+								{
+									ToneMapPostProcess::Saturate,
+									ToneMapPostProcess::Reinhard,
+									ToneMapPostProcess::ACESFilmic
+								},
+								nonHDRSettings.Operator,
+								nonHDRSettings.Operator,
+								static_cast<string(*)(ToneMapPostProcess::Operator)>(ToString)
+								);
 
-								ImGuiEx::Combo<ToneMapPostProcess::Operator>(
-									"Operator",
-									{
-										ToneMapPostProcess::Saturate,
-										ToneMapPostProcess::Reinhard,
-										ToneMapPostProcess::ACESFilmic
-									},
-									nonHDRSettings.Operator,
-									nonHDRSettings.Operator,
-									static_cast<string(*)(ToneMapPostProcess::Operator)>(ToString)
-									);
-
-								ImGui::SliderFloat("Exposure", &nonHDRSettings.Exposure, nonHDRSettings.MinExposure, nonHDRSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-							}
+							ImGui::SliderFloat("Exposure", &nonHDRSettings.Exposure, nonHDRSettings.MinExposure, nonHDRSettings.MaxExposure, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 						}
 					}
 				}

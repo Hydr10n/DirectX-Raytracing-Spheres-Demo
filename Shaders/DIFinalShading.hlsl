@@ -27,38 +27,41 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	}
 
 	const RAB_LightInfo lightInfo = RAB_LoadLightInfo(RTXDI_GetDIReservoirLightIndex(reservoir), false);
-	const RAB_LightSample lightSample = RAB_SamplePolymorphicLight(lightInfo, surface, RTXDI_GetDIReservoirSampleUV(reservoir));
+	RAB_LightSample lightSample = RAB_SamplePolymorphicLight(lightInfo, surface, RTXDI_GetDIReservoirSampleUV(reservoir));
 
-	float3 visibility;
-	bool visibilityReused = false;
-	if (parameters.shadingParams.reuseFinalVisibility)
+	if (parameters.shadingParams.enableFinalVisibility)
 	{
-		RTXDI_VisibilityReuseParameters visibilityReuseParameters;
-		visibilityReuseParameters.maxAge = parameters.shadingParams.finalVisibilityMaxAge;
-		visibilityReuseParameters.maxDistance = parameters.shadingParams.finalVisibilityMaxDistance;
-		visibilityReused = RTXDI_GetDIReservoirVisibility(reservoir, visibilityReuseParameters, visibility);
-	}
-	if (!visibilityReused)
-	{
-		visibility = GetFinalVisibility(surface, lightSample.Position);
+		float3 visibility;
+		bool visibilityReused = false;
+		if (parameters.shadingParams.reuseFinalVisibility)
+		{
+			RTXDI_VisibilityReuseParameters visibilityReuseParameters;
+			visibilityReuseParameters.maxAge = parameters.shadingParams.finalVisibilityMaxAge;
+			visibilityReuseParameters.maxDistance = parameters.shadingParams.finalVisibilityMaxDistance;
+			visibilityReused = RTXDI_GetDIReservoirVisibility(reservoir, visibilityReuseParameters, visibility);
+		}
+		if (!visibilityReused)
+		{
+			visibility = GetFinalVisibility(surface, lightSample.Position);
 		RTXDI_StoreVisibilityInDIReservoir(reservoir, visibility, parameters.temporalResamplingParams.discardInvisibleSamples);
-		RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.shadingInputBufferIndex);
+			RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.shadingInputBufferIndex);
+		}
+
+		if (all(visibility == 0))
+		{
+			return;
+		}
+
+		lightSample.Radiance *= visibility;
 	}
 
-	if (all(visibility == 0))
-	{
-		return;
-	}
+	lightSample.Radiance *= RTXDI_GetDIReservoirInvPdf(reservoir);
 
 	float3 diffuse, specular;
 	if (!surface.Shade(lightSample, diffuse, specular))
 	{
 		return;
 	}
-
-	const float invPDF = RTXDI_GetDIReservoirInvPdf(reservoir);
-	diffuse *= invPDF * visibility;
-	specular *= invPDF * visibility;
 
 	if (g_graphicsSettings.IsReGIRCellVisualizationEnabled
 		&& parameters.initialSamplingParams.localLightSamplingMode == ReSTIRDI_LocalLightSamplingMode_REGIR_RIS)

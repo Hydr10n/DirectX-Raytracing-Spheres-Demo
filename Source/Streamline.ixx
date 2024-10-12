@@ -10,6 +10,9 @@ module;
 
 export module Streamline;
 
+import CommandList;
+
+using namespace DirectX;
 using namespace sl;
 using namespace std;
 
@@ -20,7 +23,8 @@ export {
 		Streamline(const Streamline&) = delete;
 		Streamline& operator=(const Streamline&) = delete;
 
-		Streamline(void* commandBuffer, void* adapterLUID, size_t adapterLUIDSize, uint32_t viewportID) : m_commandBuffer(commandBuffer), m_viewport(viewportID) {
+		Streamline(void* adapterLUID, size_t adapterLUIDSize, CommandList& commandList, uint32_t viewportID) :
+			m_commandList(commandList), m_viewport(viewportID) {
 			if (_.IsInitialized) {
 				for (const auto feature : Features) {
 					AdapterInfo adapterInfo;
@@ -38,7 +42,9 @@ export {
 		const auto& GetFrameToken() const { return *m_frameToken; }
 		auto NewFrame(const uint32_t* index = nullptr) { return slGetNewFrameToken(m_frameToken, index); }
 
-		auto Tag(span<const ResourceTag> resourceTags) const { return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandBuffer); }
+		auto Tag(span<const ResourceTag> resourceTags) const {
+			return slSetTag(m_viewport, data(resourceTags), static_cast<uint32_t>(size(resourceTags)), m_commandList);
+		}
 
 		auto SetPCLMarker(PCLMarker marker) const { return slPCLSetMarker(marker, *m_frameToken); }
 
@@ -54,7 +60,9 @@ export {
 		auto EvaluateFeature(Feature feature, span<const ResourceTag> resourceTags = {}) const {
 			vector<const BaseStructure*> inputs{ &m_viewport };
 			for (const auto& resourceTag : resourceTags) inputs.emplace_back(&resourceTag);
-			return slEvaluateFeature(feature, *m_frameToken, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandBuffer);
+			const auto ret = slEvaluateFeature(feature, *m_frameToken, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandList);
+			m_commandList.SetResourceDescriptorHeap();
+			return ret;
 		}
 
 	private:
@@ -76,7 +84,7 @@ export {
 			~_() { if (IsInitialized) slShutdown(); }
 		} _;
 
-		void* m_commandBuffer;
+		CommandList& m_commandList;
 
 		ViewportHandle m_viewport;
 

@@ -70,9 +70,11 @@ bool IsOpaque(ObjectData objectData, float2 textureCoordinate, inout float3 visi
 
 	material.Transmission = GetTransmission(objectData, textureCoordinate, material.BaseColor.a);
 
-	if (material.AlphaMode == AlphaMode::Mask)
+	if (material.AlphaMode != AlphaMode::Opaque)
 	{
-		return 1 - material.Transmission >= material.AlphaThreshold;
+		const bool ret = 1 - material.Transmission >= material.AlphaThreshold;
+		visibility *= !ret;
+		return ret;
 	}
 
 	if (material.IOR != BRDF::IOR::Vacuum)

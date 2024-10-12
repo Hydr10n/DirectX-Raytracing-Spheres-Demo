@@ -34,7 +34,7 @@ export namespace DirectX::RaytracingHelpers {
 	) {
 		const auto& deviceContext = commandList.GetDeviceContext();
 
-		const bool isValid = deviceContext.AccelerationStructureManager->IsValid(accelerationStructure.ID);
+		const auto isValid = deviceContext.AccelerationStructureManager->IsValid(accelerationStructure.ID);
 
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs{
 			.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,

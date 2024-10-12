@@ -31,7 +31,9 @@ export {
 			}
 		}
 
-		~XeSS() { if (m_context != nullptr) xessDestroyContext(m_context); }
+		~XeSS() {
+			if (m_context != nullptr) xessDestroyContext(m_context);
+		}
 
 		auto IsAvailable() const { return m_isAvailable; }
 
@@ -62,7 +64,11 @@ export {
 			m_executeParams.inputHeight = settings.InputSize.y;
 		}
 
-		auto Execute(CommandList& commandList) { return xessD3D12Execute(m_context, commandList, &m_executeParams); }
+		auto Execute(CommandList& commandList) {
+			const auto ret = xessD3D12Execute(m_context, commandList, &m_executeParams);
+			commandList.SetResourceDescriptorHeap();
+			return ret;
+		}
 
 	private:
 		xess_2d_t m_outputResolution;
