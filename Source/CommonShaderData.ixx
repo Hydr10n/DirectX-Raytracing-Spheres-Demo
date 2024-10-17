@@ -13,16 +13,16 @@ using namespace DirectX;
 
 export {
 	struct SceneResourceDescriptorIndices {
-		UINT InEnvironmentLightTexture = ~0u, InEnvironmentTexture = ~0u;
+		UINT EnvironmentLightTexture = ~0u, EnvironmentTexture = ~0u;
 		XMUINT2 _;
 	};
 
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneData {
 		BOOL IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 		BOOL _;
-		SceneResourceDescriptorIndices ResourceDescriptorIndices;
 		XMFLOAT4 EnvironmentLightColor, EnvironmentColor;
 		XMFLOAT3X4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
+		SceneResourceDescriptorIndices ResourceDescriptorIndices;
 	};
 
 	struct InstanceData {

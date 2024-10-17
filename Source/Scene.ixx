@@ -146,13 +146,26 @@ export {
 
 					renderObject.Mesh = Meshes.at(renderObjectDesc.MeshURI);
 
-					for (size_t i = 0; const auto & filePath : renderObjectDesc.Textures) {
-						if (!empty(filePath)) {
-							const auto textureMapType = static_cast<TextureMapType>(i);
-							renderObject.Textures[i] = LoadTexture(commandList, ResolveResourcePath(filePath), textureMapType == TextureMapType::BaseColor || textureMapType == TextureMapType::EmissiveColor);
-							renderObject.Textures[i]->CreateSRV();
+					for (const auto textureMapType : {
+						TextureMapType::BaseColor,
+						TextureMapType::EmissiveColor,
+						TextureMapType::Metallic,
+						TextureMapType::Roughness,
+						TextureMapType::AmbientOcclusion,
+						TextureMapType::Transmission,
+						TextureMapType::Opacity,
+						TextureMapType::Normal
+						}) {
+						if (textureMapType == TextureMapType::Opacity && renderObject.Textures[to_underlying(TextureMapType::Transmission)]) {
+							continue;
 						}
-						i++;
+
+						const auto i = to_underlying(textureMapType);
+						if (const auto& filePath = renderObjectDesc.Textures[i]; !empty(filePath)) {
+							auto& texture = renderObject.Textures[i];
+							texture = LoadTexture(commandList, ResolveResourcePath(filePath), textureMapType == TextureMapType::BaseColor || textureMapType == TextureMapType::EmissiveColor);
+							texture->CreateSRV();
+						}
 					}
 
 					RenderObjects.emplace_back(renderObject);
@@ -266,7 +279,7 @@ export {
 					.InstanceID = instanceData.FirstGeometryIndex,
 					.InstanceMask = renderObject.IsVisible ? ~0u : 0,
 					.InstanceContributionToHitGroupIndex = instanceData.FirstGeometryIndex,
-					.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,
+					.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE,
 					.AccelerationStructure = accelerationStructureManager.GetAccelStructGPUVA(m_bottomLevelAccelerationStructureIDs.at(renderObject.Mesh.get()).first)
 					});
 				reinterpret_cast<XMFLOAT3X4&>(instanceDesc.Transform) = instanceData.ObjectToWorld;

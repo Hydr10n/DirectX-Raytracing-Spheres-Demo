@@ -43,7 +43,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		if (!visibilityReused)
 		{
 			visibility = GetFinalVisibility(surface, lightSample.Position);
-		RTXDI_StoreVisibilityInDIReservoir(reservoir, visibility, parameters.temporalResamplingParams.discardInvisibleSamples);
+			RTXDI_StoreVisibilityInDIReservoir(reservoir, visibility, parameters.temporalResamplingParams.discardInvisibleSamples);
 			RTXDI_StoreDIReservoir(reservoir, parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.shadingInputBufferIndex);
 		}
 

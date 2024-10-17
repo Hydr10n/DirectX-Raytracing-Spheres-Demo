@@ -9,9 +9,14 @@ struct Material
 {
 	float4 BaseColor;
 	float3 EmissiveColor;
-	float Metallic, Roughness, Transmission, IOR;
+	float EmissiveIntensity, Metallic, Roughness, Transmission, IOR;
 	AlphaMode AlphaMode;
 	float AlphaThreshold;
 	bool HasTexture;
-	float2 _;
+	uint _;
+
+	float3 GetEmission()
+	{
+		return EmissiveColor * EmissiveIntensity;
+	}
 };

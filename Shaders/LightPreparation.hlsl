@@ -83,17 +83,18 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	positions[1] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[1]);
 	positions[2] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
-	float3 emissiveColor;
-	if (textureMapIndices.EmissiveColor == ~0u)
-	{
-		emissiveColor = objectData.Material.EmissiveColor;
-	}
-	else
+	float3 emission = objectData.Material.GetEmission();
+	if (textureMapIndices.EmissiveColor != ~0u)
 	{
 		float2 textureCoordinates[3];
 		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
 
-		const float2 edges[] = { textureCoordinates[1] - textureCoordinates[0], textureCoordinates[2] - textureCoordinates[1], textureCoordinates[0] - textureCoordinates[2] };
+		const float2 edges[] =
+		{
+			textureCoordinates[1] - textureCoordinates[0],
+			textureCoordinates[2] - textureCoordinates[1],
+			textureCoordinates[0] - textureCoordinates[2]
+		};
 		const float edgeLengths[] = { length(edges[0]), length(edges[1]), length(edges[2]) };
 
 		float2 shortEdge, longEdges[2];
@@ -117,11 +118,11 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 		}
 
 		const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.EmissiveColor];
-		emissiveColor = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3).rgb;
+		emission = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3) * objectData.Material.EmissiveIntensity;
 	}
 
 	TriangleLight triangleLight;
-	triangleLight.Initialize(positions[0], positions[1] - positions[0], positions[2] - positions[0], emissiveColor);
+	triangleLight.Initialize(positions[0], positions[1] - positions[0], positions[2] - positions[0], emission);
 	triangleLight.Store(g_lightInfo[dispatchThreadID]);
 	g_localLightPDF[RTXDI_LinearIndexToZCurve(dispatchThreadID)] = triangleLight.CalculatePower();
 }

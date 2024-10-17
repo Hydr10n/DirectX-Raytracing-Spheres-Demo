@@ -45,7 +45,7 @@ void RayGeneration()
 	float NoV;
 	
 	Material primarySurfaceMaterial = (Material)0;
-	BRDFSample primarySurfaceBRDFSample;
+	BSDFSample primarySurfaceBSDFSample;
 
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions,
 #if SHARC_UPDATE
@@ -61,14 +61,14 @@ void RayGeneration()
 		NoV = abs(dot(primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction));
 
 		primarySurfaceMaterial = GetMaterial(g_objectData[primarySurfaceHitInfo.ObjectIndex], primarySurfaceHitInfo.TextureCoordinate);
-		primarySurfaceBRDFSample.Initialize(primarySurfaceMaterial);
+		primarySurfaceBSDFSample.Initialize(primarySurfaceMaterial);
 
 		const float4 projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
 		linearDepth = projection.w;
 		normalizedDepth = projection.z / projection.w;
 		motionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, primarySurfaceHitInfo);
 		normals = float4(Packing::EncodeUnitVector(primarySurfaceHitInfo.Normal, true), Packing::EncodeUnitVector(primarySurfaceHitInfo.GeometricNormal, true));
-		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(primarySurfaceHitInfo.Normal, primarySurfaceMaterial.Roughness, EstimateDiffuseProbability(primarySurfaceBRDFSample.Albedo, primarySurfaceBRDFSample.Rf0, max(primarySurfaceBRDFSample.Roughness, MinRoughness), NoV) == 0);
+		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(primarySurfaceHitInfo.Normal, primarySurfaceBSDFSample.Roughness, EstimateDiffuseProbability(primarySurfaceBSDFSample.Albedo, primarySurfaceBSDFSample.Rf0, max(primarySurfaceBSDFSample.Roughness, MinRoughness), NoV) == 0);
 	}
 
 #if !SHARC_UPDATE
@@ -76,7 +76,7 @@ void RayGeneration()
 	g_normalizedDepth[pixelPosition] = normalizedDepth;
 	g_motionVectors[pixelPosition] = motionVector;
 	g_baseColorMetalness[pixelPosition] = float4(primarySurfaceMaterial.BaseColor.rgb, primarySurfaceMaterial.Metallic);
-	g_emissiveColor[pixelPosition] = primarySurfaceMaterial.EmissiveColor;
+	g_emission[pixelPosition] = primarySurfaceMaterial.GetEmission();
 	g_normals[pixelPosition] = normals;
 	g_roughness[pixelPosition] = primarySurfaceMaterial.Roughness;
 	g_normalRoughness[pixelPosition] = normalRoughness;
@@ -113,9 +113,8 @@ void RayGeneration()
 		bool isHit = isPrimarySurfaceHit, hasTexture = primarySurfaceMaterial.HasTexture;
 		HitInfo hitInfo = primarySurfaceHitInfo;
 
-		float3 emissiveColor = primarySurfaceMaterial.EmissiveColor;
-		BSDFSample BSDFSample;
-		BSDFSample.Initialize(primarySurfaceMaterial);
+		float3 emission = primarySurfaceMaterial.GetEmission();
+		BSDFSample BSDFSample = primarySurfaceBSDFSample;
 
 		LobeType lobeType;
 		float3 L, sampleRadiance = 0, throughput = 1;
@@ -143,7 +142,8 @@ void RayGeneration()
 					rayDesc,
 					hitInfo
 #if !SHARC_QUERY
-					, g_graphicsSettings.IsShaderExecutionReorderingEnabled && (lobeType == LobeType::DiffuseReflection || hasTexture)
+					, g_graphicsSettings.IsShaderExecutionReorderingEnabled
+					&& (lobeType == LobeType::DiffuseReflection || hasTexture)
 #endif
 				);
 			}
@@ -216,11 +216,14 @@ void RayGeneration()
 			{
 				const Material material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate);
 				hasTexture = material.HasTexture;
-				emissiveColor = material.EmissiveColor;
+				emission = bounceIndex == 1 && !g_graphicsSettings.IsSecondarySurfaceEmissionIncluded
+					&& (lobeType == LobeType::DiffuseReflection
+					|| (lobeType == LobeType::SpecularReflection && BSDFSample.Roughness > 0)) ?
+					0 : material.GetEmission();
 				BSDFSample.Initialize(material);
 			}
 
-			sampleRadiance += throughput * emissiveColor;
+			sampleRadiance += throughput * emission;
 
 #if SHARC_UPDATE
 			BSDFSample.Roughness = max(BSDFSample.Roughness, g_graphicsSettings.RTXGI.SHARC.RoughnessThreshold);
@@ -278,11 +281,11 @@ void RayGeneration()
 	{
 		if (isPrimarySurfaceHit)
 		{
-			const float4 radianceHitDistance = float4(max(radiance - primarySurfaceMaterial.EmissiveColor, 0), hitDistance);
+			const float4 radianceHitDistance = float4(max(radiance - primarySurfaceMaterial.GetEmission(), 0), hitDistance);
 			PackNoisySignals(
 				g_graphicsSettings.NRD,
 				NoV, linearDepth,
-				primarySurfaceBRDFSample,
+				primarySurfaceBSDFSample,
 				0, 0, 1.#INF,
 				isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
 				noisyDiffuse, noisySpecular

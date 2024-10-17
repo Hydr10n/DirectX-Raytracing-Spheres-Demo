@@ -11,9 +11,9 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		return;
 	}
 
-	const ReSTIRDI_Parameters parameters = g_graphicsSettings.RTXDI.ReSTIRDI;
-
 	RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();
+
+	const ReSTIRDI_Parameters parameters = g_graphicsSettings.RTXDI.ReSTIRDI;
 
 	const RAB_Surface surface = RAB_GetGBufferSurface(pixelPosition, false);
 	if (RAB_IsSurfaceValid(surface))

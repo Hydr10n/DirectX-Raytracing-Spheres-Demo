@@ -15,7 +15,7 @@ ConstantBuffer<Camera> g_camera : register(b1);
 
 Texture2D<float> g_linearDepth : register(t0);
 Texture2D<float4> g_baseColorMetalness : register(t1);
-Texture2D<float3> g_emissiveColor : register(t2);
+Texture2D<float3> g_emission : register(t2);
 Texture2D<float4> g_normalRoughness : register(t3);
 Texture2D<float4> g_denoisedDiffuse : register(t4);
 Texture2D<float4> g_denoisedSpecular : register(t5);
@@ -57,5 +57,5 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		BRDFSample,
 		diffuseHitDistance, specularHitDistance
 	);
-	g_color[pixelPosition] = diffuseHitDistance.rgb + specularHitDistance.rgb + g_emissiveColor[pixelPosition];
+	g_color[pixelPosition] = diffuseHitDistance.rgb + specularHitDistance.rgb + g_emission[pixelPosition];
 }

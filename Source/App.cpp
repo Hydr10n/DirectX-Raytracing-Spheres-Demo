@@ -336,7 +336,7 @@ private:
 		MAKE_NAMEW(MotionVectors);
 		MAKE_NAMEW(PreviousBaseColorMetalness);
 		MAKE_NAMEW(BaseColorMetalness);
-		MAKE_NAMEW(EmissiveColor);
+		MAKE_NAMEW(Emission);
 		MAKE_NAMEW(PreviousNormals);
 		MAKE_NAMEW(Normals);
 		MAKE_NAMEW(PreviousRoughness);
@@ -410,7 +410,7 @@ private:
 			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
 			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
-			CreateTexture(TextureNames::EmissiveColor, DXGI_FORMAT_R11G11B10_FLOAT, false);
+			CreateTexture(TextureNames::Emission, DXGI_FORMAT_R11G11B10_FLOAT, false);
 			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM);
@@ -845,12 +845,12 @@ private:
 
 			if (m_scene->EnvironmentLightTexture.Texture) {
 				sceneData.IsEnvironmentLightTextureCubeMap = m_scene->EnvironmentLightTexture.Texture->IsCubeMap();
-				sceneData.ResourceDescriptorIndices.InEnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor();
+				sceneData.ResourceDescriptorIndices.EnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
 			}
 			if (m_scene->EnvironmentTexture.Texture) {
 				sceneData.IsEnvironmentTextureCubeMap = m_scene->EnvironmentTexture.Texture->IsCubeMap();
-				sceneData.ResourceDescriptorIndices.InEnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor();
+				sceneData.ResourceDescriptorIndices.EnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
 			}
 
@@ -988,6 +988,13 @@ private:
 
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
+		const auto& ReSTIRDISettings = raytracingSettings.RTXDI.ReSTIRDI;
+		auto isReSTIRDIEnabled = ReSTIRDISettings.IsEnabled;
+		if (isReSTIRDIEnabled) {
+			PrepareReSTIRDI();
+			isReSTIRDIEnabled &= m_RTXDIResources.LightInfo != nullptr;
+		}
+
 		const NRDSettings NRDSettings{
 			.Denoiser = m_NRD->IsAvailable() ? g_graphicsSettings.PostProcessing.NRD.Denoiser : NRDDenoiser::None,
 			.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(ReblurSettings().hitDistanceParameters)
@@ -1019,7 +1026,7 @@ private:
 				.NormalizedDepth = m_textures.at(TextureNames::NormalizedDepth).get(),
 				.MotionVectors = motionVectors,
 				.BaseColorMetalness = baseColorMetalness,
-				.EmissiveColor = m_textures.at(TextureNames::EmissiveColor).get(),
+				.Emission = m_textures.at(TextureNames::Emission).get(),
 				.Normals = normals,
 				.Roughness = roughness,
 				.NormalRoughness = m_textures.at(TextureNames::NormalRoughness).get(),
@@ -1034,6 +1041,7 @@ private:
 				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
 				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
 				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
+				.IsSecondarySurfaceEmissionIncluded = !isReSTIRDIEnabled,
 				.NRD = NRDSettings
 				});
 
@@ -1066,12 +1074,6 @@ private:
 
 		if (!m_scene->GetObjectCount()) return;
 
-		const auto& ReSTIRDISettings = raytracingSettings.RTXDI.ReSTIRDI;
-		auto isReSTIRDIEnabled = ReSTIRDISettings.IsEnabled;
-		if (isReSTIRDIEnabled) {
-			PrepareReSTIRDI();
-			isReSTIRDIEnabled &= m_RTXDIResources.LightInfo != nullptr;
-		}
 		if (isReSTIRDIEnabled) {
 			m_RTXDI->GPUBuffers = {
 				.Camera = m_GPUBuffers.Camera.get(),
@@ -1346,7 +1348,7 @@ private:
 		m_denoisedComposition->Textures = {
 			.LinearDepth = &linearDepth,
 			.BaseColorMetalness = &baseColorMetalness,
-			.EmissiveColor = m_textures.at(TextureNames::EmissiveColor).get(),
+			.Emission = m_textures.at(TextureNames::Emission).get(),
 			.NormalRoughness = &normalRoughness,
 			.DenoisedDiffuse = &denoisedDiffuse,
 			.DenoisedSpecular = &denoisedSpecular,
@@ -1623,7 +1625,7 @@ private:
 						}
 					}
 
-					if (ImGuiEx::TreeNode treeNode("NVIDIA RTX Dynamic Illumination", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
+					if (ImGuiEx::TreeNode treeNode("NVIDIA RTXDI", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
 						auto& RTXDISettings = raytracingSettings.RTXDI;
 
 						if (ImGuiEx::TreeNode treeNode("ReSTIR DI", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
@@ -1720,7 +1722,7 @@ private:
 					}
 
 					if (raytracingSettings.Bounces) {
-						if (ImGuiEx::TreeNode treeNode("NVIDIA RTX Global Illumination", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
+						if (ImGuiEx::TreeNode treeNode("NVIDIA RTXGI", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
 							auto& RTXGISettings = raytracingSettings.RTXGI;
 
 							m_resetHistory |= ImGuiEx::Combo<RTXGITechnique>(

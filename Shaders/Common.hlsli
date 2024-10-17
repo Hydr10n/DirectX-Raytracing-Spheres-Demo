@@ -6,7 +6,7 @@
 
 struct SceneResourceDescriptorIndices
 {
-	uint InEnvironmentLightTexture, InEnvironmentTexture;
+	uint EnvironmentLightTexture, EnvironmentTexture;
 	uint2 _;
 };
 
@@ -14,9 +14,9 @@ struct SceneData
 {
 	bool IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
 	bool _;
-	SceneResourceDescriptorIndices ResourceDescriptorIndices;
 	float4 EnvironmentLightColor, EnvironmentColor;
 	row_major float3x4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
+	SceneResourceDescriptorIndices ResourceDescriptorIndices;
 };
 
 struct InstanceData

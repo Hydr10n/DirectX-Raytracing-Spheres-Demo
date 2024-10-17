@@ -263,9 +263,8 @@ struct RAB_Surface
 				VoH = abs(dot(ViewDirection, H)),
 				NoH = abs(dot(Normal, H)),
 				roughness = max(BRDFSample.Roughness, minRoughness);
-			const float3 F = BRDF::FresnelTerm(BRDFSample.Rf0, VoH);
-			diffuse = (1 - F) * BRDF::DiffuseTerm(roughness, NoL, NoV, VoH) * BRDFSample.Albedo * NoL;
-			specular = F * BRDF::DistributionTerm(roughness, NoH) * BRDF::GeometryTermMod(roughness, NoL, NoV, VoH, NoH) * NoL;
+			diffuse = BRDF::DiffuseTerm_BurleyFrostbite(roughness, NoL, NoV, VoH) * BRDFSample.Albedo * NoL;
+			specular = BRDFSample.Roughness > 0 ? BRDF::FresnelTerm_Schlick(BRDFSample.Rf0, VoH) * BRDF::DistributionTerm_GGX(roughness, NoH) * BRDF::GeometryTermMod_SmithCorrelated(roughness, NoL, NoV, VoH, NoH) * NoL : 0;
 			return true;
 		}
 		diffuse = specular = 0;

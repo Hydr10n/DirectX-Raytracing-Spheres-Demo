@@ -24,8 +24,8 @@ struct GraphicsSettings
 {
 	uint FrameIndex, Bounces, SamplesPerPixel;
 	float ThroughputThreshold;
-	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
-	uint2 _;
+	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsSecondarySurfaceEmissionIncluded;
+	uint _;
 	struct
 	{
 		struct
@@ -51,7 +51,7 @@ RWTexture2D<float> g_linearDepth : register(u1);
 RWTexture2D<float> g_normalizedDepth : register(u2);
 RWTexture2D<float3> g_motionVectors : register(u3);
 RWTexture2D<float4> g_baseColorMetalness : register(u4);
-RWTexture2D<float3> g_emissiveColor : register(u5);
+RWTexture2D<float3> g_emission : register(u5);
 RWTexture2D<float4> g_normals : register(u6);
 RWTexture2D<float> g_roughness : register(u7);
 RWTexture2D<float4> g_normalRoughness : register(u8);
@@ -69,15 +69,15 @@ RWStructuredBuffer<uint4> g_sharcVoxelData : register(u13);
 float3 GetEnvironmentLightColor(float3 worldRayDirection)
 {
 	const SceneResourceDescriptorIndices indices = g_sceneData.ResourceDescriptorIndices;
-	if (indices.InEnvironmentLightTexture != ~0u)
+	if (indices.EnvironmentLightTexture != ~0u)
 	{
 		worldRayDirection = normalize(Geometry::RotateVector((float3x3)g_sceneData.EnvironmentLightTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentLightTextureCubeMap)
 		{
-			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentLightTexture];
+			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.EnvironmentLightTexture];
 			return texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
-		const Texture2D<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentLightTexture];
+		const Texture2D<float3> texture = ResourceDescriptorHeap[indices.EnvironmentLightTexture];
 		return texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 	}
 	if (g_sceneData.EnvironmentLightColor.a >= 0)
@@ -91,17 +91,17 @@ bool GetEnvironmentColor(float3 worldRayDirection, out float3 color)
 {
 	const SceneResourceDescriptorIndices indices = g_sceneData.ResourceDescriptorIndices;
 	bool ret;
-	if ((ret = indices.InEnvironmentTexture != ~0u))
+	if ((ret = indices.EnvironmentTexture != ~0u))
 	{
 		worldRayDirection = normalize(Geometry::RotateVector((float3x3)g_sceneData.EnvironmentTextureTransform, worldRayDirection));
 		if (g_sceneData.IsEnvironmentTextureCubeMap)
 		{
-			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentTexture];
+			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.EnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
 		}
 		else
 		{
-			const Texture2D<float3> texture = ResourceDescriptorHeap[indices.InEnvironmentTexture];
+			const Texture2D<float3> texture = ResourceDescriptorHeap[indices.EnvironmentTexture];
 			color = texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
 		}
 	}

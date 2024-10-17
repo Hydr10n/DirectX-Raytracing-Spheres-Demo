@@ -10,8 +10,6 @@ module;
 #include "NRI.h"
 #include "NRIDescs.h"
 #include "Extensions/NRIHelper.h"
-#pragma warning(disable:5202)
-struct AGSContext;
 #include "Extensions/NRIWrapperD3D12.h"
 #include "NRDIntegration.hpp"
 
@@ -63,7 +61,7 @@ export {
 					},
 					*m_device, m_NRI, m_NRI
 				);
-				if (m_isAvailable) m_textureBarrierDescs.resize(m_userPool.size());
+				if (m_isAvailable) m_textureBarrierDescs.resize(size(m_userPool));
 			}
 		}
 

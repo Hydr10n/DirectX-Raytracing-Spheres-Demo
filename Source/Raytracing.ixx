@@ -33,7 +33,7 @@ export struct Raytracing {
 		XMUINT2 RenderSize;
 		UINT FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold = 1e-3f;
-		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
+		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsSecondarySurfaceEmissionIncluded = true;
 		NRDSettings NRD;
 	};
 
@@ -52,7 +52,7 @@ export struct Raytracing {
 			* NormalizedDepth,
 			* MotionVectors,
 			* BaseColorMetalness,
-			* EmissiveColor,
+			* Emission,
 			* Normals,
 			* Roughness,
 			* NormalRoughness,
@@ -100,6 +100,7 @@ export struct Raytracing {
 			.ThroughputThreshold = graphicsSettings.ThroughputThreshold,
 			.IsRussianRouletteEnabled = graphicsSettings.IsRussianRouletteEnabled,
 			.IsShaderExecutionReorderingEnabled = graphicsSettings.IsShaderExecutionReorderingEnabled,
+			.IsSecondarySurfaceEmissionIncluded = graphicsSettings.IsSecondarySurfaceEmissionIncluded,
 			.NRD = graphicsSettings.NRD
 		};
 	}
@@ -147,8 +148,8 @@ private:
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) _GraphicsSettings {
 		UINT FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold;
-		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled;
-		XMUINT2 _;
+		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsSecondarySurfaceEmissionIncluded;
+		UINT _;
 		struct {
 			struct {
 				UINT Capacity;
@@ -189,7 +190,7 @@ private:
 		commandList.SetState(*Textures.NormalizedDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.MotionVectors, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		commandList.SetState(*Textures.EmissiveColor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*Textures.Emission, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Normals, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Roughness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.NormalRoughness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -208,7 +209,7 @@ private:
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalizedDepth->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetUAVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.EmissiveColor->GetUAVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Emission->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetUAVDescriptor());

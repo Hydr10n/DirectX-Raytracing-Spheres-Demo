@@ -91,7 +91,7 @@ struct BRDFSample
 			return BRDF::FresnelTerm_Schlick(Rf0, VoH) * BRDF::GeometryTerm_Smith(roughness, NoL);
 		}
 		const float NoV = abs(dot(N, V));
-		return Albedo * Math::Pi(1) * BRDF::DiffuseTerm_Burley(roughness, NoL, NoV, VoH);
+		return Albedo * Math::Pi(1) * BRDF::DiffuseTerm_BurleyFrostbite(roughness, NoL, NoV, VoH);
 	}
 };
 

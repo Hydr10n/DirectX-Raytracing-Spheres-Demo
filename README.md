@@ -32,8 +32,8 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	- Russian Roulette
 	- Bounces
 	- Samples/Pixel
-- NVIDIA Shader Execution Reordering
-	- NVIDIA RTX Dynamic Illumination
+	- NVIDIA Shader Execution Reordering
+	- NVIDIA RTXDI
 		- ReSTIR DI
 			- ReGIR
 				- Cell
@@ -51,7 +51,7 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 			- Spatial Resampling
 				- Bias Correction Mode: Basic | Pairwise | Raytraced
 				- Samples
-	- NVIDIA RTX Global Illumination
+	- NVIDIA RTXGI
 		- SHARC
 			- Downscale Factor
 			- Scene Scale
