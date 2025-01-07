@@ -61,7 +61,7 @@ export {
 			vector<const BaseStructure*> inputs{ &m_viewport };
 			for (const auto& resourceTag : resourceTags) inputs.emplace_back(&resourceTag);
 			const auto ret = slEvaluateFeature(feature, *m_frameToken, data(inputs), static_cast<uint32_t>(size(inputs)), m_commandList);
-			m_commandList.SetResourceDescriptorHeap();
+			m_commandList.SetDescriptorHeaps();
 			return ret;
 		}
 

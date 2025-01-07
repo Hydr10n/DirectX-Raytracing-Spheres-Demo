@@ -200,14 +200,14 @@ export namespace DirectX {
 			auto& descriptor = m_descriptors.UAV[mipLevel];
 			if (descriptor) return;
 			descriptor = m_deviceContext.ResourceDescriptorHeap->Allocate();
-			CreateUnorderedAccessView(m_deviceContext.Device, *this, *descriptor, mipLevel);
+			CreateUnorderedAccessView(m_deviceContext, *this, *descriptor, mipLevel);
 		}
 
 		void CreateRTV(UINT16 mipLevel = 0) {
 			auto& descriptor = m_descriptors.RTV[mipLevel];
 			if (descriptor) return;
 			descriptor = m_deviceContext.RenderDescriptorHeap->Allocate();
-			CreateRenderTargetView(m_deviceContext.Device, *this, *descriptor, mipLevel);
+			CreateRenderTargetView(m_deviceContext, *this, *descriptor, mipLevel);
 		}
 
 		void CreateDSV(UINT16 mipLevel = 0) {

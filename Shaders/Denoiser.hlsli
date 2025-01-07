@@ -20,7 +20,7 @@ struct NRDSettings
 
 void PackNoisySignals(
 	NRDSettings settings,
-	float NoV, float linearDepth,
+	float3 N, float3 V, float linearDepth,
 	BRDFSample BRDFSample,
 	float3 directDiffuse, float3 directSpecular, float lightDistance,
 	float4 indirectDiffuseHitDistance, float4 indirectSpecularHitDistance, bool isIndirectPacked,
@@ -52,13 +52,14 @@ void PackNoisySignals(
 		diffuseHitDistance.a = indirectDiffuseHitDistance.a;
 		specularHitDistance.a = indirectSpecularHitDistance.a;
 	}
+	const float3 indirectDiffuse = indirectDiffuseHitDistance.rgb, indirectSpecular = indirectSpecularHitDistance.rgb;
+	float3 diffuseFactor, specularFactor;
+	NRD_MaterialFactors(N, V, BRDFSample.Albedo, BRDFSample.Rf0, BRDFSample.Roughness, diffuseFactor, specularFactor);
+	diffuseFactor = 1 / diffuseFactor;
+	specularFactor = 1 / specularFactor;
 	const float3
-		indirectDiffuse = indirectDiffuseHitDistance.rgb, indirectSpecular = indirectSpecularHitDistance.rgb,
-		Fenvironment = BRDF::EnvironmentTerm_Rtg(BRDFSample.Rf0, NoV, BRDFSample.Roughness),
-		diffuseDemodulation = 1 / lerp((1 - Fenvironment) * BRDFSample.Albedo, 1, 0.01f),
-		specularDemodulation = 1 / lerp(Fenvironment, 1, 0.01f),
-		diffuse = directDiffuse * diffuseDemodulation + indirectDiffuse * (isIndirectPacked ? 1 : diffuseDemodulation),
-		specular = directSpecular * specularDemodulation + indirectSpecular * (isIndirectPacked ? 1 : specularDemodulation);
+		diffuse = directDiffuse * diffuseFactor + indirectDiffuse * (isIndirectPacked ? 1 : diffuseFactor),
+		specular = directSpecular * specularFactor + indirectSpecular * (isIndirectPacked ? 1 : specularFactor);
 	const float
 		directLuminance = Color::Luminance(directDiffuse),
 		indirectLuminance = Color::Luminance(indirectDiffuse),
@@ -79,7 +80,7 @@ void PackNoisySignals(
 
 void UnpackDenoisedSignals(
 	NRDDenoiser denoiser,
-	float NoV,
+	float3 N, float3 V,
 	BRDFSample BRDFSample,
 	inout float4 diffuseHitDistance, inout float4 specularHitDistance
 )
@@ -94,7 +95,8 @@ void UnpackDenoisedSignals(
 		diffuseHitDistance = RELAX_BackEnd_UnpackRadiance(diffuseHitDistance);
 		specularHitDistance = RELAX_BackEnd_UnpackRadiance(specularHitDistance);
 	}
-	const float3 Fenvironment = BRDF::EnvironmentTerm_Rtg(BRDFSample.Rf0, NoV, BRDFSample.Roughness);
-	diffuseHitDistance.rgb *= lerp((1 - Fenvironment) * BRDFSample.Albedo, 1, 0.01f);
-	specularHitDistance.rgb *= lerp(Fenvironment, 1, 0.01f);
+	float3 diffuseFactor, specularFactor;
+	NRD_MaterialFactors(N, V, BRDFSample.Albedo, BRDFSample.Rf0, BRDFSample.Roughness, diffuseFactor, specularFactor);
+	diffuseHitDistance.rgb *= diffuseFactor;
+	specularHitDistance.rgb *= specularFactor;
 }

@@ -21,7 +21,7 @@ using namespace std::filesystem;
 
 #define LOAD_FROM_MEMORY(Loader, forceSRGB, ...) \
 	ScratchImage image; \
-	ThrowIfFailed(Loader(pData, size, __VA_ARGS__, nullptr, image)); \
+	ThrowIfFailed(Loader(reinterpret_cast<const std::byte*>(pData), size, __VA_ARGS__, nullptr, image)); \
 	return LoadTexture(commandList, image, forceSRGB);
 
 #define LOAD_FROM_FILE(Loader, forceSRGB, ...) \
@@ -34,7 +34,7 @@ export namespace DirectX::TextureHelpers {
 		const auto& deviceContext = commandList.GetDeviceContext();
 
 		vector<D3D12_SUBRESOURCE_DATA> subresourceData;
-		ThrowIfFailed(PrepareUpload(deviceContext.Device, image.GetImages(), image.GetImageCount(), image.GetMetadata(), subresourceData));
+		ThrowIfFailed(PrepareUpload(deviceContext, image.GetImages(), image.GetImageCount(), image.GetMetadata(), subresourceData));
 
 		const auto& metadata = image.GetMetadata();
 		TextureDimension dimension;

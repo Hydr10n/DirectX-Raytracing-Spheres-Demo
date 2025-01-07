@@ -239,8 +239,6 @@ struct App::Impl : IDeviceNotify {
 
 		m_SHARC.reset();
 
-		m_fontDescriptor.reset();
-
 		m_graphicsMemory.reset();
 	}
 
@@ -295,7 +293,7 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
-	unique_ptr<Descriptor> m_fontDescriptor;
+	vector<unique_ptr<Descriptor>> m_ImGUIDescriptors;
 
 	unique_ptr<SHARC> m_SHARC;
 
@@ -362,15 +360,13 @@ private:
 	void CreateDeviceDependentResources() {
 		const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
-		m_graphicsMemory = make_unique<GraphicsMemory>(deviceContext.Device);
-
-		m_fontDescriptor = deviceContext.ResourceDescriptorHeap->Allocate();
+		m_graphicsMemory = make_unique<GraphicsMemory>(deviceContext);
 
 		{
 			NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAPS caps;
-			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(deviceContext.Device, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
+			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(deviceContext, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
 				&& (caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD)
-				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(deviceContext.Device, 1024, 0) == NVAPI_OK;
+				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(deviceContext, 1024, 0) == NVAPI_OK;
 		}
 
 		CreatePipelineStates();
@@ -446,7 +442,29 @@ private:
 			const auto& IO = ImGui::GetIO();
 
 			if (IO.BackendRendererUserData != nullptr) ImGui_ImplDX12_Shutdown();
-			ImGui_ImplDX12_Init(deviceContext.Device, deviceResourcesCreationDesc.BackBufferCount, deviceResourcesCreationDesc.BackBufferFormat, *deviceContext.ResourceDescriptorHeap, *m_fontDescriptor, *m_fontDescriptor);
+
+			ImGui_ImplDX12_InitInfo initInfo;
+			initInfo.Device = deviceContext;
+			initInfo.CommandQueue = deviceContext.CommandQueue;
+			initInfo.NumFramesInFlight = deviceResourcesCreationDesc.BackBufferCount;
+			initInfo.RTVFormat = deviceResourcesCreationDesc.BackBufferFormat;
+			initInfo.UserData = this;
+			initInfo.SrvDescriptorHeap = *deviceContext.ResourceDescriptorHeap;
+			initInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* initInfo, D3D12_CPU_DESCRIPTOR_HANDLE* CPUHandle, D3D12_GPU_DESCRIPTOR_HANDLE* GPUHandle) {
+				const auto app = static_cast<Impl*>(initInfo->UserData);
+				auto descriptor = app->m_deviceResources->GetDeviceContext().ResourceDescriptorHeap->Allocate();
+				*CPUHandle = *descriptor;
+				*GPUHandle = *descriptor;
+				app->m_ImGUIDescriptors.emplace_back(move(descriptor));
+			};
+			initInfo.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* initInfo, D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle, D3D12_GPU_DESCRIPTOR_HANDLE) {
+				auto& descriptors = static_cast<Impl*>(initInfo->UserData)->m_ImGUIDescriptors;
+				if (const auto pDescriptor = ranges::find_if(descriptors, [&](const unique_ptr<Descriptor>& descriptor) { return descriptor->GetCPUHandle().ptr == CPUHandle.ptr; });
+					pDescriptor != cend(descriptors)) {
+					descriptors.erase(pDescriptor);
+				}
+			};
+			ImGui_ImplDX12_Init(&initInfo);
 
 			IO.Fonts->Clear();
 			IO.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", static_cast<float>(outputSize.cy) * 0.022f);
@@ -558,7 +576,7 @@ private:
 
 		m_resetHistory = true;
 
-		m_haltonSamplePattern = HaltonSamplePattern(static_cast<UINT>(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y))));
+		m_haltonSamplePattern = HaltonSamplePattern(static_cast<uint32_t>(ceil(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y)))));
 
 		{
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
@@ -637,7 +655,7 @@ private:
 		m_RTXDI = make_unique<RTXDI>(deviceContext);
 
 		{
-			ignore = slSetD3DDevice(deviceContext.Device);
+			ignore = slSetD3DDevice(deviceContext);
 
 			DXGI_ADAPTER_DESC adapterDesc;
 			ThrowIfFailed(m_deviceResources->GetAdapter()->GetDesc(&adapterDesc));
@@ -673,7 +691,7 @@ private:
 				ToneMapPostProcess::ACESFilmic,
 				ToneMapPostProcess::Operator_Max }) {
 				m_toneMapping[Operator - 1] = make_unique<ToneMapPostProcess>(
-					deviceContext.Device,
+					deviceContext,
 					renderTargetState,
 					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::None : Operator,
 					Operator == ToneMapPostProcess::Operator_Max ? ToneMapPostProcess::ST2084 : ToneMapPostProcess::SRGB
@@ -684,13 +702,13 @@ private:
 		{
 			const RenderTargetState renderTargetState(m_deviceResources->GetCreationDesc().BackBufferFormat, DXGI_FORMAT_UNKNOWN);
 
-			m_textureCopy = make_unique<BasicPostProcess>(deviceContext.Device, renderTargetState, BasicPostProcess::Copy);
+			m_textureCopy = make_unique<BasicPostProcess>(deviceContext, renderTargetState, BasicPostProcess::Copy);
 
 			{
-				ResourceUploadBatch resourceUploadBatch(deviceContext.Device);
+				ResourceUploadBatch resourceUploadBatch(deviceContext);
 				resourceUploadBatch.Begin();
 
-				m_textureAlphaBlending = make_unique<SpriteBatch>(deviceContext.Device, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
+				m_textureAlphaBlending = make_unique<SpriteBatch>(deviceContext, resourceUploadBatch, SpriteBatchPipelineStateDescription(renderTargetState, &CommonStates::NonPremultiplied));
 
 				resourceUploadBatch.End(deviceContext.CommandQueue).get();
 			}
@@ -1909,6 +1927,8 @@ private:
 					}
 				}
 			}
+
+			if (ImGui::Button("Save")) ignore = MyAppData::Settings::Save();
 		}
 	}
 

@@ -26,6 +26,8 @@ export {
 				* const ResourceDescriptorHeap,
 				* const RenderDescriptorHeap,
 				* const DepthStencilDescriptorHeap;
+
+			operator ID3D12Device5* () const noexcept { return Device; }
 		};
 	}
 }

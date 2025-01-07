@@ -76,7 +76,7 @@ export namespace DirectX {
 			ThrowIfFailed(m_commandAllocator->Reset());
 			ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
 
-			SetResourceDescriptorHeap();
+			SetDescriptorHeaps();
 		}
 
 		void End(bool wait = true) {
@@ -110,7 +110,7 @@ export namespace DirectX {
 			}
 		}
 
-		void SetResourceDescriptorHeap() {
+		void SetDescriptorHeaps() {
 			const auto descriptorHeap = m_deviceContext.ResourceDescriptorHeap->Heap();
 			m_commandList->SetDescriptorHeaps(1, &descriptorHeap);
 		}

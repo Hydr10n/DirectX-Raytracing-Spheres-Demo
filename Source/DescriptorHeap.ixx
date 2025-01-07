@@ -52,12 +52,14 @@ export namespace DirectX {
 		DescriptorHeapEx(ID3D12DescriptorHeap* pExistingHeap) noexcept :
 			DescriptorHeap(pExistingHeap),
 			m_availableDescriptorCount(pExistingHeap->GetDesc().NumDescriptors),
-			m_descriptors(m_availableDescriptorCount) {}
+			m_descriptors(m_availableDescriptorCount) {
+		}
 
 		DescriptorHeapEx(ID3D12Device* pDevice, const D3D12_DESCRIPTOR_HEAP_DESC& desc) noexcept(false) :
 			DescriptorHeap(pDevice, &desc),
 			m_availableDescriptorCount(desc.NumDescriptors),
-			m_descriptors(m_availableDescriptorCount) {}
+			m_descriptors(m_availableDescriptorCount) {
+		}
 
 		DescriptorHeapEx(
 			ID3D12Device* pDevice,
@@ -67,7 +69,8 @@ export namespace DirectX {
 		) noexcept(false) :
 			DescriptorHeap(pDevice, type, flags, capacity),
 			m_availableDescriptorCount(capacity),
-			m_descriptors(m_availableDescriptorCount) {}
+			m_descriptors(m_availableDescriptorCount) {
+		}
 
 		ID3D12DescriptorHeap* operator->() const noexcept(false) { return Heap(); }
 		operator ID3D12DescriptorHeap* () const noexcept(false) { return Heap(); }
@@ -84,9 +87,9 @@ export namespace DirectX {
 				for (uint32_t i = 0; i < size(m_descriptors); i++) {
 					if (!m_descriptors[i]) {
 						auto found = true;
-						for (uint32_t j = i + 1; j < count - 1; j++) {
-							if (m_descriptors[j]) {
-								i = j;
+						for (uint32_t j = 1; j < count; j++) {
+							if (m_descriptors[i + j]) {
+								i += j;
 								found = false;
 								break;
 							}

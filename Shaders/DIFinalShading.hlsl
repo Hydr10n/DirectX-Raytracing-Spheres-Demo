@@ -82,7 +82,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	{
 		PackNoisySignals(
 			g_graphicsSettings.NRD,
-			abs(dot(surface.Normal, surface.ViewDirection)), surface.LinearDepth,
+			surface.Normal, surface.ViewDirection, surface.LinearDepth,
 			surface.BRDFSample,
 			diffuse, specular, length(lightSample.Position - surface.Position),
 			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition], true,

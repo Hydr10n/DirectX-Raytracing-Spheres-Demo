@@ -55,8 +55,7 @@ set_target_properties(${project} PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 target_compile_definitions(${project} PRIVATE
 	NOMINMAX
-	D3D12MA_USING_DIRECTX_HEADERS D3D12MA_OPTIONS16_SUPPORTED
-)
+	D3D12MA_USING_DIRECTX_HEADERS D3D12MA_OPTIONS16_SUPPORTED)
 
 set(AMD_CXX_include_directories "MemoryAllocator/D3D12/include")
 list(TRANSFORM AMD_CXX_include_directories PREPEND ${AMD_library_path})

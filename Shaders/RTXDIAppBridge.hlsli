@@ -65,6 +65,8 @@ RWTexture2D<float3> g_color : register(u3);
 RWTexture2D<float4> g_noisyDiffuse : register(u4);
 RWTexture2D<float4> g_noisySpecular : register(u5);
 
+#include "RaytracingHelpers.hlsli"
+
 #define RTXDI_RIS_BUFFER g_RIS
 #define RTXDI_NEIGHBOR_OFFSETS_BUFFER g_neighborOffsets
 #define RTXDI_LIGHT_RESERVOIR_BUFFER g_DIReservoir
@@ -97,8 +99,6 @@ RWTexture2D<float4> g_noisySpecular : register(u5);
 		"DescriptorTable(UAV(u4))," \
 		"DescriptorTable(UAV(u5))" \
 	)]
-
-#include "RaytracingHelpers.hlsli"
 
 int2 RAB_ClampSamplePositionIntoView(int2 pixelPosition, bool previousFrame)
 {

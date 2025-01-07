@@ -137,7 +137,7 @@ namespace DirectX {
 class MyAppData {
 	template <typename T>
 	struct Data {
-		bool Load() {
+		auto Load() {
 			try {
 				ordered_json_f json;
 				std::ifstream(T::FilePath) >> json;
@@ -147,7 +147,7 @@ class MyAppData {
 			catch (...) { return false; }
 		}
 
-		bool Save() const {
+		auto Save() const {
 			try {
 				std::filesystem::create_directories(std::filesystem::path(T::FilePath).remove_filename());
 				std::ofstream(T::FilePath, std::ios_base::trunc) << std::setw(4) << ordered_json_f(reinterpret_cast<const T&>(*this));
@@ -419,24 +419,34 @@ public:
 			}
 		} Controls;
 
+		static auto Load() {
+			auto ret = false;
+			if (Graphics.Load()) {
+				Graphics.Check();
+				ret &= true;
+			}
+			if (UI.Load()) {
+				UI.Check();
+				ret &= true;
+			}
+			if (Controls.Load()) {
+				Controls.Check();
+				ret &= true;
+			}
+			return ret;
+		}
+
+		static auto Save() {
+			auto ret = false;
+			ret &= Graphics.Save();
+			ret &= UI.Save();
+			ret &= Controls.Save();
+			return ret;
+		}
+
 	private:
 		inline static const struct _ {
-			_() {
-				std::ignore = Graphics.Load();
-				Graphics.Check();
-
-				std::ignore = UI.Load();
-				UI.Check();
-
-				std::ignore = Controls.Load();
-				Controls.Check();
-			}
-
-			~_() {
-				std::ignore = Graphics.Save();
-				std::ignore = UI.Save();
-				std::ignore = Controls.Save();
-			}
+			_() { std::ignore = Load(); }
 		} _;
 	};
 };

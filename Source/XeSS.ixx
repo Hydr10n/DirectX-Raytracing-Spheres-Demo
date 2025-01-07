@@ -21,7 +21,7 @@ export {
 
 	struct XeSS {
 		XeSS(const DeviceContext& deviceContext, xess_2d_t outputResolution, uint32_t flags) : m_outputResolution(outputResolution) {
-			if (xessD3D12CreateContext(deviceContext.Device, &m_context) == XESS_RESULT_SUCCESS) {
+			if (xessD3D12CreateContext(deviceContext, &m_context) == XESS_RESULT_SUCCESS) {
 				const xess_d3d12_init_params_t initParams{
 					.outputResolution = outputResolution,
 					.qualitySetting = XESS_QUALITY_SETTING_ULTRA_PERFORMANCE,
@@ -66,7 +66,7 @@ export {
 
 		auto Execute(CommandList& commandList) {
 			const auto ret = xessD3D12Execute(m_context, commandList, &m_executeParams);
-			commandList.SetResourceDescriptorHeap();
+			commandList.SetDescriptorHeaps();
 			return ret;
 		}
 

@@ -43,7 +43,7 @@ export {
 			span<const DenoiserDesc> denoiserDescs
 		) : m_commandList(commandList) {
 			if (const auto& deviceContext = commandList.GetDeviceContext();
-				nriCreateDeviceFromD3D12Device({ .d3d12Device = deviceContext.Device, .d3d12GraphicsQueue = deviceContext.CommandQueue }, m_device) == nri::Result::SUCCESS
+				nriCreateDeviceFromD3D12Device({ .d3d12Device = deviceContext, .d3d12GraphicsQueue = deviceContext.CommandQueue }, m_device) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::CoreInterface), static_cast<CoreInterface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::HelperInterface), static_cast<HelperInterface*>(&m_NRI)) == nri::Result::SUCCESS
 				&& nriGetInterface(*m_device, NRI_INTERFACE(nri::WrapperD3D12Interface), static_cast<WrapperD3D12Interface*>(&m_NRI)) == nri::Result::SUCCESS
@@ -86,26 +86,23 @@ export {
 		auto Tag(ResourceType type, DirectX::Texture& texture) {
 			if (!m_isAvailable) return false;
 
-			AccessBits accessBits;
-			Layout layout;
+			auto& textureBarrierDesc = m_textureBarrierDescs[static_cast<size_t>(type)];
+
+			auto& [access, layout, stages] = textureBarrierDesc.after;
 			if (const auto state = texture.GetState();
 				state & D3D12_RESOURCE_STATE_RENDER_TARGET) {
-				accessBits = AccessBits::COLOR_ATTACHMENT;
+				access = AccessBits::COLOR_ATTACHMENT;
 				layout = Layout::COLOR_ATTACHMENT;
 			}
 			else if (state & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
-				accessBits = AccessBits::SHADER_RESOURCE_STORAGE;
-				layout = Layout::UNKNOWN;
+				access = AccessBits::SHADER_RESOURCE_STORAGE;
+				layout = Layout::SHADER_RESOURCE_STORAGE;
 			}
 			else if (state & D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE) {
-				accessBits = AccessBits::SHADER_RESOURCE;
+				access = AccessBits::SHADER_RESOURCE;
 				layout = Layout::SHADER_RESOURCE;
 			}
 			else return false;
-
-			auto& textureBarrierDesc = m_textureBarrierDescs[static_cast<size_t>(type)];
-
-			textureBarrierDesc.initial = textureBarrierDesc.after = { accessBits, layout };
 
 			if (textureBarrierDesc.resource == &texture) return true;
 
@@ -129,21 +126,9 @@ export {
 		}
 
 		void Denoise(span<const Identifier> denoisers) {
-			m_integration.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool);
+			m_integration.Denoise(data(denoisers), static_cast<uint32_t>(size(denoisers)), *m_commandBuffer, m_userPool, true);
 
-			vector<TextureBarrierDesc> textureBarrierDescs;
-			for (auto& textureTransitionBarrierDesc : m_textureBarrierDescs) {
-				if (textureTransitionBarrierDesc.texture != nullptr
-					&& (textureTransitionBarrierDesc.after.access != textureTransitionBarrierDesc.initial.access
-						|| textureTransitionBarrierDesc.after.layout != textureTransitionBarrierDesc.initial.layout)) {
-					textureTransitionBarrierDesc.before = textureTransitionBarrierDesc.after;
-					textureTransitionBarrierDesc.after = textureTransitionBarrierDesc.initial;
-					textureBarrierDescs.emplace_back(textureTransitionBarrierDesc);
-				}
-			}
-			m_NRI.CmdBarrier(*m_commandBuffer, { .textures = data(textureBarrierDescs), .textureNum = static_cast<uint16_t>(size(textureBarrierDescs)) });
-
-			m_commandList.SetResourceDescriptorHeap();
+			m_commandList.SetDescriptorHeaps();
 		}
 
 		auto GetTotalMemoryUsageInMb() const { return m_integration.GetTotalMemoryUsageInMb(); }
@@ -172,10 +157,7 @@ export {
 		CommandBuffer* m_commandBuffer{};
 		struct NriInterface : CoreInterface, HelperInterface, WrapperD3D12Interface {} m_NRI{};
 
-		struct TextureBarrierDescEx : TextureBarrierDesc {
-			DirectX::Texture* resource;
-			AccessLayoutStage initial;
-		};
+		struct TextureBarrierDescEx : TextureBarrierDesc { DirectX::Texture* resource; };
 		vector<TextureBarrierDescEx> m_textureBarrierDescs;
 	};
 }

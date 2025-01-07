@@ -53,7 +53,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	float4 diffuseHitDistance = g_denoisedDiffuse[pixelPosition], specularHitDistance = g_denoisedSpecular[pixelPosition];
 	UnpackDenoisedSignals(
 		g_constants.NRDDenoiser,
-		abs(dot(normalRoughness.xyz, V)),
+		normalRoughness.xyz, V,
 		BRDFSample,
 		diffuseHitDistance, specularHitDistance
 	);
