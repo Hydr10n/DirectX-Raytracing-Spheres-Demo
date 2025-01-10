@@ -22,7 +22,8 @@ export {
 	struct SHARC {
 		struct Constants {
 			UINT AccumulationFrames = 10, MaxStaleFrames = 64;
-			float SceneScale;
+			float SceneScale = 50;
+			bool IsAntiFireflyEnabled{};
 		};
 
 		struct {
@@ -83,12 +84,14 @@ export {
 					BOOL IsResolve;
 					UINT Capacity, AccumulationFrames, MaxStaleFrames;
 					float SceneScale;
+					bool IsAntiFireflyEnabled;
 				} _constants{
 					.IsResolve = isResolve,
 					.Capacity = static_cast<UINT>(GPUBuffers.HashEntries->GetCapacity()),
 					.AccumulationFrames = constants.AccumulationFrames,
 					.MaxStaleFrames = constants.MaxStaleFrames,
-					.SceneScale = constants.SceneScale
+					.SceneScale = constants.SceneScale,
+					.IsAntiFireflyEnabled = constants.IsAntiFireflyEnabled
 				};
 				commandList->SetComputeRoot32BitConstants(0, sizeof(_constants) / 4, &_constants, 0);
 

@@ -38,14 +38,14 @@ export struct RTXDI {
 		Texture
 			* PreviousLinearDepth,
 			* LinearDepth,
-			* MotionVectors,
+			* MotionVector,
 			* PreviousBaseColorMetalness,
 			* BaseColorMetalness,
 			* PreviousNormals,
 			* Normals,
 			* PreviousRoughness,
 			* Roughness,
-			* Color,
+			* Radiance,
 			* NoisyDiffuse,
 			* NoisySpecular;
 	} Textures{};
@@ -151,7 +151,7 @@ export struct RTXDI {
 		commandList.SetState(*m_resources->LocalLightPDF, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.PreviousLinearDepth, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.LinearDepth, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*Textures.MotionVectors, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.MotionVector, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.PreviousBaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.PreviousNormals, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -161,7 +161,7 @@ export struct RTXDI {
 		commandList.SetState(*m_resources->RIS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*m_resources->RISLightInfo, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*m_resources->DIReservoir, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		commandList.SetState(*Textures.Color, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -176,7 +176,7 @@ export struct RTXDI {
 		commandList->SetComputeRootDescriptorTable(i++, m_resources->LocalLightPDF->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousLinearDepth->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVector->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousBaseColorMetalness->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousNormals->GetSRVDescriptor());
@@ -186,7 +186,7 @@ export struct RTXDI {
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->RIS->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->RISLightInfo->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Radiance->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NoisyDiffuse->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NoisySpecular->GetUAVDescriptor());
 

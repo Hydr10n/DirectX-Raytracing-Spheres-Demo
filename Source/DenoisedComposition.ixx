@@ -35,7 +35,7 @@ export namespace PostProcessing {
 				* NormalRoughness,
 				* DenoisedDiffuse,
 				* DenoisedSpecular,
-				* Color;
+				* Radiance;
 		} Textures{};
 
 		DenoisedComposition(const DenoisedComposition&) = delete;
@@ -62,7 +62,7 @@ export namespace PostProcessing {
 			commandList.SetState(*Textures.NormalRoughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.DenoisedDiffuse, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.DenoisedSpecular, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-			commandList.SetState(*Textures.Color, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 			UINT i = 0;
 			commandList->SetComputeRoot32BitConstants(i++, sizeof(constants) / 4, &constants, 0);
@@ -73,7 +73,7 @@ export namespace PostProcessing {
 			commandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetSRVDescriptor());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.DenoisedDiffuse->GetSRVDescriptor());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.DenoisedSpecular->GetSRVDescriptor());
-			commandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor());
+			commandList->SetComputeRootDescriptorTable(i++, Textures.Radiance->GetUAVDescriptor());
 
 			commandList->Dispatch((constants.RenderSize.x + 15) / 16, (constants.RenderSize.y + 15) / 16, 1);
 		}

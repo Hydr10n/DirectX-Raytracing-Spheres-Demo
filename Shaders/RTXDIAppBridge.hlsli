@@ -49,7 +49,7 @@ Buffer<float2> g_neighborOffsets : register(t4);
 Texture2D g_localLightPDF : register(t5);
 Texture2D<float> g_previousLinearDepth : register(t6);
 Texture2D<float> g_linearDepth : register(t7);
-Texture2D<float3> g_motionVectors : register(t8);
+Texture2D<float3> g_motionVector : register(t8);
 Texture2D<float4> g_previousBaseColorMetalness : register(t9);
 Texture2D<float4> g_baseColorMetalness : register(t10);
 Texture2D<float4> g_previousNormals : register(t11);
@@ -61,7 +61,7 @@ RWStructuredBuffer<uint2> g_RIS : register(u0);
 RWStructuredBuffer<uint4> g_RISLightInfo : register(u1);
 RWStructuredBuffer<RTXDI_PackedDIReservoir> g_DIReservoir : register(u2);
 
-RWTexture2D<float3> g_color : register(u3);
+RWTexture2D<float3> g_radiance : register(u3);
 RWTexture2D<float4> g_noisyDiffuse : register(u4);
 RWTexture2D<float4> g_noisySpecular : register(u5);
 
@@ -337,7 +337,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
 		surface.Normal = Packing::DecodeUnitVector(normals.xy, true);
 		surface.GeometricNormal = Packing::DecodeUnitVector(normals.zw, true);
-		surface.ViewDirection = normalize(g_camera.Position - surface.Position);
+		surface.ViewDirection = normalize((previousFrame ? g_camera.PreviousPosition : g_camera.Position) - surface.Position);
 		surface.BRDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, roughness);
 		surface.DiffuseProbability = EstimateDiffuseProbability(surface.BRDFSample.Albedo, surface.BRDFSample.Rf0, max(surface.BRDFSample.Roughness, MinRoughness), abs(dot(surface.Normal, surface.ViewDirection)));
 	}

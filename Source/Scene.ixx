@@ -106,7 +106,7 @@ export {
 				IDs.emplace_back(ID.first);
 				MeshNode->OnDestroyed.remove(ID.second);
 			}
-			IDs.emplace_back(m_topLevelAccelerationStructure.ID);
+			if (m_topLevelAccelerationStructure.ID != ~0ull) IDs.emplace_back(m_topLevelAccelerationStructure.ID);
 			m_deviceContext.AccelerationStructureManager->RemoveAccelerationStructures(IDs);
 			m_bottomLevelAccelerationStructureIDs = {};
 			m_topLevelAccelerationStructure = {};

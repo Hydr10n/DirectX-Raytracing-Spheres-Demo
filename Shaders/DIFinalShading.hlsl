@@ -76,7 +76,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		return;
 	}
 
-	g_color[pixelPosition] += radiance;
+	g_radiance[pixelPosition] += radiance;
 
 	if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
 	{

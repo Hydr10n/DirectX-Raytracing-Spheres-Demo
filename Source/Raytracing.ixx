@@ -47,10 +47,10 @@ export struct Raytracing {
 
 	struct {
 		Texture
-			* Color,
+			* Radiance,
 			* LinearDepth,
 			* NormalizedDepth,
-			* MotionVectors,
+			* MotionVector,
 			* BaseColorMetalness,
 			* Emission,
 			* Normals,
@@ -118,12 +118,13 @@ export struct Raytracing {
 			.Capacity = static_cast<UINT>(SHARC.GPUBuffers.HashEntries->GetCapacity()),
 			.SceneScale = SHARCSettings.SceneScale,
 			.RoughnessThreshold = SHARCSettings.RoughnessThreshold,
+			.IsAntiFileflyEnabled = SHARCSettings.IsAntiFireflyEnabled,
 			.IsHashGridVisualizationEnabled = SHARCSettings.IsHashGridVisualizationEnabled
 		};
 		SetConstants(commandList);
 
 		const auto DispatchRays = [&](const Shader& shader, XMUINT2 renderSize) {
-			UINT i = SetShader(commandList, topLevelAccelerationStructure, shader);
+			auto i = SetShader(commandList, topLevelAccelerationStructure, shader);
 
 			commandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.HashEntries->GetNative()->GetGPUVirtualAddress());
 			commandList->SetComputeRootUnorderedAccessView(i++, SHARC.GPUBuffers.PreviousVoxelData->GetNative()->GetGPUVirtualAddress());
@@ -154,7 +155,8 @@ private:
 			struct {
 				UINT Capacity;
 				float SceneScale, RoughnessThreshold;
-				BOOL IsHashGridVisualizationEnabled;
+				BOOL IsAntiFileflyEnabled, IsHashGridVisualizationEnabled;
+				XMUINT3 _;
 			} SHARC;
 		} RTXGI;
 		NRDSettings NRD;
@@ -183,12 +185,12 @@ private:
 
 		commandList.SetState(*GPUBuffers.SceneData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*Textures.Color, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		if (GPUBuffers.InstanceData) commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		if (GPUBuffers.ObjectData) commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.LinearDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.NormalizedDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		commandList.SetState(*Textures.MotionVectors, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		commandList.SetState(*Textures.MotionVector, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Emission, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Normals, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -202,12 +204,14 @@ private:
 		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData ? GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress() : NULL);
-		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData ? GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress() : NULL);
-		commandList->SetComputeRootDescriptorTable(i++, Textures.Color->GetUAVDescriptor());
+		if (GPUBuffers.InstanceData) commandList->SetComputeRootShaderResourceView(i, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
+		i++;
+		if (GPUBuffers.ObjectData) commandList->SetComputeRootShaderResourceView(i, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		i++;
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Radiance->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalizedDepth->GetUAVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVectors->GetUAVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVector->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Emission->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetUAVDescriptor());

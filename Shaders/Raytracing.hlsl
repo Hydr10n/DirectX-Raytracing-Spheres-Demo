@@ -30,7 +30,8 @@ struct GraphicsSettings
 		{
 			uint Capacity;
 			float SceneScale, RoughnessThreshold;
-			bool IsHashGridVisualizationEnabled;
+			bool IsAntiFileflyEnabled, IsHashGridVisualizationEnabled;
+			uint3 _;
 		} SHARC;
 	} RTXGI;
 	NRDSettings NRD;
@@ -167,7 +168,6 @@ void RayGeneration()
 #endif
 
 	float3 radiance = 0;
-	float4 noisyDiffuse = float4(0, 0, 0, 1.#INF), noisySpecular = noisyDiffuse;
 
 	const uint samplesPerPixel =
 #if SHARC_UPDATE
@@ -177,16 +177,16 @@ void RayGeneration()
 #endif
 
 #if ENABLE_SHARC
-	SharcState sharcState;
-	sharcState.gridParameters.cameraPosition = g_camera.Position;
-	sharcState.gridParameters.logarithmBase = SHARC_GRID_LOGARITHM_BASE;
-	sharcState.gridParameters.sceneScale = g_graphicsSettings.RTXGI.SHARC.SceneScale;
-	sharcState.hashMapData.capacity = g_graphicsSettings.RTXGI.SHARC.Capacity;
-	sharcState.hashMapData.hashEntriesBuffer = g_sharcHashEntries;
-	sharcState.voxelDataBuffer = g_sharcVoxelData;
-#if SHARC_ENABLE_CACHE_RESAMPLING
-	sharcState.voxelDataBufferPrev = g_sharcPreviousVoxelData;
-#endif
+	SharcParameters sharcParameters;
+	sharcParameters.gridParameters.cameraPosition = g_camera.Position;
+	sharcParameters.gridParameters.sceneScale = g_graphicsSettings.RTXGI.SHARC.SceneScale;
+	sharcParameters.gridParameters.logarithmBase = SHARC_GRID_LOGARITHM_BASE;
+	sharcParameters.gridParameters.levelBias = SHARC_GRID_LEVEL_BIAS;
+	sharcParameters.hashMapData.capacity = g_graphicsSettings.RTXGI.SHARC.Capacity;
+	sharcParameters.hashMapData.hashEntriesBuffer = g_sharcHashEntries;
+	sharcParameters.voxelDataBuffer = g_sharcVoxelData;
+	sharcParameters.voxelDataBufferPrev = g_sharcPreviousVoxelData;
+	sharcParameters.enableAntiFireflyFilter = g_graphicsSettings.RTXGI.SHARC.IsAntiFileflyEnabled;
 #endif
 
 	bool isDiffuse = true;
@@ -204,6 +204,7 @@ void RayGeneration()
 		float3 L, sampleRadiance = 0, throughput = 1;
 
 #if SHARC_UPDATE
+		SharcState sharcState;
 		SharcInit(sharcState);
 #elif SHARC_QUERY
 		float previousRoughness = 0;
@@ -251,13 +252,13 @@ void RayGeneration()
 				{
 					environmentColor *= samplesPerPixel;
 
-					sampleIndex = samplesPerPixel;
+					sampleIndex = samplesPerPixel - 1;
 				}
 
 				sampleRadiance += throughput * environmentColor;
 
 #if SHARC_UPDATE
-				SharcUpdateMiss(sharcState, environmentLightColor);
+				SharcUpdateMiss(sharcParameters, sharcState, environmentLightColor);
 #endif
 
 				break;
@@ -267,18 +268,16 @@ void RayGeneration()
 			SharcHitData sharcHitData;
 			sharcHitData.positionWorld = hitInfo.Position;
 			sharcHitData.normalWorld = hitInfo.GeometricNormal;
-#endif
-
 #if SHARC_QUERY
 			if (g_graphicsSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled)
 			{
-				SharcGetCachedRadiance(sharcState, sharcHitData, sampleRadiance, true);
+				SharcGetCachedRadiance(sharcParameters, sharcHitData, sampleRadiance, true);
 
 				break;
 			}
 
-			const uint gridLevel = GetGridLevel(hitInfo.Position, sharcState.gridParameters);
-			const float voxelSize = GetVoxelSize(gridLevel, sharcState.gridParameters);
+			const uint gridLevel = HashGridGetLevel(hitInfo.Position, sharcParameters.gridParameters);
+			const float voxelSize = HashGridGetVoxelSize(gridLevel, sharcParameters.gridParameters);
 			bool isValidHit = hitInfo.Distance > voxelSize * sqrt(3);
 
 			previousRoughness = min(previousRoughness, 0.99f);
@@ -288,12 +287,13 @@ void RayGeneration()
 			isValidHit &= footprint > voxelSize;
 
 			float3 sharcRadiance;
-			if (isValidHit && SharcGetCachedRadiance(sharcState, sharcHitData, sharcRadiance, false))
+			if (isValidHit && SharcGetCachedRadiance(sharcParameters, sharcHitData, sharcRadiance, false))
 			{
 				sampleRadiance += throughput * sharcRadiance;
 
 				break;
 			}
+#endif
 #endif
 
 			if (bounceIndex)
@@ -312,7 +312,7 @@ void RayGeneration()
 #if SHARC_UPDATE
 			BSDFSample.Roughness = max(BSDFSample.Roughness, g_graphicsSettings.RTXGI.SHARC.RoughnessThreshold);
 
-			if (!SharcUpdateHit(sharcState, sharcHitData, sampleRadiance, Rng::Hash::GetFloat()))
+			if (!SharcUpdateHit(sharcParameters, sharcState, sharcHitData, sampleRadiance, Rng::Hash::GetFloat()))
 			{
 				break;
 			}
@@ -361,22 +361,17 @@ void RayGeneration()
 	radiance = NRD_IsValidRadiance(radiance) ? radiance / samplesPerPixel : 0;
 	g_color[pixelPosition] = radiance;
 
-	if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
+	if (isPrimarySurfaceHit && g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
 	{
-		if (isPrimarySurfaceHit)
-		{
-			const float4 radianceHitDistance = float4(max(radiance - primarySurfaceMaterial.GetEmission(), 0), hitDistance);
-			PackNoisySignals(
-				g_graphicsSettings.NRD,
-				primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
-				primarySurfaceBSDFSample,
-				0, 0, 1.#INF,
-				isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
-				noisyDiffuse, noisySpecular
-			);
-		}
-		g_noisyDiffuse[pixelPosition] = noisyDiffuse;
-		g_noisySpecular[pixelPosition] = noisySpecular;
+		const float4 radianceHitDistance = float4(max(radiance - primarySurfaceMaterial.GetEmission(), 0), hitDistance);
+		PackNoisySignals(
+			g_graphicsSettings.NRD,
+			primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
+			primarySurfaceBSDFSample,
+			0, 0, 0,
+			isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
+			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
+		);
 	}
 #endif
 }

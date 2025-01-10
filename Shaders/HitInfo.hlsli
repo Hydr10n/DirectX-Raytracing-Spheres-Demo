@@ -11,8 +11,8 @@ struct HitInfo
 
 	float3 ObjectPosition, GeometricNormal;
 
-	float3 SafeNormal;
-	float SafeOffset;
+	float3 FlatNormal;
+	float PositionOffset;
 
 	float2 Barycentrics;
 
@@ -31,7 +31,7 @@ struct HitInfo
 	{
 		float3 objectNormal;
 		SelfIntersectionAvoidance::GetSafeTriangleSpawnPoint(
-			ObjectPosition, Position, objectNormal, SafeNormal, SafeOffset,
+			ObjectPosition, Position, objectNormal, FlatNormal, PositionOffset,
 			positions, barycentrics, objectToWorld, worldToObject
 		);
 		Normal = normalize(Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
@@ -47,6 +47,6 @@ struct HitInfo
 
 	float3 GetSafeWorldRayOrigin(float3 worldRayDirection)
 	{
-		return SelfIntersectionAvoidance::OffsetSpawnPoint(Position, SafeNormal * Math::Sign(dot(worldRayDirection, SafeNormal)), SafeOffset);
+		return SelfIntersectionAvoidance::OffsetSpawnPoint(Position, FlatNormal * Math::Sign(dot(worldRayDirection, FlatNormal)), PositionOffset);
 	}
 };

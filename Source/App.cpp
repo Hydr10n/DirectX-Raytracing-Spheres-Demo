@@ -43,7 +43,7 @@ import DescriptorHeap;
 import DeviceResources;
 import ErrorHelpers;
 import GPUBuffer;
-import HaltonSamplePattern;
+import HaltonSampler;
 import LightPreparation;
 import Material;
 import MyScene;
@@ -147,6 +147,8 @@ struct App::Impl : IDeviceNotify {
 		if (const auto pFuture = m_futures.find(FutureNames::Scene);
 			pFuture != cend(m_futures) && pFuture->second.wait_for(0s) == future_status::ready) {
 			m_futures.erase(pFuture);
+
+			m_resetHistory = true;
 		}
 
 		{
@@ -283,7 +285,7 @@ private:
 
 	XMUINT2 m_renderSize{};
 
-	HaltonSamplePattern m_haltonSamplePattern;
+	HaltonSampler m_haltonSampler;
 
 	struct FutureNames {
 		MAKE_NAME(Scene);
@@ -292,8 +294,6 @@ private:
 
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
-
-	vector<unique_ptr<Descriptor>> m_ImGUIDescriptors;
 
 	unique_ptr<SHARC> m_SHARC;
 
@@ -326,12 +326,12 @@ private:
 
 	static constexpr DXGI_FORMAT m_HDRTextureFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	struct TextureNames {
-		MAKE_NAMEW(Color);
+		MAKE_NAMEW(Radiance);
 		MAKE_NAMEW(FinalColor);
 		MAKE_NAMEW(PreviousLinearDepth);
 		MAKE_NAMEW(LinearDepth);
 		MAKE_NAMEW(NormalizedDepth);
-		MAKE_NAMEW(MotionVectors);
+		MAKE_NAMEW(MotionVector);
 		MAKE_NAMEW(PreviousBaseColorMetalness);
 		MAKE_NAMEW(BaseColorMetalness);
 		MAKE_NAMEW(Emission);
@@ -356,6 +356,7 @@ private:
 	unique_ptr<Scene> m_scene;
 
 	struct { bool IsVisible, HasFocus = true, IsSettingsWindowOpen; } m_UIStates{};
+	vector<unique_ptr<Descriptor>> m_ImGUIDescriptors;
 
 	void CreateDeviceDependentResources() {
 		const auto& deviceContext = m_deviceResources->GetDeviceContext();
@@ -365,7 +366,7 @@ private:
 		{
 			NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAPS caps;
 			m_isShaderExecutionReorderingAvailable = NvAPI_D3D12_GetRaytracingCaps(deviceContext, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_THREAD_REORDERING, &caps, sizeof(caps)) == NVAPI_OK
-				&& (caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD)
+				&& caps & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD
 				&& NvAPI_D3D12_SetNvShaderExtnSlotSpace(deviceContext, 1024, 0) == NVAPI_OK;
 		}
 
@@ -398,12 +399,12 @@ private:
 				if (RTV) texture->CreateRTV();
 			};
 
-			CreateTexture(TextureNames::Color, m_HDRTextureFormat);
+			CreateTexture(TextureNames::Radiance, m_HDRTextureFormat);
 			CreateTexture(TextureNames::FinalColor, m_HDRTextureFormat);
 			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT);
 			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT);
 			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, false);
-			CreateTexture(TextureNames::MotionVectors, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
+			CreateTexture(TextureNames::MotionVector, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
 			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
 			CreateTexture(TextureNames::Emission, DXGI_FORMAT_R11G11B10_FLOAT, false);
@@ -493,7 +494,7 @@ private:
 			m_camera.ForwardDirection = m_cameraController.GetForwardDirection();
 			m_camera.NearDepth = m_cameraController.GetNearDepth();
 			m_camera.FarDepth = m_cameraController.GetFarDepth();
-			m_camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSamplePattern.GetNext() : XMFLOAT2();
+			m_camera.Jitter = g_graphicsSettings.Camera.IsJitterEnabled ? m_haltonSampler.GetNext2D() - Vector2(0.5f) : XMFLOAT2();
 			m_camera.WorldToProjection = m_cameraController.GetWorldToProjection();
 			m_camera.ProjectionToView = m_cameraController.GetProjectionToView();
 			m_camera.ViewToWorld = m_cameraController.GetViewToWorld();
@@ -576,7 +577,7 @@ private:
 
 		m_resetHistory = true;
 
-		m_haltonSamplePattern = HaltonSamplePattern(static_cast<uint32_t>(ceil(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y)))));
+		m_haltonSampler = HaltonSampler(static_cast<uint32_t>(ceil(8 * (static_cast<float>(outputSize.cx) / static_cast<float>(m_renderSize.x)) * (static_cast<float>(outputSize.cy) / static_cast<float>(m_renderSize.y)))));
 
 		{
 			m_RTXDIResources.Context = make_unique<ImportanceSamplingContext>(ImportanceSamplingContext_StaticParameters{ .renderWidth = m_renderSize.x, .renderHeight = m_renderSize.y });
@@ -605,6 +606,8 @@ private:
 			commandList.Clear(*m_SHARC->GPUBuffers.HashCopyOffset);
 			commandList.Clear(*m_SHARC->GPUBuffers.PreviousVoxelData);
 		}
+
+		m_haltonSampler.Reset();
 	}
 
 	bool IsSceneLoading() const { return m_futures.contains(FutureNames::Scene); }
@@ -917,8 +920,8 @@ private:
 				i++;
 			}
 		}
-		commandList.Copy(*m_GPUBuffers.InstanceData, instanceData);
-		commandList.Copy(*m_GPUBuffers.ObjectData, objectData);
+		if (m_GPUBuffers.InstanceData) commandList.Copy(*m_GPUBuffers.InstanceData, instanceData);
+		if (m_GPUBuffers.ObjectData) commandList.Copy(*m_GPUBuffers.ObjectData, objectData);
 	}
 
 	void PrepareLightResources() {
@@ -1019,9 +1022,9 @@ private:
 		};
 
 		const auto
-			color = m_textures.at(TextureNames::Color).get(),
+			radiance = m_textures.at(TextureNames::Radiance).get(),
 			linearDepth = m_textures.at(TextureNames::LinearDepth).get(),
-			motionVectors = m_textures.at(TextureNames::MotionVectors).get(),
+			motionVector = m_textures.at(TextureNames::MotionVector).get(),
 			baseColorMetalness = m_textures.at(TextureNames::BaseColorMetalness).get(),
 			normals = m_textures.at(TextureNames::Normals).get(),
 			roughness = m_textures.at(TextureNames::Roughness).get(),
@@ -1039,10 +1042,10 @@ private:
 			};
 
 			m_raytracing->Textures = {
-				.Color = color,
+				.Radiance = radiance,
 				.LinearDepth = linearDepth,
 				.NormalizedDepth = m_textures.at(TextureNames::NormalizedDepth).get(),
-				.MotionVectors = motionVectors,
+				.MotionVector = motionVector,
 				.BaseColorMetalness = baseColorMetalness,
 				.Emission = m_textures.at(TextureNames::Emission).get(),
 				.Normals = normals,
@@ -1080,6 +1083,7 @@ private:
 							.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
 						};
 						SHARCSettings.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale;
+						SHARCSettings.IsAntiFireflyEnabled = true;
 						m_raytracing->Render(commandList, scene, *m_SHARC, SHARCSettings);
 
 						swap(m_SHARC->GPUBuffers.PreviousVoxelData, m_SHARC->GPUBuffers.VoxelData);
@@ -1101,14 +1105,14 @@ private:
 			m_RTXDI->Textures = {
 				.PreviousLinearDepth = m_textures.at(TextureNames::PreviousLinearDepth).get(),
 				.LinearDepth = linearDepth,
-				.MotionVectors = motionVectors,
+				.MotionVector = motionVector,
 				.PreviousBaseColorMetalness = m_textures.at(TextureNames::PreviousBaseColorMetalness).get(),
 				.BaseColorMetalness = baseColorMetalness,
 				.PreviousNormals = m_textures.at(TextureNames::PreviousNormals).get(),
 				.Normals = normals,
 				.PreviousRoughness = m_textures.at(TextureNames::PreviousRoughness).get(),
 				.Roughness = roughness,
-				.Color = color,
+				.Radiance = radiance,
 				.NoisyDiffuse = noisyDiffuse,
 				.NoisySpecular = noisySpecular
 			};
@@ -1224,7 +1228,7 @@ private:
 
 		if (isNRDEnabled) ProcessNRD();
 
-		auto inColor = m_textures.at(TextureNames::Color).get(), outColor = m_textures.at(TextureNames::FinalColor).get();
+		auto inColor = m_textures.at(TextureNames::Radiance).get(), outColor = m_textures.at(TextureNames::FinalColor).get();
 
 		if (IsDLSSSuperResolutionEnabled()) {
 			ProcessDLSSSuperResolution();
@@ -1303,14 +1307,14 @@ private:
 			& normalRoughness = *m_textures.at(TextureNames::NormalRoughness),
 			& denoisedDiffuse = *m_textures.at(TextureNames::DenoisedDiffuse),
 			& denoisedSpecular = *m_textures.at(TextureNames::DenoisedSpecular),
-			& color = *m_textures.at(TextureNames::Color);
+			& radiance = *m_textures.at(TextureNames::Radiance);
 
 		{
 			m_NRD->NewFrame();
 
 			const auto Tag = [&](nrd::ResourceType resourceType, Texture& texture) { m_NRD->Tag(resourceType, texture); };
 			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
-			Tag(nrd::ResourceType::IN_MV, *m_textures.at(TextureNames::MotionVectors));
+			Tag(nrd::ResourceType::IN_MV, *m_textures.at(TextureNames::MotionVector));
 			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
 			Tag(nrd::ResourceType::IN_NORMAL_ROUGHNESS, normalRoughness);
 			Tag(nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, *m_textures.at(TextureNames::NoisyDiffuse));
@@ -1370,7 +1374,7 @@ private:
 			.NormalRoughness = &normalRoughness,
 			.DenoisedDiffuse = &denoisedDiffuse,
 			.DenoisedSpecular = &denoisedSpecular,
-			.Color = &color
+			.Radiance = &radiance
 		};
 
 		m_denoisedComposition->Process(commandList, { .RenderSize = m_renderSize, .NRDDenoiser = NRDSettings.Denoiser });
@@ -1379,8 +1383,8 @@ private:
 	void ProcessDLSSSuperResolution() {
 		ResourceTagDesc resourceTagDescs[]{
 			CreateResourceTagDesc(kBufferTypeDepth, *m_textures.at(TextureNames::NormalizedDepth)),
-			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_textures.at(TextureNames::MotionVectors)),
-			CreateResourceTagDesc(kBufferTypeScalingInputColor, *m_textures.at(TextureNames::Color)),
+			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_textures.at(TextureNames::MotionVector)),
+			CreateResourceTagDesc(kBufferTypeScalingInputColor, *m_textures.at(TextureNames::Radiance)),
 			CreateResourceTagDesc(kBufferTypeScalingOutputColor, *m_textures.at(TextureNames::FinalColor), false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagDescs));
@@ -1389,7 +1393,7 @@ private:
 	void ProcessDLSSFrameGeneration(Texture& inColor) {
 		ResourceTagDesc resourceTagDescs[]{
 			CreateResourceTagDesc(kBufferTypeDepth, *m_textures.at(TextureNames::NormalizedDepth)),
-			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_textures.at(TextureNames::MotionVectors)),
+			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_textures.at(TextureNames::MotionVector)),
 			CreateResourceTagDesc(kBufferTypeHUDLessColor, inColor, false)
 		};
 		ignore = m_streamline->Tag(CreateResourceTags(resourceTagDescs));
@@ -1412,8 +1416,8 @@ private:
 		};
 		for (auto& [Type, Texture, State] : initializer_list<XeSSResource>{
 			{ XeSSResourceType::Depth, *m_textures.at(TextureNames::NormalizedDepth) },
-			{ XeSSResourceType::Velocity, *m_textures.at(TextureNames::MotionVectors) },
-			{ XeSSResourceType::Color, *m_textures.at(TextureNames::Color) },
+			{ XeSSResourceType::Velocity, *m_textures.at(TextureNames::MotionVector) },
+			{ XeSSResourceType::Color, *m_textures.at(TextureNames::Radiance) },
 			{ XeSSResourceType::Output, *m_textures.at(TextureNames::FinalColor), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
 			}) {
 			commandList.SetState(Texture, State);

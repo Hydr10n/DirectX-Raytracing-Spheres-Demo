@@ -20,7 +20,7 @@ Texture2D<float4> g_normalRoughness : register(t3);
 Texture2D<float4> g_denoisedDiffuse : register(t4);
 Texture2D<float4> g_denoisedSpecular : register(t5);
 
-RWTexture2D<float3> g_color : register(u0);
+RWTexture2D<float3> g_radiance : register(u0);
 
 [RootSignature(
 	"RootConstants(num32BitConstants=3, b0),"
@@ -57,5 +57,5 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		BRDFSample,
 		diffuseHitDistance, specularHitDistance
 	);
-	g_color[pixelPosition] = diffuseHitDistance.rgb + specularHitDistance.rgb + g_emission[pixelPosition];
+	g_radiance[pixelPosition] = diffuseHitDistance.rgb + specularHitDistance.rgb + g_emission[pixelPosition];
 }

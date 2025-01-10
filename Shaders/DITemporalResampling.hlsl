@@ -22,7 +22,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 	RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(parameters.reservoirBufferParams, globalIndex, parameters.bufferIndices.initialSamplingOutputBufferIndex);
 
 	RTXDI_DITemporalResamplingParameters temporalParameters;
-	temporalParameters.screenSpaceMotion = g_motionVectors[pixelPosition];
+	temporalParameters.screenSpaceMotion = g_motionVector[pixelPosition];
 	temporalParameters.sourceBufferIndex = parameters.bufferIndices.temporalResamplingInputBufferIndex;
 	temporalParameters.maxHistoryLength = parameters.temporalResamplingParams.maxHistoryLength;
 	temporalParameters.biasCorrectionMode = parameters.temporalResamplingParams.temporalBiasCorrection;

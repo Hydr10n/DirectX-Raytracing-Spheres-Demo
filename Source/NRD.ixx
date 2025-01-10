@@ -104,18 +104,15 @@ export {
 			}
 			else return false;
 
-			if (textureBarrierDesc.resource == &texture) return true;
+			if (textureBarrierDesc.texture != nullptr) {
+				if (m_NRI.GetTextureNativeObject(*textureBarrierDesc.texture) == reinterpret_cast<uint64_t>(texture.GetNative())) return true;
 
-			nri::Texture* pTexture;
-			if (m_NRI.CreateTextureD3D12(*m_device, { texture }, pTexture) != nri::Result::SUCCESS) return false;
-			if (textureBarrierDesc.texture != nullptr) m_NRI.DestroyTexture(const_cast<nri::Texture&>(*textureBarrierDesc.texture));
-			textureBarrierDesc.texture = pTexture;
+				m_NRI.DestroyTexture(const_cast<nri::Texture&>(*textureBarrierDesc.texture));
+			}
 
-			Integration_SetResource(m_userPool, type, &textureBarrierDesc);
-
-			textureBarrierDesc.resource = &texture;
-
-			return true;
+			const auto ret = m_NRI.CreateTextureD3D12(*m_device, { texture }, textureBarrierDesc.texture) == nri::Result::SUCCESS;
+			if (ret) Integration_SetResource(m_userPool, type, &textureBarrierDesc);
+			return ret;
 		}
 
 		auto SetConstants(const CommonSettings& commonSettings) { return m_integration.SetCommonSettings(commonSettings); }
@@ -157,7 +154,6 @@ export {
 		CommandBuffer* m_commandBuffer{};
 		struct NriInterface : CoreInterface, HelperInterface, WrapperD3D12Interface {} m_NRI{};
 
-		struct TextureBarrierDescEx : TextureBarrierDesc { DirectX::Texture* resource; };
-		vector<TextureBarrierDescEx> m_textureBarrierDescs;
+		vector<TextureBarrierDesc> m_textureBarrierDescs;
 	};
 }
