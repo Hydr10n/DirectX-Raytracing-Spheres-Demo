@@ -264,7 +264,7 @@ struct RAB_Surface
 				NoH = abs(dot(Normal, H)),
 				roughness = max(BRDFSample.Roughness, minRoughness);
 			diffuse = BRDF::DiffuseTerm_BurleyFrostbite(roughness, NoL, NoV, VoH) * BRDFSample.Albedo * NoL;
-			specular = BRDFSample.Roughness > 0 ? BRDF::FresnelTerm_Schlick(BRDFSample.Rf0, VoH) * BRDF::DistributionTerm_GGX(roughness, NoH) * BRDF::GeometryTermMod_SmithCorrelated(roughness, NoL, NoV, VoH, NoH) * NoL : 0;
+			specular = BRDF::FresnelTerm_Schlick(BRDFSample.Rf0, VoH) * BRDF::DistributionTerm_GGX(roughness, NoH) * BRDF::GeometryTermMod_SmithCorrelated(roughness, NoL, NoV, VoH, NoH) * NoL;
 			return true;
 		}
 		diffuse = specular = 0;
@@ -316,23 +316,23 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		float roughness;
 		if (previousFrame)
 		{
-			if (isinf(surface.LinearDepth = g_previousLinearDepth[pixelPosition]))
+			if (isinf(surface.LinearDepth = g_previousLinearDepth[pixelPosition])
+				|| (roughness = g_previousRoughness[pixelPosition]) == 0)
 			{
 				return surface;
 			}
 			normals = g_previousNormals[pixelPosition];
 			baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
-			roughness = g_previousRoughness[pixelPosition];
 		}
 		else
 		{
-			if (isinf(surface.LinearDepth = g_linearDepth[pixelPosition]))
+			if (isinf(surface.LinearDepth = g_linearDepth[pixelPosition])
+				|| (roughness = g_roughness[pixelPosition]) == 0)
 			{
 				return surface;
 			}
 			normals = g_normals[pixelPosition];
 			baseColorMetalness = g_baseColorMetalness[pixelPosition];
-			roughness = g_roughness[pixelPosition];
 		}
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
 		surface.Normal = Packing::DecodeUnitVector(normals.xy, true);
@@ -346,7 +346,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 
 bool RAB_IsSurfaceValid(RAB_Surface surface)
 {
-	return !isinf(surface.LinearDepth);
+	return !isinf(surface.LinearDepth) && surface.BRDFSample.Roughness > 0;
 }
 
 float3 RAB_GetSurfaceWorldPos(RAB_Surface surface)

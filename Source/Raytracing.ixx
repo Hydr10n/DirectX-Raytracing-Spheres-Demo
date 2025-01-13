@@ -52,7 +52,6 @@ export struct Raytracing {
 			* NormalizedDepth,
 			* MotionVector,
 			* BaseColorMetalness,
-			* Emission,
 			* Normals,
 			* Roughness,
 			* NormalRoughness,
@@ -192,7 +191,6 @@ private:
 		commandList.SetState(*Textures.NormalizedDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.MotionVector, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		commandList.SetState(*Textures.Emission, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Normals, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Roughness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.NormalRoughness, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -213,7 +211,6 @@ private:
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalizedDepth->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.MotionVector->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetUAVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.Emission->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Normals->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetUAVDescriptor());

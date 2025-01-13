@@ -60,17 +60,18 @@ void PackNoisySignals(
 	const float3
 		diffuse = directDiffuse * diffuseFactor + indirectDiffuse * (isIndirectPacked ? 1 : diffuseFactor),
 		specular = directSpecular * specularFactor + indirectSpecular * (isIndirectPacked ? 1 : specularFactor);
+	float hitDistance = lightDistance > 0 ? lightDistance : diffuseHitDistance.a;
 	if (lightDistance > 0 && diffuseHitDistance.a > 0)
 	{
 		const float
 			directLuminance = Color::Luminance(directDiffuse),
 			indirectLuminance = Color::Luminance(indirectDiffuse),
 			directHitDistanceContribution = min(directLuminance / (directLuminance + indirectLuminance + 1e-3f), 0.5f);
-		diffuseHitDistance.a = lerp(diffuseHitDistance.a, lightDistance, directHitDistanceContribution);
+		hitDistance = lerp(diffuseHitDistance.a, lightDistance, directHitDistanceContribution);
 	}
 	if (settings.Denoiser == NRDDenoiser::ReBLUR)
 	{
-		diffuseHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(diffuseHitDistance.a, linearDepth, settings.HitDistanceParameters, 1);
+		diffuseHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, settings.HitDistanceParameters, 1);
 		diffuseHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, diffuseHitDistance.a, true);
 		specularHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(specular, specularHitDistance.a, true);
 	}

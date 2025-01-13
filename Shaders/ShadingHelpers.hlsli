@@ -23,31 +23,6 @@ float3 GetEnvironmentLightColor(SceneData sceneData, float3 worldRayDirection)
 	return Color::FromSrgb(lerp(1, float3(0.5f, 0.7f, 1), (worldRayDirection.y + 1) * 0.5f));
 }
 
-bool GetEnvironmentColor(SceneData sceneData, float3 worldRayDirection, out float3 color)
-{
-	const SceneResourceDescriptorIndices indices = sceneData.ResourceDescriptorIndices;
-	bool ret;
-	if ((ret = indices.EnvironmentTexture != ~0u))
-	{
-		worldRayDirection = normalize(Geometry::RotateVector((float3x3)sceneData.EnvironmentTextureTransform, worldRayDirection));
-		if (sceneData.IsEnvironmentTextureCubeMap)
-		{
-			const TextureCube<float3> texture = ResourceDescriptorHeap[indices.EnvironmentTexture];
-			color = texture.SampleLevel(g_anisotropicSampler, worldRayDirection, 0);
-		}
-		else
-		{
-			const Texture2D<float3> texture = ResourceDescriptorHeap[indices.EnvironmentTexture];
-			color = texture.SampleLevel(g_anisotropicSampler, Math::ToLatLongCoordinate(worldRayDirection), 0);
-		}
-	}
-	else if ((ret = sceneData.EnvironmentColor.a >= 0))
-	{
-		color = sceneData.EnvironmentColor.rgb;
-	}
-	return ret;
-}
-
 float2 GetTextureCoordinate(ObjectData objectData, uint primitiveIndex, float2 barycentrics)
 {
 	const MeshResourceDescriptorIndices meshIndices = objectData.ResourceDescriptorIndices.Mesh;

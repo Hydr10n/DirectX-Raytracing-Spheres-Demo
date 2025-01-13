@@ -6,21 +6,17 @@
 
 struct HitInfo
 {
-	float3 Position, Normal;
-	float2 TextureCoordinate;
-
-	float3 ObjectPosition, GeometricNormal;
-
-	float3 FlatNormal;
+	float3 Position;
 	float PositionOffset;
-
-	float2 Barycentrics;
-
+	float3 ObjectPosition;
 	bool IsFrontFace;
-
 	float Distance;
-
-	uint InstanceIndex, ObjectIndex, PrimitiveIndex;
+	float3 Normal, GeometricNormal;
+	uint InstanceIndex;
+	float3 FlatNormal;
+	uint ObjectIndex;
+	float2 TextureCoordinate, Barycentrics;
+	uint PrimitiveIndex;
 
 	void Initialize(
 		float3 positions[3], float3 normals[3], float2 textureCoordinates[3],

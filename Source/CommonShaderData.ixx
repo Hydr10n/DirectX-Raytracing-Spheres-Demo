@@ -18,10 +18,10 @@ export {
 	};
 
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneData {
-		BOOL IsStatic, IsEnvironmentLightTextureCubeMap, IsEnvironmentTextureCubeMap;
-		BOOL _;
-		XMFLOAT4 EnvironmentLightColor, EnvironmentColor;
-		XMFLOAT3X4 EnvironmentLightTextureTransform, EnvironmentTextureTransform;
+		BOOL IsStatic, IsEnvironmentLightTextureCubeMap;
+		XMUINT2 _;
+		XMFLOAT4 EnvironmentLightColor;
+		XMFLOAT3X4 EnvironmentLightTextureTransform;
 		SceneResourceDescriptorIndices ResourceDescriptorIndices;
 	};
 

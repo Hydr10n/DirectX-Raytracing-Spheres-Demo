@@ -64,7 +64,7 @@ export {
 			Quaternion Rotation;
 		} Camera;
 
-		Color EnvironmentLightColor{ 0, 0, 0, -1 }, EnvironmentColor{ 0, 0, 0, -1 };
+		Color EnvironmentLightColor{ 0, 0, 0, -1 };
 
 		shared_ptr<PhysX> PhysX;
 
@@ -75,7 +75,7 @@ export {
 		struct {
 			path FilePath;
 			AffineTransform Transform;
-		} EnvironmentLightTexture, EnvironmentTexture;
+		} EnvironmentLightTexture;
 
 		unordered_map<string, pair<shared_ptr<vector<DirectX::VertexPositionNormalTexture>>, shared_ptr<vector<Mesh::IndexType>>>> Meshes;
 
@@ -91,7 +91,7 @@ export {
 		struct {
 			shared_ptr<Texture> Texture;
 			AffineTransform Transform;
-		} EnvironmentLightTexture, EnvironmentTexture;
+		} EnvironmentLightTexture;
 
 		unordered_map<string, shared_ptr<Mesh>> Meshes;
 
@@ -128,11 +128,6 @@ export {
 				EnvironmentLightTexture.Texture = LoadTexture(commandList, ResolveResourcePath(sceneDesc.EnvironmentLightTexture.FilePath), true);
 				EnvironmentLightTexture.Texture->CreateSRV();
 				EnvironmentLightTexture.Transform = sceneDesc.EnvironmentLightTexture.Transform;
-			}
-			if (!empty(sceneDesc.EnvironmentTexture.FilePath)) {
-				EnvironmentTexture.Texture = LoadTexture(commandList, ResolveResourcePath(sceneDesc.EnvironmentTexture.FilePath), true);
-				EnvironmentTexture.Texture->CreateSRV();
-				EnvironmentTexture.Transform = sceneDesc.EnvironmentTexture.Transform;
 			}
 
 			{

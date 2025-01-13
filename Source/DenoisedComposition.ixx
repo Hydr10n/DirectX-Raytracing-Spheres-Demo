@@ -31,7 +31,6 @@ export namespace PostProcessing {
 			Texture
 				* LinearDepth,
 				* BaseColorMetalness,
-				* Emission,
 				* NormalRoughness,
 				* DenoisedDiffuse,
 				* DenoisedSpecular,
@@ -58,7 +57,6 @@ export namespace PostProcessing {
 			commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 			commandList.SetState(*Textures.LinearDepth, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-			commandList.SetState(*Textures.Emission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.NormalRoughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.DenoisedDiffuse, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.DenoisedSpecular, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -69,7 +67,6 @@ export namespace PostProcessing {
 			commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetSRVDescriptor());
-			commandList->SetComputeRootDescriptorTable(i++, Textures.Emission->GetSRVDescriptor());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetSRVDescriptor());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.DenoisedDiffuse->GetSRVDescriptor());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.DenoisedSpecular->GetSRVDescriptor());

@@ -13,6 +13,10 @@ static const float MinRoughness = 5e-2f;
 
 static float EstimateDiffuseProbability(float3 albedo, float3 Rf0, float roughness, float NoV)
 {
+	if (roughness == 0)
+	{
+		return 0;
+	}
 	const float3 Fenvironment = BRDF::EnvironmentTerm_Ross(Rf0, NoV, roughness);
 	const float
 		diffuse = Color::Luminance(albedo * (1 - Fenvironment)), specular = Color::Luminance(Fenvironment),

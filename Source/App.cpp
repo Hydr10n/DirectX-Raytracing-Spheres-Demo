@@ -326,15 +326,14 @@ private:
 
 	static constexpr DXGI_FORMAT m_HDRTextureFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	struct TextureNames {
+		MAKE_NAMEW(Color);
 		MAKE_NAMEW(Radiance);
-		MAKE_NAMEW(FinalColor);
 		MAKE_NAMEW(PreviousLinearDepth);
 		MAKE_NAMEW(LinearDepth);
 		MAKE_NAMEW(NormalizedDepth);
 		MAKE_NAMEW(MotionVector);
 		MAKE_NAMEW(PreviousBaseColorMetalness);
 		MAKE_NAMEW(BaseColorMetalness);
-		MAKE_NAMEW(Emission);
 		MAKE_NAMEW(PreviousNormals);
 		MAKE_NAMEW(Normals);
 		MAKE_NAMEW(PreviousRoughness);
@@ -399,15 +398,14 @@ private:
 				if (RTV) texture->CreateRTV();
 			};
 
+			CreateTexture(TextureNames::Color, m_HDRTextureFormat);
 			CreateTexture(TextureNames::Radiance, m_HDRTextureFormat);
-			CreateTexture(TextureNames::FinalColor, m_HDRTextureFormat);
 			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT);
 			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT);
 			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, false);
 			CreateTexture(TextureNames::MotionVector, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
 			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
-			CreateTexture(TextureNames::Emission, DXGI_FORMAT_R11G11B10_FLOAT, false);
 			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM);
@@ -860,21 +858,13 @@ private:
 		{
 			SceneData sceneData{
 				.IsStatic = m_scene->IsStatic(),
-				.EnvironmentLightColor = m_scene->EnvironmentLightColor,
-				.EnvironmentColor = m_scene->EnvironmentColor,
+				.EnvironmentLightColor = m_scene->EnvironmentLightColor
 			};
-
 			if (m_scene->EnvironmentLightTexture.Texture) {
 				sceneData.IsEnvironmentLightTextureCubeMap = m_scene->EnvironmentLightTexture.Texture->IsCubeMap();
 				sceneData.ResourceDescriptorIndices.EnvironmentLightTexture = m_scene->EnvironmentLightTexture.Texture->GetSRVDescriptor();
 				XMStoreFloat3x4(&sceneData.EnvironmentLightTextureTransform, m_scene->EnvironmentLightTexture.Transform());
 			}
-			if (m_scene->EnvironmentTexture.Texture) {
-				sceneData.IsEnvironmentTextureCubeMap = m_scene->EnvironmentTexture.Texture->IsCubeMap();
-				sceneData.ResourceDescriptorIndices.EnvironmentTexture = m_scene->EnvironmentTexture.Texture->GetSRVDescriptor();
-				XMStoreFloat3x4(&sceneData.EnvironmentTextureTransform, m_scene->EnvironmentTexture.Transform());
-			}
-
 			commandList.Copy(*m_GPUBuffers.SceneData, initializer_list{ sceneData });
 		}
 
@@ -1047,7 +1037,6 @@ private:
 				.NormalizedDepth = m_textures.at(TextureNames::NormalizedDepth).get(),
 				.MotionVector = motionVector,
 				.BaseColorMetalness = baseColorMetalness,
-				.Emission = m_textures.at(TextureNames::Emission).get(),
 				.Normals = normals,
 				.Roughness = roughness,
 				.NormalRoughness = m_textures.at(TextureNames::NormalRoughness).get(),
@@ -1228,7 +1217,7 @@ private:
 
 		if (isNRDEnabled) ProcessNRD();
 
-		auto inColor = m_textures.at(TextureNames::Radiance).get(), outColor = m_textures.at(TextureNames::FinalColor).get();
+		auto inColor = m_textures.at(TextureNames::Radiance).get(), outColor = m_textures.at(TextureNames::Color).get();
 
 		if (IsDLSSSuperResolutionEnabled()) {
 			ProcessDLSSSuperResolution();
@@ -1370,7 +1359,6 @@ private:
 		m_denoisedComposition->Textures = {
 			.LinearDepth = &linearDepth,
 			.BaseColorMetalness = &baseColorMetalness,
-			.Emission = m_textures.at(TextureNames::Emission).get(),
 			.NormalRoughness = &normalRoughness,
 			.DenoisedDiffuse = &denoisedDiffuse,
 			.DenoisedSpecular = &denoisedSpecular,
@@ -1385,7 +1373,7 @@ private:
 			CreateResourceTagDesc(kBufferTypeDepth, *m_textures.at(TextureNames::NormalizedDepth)),
 			CreateResourceTagDesc(kBufferTypeMotionVectors, *m_textures.at(TextureNames::MotionVector)),
 			CreateResourceTagDesc(kBufferTypeScalingInputColor, *m_textures.at(TextureNames::Radiance)),
-			CreateResourceTagDesc(kBufferTypeScalingOutputColor, *m_textures.at(TextureNames::FinalColor), false)
+			CreateResourceTagDesc(kBufferTypeScalingOutputColor, *m_textures.at(TextureNames::Color), false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureDLSS, CreateResourceTags(resourceTagDescs));
 	}
@@ -1418,7 +1406,7 @@ private:
 			{ XeSSResourceType::Depth, *m_textures.at(TextureNames::NormalizedDepth) },
 			{ XeSSResourceType::Velocity, *m_textures.at(TextureNames::MotionVector) },
 			{ XeSSResourceType::Color, *m_textures.at(TextureNames::Radiance) },
-			{ XeSSResourceType::Output, *m_textures.at(TextureNames::FinalColor), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
+			{ XeSSResourceType::Output, *m_textures.at(TextureNames::Color), D3D12_RESOURCE_STATE_UNORDERED_ACCESS }
 			}) {
 			commandList.SetState(Texture, State);
 			m_XeSS->Tag(Type, Texture);
