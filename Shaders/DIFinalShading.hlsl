@@ -66,8 +66,9 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	if (g_graphicsSettings.IsReGIRCellVisualizationEnabled
 		&& parameters.initialSamplingParams.localLightSamplingMode == ReSTIRDI_LocalLightSamplingMode_REGIR_RIS)
 	{
-		const float3 cellColor = RTXDI_VisualizeReGIRCells(g_graphicsSettings.RTXDI.ReGIR, surface.Position);
-		diffuse = lerp(diffuse, cellColor, 0.5f);
+		g_radiance[pixelPosition] += RTXDI_VisualizeReGIRCells(g_graphicsSettings.RTXDI.ReGIR, surface.Position);
+
+		return;
 	}
 
 	const float3 radiance = diffuse + specular;

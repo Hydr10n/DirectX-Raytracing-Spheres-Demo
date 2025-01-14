@@ -46,15 +46,15 @@ export struct Mesh {
 		for (const auto& [Position, Normal, TextureCoordinate] : vertices) {
 			newVertices.emplace_back(::VertexPositionNormalTexture(Position, Normal, TextureCoordinate));
 		}
-		const auto CreateBuffer = [&]<typename T>(auto & buffer, const vector<T> &data, D3D12_RESOURCE_STATES afterState, bool isStructuredSRV) {
+		const auto CreateBuffer = [&]<typename T>(auto & buffer, const vector<T> &data, bool isStructuredSRV) {
 			buffer = GPUBuffer::CreateDefault<T>(deviceContext, size(data));
 			buffer->CreateSRV(isStructuredSRV ? BufferSRVType::Structured : BufferSRVType::Raw);
 			commandList.Copy(*buffer, data);
-			commandList.SetState(*buffer, afterState);
+			commandList.SetState(*buffer, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		};
 		const auto mesh = make_shared<Mesh>();
-		CreateBuffer(mesh->Vertices, newVertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, false);
-		CreateBuffer(mesh->Indices, indices, D3D12_RESOURCE_STATE_INDEX_BUFFER, true);
+		CreateBuffer(mesh->Vertices, newVertices, false);
+		CreateBuffer(mesh->Indices, indices, true);
 		return mesh;
 	}
 };

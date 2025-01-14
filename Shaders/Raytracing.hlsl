@@ -170,9 +170,9 @@ void RayGeneration()
 	g_normalizedDepth[pixelPosition] = normalizedDepth;
 	g_motionVectors[pixelPosition] = motionVector;
 	g_normalRoughness[pixelPosition] = normalRoughness;
-#endif
 
 	float3 radiance = 0;
+#endif
 
 	const uint samplesPerPixel =
 #if SHARC_UPDATE
@@ -206,13 +206,16 @@ void RayGeneration()
 		BSDFSample BSDFSample = primarySurfaceBSDFSample;
 
 		LobeType lobeType;
-		float3 L, sampleRadiance = 0, throughput = 1;
+		float3 L, throughput = 1;
 
 #if SHARC_UPDATE
 		SharcState sharcState;
 		SharcInit(sharcState);
-#elif SHARC_QUERY
+#else
+		float3 sampleRadiance = 0;
+#if SHARC_QUERY
 		float previousRoughness = 0;
+#endif
 #endif
 
 		for (uint bounceIndex = 0; bounceIndex <= g_graphicsSettings.Bounces; bounceIndex++)
@@ -246,16 +249,20 @@ void RayGeneration()
 			if (!isHit)
 			{
 				const float3 environmentLightColor = bounceIndex ? GetEnvironmentLightColor(g_sceneData, rayDesc.Direction) : primaryRadiance;
+
 #if SHARC_UPDATE
 				SharcUpdateMiss(sharcParameters, sharcState, environmentLightColor);
-#else
-				sampleRadiance += throughput * environmentLightColor;
+#endif
 
 				if (!bounceIndex)
 				{
-					sampleIndex = samplesPerPixel - 1;
+					return;
 				}
+
+#if !SHARC_UPDATE
+				sampleRadiance += throughput * environmentLightColor;
 #endif
+
 				break;
 			}
 
@@ -264,13 +271,6 @@ void RayGeneration()
 			sharcHitData.positionWorld = hitInfo.Position;
 			sharcHitData.normalWorld = hitInfo.GeometricNormal;
 #if SHARC_QUERY
-			if (g_graphicsSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled)
-			{
-				sampleRadiance = HashGridDebugColoredHash(hitInfo.Position, sharcParameters.gridParameters);
-
-				break;
-			}
-
 			const uint gridLevel = HashGridGetLevel(hitInfo.Position, sharcParameters.gridParameters);
 			const float voxelSize = HashGridGetVoxelSize(gridLevel, sharcParameters.gridParameters);
 			bool isValidHit = hitInfo.Distance > voxelSize * sqrt(3);
@@ -284,6 +284,18 @@ void RayGeneration()
 			float3 sharcRadiance;
 			if (isValidHit && SharcGetCachedRadiance(sharcParameters, sharcHitData, sharcRadiance, false))
 			{
+				if (g_graphicsSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled)
+				{
+					g_radiance[pixelPosition] = HashGridDebugColoredHash(primarySurfaceHitInfo.Position, sharcParameters.gridParameters);
+
+					if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
+					{
+						g_noisyDiffuse[pixelPosition] = g_noisySpecular[pixelPosition] = 0;
+					}
+
+					return;
+				}
+
 				sampleRadiance += throughput * sharcRadiance;
 
 				break;
@@ -348,30 +360,29 @@ void RayGeneration()
 #endif
 		}
 
+#if !SHARC_UPDATE
 		radiance += sampleRadiance;
+#endif
 	}
 
 #if !SHARC_UPDATE
-	if (isPrimarySurfaceHit)
-	{
-		radiance = NRD_IsValidRadiance(radiance) ? radiance / samplesPerPixel : 0;
+	radiance = NRD_IsValidRadiance(radiance) ? radiance / samplesPerPixel : 0;
 
-		if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
-		{
-			g_radiance[pixelPosition] = radiance;
-		}
-		else
-		{
-			const float4 radianceHitDistance = float4(max(radiance - primaryRadiance, 0), hitDistance);
-			PackNoisySignals(
-				g_graphicsSettings.NRD,
-				primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
-				primarySurfaceBSDFSample,
-				0, 0, 0,
-				isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
-				g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
-			);
-		}
+	if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
+	{
+		g_radiance[pixelPosition] = radiance;
+	}
+	else
+	{
+		const float4 radianceHitDistance = float4(max(radiance - primaryRadiance, 0), hitDistance);
+		PackNoisySignals(
+			g_graphicsSettings.NRD,
+			primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
+			primarySurfaceBSDFSample,
+			0, 0, 0,
+			isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
+			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
+		);
 	}
 #endif
 }
