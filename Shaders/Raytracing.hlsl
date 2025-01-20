@@ -20,10 +20,11 @@ RaytracingAccelerationStructure g_scene : register(t0);
 
 struct GraphicsSettings
 {
+	uint2 RenderSize;
 	uint FrameIndex, Bounces, SamplesPerPixel;
 	float ThroughputThreshold;
-	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsSecondarySurfaceEmissionIncluded;
-	uint _;
+	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
+	uint3 _;
 	struct
 	{
 		struct
@@ -45,47 +46,36 @@ ConstantBuffer<Camera> g_camera : register(b2);
 StructuredBuffer<InstanceData> g_instanceData : register(t1);
 StructuredBuffer<ObjectData> g_objectData : register(t2);
 
+#if SHARC_UPDATE
+Texture2D<float3> g_radiance : register(t3);
+#else
 RWTexture2D<float3> g_radiance : register(u0);
-RWTexture2D<float> g_linearDepth : register(u1);
-RWTexture2D<float> g_normalizedDepth : register(u2);
-RWTexture2D<float3> g_motionVectors : register(u3);
-RWTexture2D<float4> g_baseColorMetalness : register(u4);
-RWTexture2D<float4> g_normals : register(u5);
-RWTexture2D<float> g_roughness : register(u6);
-RWTexture2D<float4> g_normalRoughness : register(u7);
-RWTexture2D<float4> g_noisyDiffuse : register(u8);
-RWTexture2D<float4> g_noisySpecular : register(u9);
+#endif
+Texture2D<float4> g_lightRadiance : register(t4);
+Texture2D<float4> g_position : register(t5);
+Texture2D<float> g_linearDepth : register(t6);
+Texture2D<float4> g_baseColorMetalness : register(t7);
+Texture2D<float2> g_flatNormal : register(t8);
+Texture2D<float4> g_normals : register(t9);
+Texture2D<float> g_roughness : register(t10);
+Texture2D<float> g_transmission : register(t11);
+Texture2D<float> g_IOR : register(t12);
+RWTexture2D<float4> g_noisyDiffuse : register(u1);
+RWTexture2D<float4> g_noisySpecular : register(u2);
 
 #if ENABLE_SHARC
-RWStructuredBuffer<uint64_t> g_sharcHashEntries : register(u10);
-RWStructuredBuffer<uint4> g_sharcPreviousVoxelData : register(u11);
-RWStructuredBuffer<uint4> g_sharcVoxelData : register(u12);
+RWStructuredBuffer<uint64_t> g_sharcHashEntries : register(u3);
+RWStructuredBuffer<uint4> g_sharcPreviousVoxelData : register(u4);
+RWStructuredBuffer<uint4> g_sharcVoxelData : register(u5);
 #endif
 
 #include "RaytracingHelpers.hlsli"
 
-float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth, HitInfo hitInfo)
-{
-	float3 previousPosition;
-	if (g_sceneData.IsStatic)
-	{
-		previousPosition = hitInfo.Position;
-	}
-	else
-	{
-		previousPosition = hitInfo.ObjectPosition;
-		const MeshResourceDescriptorIndices meshIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices.Mesh;
-		if (meshIndices.MotionVectors != ~0u)
-		{
-			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[meshIndices.MotionVectors];
-			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], hitInfo.PrimitiveIndex);
-			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
-			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
-		}
-		previousPosition = Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
-	}
-	return float3((Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions, Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
-}
+#if SHARC_UPDATE
+#define LOAD(Texture) Texture[clamp(uint2(UV * g_graphicsSettings.RenderSize), 0, g_graphicsSettings.RenderSize - 1)]
+#else
+#define LOAD(Texture) Texture[pixelPosition]
+#endif
 
 RaytracingShaderConfig ShaderConfig = { 0, 0 };
 RaytracingPipelineConfig PipelineConfig = { 1 };
@@ -99,20 +89,26 @@ GlobalRootSignature GlobalRootSignature =
 	"CBV(b2),"
 	"SRV(t1),"
 	"SRV(t2),"
+#if SHARC_UPDATE
+	"DescriptorTable(SRV(t3)),"
+#else
 	"DescriptorTable(UAV(u0)),"
+#endif
+	"DescriptorTable(SRV(t4)),"
+	"DescriptorTable(SRV(t5)),"
+	"DescriptorTable(SRV(t6)),"
+	"DescriptorTable(SRV(t7)),"
+	"DescriptorTable(SRV(t8)),"
+	"DescriptorTable(SRV(t9)),"
+	"DescriptorTable(SRV(t10)),"
+	"DescriptorTable(SRV(t11)),"
+	"DescriptorTable(SRV(t12)),"
 	"DescriptorTable(UAV(u1)),"
 	"DescriptorTable(UAV(u2)),"
-	"DescriptorTable(UAV(u3)),"
-	"DescriptorTable(UAV(u4)),"
-	"DescriptorTable(UAV(u5)),"
-	"DescriptorTable(UAV(u6)),"
-	"DescriptorTable(UAV(u7)),"
-	"DescriptorTable(UAV(u8)),"
-	"DescriptorTable(UAV(u9)),"
 #if ENABLE_SHARC
-	"UAV(u10),"
-	"UAV(u11),"
-	"UAV(u12),"
+	"UAV(u3),"
+	"UAV(u4),"
+	"UAV(u5),"
 #endif
 	"DescriptorTable(UAV(u1024))"
 };
@@ -123,16 +119,6 @@ void RayGeneration()
 
 	Rng::Hash::Initialize(pixelPosition, g_graphicsSettings.FrameIndex);
 
-	float3 primaryRadiance;
-	float linearDepth = 1.#INF, normalizedDepth = !g_camera.IsNormalizedDepthReversed;
-	float3 motionVector = 0;
-	float4 normalRoughness = 0;
-
-	HitInfo primarySurfaceHitInfo;
-
-	BSDFSample primarySurfaceBSDFSample = (BSDFSample)0;
-	bool primarySurfaceHasTexture = false;
-
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions,
 #if SHARC_UPDATE
 		Rng::Hash::GetFloat() - 0.5f
@@ -140,39 +126,53 @@ void RayGeneration()
 		g_camera.Jitter
 #endif
 	);
+
+	const float linearDepth = LOAD(g_linearDepth);
+	const float3 primaryRadiance = LOAD(g_radiance);
+
+	HitInfo primarySurfaceHitInfo;
+	BSDFSample primarySurfaceBSDFSample;
+	float3 lightRadiance = 0;
+	float lightDistance = 0;
+	bool isDIValid = false;
 	const RayDesc primaryRayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
-	const bool isPrimarySurfaceHit = CastRay(primaryRayDesc, primarySurfaceHitInfo);
+	const bool isPrimarySurfaceHit = !isinf(linearDepth);
 	if (isPrimarySurfaceHit)
 	{
-		const Material material = GetMaterial(g_objectData[primarySurfaceHitInfo.ObjectIndex], primarySurfaceHitInfo.TextureCoordinate);
-		primarySurfaceBSDFSample.Initialize(material);
-		primarySurfaceHasTexture = material.HasTexture;
+		const float4 position = LOAD(g_position), normals = LOAD(g_normals);
+		primarySurfaceHitInfo.Initialize(
+			position.xyz, position.w,
+			Packing::DecodeUnitVector(LOAD(g_flatNormal), true),
+			Packing::DecodeUnitVector(normals.xy, true),
+			Packing::DecodeUnitVector(normals.zw, true),
+			primaryRayDesc.Direction, length(position.xyz - g_camera.Position)
+		);
 
-		primaryRadiance = material.GetEmission();
-		const float4 projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, primarySurfaceHitInfo.Position);
-		linearDepth = projection.w;
-		normalizedDepth = projection.z / projection.w;
-		motionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, primarySurfaceHitInfo);
-		normalRoughness = NRD_FrontEnd_PackNormalAndRoughness(primarySurfaceHitInfo.Normal, primarySurfaceBSDFSample.Roughness, EstimateDiffuseProbability(primarySurfaceBSDFSample.Albedo, primarySurfaceBSDFSample.Rf0, max(primarySurfaceBSDFSample.Roughness, MinRoughness), abs(dot(primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction))) == 0);
+		const float primarySurfaceRoughness = LOAD(g_roughness);
+		const float4 baseColorMetalness = LOAD(g_baseColorMetalness);
+		primarySurfaceBSDFSample.Initialize(
+			baseColorMetalness.rgb,
+			baseColorMetalness.a,
+			primarySurfaceRoughness,
+			LOAD(g_transmission),
+			LOAD(g_IOR)
+		);
 
-		g_baseColorMetalness[pixelPosition] = float4(material.BaseColor.rgb, material.Metallic);
-		g_normals[pixelPosition] = float4(Packing::EncodeUnitVector(primarySurfaceHitInfo.Normal, true), Packing::EncodeUnitVector(primarySurfaceHitInfo.GeometricNormal, true));
-		g_roughness[pixelPosition] = material.Roughness;
+		if (g_graphicsSettings.IsDIEnabled)
+		{
+#if !ENABLE_SHARC
+			if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
+#endif
+			{
+				const float4 light = LOAD(g_lightRadiance);
+				lightRadiance = light.rgb;
+				lightDistance = light.a;
+				isDIValid = any(lightRadiance > 0);
+			}
+		}
 	}
-	else
-	{
-		primaryRadiance = GetEnvironmentLightColor(g_sceneData, primaryRayDesc.Direction);
-	}
-
-#if !SHARC_UPDATE
-	g_radiance[pixelPosition] = primaryRadiance;
-	g_linearDepth[pixelPosition] = linearDepth;
-	g_normalizedDepth[pixelPosition] = normalizedDepth;
-	g_motionVectors[pixelPosition] = motionVector;
-	g_normalRoughness[pixelPosition] = normalRoughness;
 
 	float3 radiance = 0;
-#endif
 
 	const uint samplesPerPixel =
 #if SHARC_UPDATE
@@ -199,7 +199,7 @@ void RayGeneration()
 	for (uint sampleIndex = 0; sampleIndex < samplesPerPixel; sampleIndex++)
 	{
 		RayDesc rayDesc = primaryRayDesc;
-		bool isHit = isPrimarySurfaceHit, hasTexture = primarySurfaceHasTexture;
+		bool isHit = isPrimarySurfaceHit, hasTexture = true;
 		HitInfo hitInfo = primarySurfaceHitInfo;
 
 		float3 emission = primaryRadiance;
@@ -269,7 +269,7 @@ void RayGeneration()
 #if ENABLE_SHARC
 			SharcHitData sharcHitData;
 			sharcHitData.positionWorld = hitInfo.Position;
-			sharcHitData.normalWorld = hitInfo.GeometricNormal;
+			sharcHitData.normalWorld = hitInfo.IsFrontFace ? hitInfo.FlatNormal : -hitInfo.FlatNormal;
 #if SHARC_QUERY
 			const uint gridLevel = HashGridGetLevel(hitInfo.Position, sharcParameters.gridParameters);
 			const float voxelSize = HashGridGetVoxelSize(gridLevel, sharcParameters.gridParameters);
@@ -286,12 +286,7 @@ void RayGeneration()
 			{
 				if (g_graphicsSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled)
 				{
-					g_radiance[pixelPosition] = HashGridDebugColoredHash(primarySurfaceHitInfo.Position, sharcParameters.gridParameters);
-
-					if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
-					{
-						g_noisyDiffuse[pixelPosition] = g_noisySpecular[pixelPosition] = 0;
-					}
+					g_radiance[pixelPosition] += HashGridDebugColoredHash(primarySurfaceHitInfo.Position, sharcParameters.gridParameters);
 
 					return;
 				}
@@ -307,19 +302,23 @@ void RayGeneration()
 			{
 				const Material material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate);
 				hasTexture = material.HasTexture;
-				emission = bounceIndex == 1 && !g_graphicsSettings.IsSecondarySurfaceEmissionIncluded
-					&& BSDFSample.Roughness > 0 && lobeType != LobeType::Transmission ?
-					0 : material.GetEmission();
+				emission = isDIValid && bounceIndex == 1 ? 0 : material.GetEmission();
 				BSDFSample.Initialize(material);
 			}
 
 #if SHARC_UPDATE
 			BSDFSample.Roughness = max(BSDFSample.Roughness, g_graphicsSettings.RTXGI.SHARC.RoughnessThreshold);
 
-			if (!SharcUpdateHit(sharcParameters, sharcState, sharcHitData, emission, Rng::Hash::GetFloat()))
+			if (!SharcUpdateHit(
+				sharcParameters, sharcState, sharcHitData,
+				(isDIValid && !bounceIndex ? lightRadiance : 0) + emission,
+				Rng::Hash::GetFloat()
+			))
 			{
 				break;
 			}
+#elif SHARC_QUERY
+			sampleRadiance += (isDIValid && !bounceIndex ? lightRadiance : 0) + throughput * emission;
 #else
 			sampleRadiance += throughput * emission;
 #endif
@@ -334,18 +333,29 @@ void RayGeneration()
 				throughput /= probability;
 			}
 
-			float PDF, weight;
-			if (!BSDFSample.Sample(hitInfo, -rayDesc.Direction, lobeType, L, PDF, weight))
+			SurfaceVectors surfaceVectors;
+			surfaceVectors.Initialize(hitInfo.IsFrontFace, hitInfo.Normal, hitInfo.GeometricNormal);
+
+			const float3 V = -rayDesc.Direction;
+
+			float lobeProbability;
+			if (!BSDFSample.Sample(surfaceVectors, V, Rng::Hash::GetFloat4(), L, lobeType, lobeProbability))
 			{
 				break;
 			}
 
-			const float3 currentThroughput = BSDFSample.Evaluate(lobeType, hitInfo.Normal, -rayDesc.Direction, L) * weight;
+			const float PDF = BSDFSample.EvaluatePDF(surfaceVectors, L, V, lobeType);
+			if (PDF == 0)
+			{
+				break;
+			}
+
+			const float3 currentThroughput = BSDFSample.Evaluate(surfaceVectors, L, V, lobeType);
 			if (all(currentThroughput == 0))
 			{
 				break;
 			}
-			throughput *= currentThroughput;
+			throughput *= currentThroughput / (PDF * lobeProbability);
 
 #if SHARC_UPDATE
 			SharcSetThroughput(sharcState, throughput);
@@ -370,6 +380,10 @@ void RayGeneration()
 
 	if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
 	{
+#if !SHARC_QUERY
+		radiance += lightRadiance;
+#endif
+
 		g_radiance[pixelPosition] = radiance;
 	}
 	else
@@ -379,7 +393,11 @@ void RayGeneration()
 			g_graphicsSettings.NRD,
 			primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
 			primarySurfaceBSDFSample,
+#if SHARC_QUERY
 			0, 0, 0,
+#else
+			g_noisyDiffuse[pixelPosition].rgb, g_noisySpecular[pixelPosition].rgb, lightDistance,
+#endif
 			isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
 			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
 		);

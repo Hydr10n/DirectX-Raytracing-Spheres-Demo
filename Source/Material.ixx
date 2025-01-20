@@ -12,11 +12,11 @@ export {
 	enum class AlphaMode { Opaque, Blend, Mask };
 
 	struct Material {
-		XMFLOAT4 BaseColor{};
+		XMFLOAT4 BaseColor{ 0, 0, 0, 1 };
 		XMFLOAT3 EmissiveColor{};
 		float EmissiveIntensity = 1, Metallic{}, Roughness = 0.5f, Transmission{}, IOR = 1;
 		AlphaMode AlphaMode = AlphaMode::Opaque;
-		float AlphaThreshold = 0.5f;
+		float AlphaCutoff = 0.5f;
 		BOOL HasTexture{};
 		UINT _;
 	};
@@ -26,7 +26,6 @@ export {
 		EmissiveColor,
 		Metallic,
 		Roughness,
-		AmbientOcclusion,
 		Transmission,
 		Opacity,
 		Normal,

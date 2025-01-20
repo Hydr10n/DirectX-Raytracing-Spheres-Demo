@@ -65,14 +65,13 @@ float3 Downsample()
 		 */
 		return e * 0.125f + (a + c + g + i) * 0.03125f + (b + d + f + h) * 0.0625f + (j + k + l + m) * 0.125f;
 	}
-	
+
 	/*
 	 * We need to apply Karis average to each block of 4 samples to prevent fireflies
 	 * (very bright subpixels, leads to pulsating artifacts)
 	 */
 	const float3 v0 = 0.125f / 4, v1 = 0.5f / 4;
-	float3 groups[] =
-	{
+	float3 groups[] = {
 		(a + b + d + e) * v0,
 		(b + c + e + f) * v0,
 		(d + e + g + h) * v0,

@@ -21,7 +21,7 @@ struct NRDSettings
 void PackNoisySignals(
 	NRDSettings settings,
 	float3 N, float3 V, float linearDepth,
-	BRDFSample BRDFSample,
+	BSDFSample BSDFSample,
 	float3 directDiffuse, float3 directSpecular, float lightDistance,
 	float4 indirectDiffuseHitDistance, float4 indirectSpecularHitDistance, bool isIndirectPacked,
 	out float4 diffuseHitDistance, out float4 specularHitDistance
@@ -39,7 +39,7 @@ void PackNoisySignals(
 		else
 		{
 			diffuseHitDistance.a = indirectDiffuseHitDistance.a;
-			specularHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(indirectSpecularHitDistance.a, linearDepth, settings.HitDistanceParameters, BRDFSample.Roughness);
+			specularHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(indirectSpecularHitDistance.a, linearDepth, settings.HitDistanceParameters, BSDFSample.Roughness);
 		}
 	}
 	else if (settings.Denoiser == NRDDenoiser::ReLAX)
@@ -54,7 +54,7 @@ void PackNoisySignals(
 	}
 	const float3 indirectDiffuse = indirectDiffuseHitDistance.rgb, indirectSpecular = indirectSpecularHitDistance.rgb;
 	float3 diffuseFactor, specularFactor;
-	NRD_MaterialFactors(N, V, BRDFSample.Albedo, BRDFSample.Rf0, BRDFSample.Roughness, diffuseFactor, specularFactor);
+	NRD_MaterialFactors(N, V, BSDFSample.Albedo, BSDFSample.Rf0, BSDFSample.Roughness, diffuseFactor, specularFactor);
 	diffuseFactor = 1 / diffuseFactor;
 	specularFactor = 1 / specularFactor;
 	const float3
@@ -85,7 +85,7 @@ void PackNoisySignals(
 void UnpackDenoisedSignals(
 	NRDDenoiser denoiser,
 	float3 N, float3 V,
-	BRDFSample BRDFSample,
+	BSDFSample BSDFSample,
 	inout float4 diffuseHitDistance, inout float4 specularHitDistance
 )
 {
@@ -100,7 +100,7 @@ void UnpackDenoisedSignals(
 		specularHitDistance = RELAX_BackEnd_UnpackRadiance(specularHitDistance);
 	}
 	float3 diffuseFactor, specularFactor;
-	NRD_MaterialFactors(N, V, BRDFSample.Albedo, BRDFSample.Rf0, BRDFSample.Roughness, diffuseFactor, specularFactor);
+	NRD_MaterialFactors(N, V, BSDFSample.Albedo, BSDFSample.Rf0, BSDFSample.Roughness, diffuseFactor, specularFactor);
 	diffuseHitDistance.rgb *= diffuseFactor;
 	specularHitDistance.rgb *= specularFactor;
 }

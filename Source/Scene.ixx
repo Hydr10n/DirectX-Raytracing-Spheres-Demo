@@ -146,7 +146,6 @@ export {
 						TextureMapType::EmissiveColor,
 						TextureMapType::Metallic,
 						TextureMapType::Roughness,
-						TextureMapType::AmbientOcclusion,
 						TextureMapType::Transmission,
 						TextureMapType::Opacity,
 						TextureMapType::Normal

@@ -58,7 +58,8 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	lightSample.Radiance *= RTXDI_GetDIReservoirInvPdf(reservoir);
 
 	float3 diffuse, specular;
-	if (!surface.Shade(lightSample, diffuse, specular))
+	surface.Shade(lightSample, diffuse, specular);
+	if (all(diffuse + specular == 0))
 	{
 		return;
 	}
@@ -77,7 +78,18 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		return;
 	}
 
-	if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
+	const float lightDistance = length(lightSample.Position - surface.Position);
+	if (!g_graphicsSettings.IsLastRenderPass)
+	{
+		g_lightRadiance[pixelPosition] = float4(radiance, lightDistance);
+
+		if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
+		{
+			g_noisyDiffuse[pixelPosition].rgb = diffuse;
+			g_noisySpecular[pixelPosition].rgb = specular;
+		}
+	}
+	else if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
 	{
 		g_radiance[pixelPosition] += radiance;
 	}
@@ -85,10 +97,10 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	{
 		PackNoisySignals(
 			g_graphicsSettings.NRD,
-			surface.Normal, surface.ViewDirection, surface.LinearDepth,
-			surface.BRDFSample,
-			diffuse, specular, length(lightSample.Position - surface.Position),
-			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition], true,
+			surface.Vectors.ShadingNormal, surface.ViewDirection, surface.LinearDepth,
+			surface.BSDFSample,
+			diffuse, specular, lightDistance,
+			0, 0, false,
 			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
 		);
 	}

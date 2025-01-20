@@ -84,13 +84,12 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	positions[2] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	float3 emission = objectData.Material.GetEmission();
-	if (textureMapIndices.EmissiveColor != ~0u)
+	if (any(emission > 0) && textureMapIndices.EmissiveColor != ~0u)
 	{
 		float2 textureCoordinates[3];
 		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
 
-		const float2 edges[] =
-		{
+		const float2 edges[] = {
 			textureCoordinates[1] - textureCoordinates[0],
 			textureCoordinates[2] - textureCoordinates[1],
 			textureCoordinates[0] - textureCoordinates[2]
@@ -118,7 +117,12 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 		}
 
 		const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.EmissiveColor];
-		emission = texture.SampleGrad(g_anisotropicSampler, (textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3, shortEdge * (2.0f / 3), (longEdges[0] + longEdges[1]) / 3) * objectData.Material.EmissiveIntensity;
+		emission *= texture.SampleGrad(
+			g_anisotropicSampler,
+			(textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3,
+			shortEdge * (2.0f / 3),
+			(longEdges[0] + longEdges[1]) / 3
+		);
 	}
 
 	TriangleLight triangleLight;

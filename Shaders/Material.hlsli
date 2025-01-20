@@ -11,7 +11,7 @@ struct Material
 	float3 EmissiveColor;
 	float EmissiveIntensity, Metallic, Roughness, Transmission, IOR;
 	AlphaMode AlphaMode;
-	float AlphaThreshold;
+	float AlphaCutoff;
 	bool HasTexture;
 	uint _;
 

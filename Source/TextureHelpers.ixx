@@ -108,20 +108,20 @@ export namespace DirectX::TextureHelpers {
 	unique_ptr<Texture> LoadTexture(
 		CommandList& commandList,
 		string_view format, const void* pData, size_t size,
-		bool forceSRGBIfNecessary = false
+		bool forceSRGB = false
 	) {
 		if (empty(format)) throw invalid_argument("Unknown texture format");
 
 		const auto _format = data(format);
 		auto texture =
-			!_stricmp(_format, "dds") ? LoadDDS(commandList, pData, size, forceSRGBIfNecessary) :
+			!_stricmp(_format, "dds") ? LoadDDS(commandList, pData, size, forceSRGB) :
 			!_stricmp(_format, "hdr") ? LoadHDR(commandList, pData, size) :
-			!_stricmp(_format, "tga") ? LoadTGA(commandList, pData, size, forceSRGBIfNecessary ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
-			LoadWIC(commandList, pData, size, forceSRGBIfNecessary ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
+			!_stricmp(_format, "tga") ? LoadTGA(commandList, pData, size, forceSRGB ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
+			LoadWIC(commandList, pData, size, forceSRGB ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
 		return texture;
 	}
 
-	unique_ptr<Texture> LoadTexture(CommandList& commandList, const path& filePath, bool forceSRGBIfNecessary = false) {
+	unique_ptr<Texture> LoadTexture(CommandList& commandList, const path& filePath, bool forceSRGB = false) {
 		if (empty(filePath)) throw invalid_argument("Texture file path cannot be empty");
 
 		const auto filePathExtension = filePath.extension();
@@ -129,11 +129,11 @@ export namespace DirectX::TextureHelpers {
 
 		const auto extension = filePathExtension.c_str() + 1;
 		auto texture =
-			!_wcsicmp(extension, L"dds") ? LoadDDS(commandList, filePath, forceSRGBIfNecessary) :
+			!_wcsicmp(extension, L"dds") ? LoadDDS(commandList, filePath, forceSRGB) :
 			!_wcsicmp(extension, L"hdr") ? LoadHDR(commandList, filePath) :
 			!_wcsicmp(extension, L"exr") ? LoadEXR(commandList, filePath) :
-			!_wcsicmp(extension, L"tga") ? LoadTGA(commandList, filePath, forceSRGBIfNecessary ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
-			LoadWIC(commandList, filePath, forceSRGBIfNecessary ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
+			!_wcsicmp(extension, L"tga") ? LoadTGA(commandList, filePath, forceSRGB ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
+			LoadWIC(commandList, filePath, forceSRGB ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
 		return texture;
 	}
 }

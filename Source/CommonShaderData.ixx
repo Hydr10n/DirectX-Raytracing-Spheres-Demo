@@ -39,10 +39,10 @@ export {
 			EmissiveColor = ~0u,
 			Metallic = ~0u,
 			Roughness = ~0u,
-			AmbientOcclusion = ~0u,
 			Transmission = ~0u,
 			Opacity = ~0u,
-			Normal = ~0u;
+			Normal = ~0u,
+			_;
 	};
 
 	struct ObjectResourceDescriptorIndices {

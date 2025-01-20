@@ -43,8 +43,8 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		baseColorMetalness = g_baseColorMetalness[pixelPosition],
 		normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
 
-	BRDFSample BRDFSample;
-	BRDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, normalRoughness.w);
+	BSDFSample BSDFSample;
+	BSDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, normalRoughness.w);
 
 	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_constants.RenderSize, g_camera.Jitter));
 	const float3 V = -normalize(g_camera.GenerateRayDirection(NDC));
@@ -52,7 +52,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	UnpackDenoisedSignals(
 		g_constants.NRDDenoiser,
 		normalRoughness.xyz, V,
-		BRDFSample,
+		BSDFSample,
 		diffuseHitDistance, specularHitDistance
 	);
 	g_radiance[pixelPosition] += diffuseHitDistance.rgb + specularHitDistance.rgb;

@@ -93,8 +93,9 @@ export {
 						.Name = ObjectNames::AlienMetal,
 						.Position{ -2, 0.5f, 0 },
 						.Material{
-							.BaseColor{ 0.1f, 0.2f, 0.5f, 1 },
-							.Roughness = 0.9f
+							.BaseColor = Vector4::One,
+							.Metallic = 1,
+							.Roughness = 1
 						}
 					},
 					{
@@ -212,7 +213,7 @@ export {
 					.Radius = 0.25f,
 					.OrbitalPeriod = 10,
 					.Material{
-						.BaseColor{ 0.5f, 0.5f, 0.5f, 1 },
+						.BaseColor = Vector4::One,
 						.Roughness = 0.8f
 					}
 				}, earth{
@@ -222,7 +223,7 @@ export {
 					.RotationPeriod = 15,
 					.Mass = UniversalGravitation::CalculateMass((moon.Position - earth.Position).magnitude(), moon.OrbitalPeriod),
 					.Material{
-						.BaseColor{ 0.3f, 0.4f, 0.5f, 1 },
+						.BaseColor = Vector4::One,
 						.Roughness = 0.8f
 					}
 				}, star{

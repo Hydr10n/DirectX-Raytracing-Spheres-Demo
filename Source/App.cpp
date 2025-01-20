@@ -42,6 +42,7 @@ import CommonShaderData;
 import DescriptorHeap;
 import DeviceResources;
 import ErrorHelpers;
+import GBufferGeneration;
 import GPUBuffer;
 import HaltonSampler;
 import LightPreparation;
@@ -241,6 +242,8 @@ struct App::Impl : IDeviceNotify {
 
 		m_SHARC.reset();
 
+		m_GBufferGeneration.reset();
+
 		m_graphicsMemory.reset();
 	}
 
@@ -295,6 +298,8 @@ private:
 	exception_ptr m_exception;
 	mutex m_exceptionMutex;
 
+	unique_ptr<GBufferGeneration> m_GBufferGeneration;
+
 	unique_ptr<SHARC> m_SHARC;
 
 	unique_ptr<Raytracing> m_raytracing;
@@ -328,17 +333,24 @@ private:
 	struct TextureNames {
 		MAKE_NAMEW(Color);
 		MAKE_NAMEW(Radiance);
+		MAKE_NAMEW(LightRadiance);
+		MAKE_NAMEW(Position);
 		MAKE_NAMEW(PreviousLinearDepth);
 		MAKE_NAMEW(LinearDepth);
 		MAKE_NAMEW(NormalizedDepth);
 		MAKE_NAMEW(MotionVector);
 		MAKE_NAMEW(PreviousBaseColorMetalness);
 		MAKE_NAMEW(BaseColorMetalness);
+		MAKE_NAMEW(FlatNormal);
 		MAKE_NAMEW(PreviousNormals);
 		MAKE_NAMEW(Normals);
 		MAKE_NAMEW(PreviousRoughness);
 		MAKE_NAMEW(Roughness);
 		MAKE_NAMEW(NormalRoughness);
+		MAKE_NAMEW(PreviousTransmission);
+		MAKE_NAMEW(Transmission);
+		MAKE_NAMEW(PreviousIOR);
+		MAKE_NAMEW(IOR);
 		MAKE_NAMEW(NoisyDiffuse);
 		MAKE_NAMEW(NoisySpecular);
 		MAKE_NAMEW(DenoisedDiffuse);
@@ -381,11 +393,12 @@ private:
 		const auto outputSize = GetOutputSize();
 
 		{
-			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, bool RTV = true, bool SRV = true, bool UAV = true) {
+			const auto CreateTexture = [&](LPCWSTR name, DXGI_FORMAT format, bool RTV = true, bool SRV = true, bool UAV = true, Color clearColor = {}) {
 				Texture::CreationDesc creationDesc{
 					.Format = format,
 					.Width = static_cast<UINT>(outputSize.cx),
 					.Height = static_cast<UINT>(outputSize.cy),
+					.ClearColor = clearColor,
 					.KeepInitialState = true
 				};
 				if (UAV) creationDesc.AsUnorderedAccess();
@@ -400,17 +413,24 @@ private:
 
 			CreateTexture(TextureNames::Color, m_HDRTextureFormat);
 			CreateTexture(TextureNames::Radiance, m_HDRTextureFormat);
-			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT);
-			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT);
+			CreateTexture(TextureNames::LightRadiance, m_HDRTextureFormat);
+			CreateTexture(TextureNames::Position, DXGI_FORMAT_R32G32B32A32_FLOAT, false);
+			CreateTexture(TextureNames::PreviousLinearDepth, DXGI_FORMAT_R32_FLOAT, true, true, true, Color(numeric_limits<float>::infinity(), 0, 0));
+			CreateTexture(TextureNames::LinearDepth, DXGI_FORMAT_R32_FLOAT, true, true, true, Color(numeric_limits<float>::infinity(), 0, 0));
 			CreateTexture(TextureNames::NormalizedDepth, DXGI_FORMAT_R32_FLOAT, false);
 			CreateTexture(TextureNames::MotionVector, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 			CreateTexture(TextureNames::PreviousBaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
 			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
+			CreateTexture(TextureNames::FlatNormal, DXGI_FORMAT_R16G16_SNORM);
 			CreateTexture(TextureNames::PreviousNormals, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::Normals, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::PreviousRoughness, DXGI_FORMAT_R8_UNORM);
 			CreateTexture(TextureNames::Roughness, DXGI_FORMAT_R8_UNORM);
 			CreateTexture(TextureNames::NormalRoughness, NRD::ToDXGIFormat(GetLibraryDesc().normalEncoding), false);
+			CreateTexture(TextureNames::PreviousTransmission, DXGI_FORMAT_R8_UNORM);
+			CreateTexture(TextureNames::Transmission, DXGI_FORMAT_R8_UNORM);
+			CreateTexture(TextureNames::PreviousIOR, DXGI_FORMAT_R16_FLOAT, false);
+			CreateTexture(TextureNames::IOR, DXGI_FORMAT_R16_FLOAT, false);
 
 			if (m_NRD = make_unique<NRD>(
 				m_deviceResources->GetCommandList(),
@@ -422,8 +442,8 @@ private:
 			}
 			);
 				m_NRD->IsAvailable()) {
-				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, false, false);
-				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, false, false);
+				CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false);
+				CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false);
 				CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 				CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
 				CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM);
@@ -553,6 +573,8 @@ private:
 					swap(m_textures.at(TextureNames::PreviousBaseColorMetalness), m_textures.at(TextureNames::BaseColorMetalness));
 					swap(m_textures.at(TextureNames::PreviousNormals), m_textures.at(TextureNames::Normals));
 					swap(m_textures.at(TextureNames::PreviousRoughness), m_textures.at(TextureNames::Roughness));
+					swap(m_textures.at(TextureNames::PreviousTransmission), m_textures.at(TextureNames::Transmission));
+					swap(m_textures.at(TextureNames::PreviousIOR), m_textures.at(TextureNames::IOR));
 				}
 			}
 
@@ -595,9 +617,6 @@ private:
 		auto& commandList = m_deviceResources->GetCommandList();
 
 		commandList.Clear(*m_textures.at(TextureNames::PreviousLinearDepth));
-		commandList.Clear(*m_textures.at(TextureNames::PreviousBaseColorMetalness));
-		commandList.Clear(*m_textures.at(TextureNames::PreviousNormals));
-		commandList.Clear(*m_textures.at(TextureNames::PreviousRoughness));
 
 		if (g_graphicsSettings.Raytracing.RTXGI.Technique == RTXGITechnique::SHARC) {
 			commandList.Clear(*m_SHARC->GPUBuffers.HashEntries);
@@ -637,6 +656,8 @@ private:
 
 	void CreatePipelineStates() {
 		const auto& deviceContext = m_deviceResources->GetDeviceContext();
+
+		m_GBufferGeneration = make_unique<GBufferGeneration>(deviceContext);
 
 		{
 			m_SHARC = make_unique<SHARC>(deviceContext);
@@ -899,7 +920,6 @@ private:
 						case TextureMapType::EmissiveColor: indices.EmissiveColor = index; break;
 						case TextureMapType::Metallic: indices.Metallic = index; break;
 						case TextureMapType::Roughness: indices.Roughness = index; break;
-						case TextureMapType::AmbientOcclusion: indices.AmbientOcclusion = index; break;
 						case TextureMapType::Transmission: indices.Transmission = index; break;
 						case TextureMapType::Opacity: indices.Opacity = index; break;
 						case TextureMapType::Normal: indices.Normal = index; break;
@@ -997,6 +1017,23 @@ private:
 	void RenderScene() {
 		auto& commandList = m_deviceResources->GetCommandList();
 
+		const auto
+			radiance = m_textures.at(TextureNames::Radiance).get(),
+			lightRadiance = m_textures.at(TextureNames::LightRadiance).get(),
+			position = m_textures.at(TextureNames::Position).get(),
+			linearDepth = m_textures.at(TextureNames::LinearDepth).get(),
+			motionVector = m_textures.at(TextureNames::MotionVector).get(),
+			baseColorMetalness = m_textures.at(TextureNames::BaseColorMetalness).get(),
+			flatNormal = m_textures.at(TextureNames::FlatNormal).get(),
+			normals = m_textures.at(TextureNames::Normals).get(),
+			roughness = m_textures.at(TextureNames::Roughness).get(),
+			transmission = m_textures.at(TextureNames::Transmission).get(),
+			IOR = m_textures.at(TextureNames::IOR).get(),
+			noisyDiffuse = m_textures.at(TextureNames::NoisyDiffuse).get(),
+			noisySpecular = m_textures.at(TextureNames::NoisySpecular).get();
+
+		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
+
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
 		const auto& ReSTIRDISettings = raytracingSettings.RTXDI.ReSTIRDI;
@@ -1010,77 +1047,44 @@ private:
 			.Denoiser = m_NRD->IsAvailable() ? g_graphicsSettings.PostProcessing.NRD.Denoiser : NRDDenoiser::None,
 			.HitDistanceParameters = reinterpret_cast<const XMFLOAT4&>(ReblurSettings().hitDistanceParameters)
 		};
-
-		const auto
-			radiance = m_textures.at(TextureNames::Radiance).get(),
-			linearDepth = m_textures.at(TextureNames::LinearDepth).get(),
-			motionVector = m_textures.at(TextureNames::MotionVector).get(),
-			baseColorMetalness = m_textures.at(TextureNames::BaseColorMetalness).get(),
-			normals = m_textures.at(TextureNames::Normals).get(),
-			roughness = m_textures.at(TextureNames::Roughness).get(),
-			noisyDiffuse = m_textures.at(TextureNames::NoisyDiffuse).get(),
-			noisySpecular = m_textures.at(TextureNames::NoisySpecular).get();
-
-		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
+		if (NRDSettings.Denoiser != NRDDenoiser::None) {
+			commandList.Clear(*noisyDiffuse);
+			commandList.Clear(*noisySpecular);
+		}
 
 		{
-			m_raytracing->GPUBuffers = {
+			m_GBufferGeneration->GPUBuffers = {
 				.SceneData = m_GPUBuffers.SceneData.get(),
 				.Camera = m_GPUBuffers.Camera.get(),
 				.InstanceData = m_GPUBuffers.InstanceData.get(),
 				.ObjectData = m_GPUBuffers.ObjectData.get()
 			};
 
-			m_raytracing->Textures = {
+			m_GBufferGeneration->Textures = {
 				.Radiance = radiance,
+				.Position = position,
 				.LinearDepth = linearDepth,
 				.NormalizedDepth = m_textures.at(TextureNames::NormalizedDepth).get(),
 				.MotionVector = motionVector,
 				.BaseColorMetalness = baseColorMetalness,
+				.FlatNormal = flatNormal,
 				.Normals = normals,
 				.Roughness = roughness,
 				.NormalRoughness = m_textures.at(TextureNames::NormalRoughness).get(),
-				.NoisyDiffuse = noisyDiffuse,
-				.NoisySpecular = noisySpecular
+				.Transmission = transmission,
+				.IOR = IOR
 			};
 
-			m_raytracing->SetConstants({
-				.RenderSize = m_renderSize,
-				.FrameIndex = m_stepTimer.GetFrameCount() - 1,
-				.Bounces = raytracingSettings.Bounces,
-				.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
-				.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
-				.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
-				.IsSecondarySurfaceEmissionIncluded = !isReSTIRDIEnabled,
-				.NRD = NRDSettings
-				});
-
-			switch (raytracingSettings.RTXGI.Technique)
-			{
-				case RTXGITechnique::None: m_raytracing->Render(commandList, scene); break;
-
-				case RTXGITechnique::SHARC:
+			m_GBufferGeneration->Render(
+				commandList,
+				scene,
 				{
-					if (raytracingSettings.Bounces) {
-						commandList.Clear(*m_SHARC->GPUBuffers.VoxelData);
-
-						m_SHARC->GPUBuffers.Camera = m_GPUBuffers.Camera.get();
-
-						Raytracing::SHARCSettings SHARCSettings{
-							.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
-							.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
-							.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
-						};
-						SHARCSettings.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale;
-						SHARCSettings.IsAntiFireflyEnabled = true;
-						m_raytracing->Render(commandList, scene, *m_SHARC, SHARCSettings);
-
-						swap(m_SHARC->GPUBuffers.PreviousVoxelData, m_SHARC->GPUBuffers.VoxelData);
-					}
-					else m_raytracing->Render(commandList, scene);
+					.RenderSize = m_renderSize,
+					.Flags = ~0u
+						& ~(raytracingSettings.Bounces || isReSTIRDIEnabled ? 0 : GBufferGeneration::Flags::Geometry)
+						| (NRDSettings.Denoiser == NRDDenoiser::None ? 0 : GBufferGeneration::Flags::NormalRoughness)
 				}
-				break;
-			}
+			);
 		}
 
 		if (!m_scene->GetObjectCount()) return;
@@ -1101,14 +1105,78 @@ private:
 				.Normals = normals,
 				.PreviousRoughness = m_textures.at(TextureNames::PreviousRoughness).get(),
 				.Roughness = roughness,
+				.PreviousTransmission = m_textures.at(TextureNames::PreviousTransmission).get(),
+				.Transmission = transmission,
+				.PreviousIOR = m_textures.at(TextureNames::PreviousIOR).get(),
+				.IOR = IOR,
 				.Radiance = radiance,
+				.LightRadiance = lightRadiance,
 				.NoisyDiffuse = noisyDiffuse,
 				.NoisySpecular = noisySpecular
 			};
 
-			m_RTXDI->SetConstants(m_RTXDIResources, ReSTIRDISettings.ReGIR.Cell.IsVisualizationEnabled, NRDSettings);
+			m_RTXDI->SetConstants(m_RTXDIResources, !raytracingSettings.Bounces, ReSTIRDISettings.ReGIR.Cell.IsVisualizationEnabled, raytracingSettings.RTXGI.Technique == RTXGITechnique::None ? NRDSettings : ::NRDSettings());
 
 			m_RTXDI->Render(commandList, scene);
+		}
+
+		if (!raytracingSettings.Bounces) return;
+
+		m_raytracing->GPUBuffers = {
+			.SceneData = m_GPUBuffers.SceneData.get(),
+			.Camera = m_GPUBuffers.Camera.get(),
+			.InstanceData = m_GPUBuffers.InstanceData.get(),
+			.ObjectData = m_GPUBuffers.ObjectData.get()
+		};
+
+		m_raytracing->Textures = {
+			.Radiance = radiance,
+			.LightRadiance = lightRadiance,
+			.Position = position,
+			.LinearDepth = linearDepth,
+			.BaseColorMetalness = baseColorMetalness,
+			.FlatNormal = flatNormal,
+			.Normals = normals,
+			.Roughness = roughness,
+			.Transmission = transmission,
+			.IOR = IOR,
+			.NoisyDiffuse = noisyDiffuse,
+			.NoisySpecular = noisySpecular
+		};
+
+		m_raytracing->SetConstants({
+			.RenderSize = m_renderSize,
+			.FrameIndex = m_stepTimer.GetFrameCount() - 1,
+			.Bounces = raytracingSettings.Bounces,
+			.SamplesPerPixel = raytracingSettings.SamplesPerPixel,
+			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
+			.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
+			.IsDIEnabled = isReSTIRDIEnabled,
+			.NRD = NRDSettings
+			});
+
+		switch (raytracingSettings.RTXGI.Technique)
+		{
+			case RTXGITechnique::None: m_raytracing->Render(commandList, scene); break;
+
+			case RTXGITechnique::SHARC:
+			{
+				commandList.Clear(*m_SHARC->GPUBuffers.VoxelData);
+
+				m_SHARC->GPUBuffers.Camera = m_GPUBuffers.Camera.get();
+
+				Raytracing::SHARCSettings SHARCSettings{
+					.DownscaleFactor = raytracingSettings.RTXGI.SHARC.DownscaleFactor,
+					.RoughnessThreshold = raytracingSettings.RTXGI.SHARC.RoughnessThreshold,
+					.IsHashGridVisualizationEnabled = raytracingSettings.RTXGI.SHARC.IsHashGridVisualizationEnabled
+				};
+				SHARCSettings.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale;
+				SHARCSettings.IsAntiFireflyEnabled = true;
+				m_raytracing->Render(commandList, scene, *m_SHARC, SHARCSettings);
+
+				swap(m_SHARC->GPUBuffers.PreviousVoxelData, m_SHARC->GPUBuffers.VoxelData);
+			}
+			break;
 		}
 	}
 

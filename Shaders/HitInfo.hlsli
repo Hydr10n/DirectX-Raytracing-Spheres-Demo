@@ -30,14 +30,28 @@ struct HitInfo
 			ObjectPosition, Position, objectNormal, FlatNormal, PositionOffset,
 			positions, barycentrics, objectToWorld, worldToObject
 		);
-		Normal = normalize(Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
+		Normal = GeometricNormal = normalize(Geometry::RotateVector(transpose((float3x3)worldToObject), Vertex::Interpolate(normals, barycentrics)));
 		if (!(IsFrontFace = dot(Normal, worldRayDirection) < 0))
 		{
 			Normal = -Normal;
 		}
-		GeometricNormal = Normal;
 		TextureCoordinate = Vertex::Interpolate(textureCoordinates, barycentrics);
 		Barycentrics = barycentrics;
+		Distance = distance;
+	}
+
+	void Initialize(
+		float3 position, float positionOffset,
+		float3 flatNormal, float3 normal, float3 geometricNormal,
+		float3 worldRayDirection, float distance
+	)
+	{
+		Position = position;
+		PositionOffset = positionOffset;
+		FlatNormal = flatNormal;
+		Normal = normal;
+		GeometricNormal = geometricNormal;
+		IsFrontFace = dot(geometricNormal, worldRayDirection) < 0;
 		Distance = distance;
 	}
 

@@ -38,10 +38,10 @@ namespace Math
 		return float2(value * value, barycentrics.y / value);
 	}
 
-	float3 SampleTriangle(float2 randomValue)
+	float3 SampleTriangle(float2 random)
 	{
-		const float value = sqrt(randomValue.x);
-		return float3(1 - value, value * (1 - randomValue.y), value * randomValue.y);
+		const float value = sqrt(random.x);
+		return float3(1 - value, value * (1 - random.y), value * random.y);
 	}
 
 	float ToSolidAnglePDF(float AreaPDF, float _length, float cosTheta)

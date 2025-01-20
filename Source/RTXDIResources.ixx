@@ -19,18 +19,13 @@ using namespace rtxdi;
 using namespace std;
 
 export {
-	struct LightInfo {
-		XMFLOAT3 Center;
-		UINT Scalars;
-		XMUINT2 Directions, Radiance;
-	};
+	struct LightInfo { float3 Base, Edges[2], Radiance; };
 
 	struct RTXDIResources {
 		unique_ptr<ImportanceSamplingContext> Context;
 
 		unique_ptr<GPUBuffer>
 			RIS,
-			RISLightInfo,
 			LightInfo,
 			LightIndices,
 			NeighborOffsets,
@@ -41,7 +36,6 @@ export {
 		void CreateLightResources(const DeviceContext& deviceContext, UINT emissiveTriangleCount, UINT objectCount) {
 			const auto RISBufferSegmentSize = Context->getRISBufferSegmentAllocator().getTotalSizeInElements();
 			RIS = GPUBuffer::CreateDefault<XMUINT2>(deviceContext, RISBufferSegmentSize);
-			RISLightInfo = GPUBuffer::CreateDefault<XMUINT4>(deviceContext, RISBufferSegmentSize * 2);
 
 			LightInfo = GPUBuffer::CreateDefault<::LightInfo>(deviceContext, emissiveTriangleCount);
 			LightIndices = GPUBuffer::CreateDefault<UINT>(deviceContext, objectCount);
@@ -60,6 +54,12 @@ export {
 			LocalLightPDF->CreateSRV();
 			LocalLightPDF->CreateUAV();
 			LocalLightPDF->CreateRTV();
+		}
+
+		void ResetLightResources() {
+			LightInfo.reset();
+			LightIndices.reset();
+			LocalLightPDF.reset();
 		}
 
 		void CreateRenderSizeDependentResources(CommandList& commandList) {

@@ -40,9 +40,9 @@ struct Camera
 		return rayDesc;
 	}
 
-	RayDesc GenerateThinLensRay(float2 NDC)
+	RayDesc GenerateThinLensRay(float2 NDC, float2 random)
 	{
-		const float2 value = ImportanceSampling::Uniform::GetRay(Rng::Hash::GetFloat2()).xy;
+		const float2 value = ImportanceSampling::Uniform::GetRay(random).xy;
 		const float3 offset = (normalize(RightDirection) * value.x + normalize(UpDirection) * value.y) * ApertureRadius;
 		RayDesc rayDesc;
 		rayDesc.Origin = Position + offset;

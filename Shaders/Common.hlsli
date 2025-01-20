@@ -38,10 +38,10 @@ struct TextureMapResourceDescriptorIndices
 		EmissiveColor,
 		Metallic,
 		Roughness,
-		AmbientOcclusion,
 		Transmission,
 		Opacity,
-		Normal;
+		Normal,
+		_;
 };
 
 struct ObjectResourceDescriptorIndices

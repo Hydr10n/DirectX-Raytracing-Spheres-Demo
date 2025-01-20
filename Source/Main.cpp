@@ -57,15 +57,10 @@ int WINAPI wWinMain(
 	int ret;
 	string error;
 
-	RoInitializeWrapper roInitializeWrapper(RO_INIT_MULTITHREADED);
-
-	struct NVAPI {
-		NVAPI() { ignore = NvAPI_Initialize(); }
-		~NVAPI() { ignore = NvAPI_Unload(); }
-	} NVAPI;
-
 	try {
-		ThrowIfFailed(static_cast<HRESULT>(roInitializeWrapper));
+		ThrowIfFailed(RoInitialize(RO_INIT_MULTITHREADED));
+
+		ignore = NvAPI_Initialize();
 
 		LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 		const WNDCLASSEXW wndClassEx{
