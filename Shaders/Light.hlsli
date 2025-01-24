@@ -4,7 +4,9 @@
 
 struct LightInfo
 {
-	float3 Base, Edges[2], Radiance;
+	float3 Base;
+	uint3 Edges;
+	uint2 Radiance;
 };
 
 struct LightSample
@@ -49,14 +51,24 @@ struct TriangleLight
 
 	void Load(LightInfo lightInfo)
 	{
-		Initialize(lightInfo.Base, lightInfo.Edges[0], lightInfo.Edges[1], lightInfo.Radiance);
+		const float2 edges = Packing::UintToRg16f(lightInfo.Edges.y);
+		Initialize(
+			lightInfo.Base,
+			float3(Packing::UintToRg16f(lightInfo.Edges.x), edges.x),
+			float3(edges.y, Packing::UintToRg16f(lightInfo.Edges.z)),
+			float3(Packing::UintToRg16f(lightInfo.Radiance.x), Packing::UintToRg16f(lightInfo.Radiance.y).x)
+		);
 	}
 
 	void Store(out LightInfo lightInfo)
 	{
 		lightInfo.Base = Base;
-		lightInfo.Edges = Edges;
-		lightInfo.Radiance = Radiance;
+		lightInfo.Edges = uint3(
+			Packing::Rg16fToUint(Edges[0].xy),
+			Packing::Rg16fToUint(float2(Edges[0].z, Edges[1].x)),
+			Packing::Rg16fToUint(Edges[1].yz)
+			);
+		lightInfo.Radiance = uint2(Packing::Rg16fToUint(Radiance.rg), Packing::Rg16fToUint(float2(Radiance.b, 0)));
 	}
 
 	float CalculateSolidAnglePDF(float3 viewPosition, float3 lightSamplePosition, float3 lightSampleNormal)

@@ -79,17 +79,21 @@ export struct GBufferGeneration {
 
 		commandList.SetState(*GPUBuffers.SceneData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		if (GPUBuffers.InstanceData) commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		if (GPUBuffers.ObjectData) commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
 		UINT i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRoot32BitConstants(i++, sizeof(constants) / 4, &constants, 0);
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-		if (GPUBuffers.InstanceData) commandList->SetComputeRootShaderResourceView(i, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
+		if (GPUBuffers.InstanceData) {
+			commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+			commandList->SetComputeRootShaderResourceView(i, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
+		}
 		i++;
-		if (GPUBuffers.ObjectData) commandList->SetComputeRootShaderResourceView(i, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		if (GPUBuffers.ObjectData) {
+			commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+			commandList->SetComputeRootShaderResourceView(i, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
+		}
 		i++;
 		SET1(Radiance);
 		SET1(Position);

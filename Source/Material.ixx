@@ -17,8 +17,7 @@ export {
 		float EmissiveIntensity = 1, Metallic{}, Roughness = 0.5f, Transmission{}, IOR = 1;
 		AlphaMode AlphaMode = AlphaMode::Opaque;
 		float AlphaCutoff = 0.5f;
-		BOOL HasTexture{};
-		UINT _;
+		XMUINT2 _;
 	};
 
 	enum class TextureMapType {

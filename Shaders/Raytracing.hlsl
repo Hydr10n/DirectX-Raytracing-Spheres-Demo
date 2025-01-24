@@ -150,12 +150,18 @@ void RayGeneration()
 
 		const float primarySurfaceRoughness = LOAD(g_roughness);
 		const float4 baseColorMetalness = LOAD(g_baseColorMetalness);
+		float transmission = 0, IOR = 1;
+		if (baseColorMetalness.a < 1)
+		{
+			transmission = LOAD(g_transmission);
+			IOR = LOAD(g_IOR);
+		}
 		primarySurfaceBSDFSample.Initialize(
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
 			primarySurfaceRoughness,
-			LOAD(g_transmission),
-			LOAD(g_IOR)
+			transmission,
+			IOR
 		);
 
 		if (g_graphicsSettings.IsDIEnabled)
@@ -196,10 +202,11 @@ void RayGeneration()
 
 	bool isDiffuse = true;
 	float hitDistance = 1.#INF;
+	bool hasSampledTexture = false;
 	for (uint sampleIndex = 0; sampleIndex < samplesPerPixel; sampleIndex++)
 	{
 		RayDesc rayDesc = primaryRayDesc;
-		bool isHit = isPrimarySurfaceHit, hasTexture = true;
+		bool isHit = isPrimarySurfaceHit;
 		HitInfo hitInfo = primarySurfaceHitInfo;
 
 		float3 emission = primaryRadiance;
@@ -235,7 +242,7 @@ void RayGeneration()
 					hitInfo
 #if !SHARC_QUERY
 					, g_graphicsSettings.IsShaderExecutionReorderingEnabled
-					&& (lobeType == LobeType::DiffuseReflection || hasTexture)
+					&& (lobeType == LobeType::DiffuseReflection || hasSampledTexture)
 #endif
 				);
 			}
@@ -300,8 +307,7 @@ void RayGeneration()
 
 			if (bounceIndex)
 			{
-				const Material material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate);
-				hasTexture = material.HasTexture;
+				const Material material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate, hasSampledTexture);
 				emission = isDIValid && bounceIndex == 1 ? 0 : material.GetEmission();
 				BSDFSample.Initialize(material);
 			}

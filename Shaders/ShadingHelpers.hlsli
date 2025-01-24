@@ -32,7 +32,7 @@ float2 GetTextureCoordinate(ObjectData objectData, uint primitiveIndex, float2 b
 	return Vertex::Interpolate(textureCoordinates, barycentrics);
 }
 
-float GetTransmission(ObjectData objectData, float2 textureCoordinate, float baseColorAlpha = -1)
+float GetTransmission(ObjectData objectData, float2 textureCoordinate, inout bool hasSampledTexture, float baseColorAlpha = -1)
 {
 	const TextureMapResourceDescriptorIndices indices = objectData.ResourceDescriptorIndices.TextureMaps;
 	uint index;
@@ -43,34 +43,40 @@ float GetTransmission(ObjectData objectData, float2 textureCoordinate, float bas
 		{
 			const Texture2D<float> texture = ResourceDescriptorHeap[index];
 			transmission *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
+
+			hasSampledTexture = true;
 		}
 		return transmission;
 	}
-	if (transmission > 0)
+	if (transmission == 0)
 	{
-		return transmission;
-	}
-	if ((index = indices.Opacity) != ~0u)
-	{
-		const Texture2D<float> texture = ResourceDescriptorHeap[index];
-		return 1 - texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
-	}
-	transmission = 1 - baseColorAlpha;
-	if (baseColorAlpha < 0)
-	{
-		baseColorAlpha = objectData.Material.BaseColor.a;
-		if (baseColorAlpha > 0 && (index = indices.BaseColor) != ~0u)
+		if ((index = indices.Opacity) != ~0u)
 		{
-			const Texture2D<float4> texture = ResourceDescriptorHeap[index];
-			transmission *= 1 - texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).a;
+			const Texture2D<float> texture = ResourceDescriptorHeap[index];
+			baseColorAlpha = texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
+
+			hasSampledTexture = true;
 		}
+		else if (baseColorAlpha < 0)
+		{
+			baseColorAlpha = objectData.Material.BaseColor.a;
+			if ((index = indices.BaseColor) != ~0u)
+			{
+				const Texture2D<float4> texture = ResourceDescriptorHeap[index];
+				baseColorAlpha *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).a;
+
+				hasSampledTexture = true;
+			}
+		}
+		transmission = 1 - baseColorAlpha;
 	}
 	return transmission;
 }
 
 bool IsOpaque(ObjectData objectData, float2 textureCoordinate)
 {
-	return 1 - GetTransmission(objectData, textureCoordinate) >= objectData.Material.AlphaCutoff;
+	bool hasSampledTexture;
+	return 1 - GetTransmission(objectData, textureCoordinate, hasSampledTexture) >= objectData.Material.AlphaCutoff;
 }
 
 // Used for direct lighting
@@ -108,7 +114,8 @@ bool IsOpaque(ObjectData objectData, float2 textureCoordinate, inout float3 visi
 		material.BaseColor *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
 	}
 
-	material.Transmission = GetTransmission(objectData, textureCoordinate, material.BaseColor.a);
+	bool hasSampledTexture;
+	material.Transmission = GetTransmission(objectData, textureCoordinate, hasSampledTexture, material.BaseColor.a);
 
 	if (material.AlphaMode != AlphaMode::Opaque)
 	{
@@ -120,9 +127,11 @@ bool IsOpaque(ObjectData objectData, float2 textureCoordinate, inout float3 visi
 	return all((visibility *= (1 - material.Metallic) * material.BaseColor.rgb * material.Transmission) == 0);
 }
 
-Material GetMaterial(ObjectData objectData, float2 textureCoordinate)
+Material GetMaterial(ObjectData objectData, float2 textureCoordinate, out bool hasSampledTexture)
 {
 	Material material = objectData.Material;
+
+	hasSampledTexture = false;
 
 	const TextureMapResourceDescriptorIndices indices = objectData.ResourceDescriptorIndices.TextureMaps;
 
@@ -132,26 +141,34 @@ Material GetMaterial(ObjectData objectData, float2 textureCoordinate)
 	{
 		const Texture2D<float4> texture = ResourceDescriptorHeap[index];
 		material.BaseColor *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
+
+		hasSampledTexture = true;
 	}
 
-	material.Transmission = GetTransmission(objectData, textureCoordinate, material.BaseColor.a);
+	material.Transmission = GetTransmission(objectData, textureCoordinate, hasSampledTexture, material.BaseColor.a);
 
 	if (any(material.GetEmission() > 0) && (index = indices.EmissiveColor) != ~0u)
 	{
 		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
 		material.EmissiveColor *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0);
+
+		hasSampledTexture = true;
 	}
 
 	if (material.Metallic > 0 && (index = indices.Metallic) != ~0u)
 	{
 		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
 		material.Metallic *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).b;
+
+		hasSampledTexture = true;
 	}
 
 	if (material.Roughness > 0 && (index = indices.Roughness) != ~0u)
 	{
 		const Texture2D<float3> texture = ResourceDescriptorHeap[index];
 		material.Roughness *= texture.SampleLevel(g_anisotropicSampler, textureCoordinate, 0).g;
+
+		hasSampledTexture = true;
 	}
 
 	return material;

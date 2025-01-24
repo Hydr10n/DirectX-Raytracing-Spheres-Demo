@@ -137,10 +137,11 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		Material material;
 		if (g_constants.Flags & Flags::Material)
 		{
-			material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate);
+			bool hasSampledTexture;
+			material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate, hasSampledTexture);
 
-			const float4 BaseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 			Radiance = material.GetEmission();
+			const float4 BaseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 			const float
 				Roughness = material.Roughness,
 				Transmission = material.Transmission,
@@ -148,8 +149,12 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 
 			SET(BaseColorMetalness);
 			SET(Roughness);
-			SET(Transmission);
-			SET(IOR);
+
+			if (BaseColorMetalness.a < 1)
+			{
+				SET(Transmission);
+				SET(IOR);
+			}
 		}
 
 		if (g_constants.Flags & Flags::NormalRoughness)

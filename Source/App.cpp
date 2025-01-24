@@ -49,7 +49,6 @@ import LightPreparation;
 import Material;
 import MyScene;
 import PostProcessing.Bloom;
-import PostProcessing.ChromaticAberration;
 import PostProcessing.DenoisedComposition;
 import PostProcessing.MipmapGeneration;
 import Raytracing;
@@ -225,8 +224,6 @@ struct App::Impl : IDeviceNotify {
 
 		m_bloom.reset();
 
-		m_chromaticAberration.reset();
-
 		m_XeSS.reset();
 
 		m_denoisedComposition.reset();
@@ -316,8 +313,6 @@ private:
 	unique_ptr<DenoisedComposition> m_denoisedComposition;
 
 	unique_ptr<XeSS> m_XeSS;
-
-	unique_ptr<ChromaticAberration> m_chromaticAberration;
 
 	unique_ptr<Bloom> m_bloom;
 
@@ -700,8 +695,6 @@ private:
 
 		m_denoisedComposition = make_unique<DenoisedComposition>(deviceContext);
 
-		m_chromaticAberration = make_unique<ChromaticAberration>(deviceContext);
-
 		m_bloom = make_unique<Bloom>(deviceContext);
 
 		{
@@ -925,7 +918,6 @@ private:
 						case TextureMapType::Normal: indices.Normal = index; break;
 						default: Throw<out_of_range>("Unsupported texture map type");
 					}
-					_objectData.Material.HasTexture = true;
 				}
 				i++;
 			}
@@ -1081,8 +1073,7 @@ private:
 				{
 					.RenderSize = m_renderSize,
 					.Flags = ~0u
-						& ~(raytracingSettings.Bounces || isReSTIRDIEnabled ? 0 : GBufferGeneration::Flags::Geometry)
-						| (NRDSettings.Denoiser == NRDDenoiser::None ? 0 : GBufferGeneration::Flags::NormalRoughness)
+						& ~(NRDSettings.Denoiser == NRDDenoiser::None ? GBufferGeneration::Flags::NormalRoughness : 0)
 				}
 			);
 		}
@@ -1304,12 +1295,6 @@ private:
 			swap(inColor, outColor);
 		}
 
-		if (postProcessingSettings.IsChromaticAberrationEnabled) {
-			ProcessChromaticAberration(*inColor, *outColor);
-
-			swap(inColor, outColor);
-		}
-
 		if (postProcessingSettings.Bloom.IsEnabled) {
 			ProcessBloom(*inColor, *outColor);
 
@@ -1494,15 +1479,6 @@ private:
 			CreateResourceTagDesc(kBufferTypeScalingOutputColor, outColor, false)
 		};
 		ignore = m_streamline->EvaluateFeature(kFeatureNIS, CreateResourceTags(resourceTagDescs));
-	}
-
-	void ProcessChromaticAberration(Texture& inColor, Texture& outColor) {
-		m_chromaticAberration->Textures = {
-			.Input = &inColor,
-			.Output = &outColor
-		};
-
-		m_chromaticAberration->Process(m_deviceResources->GetCommandList());
 	}
 
 	void ProcessBloom(Texture& inColor, Texture& outColor) {
@@ -1914,8 +1890,6 @@ private:
 							}
 						}
 					}
-
-					ImGui::Checkbox("Chromatic Aberration", &postProcessingSetttings.IsChromaticAberrationEnabled);
 
 					if (ImGuiEx::TreeNode treeNode("Bloom", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
 						auto& bloomSettings = postProcessingSetttings.Bloom;

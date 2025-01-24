@@ -19,7 +19,11 @@ using namespace rtxdi;
 using namespace std;
 
 export {
-	struct LightInfo { float3 Base, Edges[2], Radiance; };
+	struct LightInfo {
+		XMFLOAT3 Base;
+		XMUINT3 Edges;
+		XMUINT2 Radiance;
+	};
 
 	struct RTXDIResources {
 		unique_ptr<ImportanceSamplingContext> Context;

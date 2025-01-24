@@ -296,7 +296,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 	if (all(pixelPosition < g_graphicsSettings.RenderSize))
 	{
 		float4 normals, baseColorMetalness;
-		float roughness, transmission, IOR;
+		float roughness, transmission = 0, IOR = 1;
 		if (previousFrame)
 		{
 			if (isinf(surface.LinearDepth = g_previousLinearDepth[pixelPosition])
@@ -306,8 +306,11 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			}
 			normals = g_previousNormals[pixelPosition];
 			baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
-			transmission = g_previousTransmission[pixelPosition];
-			IOR = g_previousIOR[pixelPosition];
+			if (baseColorMetalness.a < 1)
+			{
+				transmission = g_previousTransmission[pixelPosition];
+				IOR = g_previousIOR[pixelPosition];
+			}
 		}
 		else
 		{
@@ -318,8 +321,11 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			}
 			normals = g_normals[pixelPosition];
 			baseColorMetalness = g_baseColorMetalness[pixelPosition];
-			transmission = g_transmission[pixelPosition];
-			IOR = g_IOR[pixelPosition];
+			if (baseColorMetalness.a < 1)
+			{
+				transmission = g_transmission[pixelPosition];
+				IOR = g_IOR[pixelPosition];
+			}
 		}
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
 		surface.ViewDirection = normalize((previousFrame ? g_camera.PreviousPosition : g_camera.Position) - surface.Position);
@@ -331,7 +337,13 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			shadingNormal,
 			geometricNormal
 		);
-		surface.BSDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, roughness, transmission, IOR);
+		surface.BSDFSample.Initialize(
+			baseColorMetalness.rgb,
+			baseColorMetalness.a,
+			roughness,
+			transmission,
+			IOR
+		);
 	}
 	return surface;
 }

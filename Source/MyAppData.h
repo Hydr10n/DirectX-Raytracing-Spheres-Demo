@@ -260,8 +260,8 @@ public:
 					RTXGITechnique Technique = RTXGITechnique::SHARC;
 
 					struct SHARC {
-						static constexpr UINT MaxDownscaleFactor = 10;
-						UINT DownscaleFactor = 5;
+						static constexpr UINT MaxDownscaleFactor = 4;
+						UINT DownscaleFactor = 4;
 
 						static constexpr float MinSceneScale = 5, MaxSceneScale = 100;
 						float SceneScale = 50;
@@ -306,8 +306,6 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(NIS, IsEnabled, Sharpness);
 				} NIS;
 
-				bool IsChromaticAberrationEnabled{};
-
 				struct Bloom {
 					bool IsEnabled = true;
 
@@ -338,7 +336,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, HDR, NonHDR);
 				} ToneMapping;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, IsChromaticAberrationEnabled, Bloom, ToneMapping);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, Bloom, ToneMapping);
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsHDREnabled, IsVSyncEnabled, ReflexMode, Camera, Raytracing, PostProcessing);
