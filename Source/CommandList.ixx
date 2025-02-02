@@ -29,7 +29,7 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace std;
 
 #define COPY() \
-	if (sizeof(T) != buffer.GetStride()) Throw<runtime_error>("Buffer tride mismatch"); \
+	if (sizeof(T) != buffer.GetStride()) Throw<runtime_error>("Buffer stride mismatch"); \
 	Copy(buffer, ::data(data), sizeof(T) * size(data), offset);
 
 export namespace DirectX {

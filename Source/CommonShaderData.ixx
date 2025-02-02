@@ -39,8 +39,8 @@ export {
 			EmissiveColor = ~0u,
 			Metallic = ~0u,
 			Roughness = ~0u,
+			MetallicRoughness = ~0u,
 			Transmission = ~0u,
-			Opacity = ~0u,
 			Normal = ~0u,
 			_;
 	};

@@ -71,7 +71,8 @@ float3 Downsample()
 	 * (very bright subpixels, leads to pulsating artifacts)
 	 */
 	const float3 v0 = 0.125f / 4, v1 = 0.5f / 4;
-	float3 groups[] = {
+	float3 groups[] =
+	{
 		(a + b + d + e) * v0,
 		(b + c + e + f) * v0,
 		(d + e + g + h) * v0,

@@ -174,8 +174,6 @@ export struct RTXDI {
 		commandList.SetState(*m_resources->DIReservoir, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.LightRadiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		if (Textures.NoisyDiffuse) commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		if (Textures.NoisySpecular) commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		UINT i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
@@ -203,9 +201,15 @@ export struct RTXDI {
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Radiance->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.LightRadiance->GetUAVDescriptor());
-		if (Textures.NoisyDiffuse) commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
+		if (Textures.NoisyDiffuse) {
+			commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
+		}
 		i++;
-		if (Textures.NoisySpecular) commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
+		if (Textures.NoisySpecular) {
+			commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
+		}
 
 		const auto& context = *m_resources->Context;
 

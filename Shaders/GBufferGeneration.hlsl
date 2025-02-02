@@ -8,7 +8,8 @@ SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
 
-struct Flags {
+struct Flags
+{
 	enum {
 		Radiance = 0x1,
 		Position = 0x2,
@@ -23,7 +24,8 @@ struct Flags {
 	};
 };
 
-struct Constants {
+struct Constants
+{
 	uint2 RenderSize;
 	uint Flags;
 };
@@ -67,10 +69,21 @@ float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth
 		const MeshResourceDescriptorIndices meshIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices.Mesh;
 		if (meshIndices.MotionVectors != ~0u)
 		{
-			const StructuredBuffer<float3> meshMotionVectors = ResourceDescriptorHeap[meshIndices.MotionVectors];
+			const StructuredBuffer<uint2> meshMotionVectors = ResourceDescriptorHeap[meshIndices.MotionVectors];
 			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], hitInfo.PrimitiveIndex);
-			const float3 motionVectors[] = { meshMotionVectors[indices[0]], meshMotionVectors[indices[1]], meshMotionVectors[indices[2]] };
-			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
+			const uint2 motionVectors[] =
+			{
+				meshMotionVectors[indices[0]],
+				meshMotionVectors[indices[1]],
+				meshMotionVectors[indices[2]]
+			};
+			const float3 _motionVectors[] =
+			{
+				float3(Packing::UintToRg16f(motionVectors[0].x), Packing::UintToRg16f(motionVectors[0].y).x),
+				float3(Packing::UintToRg16f(motionVectors[1].x), Packing::UintToRg16f(motionVectors[1].y).x),
+				float3(Packing::UintToRg16f(motionVectors[2].x), Packing::UintToRg16f(motionVectors[2].y).x)
+			};
+			previousPosition += Vertex::Interpolate(_motionVectors, hitInfo.Barycentrics);
 		}
 		previousPosition = Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
@@ -111,7 +124,6 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	float3 Radiance = 0;
 	float LinearDepth = 1.#INF, NormalizedDepth = !g_camera.IsNormalizedDepthReversed;
 	float3 MotionVector = 0;
-	float4 NormalRoughness = 0;
 
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
@@ -159,7 +171,8 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 
 		if (g_constants.Flags & Flags::NormalRoughness)
 		{
-			NormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.Metallic >= 0.5f);
+			const float4 NormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.Metallic >= 0.5f);
+			SET(NormalRoughness);
 		}
 	}
 	else if (g_constants.Flags & Flags::Material)
@@ -171,5 +184,4 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	SET1(LinearDepth);
 	SET1(NormalizedDepth);
 	SET1(MotionVector);
-	SET1(NormalRoughness);
 }

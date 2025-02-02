@@ -2,19 +2,17 @@ module;
 
 #include <DirectXMath.h>
 
-#include <Windows.h>
-
 export module Material;
 
 using namespace DirectX;
 
 export {
-	enum class AlphaMode { Opaque, Blend, Mask };
+	enum class AlphaMode { Opaque, Mask, Blend };
 
 	struct Material {
 		XMFLOAT4 BaseColor{ 0, 0, 0, 1 };
 		XMFLOAT3 EmissiveColor{};
-		float EmissiveIntensity = 1, Metallic{}, Roughness = 0.5f, Transmission{}, IOR = 1;
+		float EmissiveStrength = 1, Metallic{}, Roughness = 0.5f, Transmission{}, IOR = 1;
 		AlphaMode AlphaMode = AlphaMode::Opaque;
 		float AlphaCutoff = 0.5f;
 		XMUINT2 _;
@@ -25,8 +23,8 @@ export {
 		EmissiveColor,
 		Metallic,
 		Roughness,
+		MetallicRoughness,
 		Transmission,
-		Opacity,
 		Normal,
 		Count
 	};

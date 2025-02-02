@@ -38,8 +38,8 @@ struct TextureMapResourceDescriptorIndices
 		EmissiveColor,
 		Metallic,
 		Roughness,
+		MetallicRoughness,
 		Transmission,
-		Opacity,
 		Normal,
 		_;
 };

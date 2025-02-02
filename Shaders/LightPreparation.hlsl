@@ -84,12 +84,13 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	positions[2] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	float3 emission = objectData.Material.GetEmission();
-	if (any(emission > 0) && textureMapIndices.EmissiveColor != ~0u)
+	if (textureMapIndices.EmissiveColor != ~0u && any(emission > 0))
 	{
 		float2 textureCoordinates[3];
 		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
 
-		const float2 edges[] = {
+		const float2 edges[] =
+		{
 			textureCoordinates[1] - textureCoordinates[0],
 			textureCoordinates[2] - textureCoordinates[1],
 			textureCoordinates[0] - textureCoordinates[2]

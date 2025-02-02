@@ -43,7 +43,7 @@ export struct Raytracing {
 		BOOL IsHashGridVisualizationEnabled;
 	};
 
-	struct { GPUBuffer* SceneData, * Camera, * InstanceData, * ObjectData; } GPUBuffers{};
+	struct { GPUBuffer* SceneData, * Camera, * ObjectData; } GPUBuffers{};
 
 	struct {
 		Texture
@@ -186,7 +186,6 @@ private:
 
 		commandList.SetState(*GPUBuffers.SceneData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		commandList.SetState(*GPUBuffers.InstanceData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.Radiance, &shader == &m_SHARCUpdate ? D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.LightRadiance, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -198,15 +197,12 @@ private:
 		commandList.SetState(*Textures.Roughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.Transmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.IOR, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		if (Textures.NoisyDiffuse) commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		if (Textures.NoisySpecular) commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		UINT i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
-		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.InstanceData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootShaderResourceView(i++, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootDescriptorTable(i++, &shader == &m_SHARCUpdate ? Textures.Radiance->GetSRVDescriptor() : Textures.Radiance->GetUAVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.LightRadiance->GetSRVDescriptor());
@@ -218,9 +214,15 @@ private:
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Roughness->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Transmission->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.IOR->GetSRVDescriptor());
-		if (Textures.NoisyDiffuse) commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
+		if (Textures.NoisyDiffuse) {
+			commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
+		}
 		i++;
-		if (Textures.NoisySpecular) commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
+		if (Textures.NoisySpecular) {
+			commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
+		}
 		i++;
 		return i;
 	}

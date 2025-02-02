@@ -19,7 +19,7 @@ struct HitInfo
 	uint PrimitiveIndex;
 
 	void Initialize(
-		float3 positions[3], float3 normals[3], float2 textureCoordinates[3],
+		float3 positions[3], float3 normals[3],
 		float2 barycentrics,
 		float3x4 objectToWorld, float3x4 worldToObject,
 		float3 worldRayDirection, float distance
@@ -35,7 +35,6 @@ struct HitInfo
 		{
 			Normal = -Normal;
 		}
-		TextureCoordinate = Vertex::Interpolate(textureCoordinates, barycentrics);
 		Barycentrics = barycentrics;
 		Distance = distance;
 	}

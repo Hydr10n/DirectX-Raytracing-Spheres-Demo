@@ -43,23 +43,22 @@ ConstantBuffer<SceneData> g_sceneData : register(b1);
 
 ConstantBuffer<Camera> g_camera : register(b2);
 
-StructuredBuffer<InstanceData> g_instanceData : register(t1);
-StructuredBuffer<ObjectData> g_objectData : register(t2);
+StructuredBuffer<ObjectData> g_objectData : register(t1);
 
 #if SHARC_UPDATE
-Texture2D<float3> g_radiance : register(t3);
+Texture2D<float3> g_radiance : register(t2);
 #else
 RWTexture2D<float3> g_radiance : register(u0);
 #endif
-Texture2D<float4> g_lightRadiance : register(t4);
-Texture2D<float4> g_position : register(t5);
-Texture2D<float> g_linearDepth : register(t6);
-Texture2D<float4> g_baseColorMetalness : register(t7);
-Texture2D<float2> g_flatNormal : register(t8);
-Texture2D<float4> g_normals : register(t9);
-Texture2D<float> g_roughness : register(t10);
-Texture2D<float> g_transmission : register(t11);
-Texture2D<float> g_IOR : register(t12);
+Texture2D<float4> g_lightRadiance : register(t3);
+Texture2D<float4> g_position : register(t4);
+Texture2D<float> g_linearDepth : register(t5);
+Texture2D<float4> g_baseColorMetalness : register(t6);
+Texture2D<float2> g_flatNormal : register(t7);
+Texture2D<float4> g_normals : register(t8);
+Texture2D<float> g_roughness : register(t9);
+Texture2D<float> g_transmission : register(t10);
+Texture2D<float> g_IOR : register(t11);
 RWTexture2D<float4> g_noisyDiffuse : register(u1);
 RWTexture2D<float4> g_noisySpecular : register(u2);
 
@@ -88,12 +87,12 @@ GlobalRootSignature GlobalRootSignature =
 	"CBV(b1),"
 	"CBV(b2),"
 	"SRV(t1),"
-	"SRV(t2),"
 #if SHARC_UPDATE
-	"DescriptorTable(SRV(t3)),"
+	"DescriptorTable(SRV(t2)),"
 #else
 	"DescriptorTable(UAV(u0)),"
 #endif
+	"DescriptorTable(SRV(t3)),"
 	"DescriptorTable(SRV(t4)),"
 	"DescriptorTable(SRV(t5)),"
 	"DescriptorTable(SRV(t6)),"
@@ -102,7 +101,6 @@ GlobalRootSignature GlobalRootSignature =
 	"DescriptorTable(SRV(t9)),"
 	"DescriptorTable(SRV(t10)),"
 	"DescriptorTable(SRV(t11)),"
-	"DescriptorTable(SRV(t12)),"
 	"DescriptorTable(UAV(u1)),"
 	"DescriptorTable(UAV(u2)),"
 #if ENABLE_SHARC

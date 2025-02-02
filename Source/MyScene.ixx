@@ -157,7 +157,9 @@ export {
 								break;
 							}
 						}
-						if (isOverlapping) continue;
+						if (isOverlapping) {
+							continue;
+						}
 
 						RenderObjectDesc renderObject;
 
@@ -190,7 +192,7 @@ export {
 							renderObject.Material = {
 								.BaseColor = RandomFloat4(0.1f),
 								.EmissiveColor = random.Float3(0.2f),
-								.EmissiveIntensity = random.Float(1, 10),
+								.EmissiveStrength = random.Float(1, 10),
 								.Metallic = random.Float(0.4f),
 								.Roughness = random.Float(0.3f)
 							};
@@ -264,7 +266,9 @@ export {
 						textures[to_underlying(TextureMapType::BaseColor)] = directoryPath / L"Earth_BaseColor.jpg";
 						textures[to_underlying(TextureMapType::Normal)] = directoryPath / L"Earth_Normal.jpg";
 					}
-					else if (renderObject.Name == ObjectNames::Star) rigidDynamic.setMass(0);
+					else if (renderObject.Name == ObjectNames::Star) {
+						rigidDynamic.setMass(0);
+					}
 
 					RigidActors[Name] = &rigidDynamic;
 				}
@@ -279,23 +283,37 @@ struct MyScene : Scene {
 
 	void Tick(double elapsedSeconds, const GamePad::ButtonStateTracker& gamepadStateTracker, const Keyboard::KeyboardStateTracker& keyboardStateTracker, const Mouse::ButtonStateTracker& mouseStateTracker) override {
 		if (mouseStateTracker.GetLastState().positionMode == Mouse::MODE_RELATIVE) {
-			if (gamepadStateTracker.a == GamepadButtonState::PRESSED) m_isPhysXRunning = !m_isPhysXRunning;
-			if (keyboardStateTracker.IsKeyPressed(Key::Space)) m_isPhysXRunning = !m_isPhysXRunning;
+			if (gamepadStateTracker.a == GamepadButtonState::PRESSED) {
+				m_isPhysXRunning = !m_isPhysXRunning;
+			}
+			if (keyboardStateTracker.IsKeyPressed(Key::Space)) {
+				m_isPhysXRunning = !m_isPhysXRunning;
+			}
 
 			{
 				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidActors.at(ObjectNames::Earth)->userData);
-				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
-				if (keyboardStateTracker.IsKeyPressed(Key::G)) isGravityEnabled = !isGravityEnabled;
+				if (gamepadStateTracker.b == GamepadButtonState::PRESSED) {
+					isGravityEnabled = !isGravityEnabled;
+				}
+				if (keyboardStateTracker.IsKeyPressed(Key::G)) {
+					isGravityEnabled = !isGravityEnabled;
+				}
 			}
 
 			{
 				auto& isGravityEnabled = reinterpret_cast<bool&>(RigidActors.at(ObjectNames::Star)->userData);
-				if (gamepadStateTracker.y == GamepadButtonState::PRESSED) isGravityEnabled = !isGravityEnabled;
-				if (keyboardStateTracker.IsKeyPressed(Key::H)) isGravityEnabled = !isGravityEnabled;
+				if (gamepadStateTracker.y == GamepadButtonState::PRESSED) {
+					isGravityEnabled = !isGravityEnabled;
+				}
+				if (keyboardStateTracker.IsKeyPressed(Key::H)) {
+					isGravityEnabled = !isGravityEnabled;
+				}
 			}
 		}
 
-		if (IsStatic()) return;
+		if (IsStatic()) {
+			return;
+		}
 
 		Tick(elapsedSeconds);
 
@@ -308,13 +326,19 @@ protected:
 			const auto& shape = *renderObject.Shape;
 
 			const auto rigidBody = shape.getActor()->is<PxRigidBody>();
-			if (rigidBody == nullptr) continue;
+			if (rigidBody == nullptr) {
+				continue;
+			}
 
 			rigidBody->setActorFlag(PxActorFlag::eDISABLE_SIMULATION, !renderObject.IsVisible);
-			if (!renderObject.IsVisible) continue;
+			if (!renderObject.IsVisible) {
+				continue;
+			}
 
 			const auto mass = rigidBody->getMass();
-			if (!mass) continue;
+			if (!mass) {
+				continue;
+			}
 
 			const auto& position = PxShapeExt::getGlobalPose(shape, *shape.getActor()).p;
 

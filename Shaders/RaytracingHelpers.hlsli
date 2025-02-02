@@ -75,32 +75,36 @@ bool CastRay(
 		const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshIndices.Vertices];
 		const VertexDesc vertexDesc = objectData.VertexDesc;
 		float3 positions[3], normals[3];
-		float2 textureCoordinates[3];
 		vertexDesc.LoadPositions(vertices, indices, positions);
 		vertexDesc.LoadNormals(vertices, indices, normals);
-		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
 		hitInfo.Initialize(
-			positions, normals, textureCoordinates,
+			positions, normals,
 			q.CommittedTriangleBarycentrics(),
 			q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(),
 			rayDesc.Direction, q.CommittedRayT()
 		);
-		if (textureMapIndices.Normal != ~0u)
+		if (vertexDesc.TextureCoordinateOffset != ~0u)
 		{
-			const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.Normal];
-			float3 T;
-			if (vertexDesc.TangentOffset == ~0u)
+			float2 textureCoordinates[3];
+			vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
+			hitInfo.TextureCoordinate = Vertex::Interpolate(textureCoordinates, hitInfo.Barycentrics);
+			if (textureMapIndices.Normal != ~0u)
 			{
-				T = normalize(Math::CalculateTangent(positions, textureCoordinates));
+				const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.Normal];
+				float3 T;
+				if (vertexDesc.TangentOffset == ~0u)
+				{
+					T = normalize(Math::CalculateTangent(positions, textureCoordinates));
+				}
+				else
+				{
+					float3 tangents[3];
+					vertexDesc.LoadTangents(vertices, indices, tangents);
+					T = normalize(Vertex::Interpolate(tangents, hitInfo.Barycentrics));
+				}
+				const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
+				hitInfo.Normal = normalize(Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
 			}
-			else
-			{
-				float3 tangents[3];
-				vertexDesc.LoadTangents(vertices, indices, tangents);
-				T = normalize(Vertex::Interpolate(tangents, hitInfo.Barycentrics));
-			}
-			const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
-			hitInfo.Normal = normalize(Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
 		}
 	}
 	return isHit;

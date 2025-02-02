@@ -1,6 +1,7 @@
 module;
 
 #include <filesystem>
+#include <span>
 
 #include "directx/d3d12.h"
 
@@ -21,7 +22,7 @@ using namespace std::filesystem;
 
 #define LOAD_FROM_MEMORY(Loader, forceSRGB, ...) \
 	ScratchImage image; \
-	ThrowIfFailed(Loader(reinterpret_cast<const std::byte*>(pData), size, __VA_ARGS__, nullptr, image)); \
+	ThrowIfFailed(Loader(::data(data), size(data), __VA_ARGS__, nullptr, image)); \
 	return LoadTexture(commandList, image, forceSRGB);
 
 #define LOAD_FROM_FILE(Loader, forceSRGB, ...) \
@@ -63,7 +64,7 @@ export namespace DirectX::TextureHelpers {
 
 	unique_ptr<Texture> LoadDDS(
 		CommandList& commandList,
-		const void* pData, size_t size,
+		span<const std::byte> data,
 		bool forceSRGB = false, DDS_FLAGS flags = DDS_FLAGS_NONE
 	) {
 		LOAD_FROM_MEMORY(LoadFromDDSMemoryEx, forceSRGB, flags, nullptr);
@@ -77,7 +78,7 @@ export namespace DirectX::TextureHelpers {
 		LOAD_FROM_FILE(LoadFromDDSFileEx, forceSRGB, flags, nullptr);
 	}
 
-	unique_ptr<Texture> LoadWIC(CommandList& commandList, const void* pData, size_t size, WIC_FLAGS flags = WIC_FLAGS_NONE) {
+	unique_ptr<Texture> LoadWIC(CommandList& commandList, span<const std::byte> data, WIC_FLAGS flags = WIC_FLAGS_NONE) {
 		LOAD_FROM_MEMORY(LoadFromWICMemory, false, flags);
 	}
 
@@ -85,7 +86,7 @@ export namespace DirectX::TextureHelpers {
 		LOAD_FROM_FILE(LoadFromWICFile, false, flags);
 	}
 
-	unique_ptr<Texture> LoadHDR(CommandList& commandList, const void* pData, size_t size) {
+	unique_ptr<Texture> LoadHDR(CommandList& commandList, span<const std::byte> data) {
 		LOAD_FROM_MEMORY(LoadFromHDRMemory, false);
 	}
 
@@ -97,7 +98,7 @@ export namespace DirectX::TextureHelpers {
 		LOAD_FROM_FILE(LoadFromEXRFile, false);
 	}
 
-	unique_ptr<Texture> LoadTGA(CommandList& commandList, const void* pData, size_t size, TGA_FLAGS flags = TGA_FLAGS_NONE) {
+	unique_ptr<Texture> LoadTGA(CommandList& commandList, span<const std::byte> data, TGA_FLAGS flags = TGA_FLAGS_NONE) {
 		LOAD_FROM_MEMORY(LoadFromTGAMemory, false, flags);
 	}
 
@@ -105,27 +106,25 @@ export namespace DirectX::TextureHelpers {
 		LOAD_FROM_FILE(LoadFromTGAFile, false, flags);
 	}
 
-	unique_ptr<Texture> LoadTexture(
-		CommandList& commandList,
-		string_view format, const void* pData, size_t size,
-		bool forceSRGB = false
-	) {
-		if (empty(format)) throw invalid_argument("Unknown texture format");
-
-		const auto _format = data(format);
+	unique_ptr<Texture> LoadTexture(CommandList& commandList, string_view format, span<const std::byte> data, bool forceSRGB = false) {
+		const auto _format = ::data(format);
 		auto texture =
-			!_stricmp(_format, "dds") ? LoadDDS(commandList, pData, size, forceSRGB) :
-			!_stricmp(_format, "hdr") ? LoadHDR(commandList, pData, size) :
-			!_stricmp(_format, "tga") ? LoadTGA(commandList, pData, size, forceSRGB ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
-			LoadWIC(commandList, pData, size, forceSRGB ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
+			!_stricmp(_format, "dds") ? LoadDDS(commandList, data, forceSRGB) :
+			!_stricmp(_format, "hdr") ? LoadHDR(commandList, data) :
+			!_stricmp(_format, "tga") ? LoadTGA(commandList, data, forceSRGB ? TGA_FLAGS_DEFAULT_SRGB : TGA_FLAGS_NONE) :
+			LoadWIC(commandList, data, forceSRGB ? WIC_FLAGS_DEFAULT_SRGB : WIC_FLAGS_NONE);
 		return texture;
 	}
 
 	unique_ptr<Texture> LoadTexture(CommandList& commandList, const path& filePath, bool forceSRGB = false) {
-		if (empty(filePath)) throw invalid_argument("Texture file path cannot be empty");
+		if (empty(filePath)) {
+			throw invalid_argument("Texture file path cannot be empty");
+		}
 
 		const auto filePathExtension = filePath.extension();
-		if (empty(filePathExtension)) throw invalid_argument(format("{}: Unknown file format", filePath.string()));
+		if (empty(filePathExtension)) {
+			throw invalid_argument(format("{}: Unknown file format", filePath.string()));
+		}
 
 		const auto extension = filePathExtension.c_str() + 1;
 		auto texture =

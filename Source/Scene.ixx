@@ -106,7 +106,9 @@ export {
 				IDs.emplace_back(ID.first);
 				MeshNode->OnDestroyed.remove(ID.second);
 			}
-			if (m_topLevelAccelerationStructure.ID != ~0ull) IDs.emplace_back(m_topLevelAccelerationStructure.ID);
+			if (m_topLevelAccelerationStructure.ID != ~0ull) {
+				IDs.emplace_back(m_topLevelAccelerationStructure.ID);
+			}
 			m_deviceContext.AccelerationStructureManager->RemoveAccelerationStructures(IDs);
 			m_bottomLevelAccelerationStructureIDs = {};
 			m_topLevelAccelerationStructure = {};
@@ -147,13 +149,8 @@ export {
 						TextureMapType::Metallic,
 						TextureMapType::Roughness,
 						TextureMapType::Transmission,
-						TextureMapType::Opacity,
 						TextureMapType::Normal
 						}) {
-						if (textureMapType == TextureMapType::Opacity && renderObject.Textures[to_underlying(TextureMapType::Transmission)]) {
-							continue;
-						}
-
 						const auto i = to_underlying(textureMapType);
 						if (const auto& filePath = renderObjectDesc.Textures[i]; !empty(filePath)) {
 							auto& texture = renderObject.Textures[i];
@@ -236,9 +233,15 @@ export {
 				for (const auto& renderObject : RenderObjects) {
 					const auto mesh = renderObject.Mesh.get();
 					const auto [first, second] = m_bottomLevelAccelerationStructureIDs.try_emplace(mesh);
-					if (!second) continue;
+					if (!second) {
+						continue;
+					}
 
-					auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(*mesh->Vertices, *mesh->Indices, renderObject.Material.AlphaMode == AlphaMode::Opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE) });
+					auto& _geometryDescs = geometryDescs.emplace_back(initializer_list{ CreateGeometryDesc(
+						*mesh->Vertices, *mesh->Indices,
+						renderObject.Material.AlphaMode == AlphaMode::Opaque ?
+						D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE)
+						});
 					newInputs.emplace_back(D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS{
 						.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
 						.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,

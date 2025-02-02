@@ -2,20 +2,20 @@
 
 enum class AlphaMode
 {
-	Opaque, Blend, Mask
+	Opaque, Mask, Blend
 };
 
 struct Material
 {
 	float4 BaseColor;
 	float3 EmissiveColor;
-	float EmissiveIntensity, Metallic, Roughness, Transmission, IOR;
+	float EmissiveStrength, Metallic, Roughness, Transmission, IOR;
 	AlphaMode AlphaMode;
 	float AlphaCutoff;
 	uint2 _;
 
 	float3 GetEmission()
 	{
-		return EmissiveColor * EmissiveIntensity;
+		return EmissiveColor * EmissiveStrength;
 	}
 };

@@ -4,7 +4,7 @@
 
 #include <Windows.h>
 
-#include "JsonHelpers.h"
+#include "JSONHelpers.h"
 
 #include "rtxdi/ReSTIRDIParameters.h"
 
