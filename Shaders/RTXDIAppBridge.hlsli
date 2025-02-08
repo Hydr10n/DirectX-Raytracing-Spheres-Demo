@@ -238,28 +238,30 @@ float RAB_LightSampleSolidAnglePdf(RAB_LightSample lightSample)
 	return lightSample.SolidAnglePDF;
 }
 
+using RAB_Material = BSDFSample;
+
 struct RAB_Surface
 {
 	float LinearDepth;
 	float3 Position, ViewDirection;
 	SurfaceVectors Vectors;
-	BSDFSample BSDFSample;
+	RAB_Material Material;
 
 	bool Sample(inout RAB_RandomSamplerState rng, out float3 L)
 	{
 		LobeType lobeType;
 		float lobeProbability;
-		return BSDFSample.Sample(Vectors, ViewDirection, rng.GetFloat4(), L, lobeType, lobeProbability);
+		return Material.Sample(Vectors, ViewDirection, rng.GetFloat4(), L, lobeType, lobeProbability);
 	}
 
 	float EvaluatePDF(float3 L)
 	{
-		return BSDFSample.EvaluatePDF(Vectors, L, ViewDirection);
+		return Material.EvaluatePDF(Vectors, L, ViewDirection);
 	}
 
 	void Evaluate(float3 L, out float3 diffuse, out float3 specular)
 	{
-		BSDFSample.Evaluate(Vectors, L, ViewDirection, diffuse, specular);
+		Material.Evaluate(Vectors, L, ViewDirection, diffuse, specular);
 	}
 
 	void Shade(float3 samplePosition, float3 radiance, out float3 diffuse, out float3 specular)
@@ -338,7 +340,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			normalRoughenss.xyz,
 			normal
 		);
-		surface.BSDFSample.Initialize(
+		surface.Material.Initialize(
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
 			normalRoughenss.w,
@@ -374,11 +376,9 @@ float RAB_GetSurfaceLinearDepth(RAB_Surface surface)
 	return surface.LinearDepth;
 }
 
-using RAB_Material = BSDFSample;
-
 RAB_Material RAB_GetMaterial(RAB_Surface surface)
 {
-	return surface.BSDFSample;
+	return surface.Material;
 }
 
 bool RAB_AreMaterialsSimilar(RAB_Material a, RAB_Material b)

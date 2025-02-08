@@ -98,7 +98,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	{
 		g_radiance[pixelPosition] += radiance;
 
-		if (any(specular) > 0)
+		if (any(specular > 0))
 		{
 			g_specularHitDistance[pixelPosition] = lightDistance;
 		}
@@ -109,7 +109,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		NRDPackNoisySignals(
 			g_graphicsSettings.Denoising,
 			surface.Vectors.ShadingNormal, surface.ViewDirection, surface.LinearDepth,
-			surface.BSDFSample,
+			surface.Material,
 			diffuse, specular, lightDistance,
 			0, 0, false,
 			g_diffuse[pixelPosition], g_specular[pixelPosition]
