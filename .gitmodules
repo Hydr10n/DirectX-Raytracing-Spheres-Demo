@@ -1,25 +1,21 @@
 [submodule "External/NVIDIA/MathLib"]
 	path = External/NVIDIA/MathLib
-	url = https://github.com/NVIDIAGameWorks/MathLib
+	url = https://github.com/NVIDIA-RTX/MathLib
 [submodule "External/NVIDIA/Streamline"]
 	path = External/NVIDIA/Streamline
 	url = https://github.com/NVIDIAGameWorks/Streamline
 [submodule "External/NVIDIA/RTXMU"]
 	path = External/NVIDIA/RTXMU
-	url = https://github.com/NVIDIAGameWorks/RTXMU
+	url = https://github.com/NVIDIA-RTX/RTXMU
 [submodule "External/NVIDIA/NRD"]
 	path = External/NVIDIA/NRD
-	url = https://github.com/NVIDIAGameWorks/RayTracingDenoiser
+	url = https://github.com/NVIDIA-RTX/NRD
 [submodule "External/NVIDIA/NRI"]
 	path = External/NVIDIA/NRI
-	url = https://github.com/NVIDIAGameWorks/NRI
+	url = https://github.com/NVIDIA-RTX/NRI
 [submodule "External/NVIDIA/ShaderMake"]
 	path = External/NVIDIA/ShaderMake
-	url = https://github.com/NVIDIAGameWorks/ShaderMake
-[submodule "External/NVIDIA/RTXDI"]
-	path = External/NVIDIA/RTXDI
-	url = https://github.com/NVIDIAGameWorks/RTXDI
-	branch = sdk-only
+	url = https://github.com/NVIDIA-RTX/ShaderMake
 [submodule "External/AMD/MemoryAllocator/D3D12"]
 	path = External/AMD/MemoryAllocator/D3D12
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
@@ -31,4 +27,7 @@
 	url = https://github.com/NVIDIA/nvapi
 [submodule "External/NVIDIA/RTXGI/SHARC"]
 	path = External/NVIDIA/RTXGI/SHARC
-	url = https://github.com/NVIDIAGameWorks/SHARC
+	url = https://github.com/NVIDIA-RTX/SHARC
+[submodule "External/NVIDIA/RTXDI"]
+	path = External/NVIDIA/RTXDI
+	url = https://github.com/NVIDIA-RTX/RTXDI-Library
