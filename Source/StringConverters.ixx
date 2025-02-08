@@ -1,8 +1,17 @@
 module;
 
-#include "MyAppData.h"
+#include "directxtk12/PostProcess.h"
+
+#include "Rtxdi/DI/ReSTIRDIParameters.h"
+
+#include "sl_helpers.h"
 
 export module StringConverters;
+
+import Denoiser;
+import RTXGI;
+import Upscaler;
+import WindowHelpers;
 
 using namespace DirectX;
 using namespace sl;
@@ -65,11 +74,12 @@ export {
 		}
 	}
 
-	constexpr string ToString(NRDDenoiser value) {
+	constexpr string ToString(Denoiser value) {
 		switch (value) {
-			case NRDDenoiser::None: return "None";
-			case NRDDenoiser::ReBLUR: return "ReBLUR";
-			case NRDDenoiser::ReLAX: return "ReLAX";
+			case Denoiser::None: return "None";
+			case Denoiser::DLSSRayReconstruction: return "NVIDIA DLSS Ray Reconstruction";
+			case Denoiser::NRDReBLUR: return "NVIDIA ReBLUR";
+			case Denoiser::NRDReLAX: return "NVIDIA ReLAX";
 			default: throw;
 		}
 	}

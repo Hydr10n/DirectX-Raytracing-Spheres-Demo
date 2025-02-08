@@ -1,5 +1,5 @@
 #include "RTXDIAppBridge.hlsli"
-#include "rtxdi/DIResamplingFunctions.hlsli"
+#include "Rtxdi/DI/SpatialResampling.hlsli"
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]

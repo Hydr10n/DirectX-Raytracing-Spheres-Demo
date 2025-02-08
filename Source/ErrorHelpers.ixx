@@ -15,7 +15,9 @@ using namespace std;
 
 #define THROW(Type, Succeeded, Code) \
 	void ThrowIfFailed(same_as<Type> auto value, PARAMETERS) { \
-		if (!Succeeded) ThrowSystemError(error_code(static_cast<int>(Code), system_category()), message, stacktrace); \
+		if (!Succeeded) { \
+			ThrowSystemError(error_code(static_cast<int>(Code), system_category()), message, stacktrace); \
+		} \
 	}
 
 export namespace ErrorHelpers {

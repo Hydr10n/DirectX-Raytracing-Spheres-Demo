@@ -85,7 +85,9 @@ private:
 		struct PxAllocator : physx::PxDefaultAllocator {
 			void* allocate(size_t size, const char* typeName, const char* filename, int line) override {
 				void* ptr = PxDefaultAllocator::allocate(size, typeName, filename, line);
-				if (ptr == nullptr) throw std::bad_alloc();
+				if (ptr == nullptr) {
+					throw std::bad_alloc();
+				}
 				return ptr;
 			}
 		} AllocatorCallback;

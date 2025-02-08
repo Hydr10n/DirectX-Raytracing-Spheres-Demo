@@ -17,27 +17,37 @@ set(Intel_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/Intel/")
 
 set(NVIDIA_library_path "${CMAKE_CURRENT_SOURCE_DIR}/External/NVIDIA/")
 
+add_subdirectory("${NVIDIA_library_path}MathLib")
+
 add_subdirectory("${NVIDIA_library_path}ShaderMake")
 
 option(NRD_EMBEDS_DXBC_SHADERS "" OFF)
 option(NRD_EMBEDS_SPIRV_SHADERS "" OFF)
-option(NRI_ENABLE_EXTERNAL_LIBRARIES OFF)
+set(NRD_NORMAL_ENCODING "4" CACHE STRING "")
 add_subdirectory("${NVIDIA_library_path}NRD")
 
+option(NRI_ENABLE_AGILITY_SDK_SUPPORT OFF)
+option(NRI_ENABLE_D3D_EXTENSIONS OFF)
 option(NRI_ENABLE_D3D11_SUPPORT "" OFF)
+option(NRI_ENABLE_NVTX_SUPPORT OFF)
 option(NRI_ENABLE_VK_SUPPORT "" OFF)
 add_subdirectory("${NVIDIA_library_path}NRI")
 
-add_subdirectory("${NVIDIA_library_path}RTXDI/rtxdi-sdk")
+add_subdirectory("${NVIDIA_library_path}RTXDI")
 
 option(RTXMU_WITH_VULKAN "" OFF)
 add_subdirectory("${NVIDIA_library_path}RTXMU")
 
+set(NVIDIA_streamline_path "${NVIDIA_library_path}Streamline")
 option(STREAMLINE_FEATURE_DLSS_FG "" ON)
+option(STREAMLINE_FEATURE_DLSS_RR "" ON)
 option(STREAMLINE_FEATURE_DLSS_SR "" ON)
 option(STREAMLINE_FEATURE_NIS "" ON)
 option(STREAMLINE_FEATURE_REFLEX "" ON)
-add_subdirectory("${NVIDIA_library_path}Streamline")
+set(STREAMLINE_INTERPOSER_LIB "${NVIDIA_streamline_path}/lib/x64/sl.interposer.lib" CACHE STRING "")
+set(STREAMLINE_PLUGIN_DLL_DIR "${NVIDIA_streamline_path}/bin/x64/" CACHE STRING "")
+set(STREAMLINE_SUPPORT_DLL_DIR ${STREAMLINE_PLUGIN_DLL_DIR} CACHE STRING "")
+add_subdirectory(${NVIDIA_streamline_path})
 
 file(GLOB modules "Source/*.ixx")
 file(GLOB source "Source/*.cpp")
@@ -46,7 +56,6 @@ add_executable(${project} WIN32
 	"Source/App.rc"
 	"Source/App.manifest"
 	"${AMD_library_path}MemoryAllocator/D3D12/src/D3D12MemAlloc.cpp"
-	"${NVIDIA_library_path}NRD/Integration/NRDIntegration.hpp"
 	"${NVIDIA_library_path}ShaderMake/src/ShaderBlob.cpp")
 target_sources(${project} PRIVATE FILE_SET cxx_modules TYPE CXX_MODULES FILES ${modules})
 
@@ -64,14 +73,8 @@ set(Intel_CXX_include_directories "XeSS/inc")
 list(TRANSFORM Intel_CXX_include_directories PREPEND ${Intel_library_path})
 
 set(NVIDIA_CXX_include_directories
-	"MathLib"
-	"NRD/Include" "NRD/Integration"
-	"NRI/Include"
 	"NVAPI"
-	"RTXDI/rtxdi-sdk/include"
-	"RTXMU/include"
-	"ShaderMake/include"
-	"Streamline/include")
+	"ShaderMake/include")
 list(TRANSFORM NVIDIA_CXX_include_directories PREPEND ${NVIDIA_library_path})
 
 target_include_directories(${project} PRIVATE
@@ -84,7 +87,7 @@ set(NVIDIA_shader_include_directories
 	"MathLib"
 	"NRD/Shaders/Include"
 	"NVAPI"
-	"RTXDI/rtxdi-sdk/include"
+	"RTXDI/Include"
 	"RTXGI/SHARC/include")
 list(TRANSFORM NVIDIA_shader_include_directories PREPEND ${NVIDIA_library_path})
 
@@ -95,14 +98,15 @@ CompileShaders(target ${project}_Shaders
 	out ${CMAKE_CURRENT_BINARY_DIR}
 	include_directories ${NVIDIA_shader_include_directories}
 	source ${shaders}
-	folder ${project}
 	additional_options "--shaderModel 6_6 --hlsl2021")
 add_dependencies(${project} ${project}_Shaders)
 
 target_link_libraries(${project} PRIVATE
+	MathLib
 	NRD
+	NRDIntegration
 	NRI
-	rtxdi-sdk
+	Rtxdi
 	rtxmu
 	streamline
 	"${Intel_library_path}XeSS/lib/libxess.lib"

@@ -1,5 +1,5 @@
 #include "RTXDIAppBridge.hlsli"
-#include "rtxdi/InitialSamplingFunctions.hlsli"
+#include "Rtxdi/DI/InitialSampling.hlsli"
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]

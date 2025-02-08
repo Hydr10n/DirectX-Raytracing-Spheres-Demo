@@ -1,6 +1,6 @@
 #include "RTXDIAppBridge.hlsli"
-#include "rtxdi/DIReservoir.hlsli"
-#include "rtxdi/ReGIRSampling.hlsli"
+#include "Rtxdi/DI/Reservoir.hlsli"
+#include "Rtxdi/ReGIR/ReGIRSampling.hlsli"
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
@@ -83,25 +83,36 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	{
 		g_lightRadiance[pixelPosition] = float4(radiance, lightDistance);
 
-		if (g_graphicsSettings.NRD.Denoiser != NRDDenoiser::None)
+		if (g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReBLUR
+			|| g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReLAX)
 		{
-			g_noisyDiffuse[pixelPosition].rgb = diffuse;
-			g_noisySpecular[pixelPosition].rgb = specular;
+			g_diffuse[pixelPosition].rgb = diffuse;
+			g_specular[pixelPosition].rgb = specular;
 		}
 	}
-	else if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
+	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None)
 	{
 		g_radiance[pixelPosition] += radiance;
 	}
-	else
+	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
 	{
-		PackNoisySignals(
-			g_graphicsSettings.NRD,
+		g_radiance[pixelPosition] += radiance;
+
+		if (any(specular) > 0)
+		{
+			g_specularHitDistance[pixelPosition] = lightDistance;
+		}
+	}
+	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReBLUR
+		|| g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReLAX)
+	{
+		NRDPackNoisySignals(
+			g_graphicsSettings.Denoising,
 			surface.Vectors.ShadingNormal, surface.ViewDirection, surface.LinearDepth,
 			surface.BSDFSample,
 			diffuse, specular, lightDistance,
 			0, 0, false,
-			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
+			g_diffuse[pixelPosition], g_specular[pixelPosition]
 		);
 	}
 }

@@ -60,7 +60,6 @@ bool CastRay(
 		, enableShaderExecutionReordering
 #endif
 	);
-	hitInfo.Distance = 1.#INF;
 	const bool isHit = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (isHit)
 	{
@@ -106,6 +105,12 @@ bool CastRay(
 				hitInfo.Normal = normalize(Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
 			}
 		}
+	}
+	else
+	{
+		hitInfo = (HitInfo)0;
+		hitInfo.Position = rayDesc.Origin + rayDesc.Direction * 1e8f;
+		hitInfo.Distance = 1.#INF;
 	}
 	return isHit;
 }

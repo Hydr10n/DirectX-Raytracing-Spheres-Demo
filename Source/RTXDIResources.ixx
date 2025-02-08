@@ -4,8 +4,8 @@ module;
 
 #include "directx/d3d12.h"
 
-#include "rtxdi/ImportanceSamplingContext.h"
-#include "rtxdi/RISBufferSegmentAllocator.h"
+#include "Rtxdi/ImportanceSamplingContext.h"
+#include "Rtxdi/LightSampling/RISBufferSegmentAllocator.h"
 
 export module RTXDIResources;
 
@@ -19,11 +19,7 @@ using namespace rtxdi;
 using namespace std;
 
 export {
-	struct LightInfo {
-		XMFLOAT3 Base;
-		XMUINT3 Edges;
-		XMUINT2 Radiance;
-	};
+	struct LightInfo { XMFLOAT3 Base, Edges[2], Radiance; };
 
 	struct RTXDIResources {
 		unique_ptr<ImportanceSamplingContext> Context;
@@ -38,7 +34,7 @@ export {
 		unique_ptr<Texture> LocalLightPDF;
 
 		void CreateLightResources(const DeviceContext& deviceContext, UINT emissiveTriangleCount, UINT objectCount) {
-			const auto RISBufferSegmentSize = Context->getRISBufferSegmentAllocator().getTotalSizeInElements();
+			const auto RISBufferSegmentSize = Context->GetRISBufferSegmentAllocator().getTotalSizeInElements();
 			RIS = GPUBuffer::CreateDefault<XMUINT2>(deviceContext, RISBufferSegmentSize);
 
 			LightInfo = GPUBuffer::CreateDefault<::LightInfo>(deviceContext, emissiveTriangleCount);
@@ -69,7 +65,7 @@ export {
 		void CreateRenderSizeDependentResources(CommandList& commandList) {
 			const auto& deviceContext = commandList.GetDeviceContext();
 
-			const auto neighborOffsetCount = Context->getNeighborOffsetCount();
+			const auto neighborOffsetCount = Context->GetNeighborOffsetCount();
 			vector<UINT16> offsets(neighborOffsetCount);
 			FillNeighborOffsetBuffer(reinterpret_cast<uint8_t*>(data(offsets)), neighborOffsetCount);
 			NeighborOffsets = GPUBuffer::CreateDefault<UINT16>(deviceContext, neighborOffsetCount, DXGI_FORMAT_R8G8_SNORM);
@@ -77,7 +73,7 @@ export {
 			commandList.Copy(*NeighborOffsets, offsets);
 			commandList.SetState(*NeighborOffsets, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
-			DIReservoir = GPUBuffer::CreateDefault<RTXDI_PackedDIReservoir>(deviceContext, Context->getReSTIRDIContext().getReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);
+			DIReservoir = GPUBuffer::CreateDefault<RTXDI_PackedDIReservoir>(deviceContext, Context->GetReSTIRDIContext().GetReservoirBufferParameters().reservoirArrayPitch * c_NumReSTIRDIReservoirBuffers);
 		}
 	};
 }

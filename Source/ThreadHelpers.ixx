@@ -17,7 +17,9 @@ export namespace ThreadHelpers {
 				function(forward<Args>(args)...);
 				promise.set_value();
 			}
-			else promise.set_value(function(forward<Args>(args)...));
+			else {
+				promise.set_value(function(forward<Args>(args)...));
+			}
 		}).detach();
 		return future;
 	}

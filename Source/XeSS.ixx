@@ -32,7 +32,9 @@ export {
 		}
 
 		~XeSS() {
-			if (m_context != nullptr) xessDestroyContext(m_context);
+			if (m_context != nullptr) {
+				xessDestroyContext(m_context);
+			}
 		}
 
 		auto IsAvailable() const { return m_isAvailable; }

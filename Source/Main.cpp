@@ -122,9 +122,13 @@ int WINAPI wWinMain(
 				TranslateMessage(&msg);
 				DispatchMessageW(&msg);
 
-				if (g_exception) rethrow_exception(g_exception);
+				if (g_exception) {
+					rethrow_exception(g_exception);
+				}
 			}
-			else g_app->Tick();
+			else {
+				g_app->Tick();
+			}
 		} while (msg.message != WM_QUIT);
 		ret = static_cast<int>(msg.wParam);
 	}
@@ -143,7 +147,9 @@ int WINAPI wWinMain(
 
 	g_app.reset();
 
-	if (!empty(error)) MessageBoxA(nullptr, error.c_str(), nullptr, MB_OK | MB_ICONERROR);
+	if (!empty(error)) {
+		MessageBoxA(nullptr, error.c_str(), nullptr, MB_OK | MB_ICONERROR);
+	}
 
 	return ret;
 }
@@ -158,10 +164,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				ThrowIfFailed(GetClientRect(hWnd, &rect));
 				param = MAKELPARAM(GET_X_LPARAM(lParam) * cx / static_cast<float>(rect.right - rect.left), GET_Y_LPARAM(lParam) * cy / static_cast<float>(rect.bottom - rect.top));
 			}
-			else param = lParam;
+			else {
+				param = lParam;
+			}
 
 			extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
-			if (const auto ret = ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, param)) return ret;
+			if (const auto ret = ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, param)) {
+				return ret;
+			}
 		}
 
 		static HMONITOR s_hMonitor;
@@ -184,7 +194,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			}
 		};
 
-		if (s_hMonitor == nullptr) GetDisplayResolutions();
+		if (s_hMonitor == nullptr) {
+			GetDisplayResolutions();
+		}
 
 		switch (uMsg) {
 			case WM_GETMINMAXINFO:
@@ -215,7 +227,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 			case WM_SIZE:
 			{
-				if (!g_app) return 0;
+				if (!g_app) {
+					return 0;
+				}
 
 				switch (wParam) {
 					case SIZE_MINIMIZED: g_app->OnSuspending(); break;
@@ -258,8 +272,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			case WM_ACTIVATEAPP:
 			{
 				if (g_app) {
-					if (wParam) g_app->OnActivated();
-					else g_app->OnDeactivated();
+					if (wParam) {
+						g_app->OnActivated();
+					}
+					else {
+						g_app->OnDeactivated();
+					}
 				}
 			}
 			[[fallthrough]];

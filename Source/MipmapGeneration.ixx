@@ -32,9 +32,13 @@ export namespace PostProcessing {
 		}
 
 		void SetTexture(Texture& texture) {
-			if (m_texture == &texture) return;
+			if (m_texture == &texture) {
+				return;
+			}
 
-			for (const auto i : views::iota(0u, min<UINT16>(texture->GetDesc().MipLevels, 16))) texture.CreateUAV(i);
+			for (const auto i : views::iota(0u, min<UINT16>(texture->GetDesc().MipLevels, 16))) {
+				texture.CreateUAV(i);
+			}
 			m_texture = &texture;
 		}
 

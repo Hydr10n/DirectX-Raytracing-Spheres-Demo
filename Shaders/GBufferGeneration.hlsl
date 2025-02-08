@@ -2,25 +2,27 @@
 
 #include "Camera.hlsli"
 
-#include "Denoiser.hlsli"
-
 SamplerState g_anisotropicSampler : register(s0);
 
 RaytracingAccelerationStructure g_scene : register(t0);
 
 struct Flags
 {
-	enum {
-		Radiance = 0x1,
-		Position = 0x2,
-		LinearDepth = 0x4,
-		NormalizedDepth = 0x8,
-		MotionVector = 0x10,
-		FlatNormal = 0x20,
-		Normals = 0x40,
-		NormalRoughness = 0x80,
-		Geometry = Position | LinearDepth | NormalizedDepth | MotionVector | FlatNormal | Normals | NormalRoughness,
-		Material = Radiance | NormalRoughness | 0x100
+	enum
+	{
+		Position = 0x1,
+		FlatNormal = 0x2,
+		GeometricNormal = 0x4,
+		LinearDepth = 0x8,
+		NormalizedDepth = 0x10,
+		MotionVector = 0x20,
+		DiffuseAlbedo = 0x40,
+		SpecularAlbedo = 0x80,
+		Albedo = DiffuseAlbedo | SpecularAlbedo,
+		NormalRoughness = 0x100,
+		Radiance = 0x200,
+		Geometry = Position | FlatNormal | GeometricNormal | LinearDepth | NormalizedDepth | MotionVector | NormalRoughness,
+		Material = 0x400 | Albedo | NormalRoughness | Radiance
 	};
 };
 
@@ -38,18 +40,19 @@ ConstantBuffer<Camera> g_camera : register(b2);
 StructuredBuffer<InstanceData> g_instanceData : register(t1);
 StructuredBuffer<ObjectData> g_objectData : register(t2);
 
-RWTexture2D<float3> g_Radiance : register(u0);
-RWTexture2D<float4> g_Position : register(u1);
-RWTexture2D<float> g_LinearDepth : register(u2);
-RWTexture2D<float> g_NormalizedDepth : register(u3);
-RWTexture2D<float3> g_MotionVector : register(u4);
-RWTexture2D<float4> g_BaseColorMetalness : register(u5);
-RWTexture2D<float2> g_FlatNormal : register(u6);
-RWTexture2D<float4> g_Normals : register(u7);
-RWTexture2D<float> g_Roughness : register(u8);
+RWTexture2D<float4> g_Position : register(u0);
+RWTexture2D<float2> g_FlatNormal : register(u1);
+RWTexture2D<float2> g_GeometricNormal : register(u2);
+RWTexture2D<float> g_LinearDepth : register(u3);
+RWTexture2D<float> g_NormalizedDepth : register(u4);
+RWTexture2D<float3> g_MotionVector : register(u5);
+RWTexture2D<float4> g_BaseColorMetalness : register(u6);
+RWTexture2D<float3> g_DiffuseAlbedo : register(u7);
+RWTexture2D<float3> g_SpecularAlbedo : register(u8);
 RWTexture2D<float4> g_NormalRoughness : register(u9);
 RWTexture2D<float> g_Transmission : register(u10);
 RWTexture2D<float> g_IOR : register(u11);
+RWTexture2D<float3> g_Radiance : register(u12);
 
 #include "RaytracingHelpers.hlsli"
 
@@ -59,7 +62,7 @@ RWTexture2D<float> g_IOR : register(u11);
 float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth, HitInfo hitInfo)
 {
 	float3 previousPosition;
-	if (g_sceneData.IsStatic)
+	if (isinf(hitInfo.Distance) || g_sceneData.IsStatic)
 	{
 		previousPosition = hitInfo.Position;
 	}
@@ -87,7 +90,10 @@ float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth
 		}
 		previousPosition = Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
-	return float3((Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions, Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth);
+	return float3(
+		(Geometry::GetScreenUv(g_camera.PreviousWorldToProjection, previousPosition) - UV) * pixelDimensions,
+		Geometry::AffineTransform(g_camera.PreviousWorldToView, previousPosition).z - linearDepth
+	);
 }
 
 [RootSignature(
@@ -110,7 +116,8 @@ float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth
 	"DescriptorTable(UAV(u8)),"
 	"DescriptorTable(UAV(u9)),"
 	"DescriptorTable(UAV(u10)),"
-	"DescriptorTable(UAV(u11))"
+	"DescriptorTable(UAV(u11)),"
+	"DescriptorTable(UAV(u12))"
 )]
 [numthreads(16, 16, 1)]
 void main(uint2 pixelPosition : SV_DispatchThreadID)
@@ -121,9 +128,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		return;
 	}
 
-	float3 Radiance = 0;
 	float LinearDepth = 1.#INF, NormalizedDepth = !g_camera.IsNormalizedDepthReversed;
-	float3 MotionVector = 0;
 
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions, g_camera.Jitter);
 	const RayDesc rayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
@@ -132,18 +137,24 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	{
 		if (g_constants.Flags & Flags::Geometry)
 		{
-			const float4
-				Position = float4(hitInfo.Position, hitInfo.PositionOffset),
-				projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position);
+			const float4 Position = float4(hitInfo.Position, hitInfo.PositionOffset);
+			SET1(Position);
+
+			const float2
+				FlatNormal = Packing::EncodeUnitVector(hitInfo.FlatNormal, true),
+				GeometricNormal = Packing::EncodeUnitVector(hitInfo.GeometricNormal, true);
+			SET1(FlatNormal);
+			SET1(GeometricNormal);
+
+			const float4 projection = Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position);
 			LinearDepth = projection.w;
 			NormalizedDepth = projection.z / projection.w;
-			MotionVector = CalculateMotionVector(UV, pixelDimensions, LinearDepth, hitInfo);
-			const float2 FlatNormal = Packing::EncodeUnitVector(hitInfo.FlatNormal, true);
-			const float4 Normals = float4(Packing::EncodeUnitVector(hitInfo.Normal, true), Packing::EncodeUnitVector(hitInfo.GeometricNormal, true));
 
-			SET1(Position);
-			SET1(FlatNormal);
-			SET1(Normals);
+			if (g_constants.Flags & Flags::MotionVector)
+			{
+				const float3 MotionVector = CalculateMotionVector(UV, pixelDimensions, LinearDepth, hitInfo);
+				SET(MotionVector);
+			}
 		}
 
 		Material material;
@@ -152,36 +163,62 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 			bool hasSampledTexture;
 			material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate, hasSampledTexture);
 
-			Radiance = material.GetEmission();
 			const float4 BaseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
-			const float
-				Roughness = material.Roughness,
-				Transmission = material.Transmission,
-				IOR = material.IOR;
-
 			SET(BaseColorMetalness);
-			SET(Roughness);
-
 			if (BaseColorMetalness.a < 1)
 			{
+				const float Transmission = material.Transmission, IOR = material.IOR;
 				SET(Transmission);
 				SET(IOR);
+			}
+
+			if (g_constants.Flags & Flags::Albedo)
+			{
+				float3 Albedo, Rf0;
+				BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, Albedo, Rf0);
+				const float NoV = abs(dot(hitInfo.Normal, -rayDesc.Direction));
+				const float3 FEnvironment = BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
+				if (g_constants.Flags & Flags::DiffuseAlbedo)
+				{
+					const float3 DiffuseAlbedo = Albedo * (1 - FEnvironment);
+					SET(DiffuseAlbedo);
+				}
+				if (g_constants.Flags & Flags::SpecularAlbedo)
+				{
+					const float3 SpecularAlbedo = FEnvironment;
+					SET(SpecularAlbedo);
+				}
+			}
+
+			if (g_constants.Flags & Flags::Radiance)
+			{
+				const float3 Radiance = material.GetEmission();
+				SET(Radiance);
 			}
 		}
 
 		if (g_constants.Flags & Flags::NormalRoughness)
 		{
-			const float4 NormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(hitInfo.Normal, material.Roughness, material.Metallic >= 0.5f);
+			const float4 NormalRoughness = float4(hitInfo.Normal, material.Roughness);
 			SET(NormalRoughness);
 		}
 	}
-	else if (g_constants.Flags & Flags::Material)
+	else
 	{
-		Radiance = GetEnvironmentLightColor(g_sceneData, rayDesc.Direction);
+		if (g_constants.Flags & Flags::MotionVector)
+		{
+			const float linearDepth = Geometry::ProjectiveTransform(g_camera.WorldToProjection, hitInfo.Position).w;
+			const float3 MotionVector = CalculateMotionVector(UV, pixelDimensions, linearDepth, hitInfo);
+			SET(MotionVector);
+		}
+
+		if (g_constants.Flags & Flags::Radiance)
+		{
+			const float3 Radiance = GetEnvironmentLightColor(g_sceneData, rayDesc.Direction);
+			SET(Radiance);
+		}
 	}
 
-	SET1(Radiance);
 	SET1(LinearDepth);
 	SET1(NormalizedDepth);
-	SET1(MotionVector);
 }

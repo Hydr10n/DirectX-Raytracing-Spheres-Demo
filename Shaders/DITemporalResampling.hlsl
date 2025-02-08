@@ -1,5 +1,6 @@
 #include "RTXDIAppBridge.hlsli"
-#include "rtxdi/DIResamplingFunctions.hlsli"
+#include "Rtxdi/DI/TemporalResampling.hlsli"
+#include "Rtxdi/DI/BoilingFilter.hlsli"
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]

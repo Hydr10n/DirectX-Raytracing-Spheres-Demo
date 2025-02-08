@@ -77,12 +77,6 @@ bool IsOpaque(ObjectData objectData, float2 textureCoordinate, inout float3 visi
 {
 	Material material = objectData.Material;
 
-	if (material.IOR != BRDF::IOR::Vacuum)
-	{
-		visibility = 0;
-		return true;
-	}
-
 	const TextureMapResourceDescriptorIndices indices = objectData.ResourceDescriptorIndices.TextureMaps;
 
 	uint index;

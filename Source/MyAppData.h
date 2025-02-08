@@ -6,18 +6,17 @@
 
 #include "JSONHelpers.h"
 
-#include "rtxdi/ReSTIRDIParameters.h"
+#include "Rtxdi/DI/ReSTIRDIParameters.h"
 
 #include "sl_helpers.h"
 
 #include "directxtk12/PostProcess.h"
 
+import Denoiser;
 import DisplayHelpers;
-import NRD;
 import RTXGI;
-import Streamline;
+import Upscaler;
 import WindowHelpers;
-import XeSS;
 
 JSON_CONVERSION1_FUNCTIONS(SIZE, ("Width", cx), ("Height", cy));
 
@@ -81,15 +80,14 @@ namespace sl {
 }
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
-	NRDDenoiser,
+	Denoiser,
 	{
-		{ NRDDenoiser::None, "None" },
-		{ NRDDenoiser::ReBLUR, "ReBLUR" },
-		{ NRDDenoiser::ReLAX, "ReLAX" }
+		{ Denoiser::None, "None" },
+		{ Denoiser::DLSSRayReconstruction, "DLSSRayReconstruction" },
+		{ Denoiser::NRDReBLUR, "NRDReBLUR" },
+		{ Denoiser::NRDReLAX, "NRDReLAX" }
 	}
 );
-
-enum class Upscaler { None, DLSS, XeSS };
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
 	Upscaler,
@@ -99,8 +97,6 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
 		{ Upscaler::XeSS, "XeSS" }
 	}
 );
-
-enum class SuperResolutionMode { Auto, Native, Quality, Balanced, Performance, UltraPerformance };
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
 	SuperResolutionMode,
@@ -280,14 +276,6 @@ public:
 			} Raytracing;
 
 			struct PostProcessing {
-				struct NRD {
-					NRDDenoiser Denoiser = NRDDenoiser::ReLAX;
-
-					bool IsValidationOverlayEnabled{};
-
-					FRIEND_JSON_CONVERSION_FUNCTIONS(NRD, Denoiser, IsValidationOverlayEnabled);
-				} NRD;
-
 				struct SuperResolution {
 					Upscaler Upscaler = Upscaler::DLSS;
 
@@ -295,6 +283,14 @@ public:
 
 					FRIEND_JSON_CONVERSION_FUNCTIONS(SuperResolution, Upscaler, Mode);
 				} SuperResolution;
+
+				struct Denoising {
+					Denoiser Denoiser = Denoiser::DLSSRayReconstruction;
+
+					bool IsNRDValidationOverlayEnabled{};
+
+					FRIEND_JSON_CONVERSION_FUNCTIONS(Denoising, Denoiser, IsNRDValidationOverlayEnabled);
+				} Denoising;
 
 				bool IsDLSSFrameGenerationEnabled = true;
 
@@ -336,7 +332,7 @@ public:
 					FRIEND_JSON_CONVERSION_FUNCTIONS(ToneMapping, HDR, NonHDR);
 				} ToneMapping;
 
-				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, NRD, SuperResolution, IsDLSSFrameGenerationEnabled, NIS, Bloom, ToneMapping);
+				FRIEND_JSON_CONVERSION_FUNCTIONS(PostProcessing, SuperResolution, Denoising, IsDLSSFrameGenerationEnabled, NIS, Bloom, ToneMapping);
 			} PostProcessing;
 
 			FRIEND_JSON_CONVERSION_FUNCTIONS(Graphics, WindowMode, Resolution, IsHDREnabled, IsVSyncEnabled, ReflexMode, Camera, Raytracing, PostProcessing);

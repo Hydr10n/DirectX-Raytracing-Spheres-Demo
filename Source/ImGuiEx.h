@@ -40,7 +40,9 @@ namespace ImGuiEx {
 			Widget(ImGui::BeginPopupModal(name, pIsOpen, flags)) {}
 
 		~PopupModal() {
-			if (m_ret) ImGui::EndPopup();
+			if (m_ret) {
+				ImGui::EndPopup();
+			}
 		}
 	};
 
@@ -48,7 +50,9 @@ namespace ImGuiEx {
 		MainMenuBar() : Widget(ImGui::BeginMainMenuBar()) {}
 
 		~MainMenuBar() {
-			if (m_ret) ImGui::EndMainMenuBar();
+			if (m_ret) {
+				ImGui::EndMainMenuBar();
+			}
 		}
 	};
 
@@ -56,7 +60,9 @@ namespace ImGuiEx {
 		explicit Menu(const char* label, bool isEnabled = true) : Widget(ImGui::BeginMenu(label, isEnabled)) {}
 
 		~Menu() {
-			if (m_ret) ImGui::EndMenu();
+			if (m_ret) {
+				ImGui::EndMenu();
+			}
 		}
 	};
 
@@ -65,7 +71,9 @@ namespace ImGuiEx {
 			Widget(ImGui::TreeNodeEx(label, flags)) {}
 
 		~TreeNode() {
-			if (m_ret) ImGui::TreePop();
+			if (m_ret) {
+				ImGui::TreePop();
+			}
 		}
 	};
 
@@ -76,7 +84,9 @@ namespace ImGuiEx {
 		) : Widget(ImGui::BeginTable(ID, columns, flags, outerSize, innerWidth)) {}
 
 		~Table() {
-			if (m_ret) ImGui::EndTable();
+			if (m_ret) {
+				ImGui::EndTable();
+			}
 		}
 	};
 
@@ -100,9 +110,13 @@ namespace ImGuiEx {
 		if (ImGui::IsItemHovered()) {
 			AddUnderline(style.Colors[ImGuiCol_ButtonHovered]);
 			ImGui::SetTooltip(link);
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return true;
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				return true;
+			}
 		}
-		else AddUnderline(style.Colors[ImGuiCol_Button]);
+		else {
+			AddUnderline(style.Colors[ImGuiCol_Button]);
+		}
 		return false;
 	}
 
@@ -134,7 +148,9 @@ namespace ImGuiEx {
 					value = v;
 					ret = true;
 				}
-				if (isSelected) ImGui::SetItemDefaultFocus();
+				if (isSelected) {
+					ImGui::SetItemDefaultFocus();
+				}
 			}
 			ImGui::EndCombo();
 		}
@@ -143,7 +159,9 @@ namespace ImGuiEx {
 
 	inline void Spinner(const char* label, ImU32 color, float radius, float thickness = 1) {
 		auto& window = *ImGui::GetCurrentWindow();
-		if (window.SkipItems) return;
+		if (window.SkipItems) {
+			return;
+		}
 
 		const auto ID = window.GetID(label);
 		const auto& context = *ImGui::GetCurrentContext();
@@ -153,7 +171,9 @@ namespace ImGuiEx {
 
 		const ImRect rect(pos, ImVec2(pos.x + 2 * radius, pos.y + 2 * (radius + style.FramePadding.y)));
 		ImGui::ItemSize(rect, style.FramePadding.y);
-		if (!ImGui::ItemAdd(rect, ID)) return;
+		if (!ImGui::ItemAdd(rect, ID)) {
+			return;
+		}
 
 		window.DrawList->PathClear();
 

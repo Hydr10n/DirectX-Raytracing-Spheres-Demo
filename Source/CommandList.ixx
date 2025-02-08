@@ -29,7 +29,9 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace std;
 
 #define COPY() \
-	if (sizeof(T) != buffer.GetStride()) Throw<runtime_error>("Buffer stride mismatch"); \
+	if (sizeof(T) != buffer.GetStride()) { \
+		Throw<invalid_argument>("Buffer stride mismatch"); \
+	} \
 	Copy(buffer, ::data(data), sizeof(T) * size(data), offset);
 
 export namespace DirectX {
@@ -62,7 +64,9 @@ export namespace DirectX {
 			Wait();
 
 			for (auto& ID : m_compactAccelerationStructureIDs) {
-				if (!empty(ID)) m_deviceContext.AccelerationStructureManager->GarbageCollection(ID);
+				if (!empty(ID)) {
+					m_deviceContext.AccelerationStructureManager->GarbageCollection(ID);
+				}
 			}
 		}
 
@@ -80,7 +84,9 @@ export namespace DirectX {
 		}
 
 		void End(bool wait = true) {
-			for (auto& resource : m_trackedResources) SetState(*resource, resource->GetInitialState());
+			for (auto& resource : m_trackedResources) {
+				SetState(*resource, resource->GetInitialState());
+			}
 			m_trackedResources.clear();
 
 			ThrowIfFailed(m_commandList->Close());
@@ -91,7 +97,9 @@ export namespace DirectX {
 				m_compactAccelerationStructureIDs[1].clear();
 			}
 
-			if (wait) Wait();
+			if (wait) {
+				Wait();
+			}
 		}
 
 		void Wait() {
@@ -125,9 +133,13 @@ export namespace DirectX {
 				TransitionResource(*this, resource, resource.GetState(), state);
 				resource.SetState(state);
 
-				if (resource.KeepInitialState()) m_trackedResources.emplace(&resource);
+				if (resource.KeepInitialState()) {
+					m_trackedResources.emplace(&resource);
+				}
 			}
-			else if (state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) SetUAVBarrier(resource);
+			else if (state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+				SetUAVBarrier(resource);
+			}
 		}
 
 		void Copy(GPUResource& resource, span<const D3D12_SUBRESOURCE_DATA> subresourceData, UINT firstSubresource = 0) {
@@ -212,7 +224,9 @@ export namespace DirectX {
 				if (inputs[i++].Flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION) {
 					m_compactAccelerationStructureIDs[1].emplace_back(ID);
 				}
-				else m_builtAccelerationStructureIDs.emplace_back(ID);
+				else {
+					m_builtAccelerationStructureIDs.emplace_back(ID);
+				}
 			}
 
 			return IDs;

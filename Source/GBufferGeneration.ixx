@@ -19,24 +19,27 @@ using namespace std;
 
 #define SET(Name) \
 	commandList.SetState(*Textures.Name, D3D12_RESOURCE_STATE_UNORDERED_ACCESS); \
-	commandList->SetComputeRootDescriptorTable(i++, Textures.Name->GetUAVDescriptor());
+	commandList->SetComputeRootDescriptorTable(i, Textures.Name->GetUAVDescriptor());
 
-#define SET1(Name) if (constants.Flags & Flags::Name) { SET(Name); } else i++;
-#define SET2(Name) if (constants.Flags & Flags::Material) { SET(Name); } else i++;
+#define SET1(Name) if (constants.Flags & Flags::Name) { SET(Name); } i++;
+#define SET2(Name) if (constants.Flags & Flags::Material) { SET(Name); } i++;
 
 export struct GBufferGeneration {
 	struct Flags {
 		enum {
-			Radiance = 0x1,
-			Position = 0x2,
-			LinearDepth = 0x4,
-			NormalizedDepth = 0x8,
-			MotionVector = 0x10,
-			FlatNormal = 0x20,
-			Normals = 0x40,
-			NormalRoughness = 0x80,
-			Geometry = Position | LinearDepth | NormalizedDepth | MotionVector | FlatNormal | Normals | NormalRoughness,
-			Material = Radiance | NormalRoughness | 0x100
+			Position = 0x1,
+			FlatNormal = 0x2,
+			GeometricNormal = 0x4,
+			LinearDepth = 0x8,
+			NormalizedDepth = 0x10,
+			MotionVector = 0x20,
+			DiffuseAlbedo = 0x40,
+			SpecularAlbedo = 0x80,
+			Albedo = DiffuseAlbedo | SpecularAlbedo,
+			NormalRoughness = 0x100,
+			Radiance = 0x200,
+			Geometry = Position | FlatNormal | GeometricNormal | LinearDepth | NormalizedDepth | MotionVector | NormalRoughness,
+			Material = 0x400 | Albedo | NormalRoughness | Radiance
 		};
 	};
 
@@ -49,18 +52,19 @@ export struct GBufferGeneration {
 
 	struct {
 		Texture
-			* Radiance,
 			* Position,
+			* FlatNormal,
+			* GeometricNormal,
 			* LinearDepth,
 			* NormalizedDepth,
 			* MotionVector,
 			* BaseColorMetalness,
-			* FlatNormal,
-			* Normals,
-			* Roughness,
+			* DiffuseAlbedo,
+			* SpecularAlbedo,
 			* NormalRoughness,
 			* Transmission,
-			* IOR;
+			* IOR,
+			* Radiance;
 	} Textures{};
 
 	explicit GBufferGeneration(const DeviceContext& deviceContext) noexcept(false) {
@@ -95,18 +99,19 @@ export struct GBufferGeneration {
 			commandList->SetComputeRootShaderResourceView(i, GPUBuffers.ObjectData->GetNative()->GetGPUVirtualAddress());
 		}
 		i++;
-		SET1(Radiance);
 		SET1(Position);
+		SET1(FlatNormal);
+		SET1(GeometricNormal);
 		SET1(LinearDepth);
 		SET1(NormalizedDepth);
 		SET1(MotionVector);
 		SET2(BaseColorMetalness);
-		SET1(FlatNormal);
-		SET1(Normals);
-		SET2(Roughness);
+		SET1(DiffuseAlbedo);
+		SET1(SpecularAlbedo);
 		SET1(NormalRoughness);
 		SET2(Transmission);
 		SET2(IOR);
+		SET1(Radiance);
 
 		commandList->Dispatch((constants.RenderSize.x + 15) / 16, (constants.RenderSize.y + 15) / 16, 1);
 	}

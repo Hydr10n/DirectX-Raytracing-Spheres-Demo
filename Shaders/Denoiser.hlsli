@@ -6,20 +6,20 @@
 
 #include "BxDF.hlsli"
 
-enum class NRDDenoiser
+enum class Denoiser
 {
-	None, ReBLUR, ReLAX
+	None, DLSSRayReconstruction, NRDReBLUR, NRDReLAX
 };
 
-struct NRDSettings
+struct DenoisingSettings
 {
-	NRDDenoiser Denoiser;
+	Denoiser Denoiser;
 	uint3 _;
-	float4 HitDistanceParameters;
+	float4 NRDReBLURHitDistance;
 };
 
-void PackNoisySignals(
-	NRDSettings settings,
+void NRDPackNoisySignals(
+	DenoisingSettings settings,
 	float3 N, float3 V, float linearDepth,
 	BSDFSample BSDFSample,
 	float3 directDiffuse, float3 directSpecular, float lightDistance,
@@ -27,22 +27,22 @@ void PackNoisySignals(
 	out float4 diffuseHitDistance, out float4 specularHitDistance
 )
 {
-	if (settings.Denoiser == NRDDenoiser::ReBLUR)
+	if (settings.Denoiser == Denoiser::NRDReBLUR)
 	{
 		if (isIndirectPacked)
 		{
 			indirectDiffuseHitDistance = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(indirectDiffuseHitDistance);
 			indirectSpecularHitDistance = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(indirectSpecularHitDistance);
-			diffuseHitDistance.a = REBLUR_GetHitDist(indirectDiffuseHitDistance.a, linearDepth, settings.HitDistanceParameters, 1);
+			diffuseHitDistance.a = REBLUR_GetHitDist(indirectDiffuseHitDistance.a, linearDepth, settings.NRDReBLURHitDistance, 1);
 			specularHitDistance.a = indirectSpecularHitDistance.a;
 		}
 		else
 		{
 			diffuseHitDistance.a = indirectDiffuseHitDistance.a;
-			specularHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(indirectSpecularHitDistance.a, linearDepth, settings.HitDistanceParameters, BSDFSample.Roughness);
+			specularHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(indirectSpecularHitDistance.a, linearDepth, settings.NRDReBLURHitDistance, BSDFSample.Roughness);
 		}
 	}
-	else if (settings.Denoiser == NRDDenoiser::ReLAX)
+	else if (settings.Denoiser == Denoiser::NRDReLAX)
 	{
 		if (isIndirectPacked)
 		{
@@ -69,32 +69,32 @@ void PackNoisySignals(
 			directHitDistanceContribution = min(directLuminance / (directLuminance + indirectLuminance + 1e-3f), 0.5f);
 		hitDistance = lerp(diffuseHitDistance.a, lightDistance, directHitDistanceContribution);
 	}
-	if (settings.Denoiser == NRDDenoiser::ReBLUR)
+	if (settings.Denoiser == Denoiser::NRDReBLUR)
 	{
-		diffuseHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, settings.HitDistanceParameters, 1);
+		diffuseHitDistance.a = REBLUR_FrontEnd_GetNormHitDist(hitDistance, linearDepth, settings.NRDReBLURHitDistance, 1);
 		diffuseHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(diffuse, diffuseHitDistance.a, true);
 		specularHitDistance = REBLUR_FrontEnd_PackRadianceAndNormHitDist(specular, specularHitDistance.a, true);
 	}
-	else if (settings.Denoiser == NRDDenoiser::ReLAX)
+	else if (settings.Denoiser == Denoiser::NRDReLAX)
 	{
 		diffuseHitDistance = RELAX_FrontEnd_PackRadianceAndHitDist(diffuse, diffuseHitDistance.a, true);
 		specularHitDistance = RELAX_FrontEnd_PackRadianceAndHitDist(specular, specularHitDistance.a, true);
 	}
 }
 
-void UnpackDenoisedSignals(
-	NRDDenoiser denoiser,
+void NRDUnpackDenoisedSignals(
+	Denoiser denoiser,
 	float3 N, float3 V,
 	BSDFSample BSDFSample,
 	inout float4 diffuseHitDistance, inout float4 specularHitDistance
 )
 {
-	if (denoiser == NRDDenoiser::ReBLUR)
+	if (denoiser == Denoiser::NRDReBLUR)
 	{
 		diffuseHitDistance = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(diffuseHitDistance);
 		specularHitDistance = REBLUR_BackEnd_UnpackRadianceAndNormHitDist(specularHitDistance);
 	}
-	else if (denoiser == NRDDenoiser::ReLAX)
+	else if (denoiser == Denoiser::NRDReLAX)
 	{
 		diffuseHitDistance = RELAX_BackEnd_UnpackRadiance(diffuseHitDistance);
 		specularHitDistance = RELAX_BackEnd_UnpackRadiance(specularHitDistance);

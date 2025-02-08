@@ -38,7 +38,9 @@ export namespace WindowHelpers {
 		bool IsFullscreenResolutionHandledByWindow() const { return m_isFullscreenResolutionHandledByWindow; }
 
 		void SetFullscreenResolutionHandledByWindow(bool value) {
-			if (m_isApplying) return;
+			if (m_isApplying) {
+				return;
+			}
 			m_isFullscreenResolutionHandledByWindow = value;
 		}
 
@@ -48,7 +50,9 @@ export namespace WindowHelpers {
 		}
 
 		void SetWindowedStyles(DWORD windowedStyle, DWORD windowedExStyle) {
-			if (m_isApplying) return;
+			if (m_isApplying) {
+				return;
+			}
 			m_windowedStyle = windowedStyle | WS_CAPTION;
 			m_windowedExStyle = windowedExStyle;
 		}
@@ -56,7 +60,9 @@ export namespace WindowHelpers {
 		WindowMode GetMode() const { return m_mode; }
 
 		void SetMode(WindowMode value) {
-			if (m_isApplying || m_mode == value) return;
+			if (m_isApplying || m_mode == value) {
+				return;
+			}
 			m_previousMode = m_mode;
 			m_mode = value;
 		}
@@ -66,7 +72,9 @@ export namespace WindowHelpers {
 		Resolution GetResolution() const { return m_resolution; }
 
 		void SetResolution(const Resolution& value) {
-			if (m_isApplying) return;
+			if (m_isApplying) {
+				return;
+			}
 			m_resolution = value;
 		}
 
@@ -81,7 +89,9 @@ export namespace WindowHelpers {
 			WINDOWPLACEMENT windowPlacement;
 			windowPlacement.length = sizeof(windowPlacement);
 			RECT clientRect;
-			if (!GetWindowPlacement(hWnd, &windowPlacement) || !GetClientRect(hWnd, &clientRect)) return FALSE;
+			if (!GetWindowPlacement(hWnd, &windowPlacement) || !GetClientRect(hWnd, &clientRect)) {
+				return FALSE;
+			}
 			MapWindowRect(hWnd, HWND_DESKTOP, &clientRect);
 
 			DWORD offStyle = 0, offExStyle = 0;
@@ -106,23 +116,34 @@ export namespace WindowHelpers {
 
 			const auto SetWindowPos = [&] {
 				const auto SetWindowPos = [&](const RECT& rect) {
-					return ::SetWindowPos(hWnd, nullptr, static_cast<int>(rect.left), static_cast<int>(rect.top), static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top), SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW) != FALSE;
+					return ::SetWindowPos(
+						hWnd, nullptr,
+						static_cast<int>(rect.left), static_cast<int>(rect.top),
+						static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top),
+						SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW
+					) != FALSE;
 				};
 
 				RECT displayRect;
-				if (!GetDisplayRect(displayRect, hWnd)) return false;
+				if (!GetDisplayRect(displayRect, hWnd)) {
+					return false;
+				}
 
 				const auto displayResolution = CalculateResolution(displayRect);
 
 				if (m_mode == WindowMode::Fullscreen) {
 					m_previousWindowResolution = CalculateResolution(windowPlacement.rcNormalPosition);
 
-					if (m_isFullscreenResolutionHandledByWindow) m_resolution = displayResolution;
+					if (m_isFullscreenResolutionHandledByWindow) {
+						m_resolution = displayResolution;
+					}
 
 					ShowWindow(hWnd, SW_MAXIMIZE);
 
 					RECT clientRect;
-					if (!GetClientRect(hWnd, &clientRect)) return false;
+					if (!GetClientRect(hWnd, &clientRect)) {
+						return false;
+					}
 
 					const auto ret = CalculateResolution(clientRect) == displayResolution || SetWindowPos(displayRect);
 					if (ret && !m_isFullscreenResolutionHandledByWindow) {
@@ -149,7 +170,9 @@ export namespace WindowHelpers {
 				}
 
 				RECT newClientRect;
-				if (!GetClientRect(hWnd, &newClientRect)) return false;
+				if (!GetClientRect(hWnd, &newClientRect)) {
+					return false;
+				}
 				MapWindowRect(hWnd, HWND_DESKTOP, &newClientRect);
 
 				RECT margin;

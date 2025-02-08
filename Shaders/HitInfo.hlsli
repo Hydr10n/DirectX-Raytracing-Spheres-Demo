@@ -41,15 +41,15 @@ struct HitInfo
 
 	void Initialize(
 		float3 position, float positionOffset,
-		float3 flatNormal, float3 normal, float3 geometricNormal,
+		float3 flatNormal, float3 geometricNormal, float3 normal,
 		float3 worldRayDirection, float distance
 	)
 	{
 		Position = position;
 		PositionOffset = positionOffset;
 		FlatNormal = flatNormal;
-		Normal = normal;
 		GeometricNormal = geometricNormal;
+		Normal = normal;
 		IsFrontFace = dot(geometricNormal, worldRayDirection) < 0;
 		Distance = distance;
 	}

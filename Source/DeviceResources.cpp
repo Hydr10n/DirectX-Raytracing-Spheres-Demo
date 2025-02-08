@@ -23,11 +23,13 @@ import DescriptorHeap;
 import ErrorHelpers;
 import Texture;
 
+using namespace D3D12MA;
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 using namespace DX;
 using namespace ErrorHelpers;
 using namespace Microsoft::WRL;
+using namespace rtxmu;
 using namespace std;
 
 DeviceResources::DeviceResources(const CreationDesc& creationDesc) noexcept(false) : m_creationDesc(creationDesc)
@@ -54,6 +56,18 @@ void DeviceResources::CreateDeviceResources()
 		if (ComPtr<ID3D12Debug> debug; SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
 		{
 			debug->EnableDebugLayer();
+
+			if (m_creationDesc.OptionFlags & OptionFlags::GPUBasedValidation)
+			{
+				if (ComPtr<ID3D12Debug3> debug3; SUCCEEDED(debug.As(&debug3)))
+				{
+					debug3->SetEnableGPUBasedValidation(TRUE);
+				}
+				else
+				{
+					OutputDebugStringW(L"WARNING: Direct3D GPU-based validation is not available\n");
+				}
+			}
 		}
 		else
 		{
@@ -64,8 +78,8 @@ void DeviceResources::CreateDeviceResources()
 		{
 			m_dxgiFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
 
-			infoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
-			infoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
+			infoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+			infoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, TRUE);
 
 			DXGI_INFO_QUEUE_MESSAGE_ID IDs[]
 			{
@@ -91,14 +105,15 @@ void DeviceResources::CreateDeviceResources()
 #ifdef _DEBUG
 	if (ComPtr<ID3D12InfoQueue> infoQueue; SUCCEEDED(m_device.As(&infoQueue)))
 	{
-		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
 
 		D3D12_MESSAGE_ID IDs[]
 		{
 			D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,
 			D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,
 			D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+			D3D12_MESSAGE_ID_RENDER_TARGET_OR_DEPTH_STENCIL_RESOUCE_NOT_INITIALIZED,
 			// Workarounds for debug layer issues on hybrid-graphics systems
 			D3D12_MESSAGE_ID_EXECUTECOMMANDLISTS_WRONGSWAPCHAINBUFFERREFERENCE,
 			D3D12_MESSAGE_ID_RESOURCE_BARRIER_MISMATCHING_COMMAND_LIST_TYPE
@@ -133,12 +148,12 @@ void DeviceResources::CreateDeviceResources()
 		m_featureLevel = m_creationDesc.MinFeatureLevel;
 	}
 
-	const D3D12MA::ALLOCATOR_DESC desc{ .pDevice = m_device.Get(), .pAdapter = GetAdapter() };
-	ThrowIfFailed(D3D12MA::CreateAllocator(&desc, &m_memoryAllocator));
+	const ALLOCATOR_DESC desc{ .pDevice = m_device.Get(), .pAdapter = GetAdapter() };
+	ThrowIfFailed(CreateAllocator(&desc, &m_memoryAllocator));
 
 	if (m_raytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
 	{
-		m_accelerationStructureManager = make_unique<rtxmu::DxAccelStructManager>(
+		m_accelerationStructureManager = make_unique<DxAccelStructManager>(
 			m_device.Get()
 #ifdef _DEBUG
 			, Logger::Level::DBG

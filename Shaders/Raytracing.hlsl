@@ -35,7 +35,7 @@ struct GraphicsSettings
 			uint3 _;
 		} SHARC;
 	} RTXGI;
-	NRDSettings NRD;
+	DenoisingSettings Denoising;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
 
@@ -45,27 +45,28 @@ ConstantBuffer<Camera> g_camera : register(b2);
 
 StructuredBuffer<ObjectData> g_objectData : register(t1);
 
+Texture2D<float4> g_position : register(t2);
+Texture2D<float2> g_flatNormal : register(t3);
+Texture2D<float2> g_geometricNormal : register(t4);
+Texture2D<float> g_linearDepth : register(t5);
+Texture2D<float4> g_baseColorMetalness : register(t6);
+Texture2D<float4> g_normalRoughness : register(t7);
+Texture2D<float> g_transmission : register(t8);
+Texture2D<float> g_IOR : register(t9);
+Texture2D<float4> g_lightRadiance : register(t10);
 #if SHARC_UPDATE
-Texture2D<float3> g_radiance : register(t2);
+Texture2D<float3> g_radiance : register(t11);
 #else
 RWTexture2D<float3> g_radiance : register(u0);
 #endif
-Texture2D<float4> g_lightRadiance : register(t3);
-Texture2D<float4> g_position : register(t4);
-Texture2D<float> g_linearDepth : register(t5);
-Texture2D<float4> g_baseColorMetalness : register(t6);
-Texture2D<float2> g_flatNormal : register(t7);
-Texture2D<float4> g_normals : register(t8);
-Texture2D<float> g_roughness : register(t9);
-Texture2D<float> g_transmission : register(t10);
-Texture2D<float> g_IOR : register(t11);
-RWTexture2D<float4> g_noisyDiffuse : register(u1);
-RWTexture2D<float4> g_noisySpecular : register(u2);
+RWTexture2D<float4> g_diffuse : register(u1);
+RWTexture2D<float4> g_specular : register(u2);
+RWTexture2D<float> g_specularHitDistance : register(u3);
 
 #if ENABLE_SHARC
-RWStructuredBuffer<uint64_t> g_sharcHashEntries : register(u3);
-RWStructuredBuffer<uint4> g_sharcPreviousVoxelData : register(u4);
-RWStructuredBuffer<uint4> g_sharcVoxelData : register(u5);
+RWStructuredBuffer<uint64_t> g_sharcHashEntries : register(u4);
+RWStructuredBuffer<uint4> g_sharcPreviousVoxelData : register(u5);
+RWStructuredBuffer<uint4> g_sharcVoxelData : register(u6);
 #endif
 
 #include "RaytracingHelpers.hlsli"
@@ -87,11 +88,7 @@ GlobalRootSignature GlobalRootSignature =
 	"CBV(b1),"
 	"CBV(b2),"
 	"SRV(t1),"
-#if SHARC_UPDATE
 	"DescriptorTable(SRV(t2)),"
-#else
-	"DescriptorTable(UAV(u0)),"
-#endif
 	"DescriptorTable(SRV(t3)),"
 	"DescriptorTable(SRV(t4)),"
 	"DescriptorTable(SRV(t5)),"
@@ -100,13 +97,18 @@ GlobalRootSignature GlobalRootSignature =
 	"DescriptorTable(SRV(t8)),"
 	"DescriptorTable(SRV(t9)),"
 	"DescriptorTable(SRV(t10)),"
+#if SHARC_UPDATE
 	"DescriptorTable(SRV(t11)),"
+#else
+	"DescriptorTable(UAV(u0)),"
+#endif
 	"DescriptorTable(UAV(u1)),"
 	"DescriptorTable(UAV(u2)),"
+	"DescriptorTable(UAV(u3)),"
 #if ENABLE_SHARC
-	"UAV(u3),"
 	"UAV(u4),"
 	"UAV(u5),"
+	"UAV(u6),"
 #endif
 	"DescriptorTable(UAV(u1024))"
 };
@@ -137,16 +139,17 @@ void RayGeneration()
 	const bool isPrimarySurfaceHit = !isinf(linearDepth);
 	if (isPrimarySurfaceHit)
 	{
-		const float4 position = LOAD(g_position), normals = LOAD(g_normals);
+		const float4 position = LOAD(g_position);
+		const float2 flatNormal = LOAD(g_flatNormal), geometricNormal = LOAD(g_geometricNormal);
+		const float4 normalRoughness = LOAD(g_normalRoughness);
 		primarySurfaceHitInfo.Initialize(
 			position.xyz, position.w,
-			Packing::DecodeUnitVector(LOAD(g_flatNormal), true),
-			Packing::DecodeUnitVector(normals.xy, true),
-			Packing::DecodeUnitVector(normals.zw, true),
+			Packing::DecodeUnitVector(flatNormal, true),
+			Packing::DecodeUnitVector(geometricNormal, true),
+			normalRoughness.xyz,
 			primaryRayDesc.Direction, length(position.xyz - g_camera.Position)
 		);
 
-		const float primarySurfaceRoughness = LOAD(g_roughness);
 		const float4 baseColorMetalness = LOAD(g_baseColorMetalness);
 		float transmission = 0, IOR = 1;
 		if (baseColorMetalness.a < 1)
@@ -157,7 +160,7 @@ void RayGeneration()
 		primarySurfaceBSDFSample.Initialize(
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
-			primarySurfaceRoughness,
+			normalRoughness.w,
 			transmission,
 			IOR
 		);
@@ -165,7 +168,8 @@ void RayGeneration()
 		if (g_graphicsSettings.IsDIEnabled)
 		{
 #if !ENABLE_SHARC
-			if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
+			if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None
+				|| g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
 #endif
 			{
 				const float4 light = LOAD(g_lightRadiance);
@@ -382,7 +386,7 @@ void RayGeneration()
 #if !SHARC_UPDATE
 	radiance = NRD_IsValidRadiance(radiance) ? radiance / samplesPerPixel : 0;
 
-	if (g_graphicsSettings.NRD.Denoiser == NRDDenoiser::None)
+	if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None)
 	{
 #if !SHARC_QUERY
 		radiance += lightRadiance;
@@ -390,20 +394,34 @@ void RayGeneration()
 
 		g_radiance[pixelPosition] = radiance;
 	}
-	else
+	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
+	{
+#if !SHARC_QUERY
+		radiance += lightRadiance;
+#endif
+
+		g_radiance[pixelPosition] = radiance;
+
+		if (!isDiffuse && !isinf(hitDistance))
+		{
+			g_specularHitDistance[pixelPosition] = hitDistance;
+		}
+	}
+	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReBLUR
+		|| g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReLAX)
 	{
 		const float4 radianceHitDistance = float4(max(radiance - primaryRadiance, 0), hitDistance);
-		PackNoisySignals(
-			g_graphicsSettings.NRD,
+		NRDPackNoisySignals(
+			g_graphicsSettings.Denoising,
 			primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
 			primarySurfaceBSDFSample,
 #if SHARC_QUERY
 			0, 0, 0,
 #else
-			g_noisyDiffuse[pixelPosition].rgb, g_noisySpecular[pixelPosition].rgb, lightDistance,
+			g_diffuse[pixelPosition].rgb, g_specular[pixelPosition].rgb, lightDistance,
 #endif
 			isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
-			g_noisyDiffuse[pixelPosition], g_noisySpecular[pixelPosition]
+			g_diffuse[pixelPosition], g_specular[pixelPosition]
 		);
 	}
 #endif

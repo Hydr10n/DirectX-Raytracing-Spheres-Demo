@@ -8,7 +8,7 @@
  # license agreement from NVIDIA CORPORATION is strictly prohibited.
  **************************************************************************/
 
-#include "rtxdi/RtxdiMath.hlsli"
+#include "Rtxdi/Utils/Math.hlsli"
 
 struct Constants
 {

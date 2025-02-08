@@ -1,5 +1,5 @@
 #include "RtxdiAppBridge.hlsli"
-#include "rtxdi/PresamplingFunctions.hlsli"
+#include "Rtxdi/LightSampling/PresamplingFunctions.hlsli"
 
 ROOT_SIGNATURE
 [numthreads(RTXDI_PRESAMPLING_GROUP_SIZE, 1, 1)]

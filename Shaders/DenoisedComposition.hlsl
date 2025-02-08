@@ -7,7 +7,7 @@
 struct Constants
 {
 	uint2 RenderSize;
-	NRDDenoiser NRDDenoiser;
+	Denoiser Denoiser;
 };
 ConstantBuffer<Constants> g_constants : register(b0);
 
@@ -39,9 +39,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		return;
 	}
 
-	const float4
-		baseColorMetalness = g_baseColorMetalness[pixelPosition],
-		normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(g_normalRoughness[pixelPosition]);
+	const float4 baseColorMetalness = g_baseColorMetalness[pixelPosition], normalRoughness = g_normalRoughness[pixelPosition];
 
 	BSDFSample BSDFSample;
 	BSDFSample.Initialize(baseColorMetalness.rgb, baseColorMetalness.a, normalRoughness.w);
@@ -49,8 +47,8 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	const float2 NDC = Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_constants.RenderSize, g_camera.Jitter));
 	const float3 V = -normalize(g_camera.GenerateRayDirection(NDC));
 	float4 diffuseHitDistance = g_denoisedDiffuse[pixelPosition], specularHitDistance = g_denoisedSpecular[pixelPosition];
-	UnpackDenoisedSignals(
-		g_constants.NRDDenoiser,
+	NRDUnpackDenoisedSignals(
+		g_constants.Denoiser,
 		normalRoughness.xyz, V,
 		BSDFSample,
 		diffuseHitDistance, specularHitDistance

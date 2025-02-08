@@ -79,7 +79,9 @@ export namespace DirectX {
 		uint32_t GetAvailableDescriptorCount() const noexcept(false) { return m_availableDescriptorCount; }
 
 		unique_ptr<Descriptor> Allocate(uint32_t count = 1) {
-			if (!count) Throw<out_of_range>("Cannot allocate 0 descriptors");
+			if (!count) {
+				Throw<out_of_range>("Cannot allocate 0 descriptors");
+			}
 
 			const scoped_lock lock(m_mutex);
 
@@ -95,7 +97,9 @@ export namespace DirectX {
 							}
 						}
 						if (found) {
-							for (uint32_t j = 0; j < count; j++) m_descriptors[i + j] = true;
+							for (uint32_t j = 0; j < count; j++) {
+								m_descriptors[i + j] = true;
+							}
 							m_availableDescriptorCount -= count;
 							return unique_ptr<Descriptor>(new Descriptor(*this, i, count));
 						}
@@ -113,7 +117,9 @@ export namespace DirectX {
 
 			if (const auto size = static_cast<uint32_t>(::size(m_descriptors)); descriptor.m_index < size) {
 				const auto count = min(size, descriptor.m_count);
-				for (uint32_t i = 0; i < count; i++) m_descriptors[descriptor.m_index + i] = false;
+				for (uint32_t i = 0; i < count; i++) {
+					m_descriptors[descriptor.m_index + i] = false;
+				}
 				descriptor.m_index = ~0u;
 				descriptor.m_count = 0;
 				m_availableDescriptorCount += count;

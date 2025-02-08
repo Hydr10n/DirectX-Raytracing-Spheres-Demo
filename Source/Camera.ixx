@@ -36,7 +36,8 @@ export {
 	};
 
 	struct CameraController {
-		explicit CameraController(bool isNormalizedDepthReversed = true) : m_projectionFlags(PROJ_LEFT_HANDED | (isNormalizedDepthReversed ? PROJ_REVERSED_Z : 0)) {}
+		explicit CameraController(bool isNormalizedDepthReversed = true) :
+			m_projectionFlags(PROJ_LEFT_HANDED | (isNormalizedDepthReversed ? PROJ_REVERSED_Z : 0)) {}
 
 		const auto& GetPosition() const { return m_position; }
 
@@ -58,7 +59,9 @@ export {
 			m_forwardDirection = forwardDirection;
 			m_rightDirection = Vector3(upDirection).Cross(forwardDirection);
 			m_upDirection = m_forwardDirection.Cross(m_rightDirection);
-			if (setFocusDistance) SetFocusDistance(m_forwardDirection.Length());
+			if (setFocusDistance) {
+				SetFocusDistance(m_forwardDirection.Length());
+			}
 			else {
 				m_rightDirection = GetNormalizedRightDirection() * m_rightDirectionLength;
 				m_upDirection = GetNormalizedUpDirection() * m_upDirectionLength;

@@ -61,7 +61,9 @@ export namespace DirectX {
 			m_type(GetType(pResource, initialState)),
 			m_format(format),
 			m_stride(stride) {
-			if ((*this)->GetDesc().Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) Throw<invalid_argument>("Resource is not buffer");
+			if ((*this)->GetDesc().Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) {
+				Throw<invalid_argument>("Resource is not buffer");
+			}
 
 			CheckStride(pResource->GetDesc().Width);
 		}
@@ -176,7 +178,8 @@ export namespace DirectX {
 		size_t GetCapacity() const noexcept { return (*this)->GetDesc().Width / m_stride; }
 
 		bool IsMappable() const noexcept {
-			return m_type == GPUBufferType::Upload || m_type == GPUBufferType::Readback || m_deviceContext.MemoryAllocator->IsGPUUploadHeapSupported();
+			return m_type == GPUBufferType::Upload || m_type == GPUBufferType::Readback
+				|| m_deviceContext.MemoryAllocator->IsGPUUploadHeapSupported();
 		}
 
 		void* GetMappedData() {
@@ -185,7 +188,9 @@ export namespace DirectX {
 		}
 
 		void Map() {
-			if (m_mappedData == nullptr) ThrowIfFailed((*this)->Map(0, nullptr, &m_mappedData));
+			if (m_mappedData == nullptr) {
+				ThrowIfFailed((*this)->Map(0, nullptr, &m_mappedData));
+			}
 		}
 
 		void Unmap() {
@@ -308,7 +313,9 @@ export namespace DirectX {
 		struct { unique_ptr<Descriptor> CBV, SRV[3], UAV[4]; } m_descriptors;
 
 		static GPUBufferType GetType(ID3D12Resource* pResource, D3D12_RESOURCE_STATES state) {
-			if (state == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE) return GPUBufferType::RaytracingAccelerationStructure;
+			if (state == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE) {
+				return GPUBufferType::RaytracingAccelerationStructure;
+			}
 			D3D12_HEAP_PROPERTIES heapProperties;
 			ThrowIfFailed(pResource->GetHeapProperties(&heapProperties, nullptr));
 			switch (heapProperties.Type) {
@@ -329,8 +336,12 @@ export namespace DirectX {
 
 		void CheckStride(UINT64 size) const {
 			if (m_type == GPUBufferType::Default || m_type == GPUBufferType::Upload) {
-				if (!m_stride) Throw<invalid_argument>("Buffer stride cannot be 0");
-				if (size % m_stride != 0) Throw<invalid_argument>("Buffer size unaligned to stride");
+				if (!m_stride) {
+					Throw<out_of_range>("Buffer stride cannot be 0");
+				}
+				if (size % m_stride != 0) {
+					Throw<invalid_argument>("Buffer size not aligned to stride");
+				}
 			}
 		}
 	};

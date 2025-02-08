@@ -24,7 +24,9 @@ using namespace std;
 export class HaltonSampler {
 public:
 	explicit HaltonSampler(uint32_t count = ~0u) noexcept(false) : m_count(count) {
-		if (!count) Throw<out_of_range>("Sample count cannot be 0");
+		if (!count) {
+			Throw<out_of_range>("Sample count cannot be 0");
+		}
 	}
 
 	static float Get1D(uint32_t index) { return Halton1D(index); }

@@ -51,7 +51,8 @@ export {
 				enum
 				{
 					DisableGPUTimeout = 0x1,
-					ReverseDepth = 0x2
+					GPUBasedValidation = 0x2,
+					ReverseDepth = 0x4
 				};
 			};
 

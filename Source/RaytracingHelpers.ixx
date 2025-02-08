@@ -52,7 +52,9 @@ export namespace DirectX::RaytracingHelpers {
 					accelerationStructure.InstanceDescs = GPUBuffer::CreateDefault<D3D12_RAYTRACING_INSTANCE_DESC>(deviceContext, inputs.NumDescs);
 				}
 			}
-			else if (resize && accelerationStructure.InstanceDescs) accelerationStructure.InstanceDescs.reset();
+			else if (resize && accelerationStructure.InstanceDescs) {
+				accelerationStructure.InstanceDescs.reset();
+			}
 		}
 
 		if (inputs.NumDescs) {
@@ -82,7 +84,9 @@ export namespace DirectX::RaytracingHelpers {
 			Throw<invalid_argument>("Triangle index format must be either uint16 or uint32");
 		}
 		const auto indexCount = indices.GetCapacity();
-		if (indexCount % 3 != 0) Throw<invalid_argument>("Triangle index count must be divisible by 3");
+		if (indexCount % 3 != 0) {
+			Throw<invalid_argument>("Triangle index count must be divisible by 3");
+		}
 		return {
 			.Flags = flags,
 			.Triangles{

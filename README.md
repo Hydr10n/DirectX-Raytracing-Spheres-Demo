@@ -2,24 +2,16 @@
 
 Real-time physically based rendering using GPU capable of DirectX Raytracing.
 
-![Raytracing Spheres](Screenshots/Raytracing-Spheres-01.png)
-![Raytracing Spheres](Screenshots/Raytracing-Spheres-02.png)
-![Raytracing Spheres](Screenshots/Raytracing-Spheres-03.png)
-![Raytracing Spheres](Screenshots/Raytracing-Spheres-04.png)
-![Raytracing Spheres](Screenshots/Raytracing-Spheres-05.png)
-
-https://user-images.githubusercontent.com/39995363/150128189-1301be4b-1961-446c-98f5-4541a75a80b9.mp4
-
-https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-b127-78f538b594cf.mp4
+![Raytracing Spheres](Screenshots/Raytracing-Spheres.png)
 
 ---
 
 ## Features
-### PBR Metallic/Roughness Workflow
+- PBR Metallic/Roughness Workflow
+- Rigid-Body Simulation Using NVIDIA PhysX
+- GPU Upload Heap
 
-### Rigid-Body Simulation Using NVIDIA PhysX
-
-### Graphics Settings
+## Graphics Settings
 - Window Mode: Windowed | Borderless | Fullscreen
 - Resolution
 - HDR
@@ -38,7 +30,6 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 			- ReGIR
 				- Cell
 					- Size
-					- Visualization
 				- Build Samples
 			- Initial Sampling
 				- Local Light
@@ -56,12 +47,10 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 			- Downscale Factor
 			- Scene Scale
 			- Roughness Threshold
-			- Hash Grid Visualization
 - Post-Processing
-	- NVIDIA Real-Time Denoisers
-		- Denoiser: ReBLUR | ReLAX
-		- Validation Overlay
 	- Super Resolution: NVIDIA DLSS | Intel XeSS
+	- Denoising
+		- Denoiser: NVIDIA DLSS Ray Reconstruction | NVIDIA ReBLUR | NVIDIA ReLAX
 	- Frame Generation: NVIDIA DLSS
 	- NVIDIA Image Scaling
 		- Sharpness
@@ -75,11 +64,6 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 		- Non-HDR
 			- Operator: Saturate | Reinhard | ACES Filmic
 			- Exposure
-
-### Supported Input Devices
-- Xbox Controller
-- Keyboard
-- Mouse
 
 ---
 
@@ -104,14 +88,3 @@ https://user-images.githubusercontent.com/39995363/219614024-f2b1b53f-d738-4d6c-
 	```powershell
 	> git submodule update --init --recursive
 	```
-
-## Minimum System Requirements
-- OS: Microsoft Windows 10 64-bit (22H2) with latest drivers
-- Graphics:
-	- Basic: Any GPU capable of DirectX Raytracing Tier 1.1
-	- GPU Upload Heap: Any integrated GPU, or discrete GPU & BIOS that support Resizable BAR
-	- NVIDIA
-		- Shader Execution Reordering: GeForce RTX 40 Series
-		- DLSS
-			- Super Resolution: GeForce RTX 20 Series
-			- Frame Generation: GeForce RTX 40 Series

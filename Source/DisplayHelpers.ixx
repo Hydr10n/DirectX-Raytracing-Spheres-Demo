@@ -13,10 +13,18 @@ export namespace DisplayHelpers {
 		bool IsPortrait() const { return cx < cy; }
 
 		[[nodiscard]] auto operator<=>(const Resolution& rhs) const {
-			if (cx < rhs.cx) return -1;
-			if (cx > rhs.cx) return 1;
-			if (cy < rhs.cy) return -1;
-			if (cy > rhs.cy) return 1;
+			if (cx < rhs.cx) {
+				return -1;
+			}
+			if (cx > rhs.cx) {
+				return 1;
+			}
+			if (cy < rhs.cy) {
+				return -1;
+			}
+			if (cy > rhs.cy) {
+				return 1;
+			}
 			return 0;
 		}
 
@@ -27,7 +35,9 @@ export namespace DisplayHelpers {
 		MONITORINFO monitorInfo;
 		monitorInfo.cbSize = sizeof(monitorInfo);
 		const auto ret = GetMonitorInfoW(hMonitor, &monitorInfo);
-		if (ret) rect = monitorInfo.rcMonitor;
+		if (ret) {
+			rect = monitorInfo.rcMonitor;
+		}
 		return ret;
 	}
 
@@ -39,7 +49,9 @@ export namespace DisplayHelpers {
 	[[nodiscard]] inline BOOL GetDisplayResolution(Resolution& resolution, HMONITOR hMonitor) {
 		RECT rect;
 		const auto ret = GetDisplayRect(rect, hMonitor);
-		if (ret) resolution = { rect.right - rect.left, rect.bottom - rect.top };
+		if (ret) {
+			resolution = { rect.right - rect.left, rect.bottom - rect.top };
+		}
 		return ret;
 	}
 
@@ -52,7 +64,9 @@ export namespace DisplayHelpers {
 		DEVMODEW devMode;
 		devMode.dmSize = sizeof(devMode);
 		const auto ret = EnumDisplaySettingsW(lpDeviceName, index, &devMode);
-		if (ret) resolution = { static_cast<LONG>(devMode.dmPelsWidth), static_cast<LONG>(devMode.dmPelsHeight) };
+		if (ret) {
+			resolution = { static_cast<LONG>(devMode.dmPelsWidth), static_cast<LONG>(devMode.dmPelsHeight) };
+		}
 		return ret;
 	}
 
@@ -72,7 +86,9 @@ export namespace DisplayHelpers {
 		Resolution resolution;
 		for (DWORD i = 0; GetDisplayResolution(i, resolution, lpDeviceName); i++) temp.emplace(resolution);
 		const auto ret = !empty(temp);
-		if (ret) resolutions = move(temp);
+		if (ret) {
+			resolutions = move(temp);
+		}
 		return ret;
 	}
 

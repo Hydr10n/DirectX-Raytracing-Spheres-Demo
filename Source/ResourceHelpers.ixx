@@ -18,17 +18,25 @@ using namespace std::filesystem;
 
 export namespace ResourceHelpers {
 	bool AreSamePath(const path& a, const path& b) {
-		try { return !_wcsicmp(a.c_str(), b.c_str()) || equivalent(a, b); }
-		catch (...) { return false; }
+		try {
+			return !_wcsicmp(a.c_str(), b.c_str()) || equivalent(a, b);
+		}
+		catch (...) {
+			return false;
+		}
 	}
 
-	auto ResolveResourcePath(const path& path) { return path.is_absolute() ? path : filesystem::path(*__wargv).replace_filename(path); }
+	auto ResolveResourcePath(const path& path) {
+		return path.is_absolute() ? path : filesystem::path(*__wargv).replace_filename(path);
+	}
 
 	template <typename KeyType, typename ResourceType, constructible_from Loader> requires is_class_v<Loader>
 	struct ResourceDictionary : unordered_map<KeyType, shared_ptr<ResourceType>> {
 		template <typename... Args>
 		void Load(const unordered_map<KeyType, path>& descs, bool ignoreLoaded, size_t threadCount, Args&&... args) {
-			if (!threadCount) Throw<out_of_range>("Thread count cannot be 0");
+			if (!threadCount) {
+				Throw<out_of_range>("Thread count cannot be 0");
+			}
 
 			vector<thread> threads;
 
@@ -59,7 +67,9 @@ export namespace ResourceHelpers {
 
 						if (const auto pLoadedResource = ranges::find_if(loadedResources, [&](const auto& value) { return AreSamePath(value.second.FilePath, filePath); });
 							pLoadedResource != ::cend(loadedResources)) {
-							if (pLoadedResource->first < localThreadIndex) latches[pLoadedResource->first]->wait();
+							if (pLoadedResource->first < localThreadIndex) {
+								latches[pLoadedResource->first]->wait();
+							}
 
 							resource = *pLoadedResource->second.Resource;
 
@@ -79,7 +89,9 @@ export namespace ResourceHelpers {
 				catch (...) {
 					const scoped_lock lock(exceptionMutex);
 
-					if (!exception) exception = current_exception();
+					if (!exception) {
+						exception = current_exception();
+					}
 				}
 					},
 					size(threads)
@@ -88,12 +100,16 @@ export namespace ResourceHelpers {
 				globalThreadIndex++;
 
 				if (size(threads) == threadCount || globalThreadIndex == size(descs)) {
-					for (auto& thread : threads) thread.join();
+					for (auto& thread : threads) {
+						thread.join();
+					}
 					threads.clear();
 					latches.clear();
 				}
 
-				if (exception) rethrow_exception(exception);
+				if (exception) {
+					rethrow_exception(exception);
+				}
 			}
 		}
 	};

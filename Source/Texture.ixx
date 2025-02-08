@@ -72,9 +72,15 @@ export namespace DirectX {
 			}
 
 			const auto desc = pResource->GetDesc();
-			if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) m_descriptors.UAV.resize(desc.MipLevels);
-			if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) m_descriptors.RTV.resize(desc.MipLevels);
-			if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) m_descriptors.DSV.resize(desc.MipLevels);
+			if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {
+				m_descriptors.UAV.resize(desc.MipLevels);
+			}
+			if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) {
+				m_descriptors.RTV.resize(desc.MipLevels);
+			}
+			if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) {
+				m_descriptors.DSV.resize(desc.MipLevels);
+			}
 		}
 
 		Texture(const DeviceContext& deviceContext, const CreationDesc& creationDesc) noexcept(false) :
@@ -91,24 +97,36 @@ export namespace DirectX {
 			switch (Dimension)
 			{
 				case TextureDimension::_1:
+				{
 					resourceDesc = CD3DX12_RESOURCE_DESC::Tex1D(Format, Width, DepthOrArraySize, MipLevels, Flags);
-					break;
+				}
+				break;
 
 				case TextureDimension::_2:
+				{
 					resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(Format, Width, Height, DepthOrArraySize, MipLevels, SampleCount, 0, Flags);
-					break;
+				}
+				break;
 
 				case TextureDimension::_3:
+				{
 					resourceDesc = CD3DX12_RESOURCE_DESC::Tex3D(Format, Width, Height, DepthOrArraySize, MipLevels, Flags);
-					break;
+				}
+				break;
 			}
 			D3D12_CLEAR_VALUE clearValue{ .Format = Format };
 			reinterpret_cast<Color&>(clearValue.Color) = ClearColor;
 			ThrowIfFailed(deviceContext.MemoryAllocator->CreateResource(&allocationDesc, &resourceDesc, InitialState, allowRenderTarget || allowDepthStencil ? &clearValue : nullptr, &m_allocation, IID_NULL, nullptr));
 
-			if (Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) m_descriptors.UAV.resize(MipLevels);
-			if (allowRenderTarget) m_descriptors.RTV.resize(MipLevels);
-			if (allowDepthStencil) m_descriptors.DSV.resize(MipLevels);
+			if (Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {
+				m_descriptors.UAV.resize(MipLevels);
+			}
+			if (allowRenderTarget) {
+				m_descriptors.RTV.resize(MipLevels);
+			}
+			if (allowDepthStencil) {
+				m_descriptors.DSV.resize(MipLevels);
+			}
 		}
 
 		bool IsCubeMap() const noexcept {
@@ -126,7 +144,9 @@ export namespace DirectX {
 
 		void CreateSRV() {
 			auto& descriptor = m_descriptors.SRV;
-			if (descriptor) return;
+			if (descriptor) {
+				return;
+			}
 
 			const auto desc = (*this)->GetDesc();
 			const auto mipLevels = desc.MipLevels ? desc.MipLevels : ~0u;
@@ -198,21 +218,27 @@ export namespace DirectX {
 
 		void CreateUAV(UINT16 mipLevel = 0) {
 			auto& descriptor = m_descriptors.UAV[mipLevel];
-			if (descriptor) return;
+			if (descriptor) {
+				return;
+			}
 			descriptor = m_deviceContext.ResourceDescriptorHeap->Allocate();
 			CreateUnorderedAccessView(m_deviceContext, *this, *descriptor, mipLevel);
 		}
 
 		void CreateRTV(UINT16 mipLevel = 0) {
 			auto& descriptor = m_descriptors.RTV[mipLevel];
-			if (descriptor) return;
+			if (descriptor) {
+				return;
+			}
 			descriptor = m_deviceContext.RenderDescriptorHeap->Allocate();
 			CreateRenderTargetView(m_deviceContext, *this, *descriptor, mipLevel);
 		}
 
 		void CreateDSV(UINT16 mipLevel = 0) {
 			auto& descriptor = m_descriptors.DSV[mipLevel];
-			if (descriptor) return;
+			if (descriptor) {
+				return;
+			}
 
 			const auto desc = (*this)->GetDesc();
 			D3D12_DEPTH_STENCIL_VIEW_DESC DSVDesc{ .Format = desc.Format };
@@ -240,7 +266,9 @@ export namespace DirectX {
 							DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMSARRAY;
 							DSVDesc.Texture2DMSArray.ArraySize = desc.DepthOrArraySize;
 						}
-						else DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+						else {
+							DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+						}
 					}
 					else if (desc.DepthOrArraySize) {
 						DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;

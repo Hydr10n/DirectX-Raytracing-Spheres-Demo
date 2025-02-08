@@ -8,8 +8,8 @@
 #define RTXDI_ENABLE_BOILING_FILTER
 #define RTXDI_BOILING_FILTER_GROUP_SIZE RTXDI_SCREEN_SPACE_GROUP_SIZE
 
-#include "rtxdi/ReSTIRDIParameters.h"
-#include "rtxdi/RtxdiMath.hlsli"
+#include "Rtxdi/DI/ReSTIRDIParameters.h"
+#include "Rtxdi/Utils/Math.hlsli"
 
 #include "Common.hlsli"
 
@@ -35,7 +35,7 @@ struct GraphicsSettings
 		ReGIR_Parameters ReGIR;
 		ReSTIRDI_Parameters ReSTIRDI;
 	} RTXDI;
-	NRDSettings NRD;
+	DenoisingSettings Denoising;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
 
@@ -47,15 +47,15 @@ StructuredBuffer<uint> g_lightIndices : register(t3);
 Buffer<float2> g_neighborOffsets : register(t4);
 
 Texture2D g_localLightPDF : register(t5);
-Texture2D<float> g_previousLinearDepth : register(t6);
-Texture2D<float> g_linearDepth : register(t7);
-Texture2D<float3> g_motionVector : register(t8);
-Texture2D<float4> g_previousBaseColorMetalness : register(t9);
-Texture2D<float4> g_baseColorMetalness : register(t10);
-Texture2D<float4> g_previousNormals : register(t11);
-Texture2D<float4> g_normals : register(t12);
-Texture2D<float> g_previousRoughness : register(t13);
-Texture2D<float> g_roughness : register(t14);
+Texture2D<float2> g_previousGeometricNormal : register(t6);
+Texture2D<float2> g_geometricNormal : register(t7);
+Texture2D<float> g_previousLinearDepth : register(t8);
+Texture2D<float> g_linearDepth : register(t9);
+Texture2D<float3> g_motionVector : register(t10);
+Texture2D<float4> g_previousBaseColorMetalness : register(t11);
+Texture2D<float4> g_baseColorMetalness : register(t12);
+Texture2D<float4> g_previousNormalRoughness : register(t13);
+Texture2D<float4> g_normalRoughness : register(t14);
 Texture2D<float> g_previousTransmission : register(t15);
 Texture2D<float> g_transmission : register(t16);
 Texture2D<float> g_previousIOR : register(t17);
@@ -66,8 +66,9 @@ RWStructuredBuffer<RTXDI_PackedDIReservoir> g_DIReservoir : register(u1);
 
 RWTexture2D<float3> g_radiance : register(u2);
 RWTexture2D<float4> g_lightRadiance : register(u3);
-RWTexture2D<float4> g_noisyDiffuse : register(u4);
-RWTexture2D<float4> g_noisySpecular : register(u5);
+RWTexture2D<float4> g_diffuse : register(u4);
+RWTexture2D<float4> g_specular : register(u5);
+RWTexture2D<float> g_specularHitDistance : register(u6);
 
 #include "RaytracingHelpers.hlsli"
 
@@ -105,7 +106,8 @@ RWTexture2D<float4> g_noisySpecular : register(u5);
 		"DescriptorTable(UAV(u2))," \
 		"DescriptorTable(UAV(u3))," \
 		"DescriptorTable(UAV(u4))," \
-		"DescriptorTable(UAV(u5))" \
+		"DescriptorTable(UAV(u5))," \
+		"DescriptorTable(UAV(u6))" \
 	)]
 
 int2 RAB_ClampSamplePositionIntoView(int2 pixelPosition, bool previousFrame)
@@ -295,16 +297,17 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 	RAB_Surface surface = RAB_EmptySurface();
 	if (all(pixelPosition < g_graphicsSettings.RenderSize))
 	{
-		float4 normals, baseColorMetalness;
-		float roughness, transmission = 0, IOR = 1;
+		float2 geometricNormal;
+		float4 baseColorMetalness, normalRoughenss;
+		float transmission = 0, IOR = 1;
 		if (previousFrame)
 		{
 			if (isinf(surface.LinearDepth = g_previousLinearDepth[pixelPosition])
-				|| (roughness = g_previousRoughness[pixelPosition]) == 0)
+				|| (normalRoughenss = g_previousNormalRoughness[pixelPosition]).w == 0)
 			{
 				return surface;
 			}
-			normals = g_previousNormals[pixelPosition];
+			geometricNormal = g_previousGeometricNormal[pixelPosition];
 			baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
 			if (baseColorMetalness.a < 1)
 			{
@@ -315,11 +318,11 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		else
 		{
 			if (isinf(surface.LinearDepth = g_linearDepth[pixelPosition])
-				|| (roughness = g_roughness[pixelPosition]) == 0)
+				|| (normalRoughenss = g_normalRoughness[pixelPosition]).w == 0)
 			{
 				return surface;
 			}
-			normals = g_normals[pixelPosition];
+			geometricNormal = g_geometricNormal[pixelPosition];
 			baseColorMetalness = g_baseColorMetalness[pixelPosition];
 			if (baseColorMetalness.a < 1)
 			{
@@ -329,18 +332,16 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		}
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
 		surface.ViewDirection = normalize((previousFrame ? g_camera.PreviousPosition : g_camera.Position) - surface.Position);
-		const float3
-			shadingNormal = Packing::DecodeUnitVector(normals.xy, true),
-			geometricNormal = Packing::DecodeUnitVector(normals.zw, true);
+		const float3 normal = Packing::DecodeUnitVector(geometricNormal, true);
 		surface.Vectors.Initialize(
-			dot(geometricNormal, surface.ViewDirection) > 0,
-			shadingNormal,
-			geometricNormal
+			dot(normal, surface.ViewDirection) > 0,
+			normalRoughenss.xyz,
+			normal
 		);
 		surface.BSDFSample.Initialize(
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
-			roughness,
+			normalRoughenss.w,
 			transmission,
 			IOR
 		);
@@ -373,11 +374,18 @@ float RAB_GetSurfaceLinearDepth(RAB_Surface surface)
 	return surface.LinearDepth;
 }
 
-bool RAB_AreMaterialsSimilar(RAB_Surface a, RAB_Surface b)
+using RAB_Material = BSDFSample;
+
+RAB_Material RAB_GetMaterial(RAB_Surface surface)
 {
-	return RTXDI_CompareRelativeDifference(a.BSDFSample.Roughness, b.BSDFSample.Roughness, 0.5f)
-		&& abs(Color::Luminance(a.BSDFSample.Rf0) - Color::Luminance(b.BSDFSample.Rf0)) <= 0.25f
-		&& abs(Color::Luminance(a.BSDFSample.Albedo) - Color::Luminance(b.BSDFSample.Albedo)) <= 0.25f;
+	return surface.BSDFSample;
+}
+
+bool RAB_AreMaterialsSimilar(RAB_Material a, RAB_Material b)
+{
+	return RTXDI_CompareRelativeDifference(a.Roughness, b.Roughness, 0.5f)
+		&& abs(Color::Luminance(a.Rf0) - Color::Luminance(b.Rf0)) <= 0.25f
+		&& abs(Color::Luminance(a.Albedo) - Color::Luminance(b.Albedo)) <= 0.25f;
 }
 
 void RAB_GetLightDirDistance(RAB_Surface surface, RAB_LightSample lightSample, out float3 o_lightDir, out float o_lightDistance)

@@ -7,10 +7,10 @@ module;
 export module PostProcessing.DenoisedComposition;
 
 import CommandList;
+import Denoiser;
 import DeviceContext;
 import ErrorHelpers;
 import GPUBuffer;
-import NRD;
 import Texture;
 
 using namespace DirectX;
@@ -22,7 +22,7 @@ export namespace PostProcessing {
 	struct DenoisedComposition {
 		struct Constants {
 			XMUINT2 RenderSize;
-			NRDDenoiser NRDDenoiser;
+			Denoiser Denoiser;
 		};
 
 		struct { GPUBuffer* Camera; } GPUBuffers{};

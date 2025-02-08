@@ -4,7 +4,7 @@
 
 #include "MeshHelpers.hlsli"
 
-#include "rtxdi/RtxdiMath.hlsli"
+#include "Rtxdi/Utils/Math.hlsli"
 
 SamplerState g_anisotropicSampler : register(s0);
 

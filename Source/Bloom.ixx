@@ -41,7 +41,9 @@ export namespace PostProcessing {
 
 		void SetTextures(Texture& input, Texture& output) {
 			const auto a = m_textures.Input == &input, b = m_textures.Output == &output;
-			if (a && b) return;
+			if (a && b) {
+				return;
+			}
 			if (!a) {
 				m_textures.Input = &input;
 				input.CreateSRV();
@@ -67,7 +69,9 @@ export namespace PostProcessing {
 						}.AsUnorderedAccess()
 						);
 					texture->CreateSRV();
-					for (const auto i : views::iota(static_cast<UINT16>(0), BlurMipLevels)) texture->CreateUAV(i);
+					for (const auto i : views::iota(static_cast<UINT16>(0), BlurMipLevels)) {
+						texture->CreateUAV(i);
+					}
 				};
 				CreateTexture(m_textures.Blur1);
 				CreateTexture(m_textures.Blur2);
@@ -104,7 +108,9 @@ export namespace PostProcessing {
 
 			for (const auto i : views::iota(0, (BlurMipLevels - 1) * 2)) {
 				_constants.InputMipLevel = outputMipLevel;
-				if (i < BlurMipLevels - 1) outputMipLevel++;
+				if (i < BlurMipLevels - 1) {
+					outputMipLevel++;
+				}
 				else {
 					outputMipLevel--;
 					_constants.UpsamplingFilterRadius = 5e-3f;
