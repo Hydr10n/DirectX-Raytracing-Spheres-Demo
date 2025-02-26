@@ -14,7 +14,7 @@ using namespace std;
 
 export {
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) Camera {
-		BOOL IsNormalizedDepthReversed;
+		uint32_t IsNormalizedDepthReversed;
 		XMFLOAT3 PreviousPosition, Position;
 		float _;
 		XMFLOAT3 RightDirection;

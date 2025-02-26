@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Math.hlsli"
-
 #include "HitInfo.hlsli"
 
 #include "ShadingHelpers.hlsli"
@@ -21,15 +19,25 @@ float3 TraceRay(
 		if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE)
 		{
 			const ObjectData objectData = g_objectData[q.CandidateInstanceID() + q.CandidateGeometryIndex()];
-			const float2 textureCoordinate = GetTextureCoordinate(objectData, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
+			const MeshDescriptors meshDescriptors = objectData.MeshDescriptors;
+			const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshDescriptors.Vertices];
+			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshDescriptors.Indices], q.CandidatePrimitiveIndex());
+			float2 textureCoordinates[2];
+			GetTextureCoordinates(
+				objectData.VertexDesc,
+				vertices,
+				indices,
+				q.CandidateTriangleBarycentrics(),
+				textureCoordinates
+			);
 			if (Flags & RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH)
 			{
-				if (IsOpaque(objectData, textureCoordinate, visibility))
+				if (IsOpaque(objectData.Material, objectData.TextureMapInfoArray, textureCoordinates, visibility))
 				{
 					q.CommitNonOpaqueTriangleHit();
 				}
 			}
-			else if (IsOpaque(objectData, textureCoordinate))
+			else if (IsOpaque(objectData.Material, objectData.TextureMapInfoArray, textureCoordinates))
 			{
 				q.CommitNonOpaqueTriangleHit();
 			}
@@ -63,52 +71,66 @@ bool CastRay(
 	const bool isHit = q.CommittedStatus() != COMMITTED_NOTHING;
 	if (isHit)
 	{
+		hitInfo.Distance = q.CommittedRayT();
 		hitInfo.InstanceIndex = q.CommittedInstanceIndex();
 		hitInfo.ObjectIndex = q.CommittedInstanceID() + q.CommittedGeometryIndex();
 		hitInfo.PrimitiveIndex = q.CommittedPrimitiveIndex();
 
+		const float3x4 objectToWorld = q.CommittedObjectToWorld3x4();
 		const ObjectData objectData = g_objectData[hitInfo.ObjectIndex];
-		const MeshResourceDescriptorIndices meshIndices = objectData.ResourceDescriptorIndices.Mesh;
-		const TextureMapResourceDescriptorIndices textureMapIndices = objectData.ResourceDescriptorIndices.TextureMaps;
-		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], hitInfo.PrimitiveIndex);
-		const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshIndices.Vertices];
+
+		const MeshDescriptors meshDescriptors = objectData.MeshDescriptors;
+		const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshDescriptors.Vertices];
+		const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshDescriptors.Indices], hitInfo.PrimitiveIndex);
 		const VertexDesc vertexDesc = objectData.VertexDesc;
-		float3 positions[3], normals[3];
+
+		float3 positions[3];
 		vertexDesc.LoadPositions(vertices, indices, positions);
-		vertexDesc.LoadNormals(vertices, indices, normals);
-		hitInfo.Initialize(
-			positions, normals,
-			q.CommittedTriangleBarycentrics(),
-			q.CommittedObjectToWorld3x4(), q.CommittedWorldToObject3x4(),
-			rayDesc.Direction, q.CommittedRayT()
-		);
-		if (vertexDesc.TextureCoordinateOffset != ~0u)
+
+		if (vertexDesc.AttributeOffsets.Normal != ~0u)
 		{
-			float2 textureCoordinates[3];
-			vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
-			hitInfo.TextureCoordinate = Vertex::Interpolate(textureCoordinates, hitInfo.Barycentrics);
-			if (textureMapIndices.Normal != ~0u)
-			{
-				const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.Normal];
-				float3 T;
-				if (vertexDesc.TangentOffset == ~0u)
-				{
-					T = normalize(Math::CalculateTangent(positions, textureCoordinates));
-				}
-				else
-				{
-					float3 tangents[3];
-					vertexDesc.LoadTangents(vertices, indices, tangents);
-					T = normalize(Vertex::Interpolate(tangents, hitInfo.Barycentrics));
-				}
-				const float3x3 TBN = float3x3(T, normalize(cross(hitInfo.Normal, T)), hitInfo.Normal);
-				hitInfo.Normal = normalize(Geometry::RotateVectorInverse(TBN, texture.SampleLevel(g_anisotropicSampler, hitInfo.TextureCoordinate, 0) * 2 - 1));
-			}
+			float3 normals[3];
+			vertexDesc.LoadNormals(vertices, indices, normals);
+
+			hitInfo.Initialize(
+				positions, normals,
+				q.CommittedTriangleBarycentrics(),
+				objectToWorld, q.CommittedWorldToObject3x4(),
+				rayDesc.Direction
+			);
 		}
+		else
+		{
+			hitInfo.Initialize(
+				positions,
+				q.CommittedTriangleBarycentrics(),
+				objectToWorld, q.CommittedWorldToObject3x4(),
+				rayDesc.Direction
+			);
+		}
+
+		if (vertexDesc.AttributeOffsets.Tangent != ~0u)
+		{
+			float3 tangents[3];
+			vertexDesc.LoadTangents(vertices, indices, tangents);
+			hitInfo.Tangent = Vertex::Interpolate(tangents, hitInfo.Barycentrics);
+			hitInfo.Tangent = normalize(Geometry::RotateVector((float3x3)objectToWorld, hitInfo.Tangent));
+		}
+		else
+		{
+			hitInfo.Tangent = 0;
+		}
+
+		GetTextureCoordinates(
+			objectData.VertexDesc,
+			vertices,
+			indices,
+			q.CommittedTriangleBarycentrics(),
+			hitInfo.TextureCoordinates
+		);
 	}
 	else
 	{
-		hitInfo = (HitInfo)0;
 		hitInfo.Position = rayDesc.Origin + rayDesc.Direction * 1e8f;
 		hitInfo.Distance = 1.#INF;
 	}

@@ -9,12 +9,15 @@ module;
 #include "directxtk12/Mouse.h"
 #include "directxtk12/SimpleMath.h"
 
+#include "DirectXMesh.h"
+
 #include "PhysX.h"
 
 export module MyScene;
 
 export import Scene;
 
+import ErrorHelpers;
 import Material;
 import Model;
 import Random;
@@ -22,6 +25,7 @@ import Texture;
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
+using namespace ErrorHelpers;
 using namespace PhysicsHelpers;
 using namespace physx;
 using namespace std;
@@ -50,19 +54,44 @@ export {
 				GeometricPrimitive::VertexCollection vertices;
 				GeometricPrimitive::IndexCollection indices;
 				GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
-				Meshes[ObjectNames::Sphere] = { make_shared<vector<VertexPositionNormalTexture>>(vertices), make_shared<vector<Mesh::IndexType>>(indices) };
+
+				const auto vertexCount = size(vertices);
+				vector<XMFLOAT3> positions, normals, tangents(vertexCount);
+				vector<XMFLOAT2> textureCoordinates;
+				positions.reserve(vertexCount);
+				normals.reserve(vertexCount);
+				textureCoordinates.reserve(vertexCount);
+				for (const auto& vertex : vertices) {
+					positions.emplace_back(vertex.position);
+					normals.emplace_back(vertex.normal);
+					textureCoordinates.emplace_back(vertex.textureCoordinate);
+				}
+				ThrowIfFailed(ComputeTangentFrame(
+					data(indices), size(indices) / 3,
+					data(positions), data(normals), data(textureCoordinates), vertexCount,
+					data(tangents), nullptr
+				));
+
+				auto newVertices = make_shared<vector<Mesh::VertexType>>();
+				newVertices->reserve(vertexCount);
+				for (const auto i : views::iota(static_cast<size_t>(0), vertexCount)) {
+					Mesh::VertexType vertex;
+					vertex.Position = positions[i];
+					vertex.StoreNormal(normals[i]);
+					vertex.StoreTangent(tangents[i]);
+					vertex.StoreTextureCoordinate(textureCoordinates[i], 0);
+					newVertices->emplace_back(vertex);
+				}
+
+				Meshes[ObjectNames::Sphere] = { newVertices, make_shared<vector<Mesh::IndexType>>(indices) };
 			}
 
 			Camera.Position.z = -15;
 
 			const path directoryPath = L"Assets/Textures";
 
-			EnvironmentLightTexture = {
-				.FilePath = directoryPath / L"141_hdrmaps_com_free.exr",
-				.Transform{
-					.Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI, 0, 0)
-				}
-			};
+			EnvironmentLight.Rotation = Quaternion::CreateFromYawPitchRoll(XM_PI, 0, 0);
+			EnvironmentLight.Texture = directoryPath / L"141_hdrmaps_com_free.exr";
 
 			PhysX = make_shared<::PhysX>(8);
 
@@ -103,8 +132,7 @@ export {
 						.Material{
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0,
-							.Transmission = 1,
-							.IOR = 1.5f
+							.Transmission = 1
 						}
 					},
 					{
@@ -112,8 +140,7 @@ export {
 						.Material{
 							.BaseColor{ 1, 1, 1, 1 },
 							.Roughness = 0.5f,
-							.Transmission = 1,
-							.IOR = 1.5f
+							.Transmission = 1
 						}
 					},
 					{
@@ -184,15 +211,14 @@ export {
 							renderObject.Material = {
 								.BaseColor = RandomFloat4(0.1f),
 								.Roughness = random.Float(0, 0.5f),
-								.Transmission = 1,
-								.IOR = 1.5f
+								.Transmission = 1
 							};
 						}
 						else {
 							renderObject.Material = {
 								.BaseColor = RandomFloat4(0.1f),
-								.EmissiveColor = random.Float3(0.2f),
 								.EmissiveStrength = random.Float(1, 10),
+								.EmissiveColor = random.Float3(0.2f),
 								.Metallic = random.Float(0.4f),
 								.Roughness = random.Float(0.3f)
 							};

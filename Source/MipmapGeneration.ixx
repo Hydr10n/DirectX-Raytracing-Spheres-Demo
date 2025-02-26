@@ -50,7 +50,7 @@ export namespace PostProcessing {
 
 			const auto mipLevels = min<UINT16>(m_texture->GetNative()->GetDesc().MipLevels, 16);
 
-			struct { UINT MipLevelDescriptorIndices[16], MipLevels; } constants{ .MipLevels = mipLevels };
+			struct { uint32_t MipLevelDescriptorIndices[16], MipLevels; } constants{ .MipLevels = mipLevels };
 			for (const auto i : views::iota(0u, mipLevels)) {
 				constants.MipLevelDescriptorIndices[i] = m_texture->GetUAVDescriptor(i);
 			}

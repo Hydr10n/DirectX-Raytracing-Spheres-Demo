@@ -3,8 +3,7 @@ module;
 #include <memory>
 #include <span>
 
-#include "directxtk12/VertexTypes.h"
-#include "directxtk12/ResourceUploadBatch.h"
+#include <d3d12.h>
 
 #include "eventpp/callbacklist.h"
 
@@ -22,8 +21,8 @@ using namespace std;
 export struct Mesh {
 	string Name;
 
-	using VertexType = ::VertexPositionNormalTexture;
-	using IndexType = UINT16;
+	using VertexType = VertexPositionNormalTangentTexture;
+	using IndexType = uint16_t;
 	shared_ptr<GPUBuffer> Vertices;
 	shared_ptr<GPUBuffer> Indices;
 
@@ -33,19 +32,17 @@ export struct Mesh {
 	static constexpr VertexDesc GetVertexDesc() {
 		return {
 			.Stride = sizeof(VertexType),
-			.NormalOffset = offsetof(VertexType, Normal),
-			.TextureCoordinateOffset = offsetof(VertexType, TextureCoordinate)
+			.AttributeOffsets{
+				.Normal = offsetof(VertexType, Normal),
+				.Tangent = offsetof(VertexType, Tangent),
+				.TextureCoordinates{ offsetof(VertexType, TextureCoordinates[0]) }
+			}
 		};
 	}
 
 	~Mesh() { OnDestroyed(this); }
 
-	static auto Create(const vector<DirectX::VertexPositionNormalTexture>& vertices, const vector<IndexType>& indices, const DeviceContext& deviceContext, CommandList& commandList) {
-		vector<VertexType> newVertices;
-		newVertices.reserve(vertices.size());
-		for (const auto& [Position, Normal, TextureCoordinate] : vertices) {
-			newVertices.emplace_back(::VertexPositionNormalTexture(Position, Normal, TextureCoordinate));
-		}
+	static auto Create(const vector<VertexType>& vertices, const vector<IndexType>& indices, const DeviceContext& deviceContext, CommandList& commandList) {
 		const auto CreateBuffer = [&]<typename T>(auto & buffer, const vector<T> &data, DXGI_FORMAT format) {
 			buffer = GPUBuffer::CreateDefault<T>(deviceContext, size(data), format);
 			buffer->CreateSRV(format == DXGI_FORMAT_UNKNOWN ? BufferSRVType::Raw : BufferSRVType::Typed);
@@ -53,7 +50,7 @@ export struct Mesh {
 			commandList.SetState(*buffer, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		};
 		const auto mesh = make_shared<Mesh>();
-		CreateBuffer(mesh->Vertices, newVertices, DXGI_FORMAT_UNKNOWN);
+		CreateBuffer(mesh->Vertices, vertices, DXGI_FORMAT_UNKNOWN);
 		CreateBuffer(mesh->Indices, indices, DXGI_FORMAT_R16_UINT);
 		return mesh;
 	}

@@ -45,7 +45,7 @@ export struct GBufferGeneration {
 
 	struct Constants {
 		XMUINT2 RenderSize{};
-		UINT Flags{};
+		uint32_t Flags{};
 	};
 
 	struct { GPUBuffer* SceneData, * Camera, * InstanceData, * ObjectData; } GPUBuffers{};
@@ -84,7 +84,7 @@ export struct GBufferGeneration {
 		commandList.SetState(*GPUBuffers.SceneData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
-		UINT i = 0;
+		uint32_t i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRoot32BitConstants(i++, sizeof(constants) / 4, &constants, 0);
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());

@@ -12,47 +12,29 @@ import Vertex;
 using namespace DirectX;
 
 export {
-	struct SceneResourceDescriptorIndices {
-		UINT EnvironmentLightTexture = ~0u, EnvironmentTexture = ~0u;
-		XMUINT2 _;
-	};
-
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) SceneData {
-		BOOL IsStatic, IsEnvironmentLightTextureCubeMap;
-		XMUINT2 _;
+		uint32_t IsStatic, IsEnvironmentLightTextureCubeMap;
+		uint32_t EnvironmentLightTextureDescriptor = ~0u, _;
 		XMFLOAT4 EnvironmentLightColor;
-		XMFLOAT3X4 EnvironmentLightTextureTransform;
-		SceneResourceDescriptorIndices ResourceDescriptorIndices;
+		XMFLOAT3X4 EnvironmentLightTransform;
 	};
 
 	struct InstanceData {
-		UINT FirstGeometryIndex;
+		uint32_t FirstGeometryIndex;
 		XMUINT3 _;
 		XMFLOAT3X4 PreviousObjectToWorld, ObjectToWorld;
 	};
 
-	struct MeshResourceDescriptorIndices { UINT Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u, _; };
-
-	struct TextureMapResourceDescriptorIndices {
-		UINT
-			BaseColor = ~0u,
-			EmissiveColor = ~0u,
-			Metallic = ~0u,
-			Roughness = ~0u,
-			MetallicRoughness = ~0u,
-			Transmission = ~0u,
-			Normal = ~0u,
-			_;
+	struct MeshDescriptors {
+		uint32_t Vertices = ~0u, Indices = ~0u, MotionVectors = ~0u, _;
 	};
 
-	struct ObjectResourceDescriptorIndices {
-		MeshResourceDescriptorIndices Mesh;
-		TextureMapResourceDescriptorIndices Textures;
-	};
+	using TextureMapInfoArray = TextureMapInfo[TextureMapType::Count];
 
 	struct ObjectData {
 		VertexDesc VertexDesc;
+		MeshDescriptors MeshDescriptors;
 		Material Material;
-		ObjectResourceDescriptorIndices ResourceDescriptorIndices;
+		TextureMapInfoArray TextureMapInfoArray;
 	};
 }

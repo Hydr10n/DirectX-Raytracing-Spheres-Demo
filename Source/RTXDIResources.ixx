@@ -33,12 +33,12 @@ export {
 
 		unique_ptr<Texture> LocalLightPDF;
 
-		void CreateLightResources(const DeviceContext& deviceContext, UINT emissiveTriangleCount, UINT objectCount) {
+		void CreateLightResources(const DeviceContext& deviceContext, uint32_t emissiveTriangleCount, uint32_t objectCount) {
 			const auto RISBufferSegmentSize = Context->GetRISBufferSegmentAllocator().getTotalSizeInElements();
 			RIS = GPUBuffer::CreateDefault<XMUINT2>(deviceContext, RISBufferSegmentSize);
 
 			LightInfo = GPUBuffer::CreateDefault<::LightInfo>(deviceContext, emissiveTriangleCount);
-			LightIndices = GPUBuffer::CreateDefault<UINT>(deviceContext, objectCount);
+			LightIndices = GPUBuffer::CreateDefault<uint32_t>(deviceContext, objectCount);
 
 			uint32_t width, height, mipLevels;
 			ComputePdfTextureSize(emissiveTriangleCount, width, height, mipLevels);

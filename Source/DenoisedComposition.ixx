@@ -62,7 +62,7 @@ export namespace PostProcessing {
 			commandList.SetState(*Textures.DenoisedSpecular, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 			commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			UINT i = 0;
+			uint32_t i = 0;
 			commandList->SetComputeRoot32BitConstants(i++, sizeof(constants) / 4, &constants, 0);
 			commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
 			commandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor());

@@ -21,7 +21,7 @@ using namespace std;
 export {
 	struct SHARC {
 		struct Constants {
-			UINT AccumulationFrames = 10, MaxStaleFrames = 64;
+			uint32_t AccumulationFrames = 10, MaxStaleFrames = 64;
 			float SceneScale = 50;
 			bool IsAntiFireflyEnabled{};
 		};
@@ -45,13 +45,13 @@ export {
 			m_pipelineState->SetName(L"SHARC");
 		}
 
-		void Configure(UINT capacity = 1 << 22) {
+		void Configure(uint32_t capacity = 1 << 22) {
 			const auto Create = [&]<typename T>(auto & buffer) {
 				buffer = GPUBuffer::CreateDefault<T>(m_deviceContext, capacity);
 				buffer->CreateUAV(BufferUAVType::Clear);
 			};
-			Create.operator() < UINT64 > (GPUBuffers.HashEntries);
-			Create.operator() < UINT > (GPUBuffers.HashCopyOffset);
+			Create.operator() < uint64_t > (GPUBuffers.HashEntries);
+			Create.operator() < uint32_t > (GPUBuffers.HashCopyOffset);
 			Create.operator() < XMUINT4 > (GPUBuffers.PreviousVoxelData);
 			Create.operator() < XMUINT4 > (GPUBuffers.VoxelData);
 		}
@@ -81,13 +81,13 @@ export {
 				}
 
 				const struct {
-					BOOL IsResolve;
-					UINT Capacity, AccumulationFrames, MaxStaleFrames;
+					uint32_t IsResolve;
+					uint32_t Capacity, AccumulationFrames, MaxStaleFrames;
 					float SceneScale;
-					bool IsAntiFireflyEnabled;
+					uint32_t IsAntiFireflyEnabled;
 				} _constants{
 					.IsResolve = isResolve,
-					.Capacity = static_cast<UINT>(GPUBuffers.HashEntries->GetCapacity()),
+					.Capacity = static_cast<uint32_t>(GPUBuffers.HashEntries->GetCapacity()),
 					.AccumulationFrames = constants.AccumulationFrames,
 					.MaxStaleFrames = constants.MaxStaleFrames,
 					.SceneScale = constants.SceneScale,

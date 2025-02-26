@@ -62,31 +62,25 @@ RWTexture2D<float3> g_Radiance : register(u12);
 float3 CalculateMotionVector(float2 UV, uint2 pixelDimensions, float linearDepth, HitInfo hitInfo)
 {
 	float3 previousPosition;
-	if (isinf(hitInfo.Distance) || g_sceneData.IsStatic)
+	if (!isfinite(hitInfo.Distance) || g_sceneData.IsStatic)
 	{
 		previousPosition = hitInfo.Position;
 	}
 	else
 	{
 		previousPosition = hitInfo.ObjectPosition;
-		const MeshResourceDescriptorIndices meshIndices = g_objectData[hitInfo.ObjectIndex].ResourceDescriptorIndices.Mesh;
-		if (meshIndices.MotionVectors != ~0u)
+		const MeshDescriptors meshDescriptors = g_objectData[hitInfo.ObjectIndex].MeshDescriptors;
+		if (meshDescriptors.MotionVectors != ~0u)
 		{
-			const StructuredBuffer<uint2> meshMotionVectors = ResourceDescriptorHeap[meshIndices.MotionVectors];
-			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], hitInfo.PrimitiveIndex);
-			const uint2 motionVectors[] =
+			const StructuredBuffer<float16_t4> meshMotionVectors = ResourceDescriptorHeap[meshDescriptors.MotionVectors];
+			const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshDescriptors.Indices], hitInfo.PrimitiveIndex);
+			const float3 motionVectors[] =
 			{
-				meshMotionVectors[indices[0]],
-				meshMotionVectors[indices[1]],
-				meshMotionVectors[indices[2]]
+				meshMotionVectors[indices[0]].xyz,
+				meshMotionVectors[indices[1]].xyz,
+				meshMotionVectors[indices[2]].xyz
 			};
-			const float3 _motionVectors[] =
-			{
-				float3(Packing::UintToRg16f(motionVectors[0].x), Packing::UintToRg16f(motionVectors[0].y).x),
-				float3(Packing::UintToRg16f(motionVectors[1].x), Packing::UintToRg16f(motionVectors[1].y).x),
-				float3(Packing::UintToRg16f(motionVectors[2].x), Packing::UintToRg16f(motionVectors[2].y).x)
-			};
-			previousPosition += Vertex::Interpolate(_motionVectors, hitInfo.Barycentrics);
+			previousPosition += Vertex::Interpolate(motionVectors, hitInfo.Barycentrics);
 		}
 		previousPosition = Geometry::AffineTransform(g_instanceData[hitInfo.InstanceIndex].PreviousObjectToWorld, previousPosition);
 	}
@@ -160,23 +154,24 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		Material material;
 		if (g_constants.Flags & Flags::Material)
 		{
+			const ObjectData objectData = g_objectData[hitInfo.ObjectIndex];
+
 			bool hasSampledTexture;
-			material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate, hasSampledTexture);
+			material = EvaluateMaterial(
+				hitInfo.ShadingNormal, hitInfo.GetFrontTangent(),
+				objectData.Material,
+				objectData.TextureMapInfoArray, hitInfo.TextureCoordinates,
+				hasSampledTexture
+			);
 
 			const float4 BaseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
 			SET(BaseColorMetalness);
-			if (BaseColorMetalness.a < 1)
-			{
-				const float Transmission = material.Transmission, IOR = material.IOR;
-				SET(Transmission);
-				SET(IOR);
-			}
 
 			if (g_constants.Flags & Flags::Albedo)
 			{
 				float3 Albedo, Rf0;
 				BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, Albedo, Rf0);
-				const float NoV = abs(dot(hitInfo.Normal, -rayDesc.Direction));
+				const float NoV = abs(dot(hitInfo.ShadingNormal, -rayDesc.Direction));
 				const float3 FEnvironment = BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
 				if (g_constants.Flags & Flags::DiffuseAlbedo)
 				{
@@ -190,6 +185,15 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 				}
 			}
 
+			if (material.Metallic < 1)
+			{
+				const float Transmission = material.Transmission;
+				SET(Transmission);
+			}
+
+			const float IOR = objectData.Material.IOR;
+			SET(IOR);
+
 			if (g_constants.Flags & Flags::Radiance)
 			{
 				const float3 Radiance = material.GetEmission();
@@ -199,7 +203,10 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 
 		if (g_constants.Flags & Flags::NormalRoughness)
 		{
-			const float4 NormalRoughness = float4(hitInfo.Normal, material.Roughness);
+			const float4 NormalRoughness = float4(
+				hitInfo.ShadingNormal,
+				g_constants.Flags & Flags::Material ? material.Roughness : 0
+			);
 			SET(NormalRoughness);
 		}
 	}

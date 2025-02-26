@@ -72,9 +72,9 @@ RWStructuredBuffer<uint4> g_sharcVoxelData : register(u6);
 #include "RaytracingHelpers.hlsli"
 
 #if SHARC_UPDATE
-#define LOAD(Texture) Texture[clamp(uint2(UV * g_graphicsSettings.RenderSize), 0, g_graphicsSettings.RenderSize - 1)]
+#define LOAD(Texture) g_##Texture[clamp(uint2(UV * g_graphicsSettings.RenderSize), 0, g_graphicsSettings.RenderSize - 1)]
 #else
-#define LOAD(Texture) Texture[pixelPosition]
+#define LOAD(Texture) g_##Texture[pixelPosition]
 #endif
 
 RaytracingShaderConfig ShaderConfig = { 0, 0 };
@@ -127,8 +127,8 @@ void RayGeneration()
 #endif
 	);
 
-	const float linearDepth = LOAD(g_linearDepth);
-	const float3 primaryRadiance = LOAD(g_radiance);
+	const float linearDepth = LOAD(linearDepth);
+	const float3 primaryRadiance = LOAD(radiance);
 
 	HitInfo primarySurfaceHitInfo;
 	BSDFSample primarySurfaceBSDFSample;
@@ -136,33 +136,27 @@ void RayGeneration()
 	float lightDistance = 0;
 	bool isDIValid = false;
 	const RayDesc primaryRayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
-	const bool isPrimarySurfaceHit = !isinf(linearDepth);
+	const bool isPrimarySurfaceHit = isfinite(linearDepth);
 	if (isPrimarySurfaceHit)
 	{
-		const float4 position = LOAD(g_position);
-		const float2 flatNormal = LOAD(g_flatNormal), geometricNormal = LOAD(g_geometricNormal);
-		const float4 normalRoughness = LOAD(g_normalRoughness);
+		const float4 position = LOAD(position);
+		const float4 normalRoughness = LOAD(normalRoughness);
 		primarySurfaceHitInfo.Initialize(
 			position.xyz, position.w,
-			Packing::DecodeUnitVector(flatNormal, true),
-			Packing::DecodeUnitVector(geometricNormal, true),
+			Packing::DecodeUnitVector(LOAD(flatNormal), true),
+			Packing::DecodeUnitVector(LOAD(geometricNormal), true),
 			normalRoughness.xyz,
-			primaryRayDesc.Direction, length(position.xyz - g_camera.Position)
+			primaryRayDesc.Direction
 		);
+		primarySurfaceHitInfo.Distance = length(position.xyz - g_camera.Position);
 
-		const float4 baseColorMetalness = LOAD(g_baseColorMetalness);
-		float transmission = 0, IOR = 1;
-		if (baseColorMetalness.a < 1)
-		{
-			transmission = LOAD(g_transmission);
-			IOR = LOAD(g_IOR);
-		}
+		const float4 baseColorMetalness = LOAD(baseColorMetalness);
 		primarySurfaceBSDFSample.Initialize(
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
 			normalRoughness.w,
-			transmission,
-			IOR
+			baseColorMetalness.a < 1 ? LOAD(transmission) : 0,
+			LOAD(IOR)
 		);
 
 		if (g_graphicsSettings.IsDIEnabled)
@@ -172,7 +166,7 @@ void RayGeneration()
 				|| g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
 #endif
 			{
-				const float4 light = LOAD(g_lightRadiance);
+				const float4 light = LOAD(lightRadiance);
 				lightRadiance = light.rgb;
 				lightDistance = light.a;
 				isDIValid = any(lightRadiance > 0);
@@ -278,7 +272,7 @@ void RayGeneration()
 #if ENABLE_SHARC
 			SharcHitData sharcHitData;
 			sharcHitData.positionWorld = hitInfo.Position;
-			sharcHitData.normalWorld = hitInfo.IsFrontFace ? hitInfo.FlatNormal : -hitInfo.FlatNormal;
+			sharcHitData.normalWorld = hitInfo.GetFrontFlatNormal();
 #if SHARC_QUERY
 			const uint gridLevel = HashGridGetLevel(hitInfo.Position, sharcParameters.gridParameters);
 			const float voxelSize = HashGridGetVoxelSize(gridLevel, sharcParameters.gridParameters);
@@ -309,7 +303,13 @@ void RayGeneration()
 
 			if (bounceIndex)
 			{
-				const Material material = GetMaterial(g_objectData[hitInfo.ObjectIndex], hitInfo.TextureCoordinate, hasSampledTexture);
+				const ObjectData objectData = g_objectData[hitInfo.ObjectIndex];
+				const Material material = EvaluateMaterial(
+					hitInfo.ShadingNormal, hitInfo.GetFrontTangent(),
+					objectData.Material,
+					objectData.TextureMapInfoArray, hitInfo.TextureCoordinates,
+					hasSampledTexture
+				);
 				emission = isDIValid && bounceIndex == 1 ? 0 : material.GetEmission();
 				BSDFSample.Initialize(material);
 			}
@@ -331,18 +331,8 @@ void RayGeneration()
 			sampleRadiance += throughput * emission;
 #endif
 
-			if (g_graphicsSettings.IsRussianRouletteEnabled && bounceIndex > 3)
-			{
-				const float probability = max(throughput.r, max(throughput.g, throughput.b));
-				if (Rng::Hash::GetFloat() >= probability)
-				{
-					break;
-				}
-				throughput /= probability;
-			}
-
 			SurfaceVectors surfaceVectors;
-			surfaceVectors.Initialize(hitInfo.IsFrontFace, hitInfo.Normal, hitInfo.GeometricNormal);
+			surfaceVectors.Initialize(hitInfo.IsFrontFace, hitInfo.GeometricNormal, hitInfo.ShadingNormal);
 
 			const float3 V = -rayDesc.Direction;
 
@@ -365,6 +355,16 @@ void RayGeneration()
 			}
 			throughput *= currentThroughput / (PDF * lobeProbability);
 
+			if (g_graphicsSettings.IsRussianRouletteEnabled && bounceIndex > 3)
+			{
+				const float probability = max(throughput.r, max(throughput.g, throughput.b));
+				if (Rng::Hash::GetFloat() >= probability)
+				{
+					break;
+				}
+				throughput /= probability;
+			}
+
 #if SHARC_UPDATE
 			SharcSetThroughput(sharcState, throughput);
 #else
@@ -384,7 +384,7 @@ void RayGeneration()
 	}
 
 #if !SHARC_UPDATE
-	radiance = NRD_IsValidRadiance(radiance) ? radiance / samplesPerPixel : 0;
+	radiance = all(isfinite(radiance)) ? radiance / samplesPerPixel : 0;
 
 	if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None)
 	{
@@ -402,7 +402,7 @@ void RayGeneration()
 
 		g_radiance[pixelPosition] = radiance;
 
-		if (!isDiffuse && !isinf(hitDistance))
+		if (!isDiffuse && isfinite(hitDistance))
 		{
 			g_specularHitDistance[pixelPosition] = hitDistance;
 		}
@@ -413,7 +413,7 @@ void RayGeneration()
 		const float4 radianceHitDistance = float4(max(radiance - primaryRadiance, 0), hitDistance);
 		NRDPackNoisySignals(
 			g_graphicsSettings.Denoising,
-			primarySurfaceHitInfo.Normal, -primaryRayDesc.Direction, linearDepth,
+			primarySurfaceHitInfo.ShadingNormal, -primaryRayDesc.Direction, linearDepth,
 			primarySurfaceBSDFSample,
 #if SHARC_QUERY
 			0, 0, 0,

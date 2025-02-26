@@ -1,5 +1,12 @@
 {
     "dependencies": [
+        "directx12-agility",
+        {
+            "name": "directxmesh",
+            "features": [
+                "dx12"
+            ]
+        },
         {
             "name": "directxtex",
             "features": [
@@ -7,7 +14,6 @@
                 "openexr"
             ]
         },
-        "directx12-agility",
         "directxtk12",
         {
             "name": "imgui",

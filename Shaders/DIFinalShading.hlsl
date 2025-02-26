@@ -73,7 +73,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	}
 
 	const float3 radiance = diffuse + specular;
-	if (!NRD_IsValidRadiance(radiance))
+	if (any(!isfinite(radiance)))
 	{
 		return;
 	}

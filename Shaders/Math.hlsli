@@ -14,10 +14,10 @@ namespace Math
 		return UV * float2(2, -2) + float2(-1, 1);
 	}
 
-	float3 CalculateTangent(float3 positions[3], float2 textureCoordinates[3])
+	float3x3 CalculateTBN(float3 N, float3 T)
 	{
-		const float2 d1 = textureCoordinates[1] - textureCoordinates[0], d2 = textureCoordinates[2] - textureCoordinates[0];
-		return ((positions[1] - positions[0]) * d2.y - (positions[2] - positions[0]) * d1.y) / (d1.x * d2.y - d1.y * d2.x);
+		T = normalize(T - N * dot(N, T));
+		return float3x3(T, cross(N, T), N);
 	}
 
 	float3x3 InverseTranspose(float3x3 m)
@@ -38,14 +38,14 @@ namespace Math
 		return float2(value * value, barycentrics.y / value);
 	}
 
-	float3 SampleTriangle(float2 random)
+	float2 SampleTriangle(float2 random)
 	{
 		const float value = sqrt(random.x);
-		return float3(1 - value, value * (1 - random.y), value * random.y);
+		return float2(value * (1 - random.y), value * random.y);
 	}
 
-	float ToSolidAnglePDF(float AreaPDF, float _length, float cosTheta)
+	float ToSolidAnglePDF(float areaPDF, float length, float cosTheta)
 	{
-		return AreaPDF * _length * _length / cosTheta;
+		return areaPDF * length * length / cosTheta;
 	}
 }

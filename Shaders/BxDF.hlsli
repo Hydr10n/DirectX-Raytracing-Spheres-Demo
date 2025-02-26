@@ -48,12 +48,12 @@ struct BSDFSample
 	{
 		const float3x3 basis = surfaceVectors.ShadingBasis;
 		L = Geometry::RotateVectorInverse(basis, ImportanceSampling::Cosine::GetRay(random));
-		return dot(surfaceVectors.FrontNormal, L) > 0;
+		return dot(surfaceVectors.FrontGeometricNormal, L) > 0;
 	}
 
 	float EvaluateDiffuseReflectionPDF(SurfaceVectors surfaceVectors, float3 L)
 	{
-		if (dot(surfaceVectors.FrontNormal, L) > 0)
+		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal;
 			const float NoL = abs(dot(N, L));
@@ -64,7 +64,7 @@ struct BSDFSample
 
 	float3 EvaluateDiffuseReflection(SurfaceVectors surfaceVectors, float3 L, float3 V)
 	{
-		if (dot(surfaceVectors.FrontNormal, L) > 0)
+		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal, H = normalize(L + V);
 			const float
@@ -84,12 +84,12 @@ struct BSDFSample
 			Vlocal = Geometry::RotateVector(basis, V),
 			H = Geometry::RotateVectorInverse(basis, ImportanceSampling::VNDF::GetRay(random, Roughness, Vlocal));
 		L = reflect(-V, H);
-		return dot(surfaceVectors.FrontNormal, L) > 0;
+		return dot(surfaceVectors.FrontGeometricNormal, L) > 0;
 	}
 
 	float EvaluateSpecularReflectionPDF(SurfaceVectors surfaceVectors, float3 L, float3 V)
 	{
-		if (dot(surfaceVectors.FrontNormal, L) > 0)
+		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal, H = normalize(L + V);
 			const float3x3 basis = surfaceVectors.ShadingBasis;
@@ -102,7 +102,7 @@ struct BSDFSample
 
 	float3 EvaluateSpecularReflection(SurfaceVectors surfaceVectors, float3 L, float3 V)
 	{
-		if (dot(surfaceVectors.FrontNormal, L) > 0)
+		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal, H = normalize(L + V);
 			const float
@@ -189,7 +189,7 @@ struct BSDFSample
 			BSDF = EvaluateSpecularTransmissionPDF(surfaceVectors, L, V);
 		}
 		float BRDF = 0;
-		if (transmissionProbability < 1 && dot(surfaceVectors.FrontNormal, L) > 0)
+		if (transmissionProbability < 1 && dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal;
 			const float NoV = abs(dot(N, V));
@@ -212,7 +212,7 @@ struct BSDFSample
 			specular = EvaluateSpecularTransmission(surfaceVectors, L, V) * transmissionProbability;
 		}
 		float3 BRDF = 0;
-		if (transmissionProbability < 1 && dot(surfaceVectors.FrontNormal, L) > 0)
+		if (transmissionProbability < 1 && dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal;
 			const float

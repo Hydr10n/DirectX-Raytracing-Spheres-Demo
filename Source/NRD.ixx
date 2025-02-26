@@ -29,8 +29,8 @@ export struct NRD {
 
 	NRD(
 		CommandList& commandList,
-		UINT resourceWidth, UINT resourceHeight,
-		UINT backBufferCount,
+		uint32_t resourceWidth, uint32_t resourceHeight,
+		uint32_t backBufferCount,
 		span<const DenoiserDesc> denoiserDescs
 	) : m_commandList(commandList) {
 		const auto& deviceContext = commandList.GetDeviceContext();

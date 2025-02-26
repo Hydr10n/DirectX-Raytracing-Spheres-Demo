@@ -304,10 +304,10 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		float transmission = 0, IOR = 1;
 		if (previousFrame)
 		{
-			if (isinf(surface.LinearDepth = g_previousLinearDepth[pixelPosition])
-				|| (normalRoughenss = g_previousNormalRoughness[pixelPosition]).w == 0)
+			if (!isfinite(surface.LinearDepth = g_previousLinearDepth[pixelPosition])
+				|| (normalRoughenss = g_previousNormalRoughness[pixelPosition]).w < MinRoughness)
 			{
-				return surface;
+				return RAB_EmptySurface();
 			}
 			geometricNormal = g_previousGeometricNormal[pixelPosition];
 			baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
@@ -319,10 +319,10 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 		}
 		else
 		{
-			if (isinf(surface.LinearDepth = g_linearDepth[pixelPosition])
-				|| (normalRoughenss = g_normalRoughness[pixelPosition]).w == 0)
+			if (!isfinite(surface.LinearDepth = g_linearDepth[pixelPosition])
+				|| (normalRoughenss = g_normalRoughness[pixelPosition]).w < MinRoughness)
 			{
-				return surface;
+				return RAB_EmptySurface();
 			}
 			geometricNormal = g_geometricNormal[pixelPosition];
 			baseColorMetalness = g_baseColorMetalness[pixelPosition];
@@ -353,7 +353,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 
 bool RAB_IsSurfaceValid(RAB_Surface surface)
 {
-	return !isinf(surface.LinearDepth);
+	return isfinite(surface.LinearDepth);
 }
 
 float3 RAB_GetSurfaceWorldPos(RAB_Surface surface)

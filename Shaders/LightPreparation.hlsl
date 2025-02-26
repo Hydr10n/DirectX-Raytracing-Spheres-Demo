@@ -69,12 +69,11 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	}
 
 	const InstanceData instanceData = g_instanceData[task.InstanceIndex];
-	const uint objectIndex = instanceData.FirstGeometryIndex + task.GeometryIndex;
-	const ObjectData objectData = g_objectData[objectIndex];
-	const MeshResourceDescriptorIndices meshIndices = objectData.ResourceDescriptorIndices.Mesh;
-	const TextureMapResourceDescriptorIndices textureMapIndices = objectData.ResourceDescriptorIndices.TextureMaps;
-	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshIndices.Indices], dispatchThreadID - task.LightBufferOffset);
-	const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshIndices.Vertices];
+	const ObjectData objectData = g_objectData[instanceData.FirstGeometryIndex + task.GeometryIndex];
+
+	const MeshDescriptors meshDescriptors = objectData.MeshDescriptors;
+	const ByteAddressBuffer vertices = ResourceDescriptorHeap[meshDescriptors.Vertices];
+	const uint3 indices = MeshHelpers::Load3Indices(ResourceDescriptorHeap[meshDescriptors.Indices], dispatchThreadID - task.LightBufferOffset);
 	const VertexDesc vertexDesc = objectData.VertexDesc;
 
 	float3 positions[3];
@@ -84,10 +83,12 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	positions[2] = Geometry::AffineTransform(instanceData.ObjectToWorld, positions[2]);
 
 	float3 emission = objectData.Material.GetEmission();
-	if (textureMapIndices.EmissiveColor != ~0u && any(emission > 0))
+	TextureMapInfo textureMapInfo;
+	if (any(emission > 0)
+		&& (textureMapInfo = objectData.TextureMapInfoArray[TextureMapType::EmissiveColor]).Descriptor != ~0u)
 	{
 		float2 textureCoordinates[3];
-		vertexDesc.LoadTextureCoordinates(vertices, indices, textureCoordinates);
+		vertexDesc.LoadTextureCoordinates(vertices, indices, textureMapInfo.TextureCoordinateIndex, textureCoordinates);
 
 		const float2 edges[] =
 		{
@@ -117,7 +118,7 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 			longEdges[1] = edges[1];
 		}
 
-		const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapIndices.EmissiveColor];
+		const Texture2D<float3> texture = ResourceDescriptorHeap[textureMapInfo.Descriptor];
 		emission *= texture.SampleGrad(
 			g_anisotropicSampler,
 			(textureCoordinates[0] + textureCoordinates[1] + textureCoordinates[2]) / 3,

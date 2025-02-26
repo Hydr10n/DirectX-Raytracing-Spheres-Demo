@@ -172,7 +172,7 @@ export struct RTXDI {
 		commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.LightRadiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-		UINT i = 0;
+		uint32_t i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.Camera->GetNative()->GetGPUVirtualAddress());
@@ -252,7 +252,7 @@ export struct RTXDI {
 private:
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) GraphicsSettings {
 		XMUINT2 RenderSize;
-		BOOL IsLastRenderPass, IsReGIRCellVisualizationEnabled;
+		uint32_t IsLastRenderPass, IsReGIRCellVisualizationEnabled;
 		struct {
 			RTXDI_RISBufferSegmentParameters LocalLightRISBufferSegment, EnvironmentLightRISBufferSegment;
 			RTXDI_LightBufferParameters LightBuffer;

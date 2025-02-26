@@ -69,8 +69,8 @@ struct TriangleLight
 	LightSample CalculateSample(float3 viewPosition, float2 random)
 	{
 		LightSample lightSample;
-		const float3 barycentrics = Math::SampleTriangle(random);
-		lightSample.Position = Base + Edges[0] * barycentrics.y + Edges[1] * barycentrics.z;
+		const float2 barycentrics = Math::SampleTriangle(random);
+		lightSample.Position = Base + Edges[0] * barycentrics.x + Edges[1] * barycentrics.y;
 		lightSample.Normal = Normal;
 		lightSample.Radiance = Radiance;
 		lightSample.SolidAnglePDF = CalculateSolidAnglePDF(viewPosition, lightSample.Position, lightSample.Normal);

@@ -7,7 +7,7 @@ export module Math;
 using namespace DirectX::SimpleMath;
 
 export namespace Math {
-	struct uint16_t4 { uint16_t _[4]{}; };
+	struct int16_t3 { int16_t _[3]{}; };
 
 	struct AffineTransform {
 		Vector3 Translation;

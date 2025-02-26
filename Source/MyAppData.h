@@ -182,8 +182,8 @@ public:
 			struct Raytracing {
 				bool IsRussianRouletteEnabled = true;
 
-				static constexpr UINT MaxBounces = 32, MaxSamplesPerPixel = 16;
-				UINT Bounces = 8, SamplesPerPixel = 1;
+				static constexpr uint32_t MaxBounces = 100, MaxSamplesPerPixel = 16;
+				uint32_t Bounces = 8, SamplesPerPixel = 1;
 
 				bool IsShaderExecutionReorderingEnabled = true;
 
@@ -201,8 +201,8 @@ public:
 								FRIEND_JSON_CONVERSION_FUNCTIONS(Cell, Size, IsVisualizationEnabled);
 							} Cell;
 
-							static constexpr UINT MaxBuildSamples = 32;
-							UINT BuildSamples = 8;
+							static constexpr uint32_t MaxBuildSamples = 32;
+							uint32_t BuildSamples = 8;
 
 							FRIEND_JSON_CONVERSION_FUNCTIONS(ReGIR, Cell, BuildSamples);
 						} ReGIR;
@@ -211,14 +211,14 @@ public:
 							struct LocalLight {
 								ReSTIRDI_LocalLightSamplingMode Mode = ReSTIRDI_LocalLightSamplingMode::ReGIR_RIS;
 
-								static constexpr UINT MaxSamples = 32;
-								UINT Samples = 8;
+								static constexpr uint32_t MaxSamples = 32;
+								uint32_t Samples = 8;
 
 								FRIEND_JSON_CONVERSION_FUNCTIONS(LocalLight, Mode, Samples);
 							} LocalLight;
 
-							static constexpr UINT MaxBRDFSamples = 8;
-							UINT BRDFSamples = 1;
+							static constexpr uint32_t MaxBRDFSamples = 8;
+							uint32_t BRDFSamples = 1;
 
 							FRIEND_JSON_CONVERSION_FUNCTIONS(InitialSampling, LocalLight, BRDFSamples);
 						} InitialSampling;
@@ -240,8 +240,8 @@ public:
 						struct SpatialResampling {
 							ReSTIRDI_SpatialBiasCorrectionMode BiasCorrectionMode = ReSTIRDI_SpatialBiasCorrectionMode::Basic;
 
-							static constexpr UINT MaxSamples = 32;
-							UINT Samples = 1;
+							static constexpr uint32_t MaxSamples = 32;
+							uint32_t Samples = 1;
 
 							FRIEND_JSON_CONVERSION_FUNCTIONS(SpatialResampling, BiasCorrectionMode, Samples);
 						} SpatialResampling;
@@ -256,8 +256,8 @@ public:
 					RTXGITechnique Technique = RTXGITechnique::SHARC;
 
 					struct SHARC {
-						static constexpr UINT MaxDownscaleFactor = 4;
-						UINT DownscaleFactor = 4;
+						static constexpr uint32_t MaxDownscaleFactor = 4;
+						uint32_t DownscaleFactor = 4;
 
 						static constexpr float MinSceneScale = 5, MaxSceneScale = 100;
 						float SceneScale = 50;

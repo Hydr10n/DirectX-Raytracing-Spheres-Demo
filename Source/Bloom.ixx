@@ -21,8 +21,8 @@ using namespace Microsoft::WRL;
 using namespace std;
 
 namespace {
-	auto operator==(XMUINT2 a, XMUINT2 b) { return a.x == b.x && a.y == b.y; }
-	XMUINT2 operator/(XMUINT2 a, UINT b) { return { a.x / b, a.y / b }; }
+	constexpr auto operator==(XMUINT2 a, XMUINT2 b) { return a.x == b.x && a.y == b.y; }
+	constexpr XMUINT2 operator/(XMUINT2 a, uint32_t b) { return { a.x / b, a.y / b }; }
 }
 
 export namespace PostProcessing {
@@ -86,7 +86,7 @@ export namespace PostProcessing {
 			commandList->SetPipelineState(m_pipelineState.Get());
 
 			struct {
-				UINT InputMipLevel;
+				uint32_t InputMipLevel;
 				float UpsamplingFilterRadius;
 			} _constants{};
 			auto outputMipLevel = 0;

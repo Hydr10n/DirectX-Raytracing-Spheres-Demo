@@ -50,11 +50,11 @@ export struct LightPreparation {
 	const auto& GetLightBufferParameters() const noexcept { return m_lightBufferParameters; }
 
 	void CountLights() {
-		UINT emissiveMeshCount = 0, emissiveTriangleCount = 0;
+		uint32_t emissiveMeshCount = 0, emissiveTriangleCount = 0;
 		for (const auto& renderObject : m_scene->RenderObjects) {
 			if (IsEmissive(renderObject)) {
 				emissiveMeshCount++;
-				emissiveTriangleCount += static_cast<UINT>(renderObject.Mesh->Indices->GetCapacity()) / 3;
+				emissiveTriangleCount += static_cast<uint32_t>(renderObject.Mesh->Indices->GetCapacity()) / 3;
 			}
 		}
 		m_emissiveMeshCount = emissiveMeshCount;
@@ -72,11 +72,11 @@ export struct LightPreparation {
 	void PrepareResources(CommandList& commandList, GPUBuffer& lightIndices) {
 		vector _lightIndices(m_scene->GetObjectCount(), RTXDI_INVALID_LIGHT_INDEX);
 		vector<Task> tasks;
-		for (UINT instanceIndex = 0, lightBufferOffset = 0; const auto & renderObject : m_scene->RenderObjects) {
-			UINT geometryIndex = 0;
+		for (uint32_t instanceIndex = 0, lightBufferOffset = 0; const auto & renderObject : m_scene->RenderObjects) {
+			uint32_t geometryIndex = 0;
 			if (IsEmissive(renderObject)) {
 				_lightIndices[m_scene->GetInstanceData()[instanceIndex].FirstGeometryIndex + geometryIndex] = lightBufferOffset;
-				const auto triangleCount = static_cast<UINT>(renderObject.Mesh->Indices->GetCapacity()) / 3;
+				const auto triangleCount = static_cast<uint32_t>(renderObject.Mesh->Indices->GetCapacity()) / 3;
 				tasks.emplace_back(Task{
 					.InstanceIndex = instanceIndex,
 					.GeometryIndex = geometryIndex,
@@ -122,10 +122,10 @@ private:
 
 	const Scene* m_scene{};
 
-	UINT m_emissiveMeshCount{}, m_emissiveTriangleCount{};
+	uint32_t m_emissiveMeshCount{}, m_emissiveTriangleCount{};
 	RTXDI_LightBufferParameters m_lightBufferParameters{};
 
-	struct Task { UINT InstanceIndex, GeometryIndex, TriangleCount, LightBufferOffset; };
+	struct Task { uint32_t InstanceIndex, GeometryIndex, TriangleCount, LightBufferOffset; };
 	struct { unique_ptr<GPUBuffer> Tasks; } m_GPUBuffers;
 
 	constexpr bool IsEmissive(const RenderObject& renderObject) {

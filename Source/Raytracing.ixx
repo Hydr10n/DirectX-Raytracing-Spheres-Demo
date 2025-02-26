@@ -29,16 +29,16 @@ using namespace std;
 export struct Raytracing {
 	struct GraphicsSettings {
 		XMUINT2 RenderSize;
-		UINT FrameIndex, Bounces, SamplesPerPixel;
+		uint32_t FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold = 1e-3f;
-		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
+		bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
 		DenoisingSettings Denoising;
 	};
 
 	struct SHARCSettings : SHARC::Constants {
-		UINT DownscaleFactor;
+		uint32_t DownscaleFactor;
 		float RoughnessThreshold;
-		BOOL IsHashGridVisualizationEnabled;
+		uint32_t IsHashGridVisualizationEnabled;
 	};
 
 	struct { GPUBuffer* SceneData, * Camera, * ObjectData; } GPUBuffers{};
@@ -115,13 +115,15 @@ export struct Raytracing {
 
 	void Render(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure, SHARC& SHARC, const SHARCSettings& SHARCSettings) {
 		m_graphicsSettings.RTXGI.SHARC = {
-			.Capacity = static_cast<UINT>(SHARC.GPUBuffers.HashEntries->GetCapacity()),
+			.Capacity = static_cast<uint32_t>(SHARC.GPUBuffers.HashEntries->GetCapacity()),
 			.SceneScale = SHARCSettings.SceneScale,
 			.RoughnessThreshold = SHARCSettings.RoughnessThreshold,
 			.IsAntiFileflyEnabled = SHARCSettings.IsAntiFireflyEnabled,
 			.IsHashGridVisualizationEnabled = SHARCSettings.IsHashGridVisualizationEnabled
 		};
 		SetConstants(commandList);
+
+		commandList.Clear(*SHARC.GPUBuffers.VoxelData);
 
 		const auto DispatchRays = [&](const Shader& shader, XMUINT2 renderSize) {
 			auto i = SetShader(commandList, topLevelAccelerationStructure, shader);
@@ -143,20 +145,22 @@ export struct Raytracing {
 		commandList.SetUAVBarrier(*SHARC.GPUBuffers.VoxelData);
 
 		DispatchRays(m_SHARCQuery, m_graphicsSettings.RenderSize);
+
+		swap(SHARC.GPUBuffers.PreviousVoxelData, SHARC.GPUBuffers.VoxelData);
 	}
 
 private:
 	struct alignas(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT) _GraphicsSettings {
 		XMUINT2 RenderSize;
-		UINT FrameIndex, Bounces, SamplesPerPixel;
+		uint32_t FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold;
-		BOOL IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
+		uint32_t IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
 		XMUINT3 _;
 		struct {
 			struct {
-				UINT Capacity;
+				uint32_t Capacity;
 				float SceneScale, RoughnessThreshold;
-				BOOL IsAntiFileflyEnabled, IsHashGridVisualizationEnabled;
+				uint32_t IsAntiFileflyEnabled, IsHashGridVisualizationEnabled;
 				XMUINT3 _;
 			} SHARC;
 		} RTXGI;
@@ -179,7 +183,7 @@ private:
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 
-	UINT SetShader(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure, const Shader& shader) {
+	uint32_t SetShader(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure, const Shader& shader) {
 		commandList->SetComputeRootSignature(shader.RootSignature.Get());
 		commandList->SetPipelineState1(shader.PipelineState.Get());
 
@@ -197,7 +201,7 @@ private:
 		commandList.SetState(*Textures.LightRadiance, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.Radiance, &shader == &m_SHARCUpdate ? D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-		UINT i = 0;
+		uint32_t i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
 		commandList->SetComputeRootConstantBufferView(i++, m_GPUBuffers.GraphicsSettings->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(i++, GPUBuffers.SceneData->GetNative()->GetGPUVirtualAddress());
