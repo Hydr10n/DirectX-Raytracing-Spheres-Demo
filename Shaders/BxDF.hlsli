@@ -4,16 +4,23 @@
 
 #include "SurfaceVectors.hlsli"
 
+#include "Denoiser.hlsli"
+
 enum class LobeType
 {
-	DiffuseReflection, SpecularReflection, SpecularTransmission
+	DiffuseReflection,
+	SpecularReflection,
+	SpecularTransmission,
+	Count
 };
 
-static const float MinRoughness = 5e-2f;
+using LobeWeightArray = float[(uint)LobeType::Count];
 
-static float EstimateDiffuseProbability(float3 albedo, float3 Rf0, float roughness, float NoV)
+static const float MinRoughness = 2e-3f;
+
+float EstimateDiffuseProbability(float3 albedo, float3 f0, float roughness, float NoV)
 {
-	const float3 Fenvironment = BRDF::EnvironmentTerm_Ross(Rf0, NoV, roughness);
+	const float3 Fenvironment = BRDF::EnvironmentTerm_Rtg(f0, NoV, roughness);
 	const float
 		diffuse = Color::Luminance(albedo * (1 - Fenvironment)), specular = Color::Luminance(Fenvironment),
 		diffuseProbability = diffuse / (diffuse + specular + 1e-6f);
@@ -25,23 +32,44 @@ struct BSDFSample
 	float3 BaseColor;
 	float Metallic;
 	float3 Albedo;
-	float Roughness;
-	float3 Rf0;
-	float Transmission, IOR;
+	float Roughness, IORi, IORo;
+	float3 F0;
+	float Transmission;
 
-	void Initialize(float3 baseColor, float metallic, float roughness, float transmission = 0, float IOR = 1)
+	void Initialize(
+		float3 baseColor,
+		float metallic,
+		float roughness,
+		float IOR,
+		float transmission,
+		bool isFrontFace
+	)
 	{
 		BaseColor = baseColor;
 		Metallic = metallic;
-		BRDF::ConvertBaseColorMetalnessToAlbedoRf0(baseColor.rgb, metallic, Albedo, Rf0);
+		Albedo = baseColor * (1 - metallic);
 		Roughness = max(MinRoughness, roughness);
+		IORi = 1;
+		IORo = IOR;
+		if (!isFrontFace)
+		{
+			IORi = IOR;
+			IORo = 1;
+		}
+		F0 = lerp(pow((IORi - IORo) / (IORi + IORo), 2), baseColor, metallic);
 		Transmission = transmission;
-		this.IOR = IOR;
 	}
 
-	void Initialize(Material material)
+	void Initialize(Material material, bool isFrontFace)
 	{
-		Initialize(material.BaseColor.rgb, material.Metallic, material.Roughness, material.Transmission, material.IOR);
+		Initialize(
+			material.BaseColor.rgb,
+			material.Metallic,
+			material.Roughness,
+			material.IOR,
+			material.Transmission,
+			isFrontFace
+		);
 	}
 
 	bool SampleDiffuseReflection(SurfaceVectors surfaceVectors, float3 V, float2 random, out float3 L)
@@ -62,17 +90,13 @@ struct BSDFSample
 		return 0;
 	}
 
-	float3 EvaluateDiffuseReflection(SurfaceVectors surfaceVectors, float3 L, float3 V)
+	float3 EvaluateDiffuseReflection(SurfaceVectors surfaceVectors, float3 L, float3 V, float3 H)
 	{
 		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
-			const float3 N = surfaceVectors.ShadingNormal, H = normalize(L + V);
-			const float
-				NoL = abs(dot(N, L)),
-				NoV = abs(dot(N, V)),
-				VoH = abs(dot(V, H)),
-				transmissionProbability = Transmission * (1 - Metallic);
-			return NoL * Albedo * BRDF::DiffuseTerm(Roughness, NoL, NoV, VoH) * (1 - transmissionProbability);
+			const float3 N = surfaceVectors.ShadingNormal;
+			const float NoL = abs(dot(N, L)), NoV = abs(dot(N, V)), VoH = abs(dot(V, H));
+			return NoL * Albedo * BRDF::DiffuseTerm(Roughness, NoL, NoV, VoH);
 		}
 		return 0;
 	}
@@ -87,11 +111,11 @@ struct BSDFSample
 		return dot(surfaceVectors.FrontGeometricNormal, L) > 0;
 	}
 
-	float EvaluateSpecularReflectionPDF(SurfaceVectors surfaceVectors, float3 L, float3 V)
+	float EvaluateSpecularReflectionPDF(SurfaceVectors surfaceVectors, float3 L, float3 V, float3 H)
 	{
 		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
-			const float3 N = surfaceVectors.ShadingNormal, H = normalize(L + V);
+			const float3 N = surfaceVectors.ShadingNormal;
 			const float3x3 basis = surfaceVectors.ShadingBasis;
 			const float3 Vlocal = Geometry::RotateVector(basis, V);
 			const float NoH = abs(dot(N, H));
@@ -100,22 +124,17 @@ struct BSDFSample
 		return 0;
 	}
 
-	float3 EvaluateSpecularReflection(SurfaceVectors surfaceVectors, float3 L, float3 V)
+	float3 EvaluateSpecularReflection(SurfaceVectors surfaceVectors, float3 L, float3 V, float3 H)
 	{
 		if (dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
-			const float3 N = surfaceVectors.ShadingNormal, H = normalize(L + V);
+			const float3 N = surfaceVectors.ShadingNormal;
 			const float
-				NoL = abs(dot(N, L)),
-				NoV = abs(dot(N, V)),
-				NoH = abs(dot(N, H)),
-				VoH = abs(dot(V, H));
-			const float
+				NoL = abs(dot(N, L)), NoV = abs(dot(N, V)), VoH = abs(dot(V, H)), NoH = abs(dot(N, H)),
 				D = BRDF::DistributionTerm(Roughness, NoH),
-				Gmod = BRDF::GeometryTermMod(Roughness, NoL, NoV, VoH, NoH),
-				transmissionProbability = Transmission * (1 - Metallic);
-			const float3 F = BRDF::FresnelTerm(Rf0, VoH);
-			return NoL * D * Gmod * F * (1 - transmissionProbability);
+				Gmod = BRDF::GeometryTermMod(Roughness, NoL, NoV, VoH, NoH);
+			const float3 F = BRDF::FresnelTerm(F0, VoH);
+			return NoL * D * Gmod * F;
 		}
 		return 0;
 	}
@@ -126,16 +145,18 @@ struct BSDFSample
 		const float3
 			Vlocal = Geometry::RotateVector(basis, V),
 			H = Geometry::RotateVectorInverse(basis, ImportanceSampling::VNDF::GetRay(random.xy, Roughness, Vlocal));
-		const float VoH = abs(dot(V, H)), eta = surfaceVectors.IsFront ? BRDF::IOR::Vacuum / IOR : IOR;
-		if (eta * eta * (1 - VoH * VoH) > 1
-			|| random.z < BRDF::FresnelTerm_Schlick(pow((IOR - 1) / (IOR + 1), 2), VoH).x)
+		const float VoH = abs(dot(V, H)), eta = IORi / IORo;
+		if (eta * eta * (1 - VoH * VoH) > 1 || random.z < BRDF::FresnelTerm_Dielectric(eta, VoH))
 		{
 			L = reflect(-V, H);
 		}
 		else
 		{
 			L = refract(-V, H, eta);
-			L = any(isnan(L)) ? -V : L;
+			if (any(!isfinite(L)))
+			{
+				L = -V;
+			}
 		}
 		return true;
 	}
@@ -151,98 +172,144 @@ struct BSDFSample
 	{
 		const float3 N = surfaceVectors.ShadingNormal;
 		const float NoL = abs(dot(N, L));
-		const float transmissionProbability = Transmission * (1 - Metallic);
-		return NoL * BaseColor * transmissionProbability;
+		return NoL * BaseColor;
 	}
 
-	bool Sample(SurfaceVectors surfaceVectors, float3 V, float4 random, out float3 L, out LobeType lobeType, out float lobeProbability)
+	void ComputeLobeWeights(SurfaceVectors surfaceVectors, float3 V, out LobeWeightArray lobeWeights)
 	{
-		const float transmissionProbability = Transmission * (1 - Metallic);
-		if (random.x < transmissionProbability)
-		{
-			lobeType = LobeType::SpecularTransmission;
-			lobeProbability = transmissionProbability;
-			return SampleSpecularTransmission(surfaceVectors, V, random.yzw, L);
-		}
 		const float3 N = surfaceVectors.ShadingNormal;
+		const float NoV = abs(dot(N, V));
 		const float
-			NoV = abs(dot(N, V)),
-			diffuseProbability = EstimateDiffuseProbability(Albedo, Rf0, Roughness, NoV),
-			reflectionProbability = 1 - transmissionProbability;
-		if (random.y < diffuseProbability)
-		{
-			lobeType = LobeType::DiffuseReflection;
-			lobeProbability = reflectionProbability * diffuseProbability;
-			return SampleDiffuseReflection(surfaceVectors, V, random.zw, L);
-		}
-		lobeType = LobeType::SpecularReflection;
-		lobeProbability = reflectionProbability * (1 - diffuseProbability);
-		return SampleSpecularReflection(surfaceVectors, V, random.zw, L);
+			transmissionWeight = Transmission * (1 - Metallic),
+			reflectionWeight = 1 - transmissionWeight,
+			diffuseWeight = EstimateDiffuseProbability(Albedo, F0, Roughness, NoV),
+			specularWeight = 1 - diffuseWeight;
+		lobeWeights[(uint)LobeType::DiffuseReflection] = diffuseWeight * reflectionWeight;
+		lobeWeights[(uint)LobeType::SpecularReflection] = specularWeight * reflectionWeight;
+		lobeWeights[(uint)LobeType::SpecularTransmission] = transmissionWeight;
 	}
 
-	float EvaluatePDF(SurfaceVectors surfaceVectors, float3 L, float3 V)
+	LobeType FindLobe(LobeWeightArray lobeWeights, float random)
 	{
-		const float transmissionProbability = Transmission * (1 - Metallic);
-		float BSDF = 0;
-		if (transmissionProbability > 0)
+		uint lobe = (uint)LobeType::Count;
+		float weight = 0;
+		[[unroll]]
+		while (--lobe > 0)
 		{
-			BSDF = EvaluateSpecularTransmissionPDF(surfaceVectors, L, V);
+			weight += lobeWeights[lobe];
+			if (random < weight)
+			{
+				break;
+			}
 		}
-		float BRDF = 0;
-		if (transmissionProbability < 1 && dot(surfaceVectors.FrontGeometricNormal, L) > 0)
+		return (LobeType)lobe;
+	}
+
+	bool Sample(
+		SurfaceVectors surfaceVectors, float3 V, LobeWeightArray lobeWeights, float4 random,
+		out float3 L, out LobeType lobeType
+	)
+	{
+		switch (lobeType = FindLobe(lobeWeights, random.x))
+		{
+			case LobeType::DiffuseReflection: return SampleDiffuseReflection(surfaceVectors, V, random.yz, L);
+			case LobeType::SpecularReflection: return SampleSpecularReflection(surfaceVectors, V, random.yz, L);
+			case LobeType::SpecularTransmission: return SampleSpecularTransmission(surfaceVectors, V, random.yzw, L);
+			default: return false;
+		}
+	}
+
+	float3 ComputeHalfVector(SurfaceVectors surfaceVectors, float3 L, float3 V, bool isTransmissve)
+	{
+		const float3 N = surfaceVectors.FrontGeometricNormal;
+		float3 H;
+		if (isTransmissve && dot(N, L) < 0)
+		{
+			H = normalize(L * IORo + V * IORi);
+			if (dot(N, H) < 0)
+			{
+				H = -H;
+			}
+		}
+		else
+		{
+			H = normalize(L + V);
+		}
+		return H;
+	}
+
+	float EvaluatePDF(SurfaceVectors surfaceVectors, float3 L, float3 V, LobeWeightArray lobeWeights)
+	{
+		float PDF = 0;
+		const float transmissionWeight = lobeWeights[(uint)LobeType::SpecularTransmission];
+		const float3 H = ComputeHalfVector(surfaceVectors, L, V, transmissionWeight > 0);
+		if (transmissionWeight > 0)
+		{
+			PDF = EvaluateSpecularTransmissionPDF(surfaceVectors, L, V) * transmissionWeight;
+		}
+		if (transmissionWeight < 1 && dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
 			const float3 N = surfaceVectors.ShadingNormal;
 			const float NoV = abs(dot(N, V));
-			BRDF = lerp(
-				EvaluateSpecularReflectionPDF(surfaceVectors, L, V),
-				EvaluateDiffuseReflectionPDF(surfaceVectors, L),
-				EstimateDiffuseProbability(Albedo, Rf0, Roughness, NoV)
-			);
+			PDF += EvaluateDiffuseReflectionPDF(surfaceVectors, L) * lobeWeights[(uint)LobeType::DiffuseReflection]
+				+ EvaluateSpecularReflectionPDF(surfaceVectors, L, V, H) * lobeWeights[(uint)LobeType::SpecularReflection];
 		}
-		return lerp(BRDF, BSDF, transmissionProbability);
+		return PDF;
 	}
 
-	void Evaluate(SurfaceVectors surfaceVectors, float3 L, float3 V, out float3 diffuse, out float3 specular)
+	void Evaluate(
+		SurfaceVectors surfaceVectors, float3 L, float3 V, LobeWeightArray lobeWeights,
+		out float3 diffuse, out float3 specular
+	)
 	{
 		diffuse = 0;
 		specular = 0;
-		const float transmissionProbability = Transmission * (1 - Metallic);
-		if (transmissionProbability > 0)
+		const float transmissionWeight = lobeWeights[(uint)LobeType::SpecularTransmission];
+		const float3 H = ComputeHalfVector(surfaceVectors, L, V, transmissionWeight > 0);
+		if (transmissionWeight > 0)
 		{
-			specular = EvaluateSpecularTransmission(surfaceVectors, L, V) * transmissionProbability;
+			specular = EvaluateSpecularTransmission(surfaceVectors, L, V) * transmissionWeight;
 		}
-		float3 BRDF = 0;
-		if (transmissionProbability < 1 && dot(surfaceVectors.FrontGeometricNormal, L) > 0)
+		if (transmissionWeight < 1 && dot(surfaceVectors.FrontGeometricNormal, L) > 0)
 		{
-			const float3 N = surfaceVectors.ShadingNormal;
-			const float
-				NoV = abs(dot(N, V)),
-				diffuseProbability = EstimateDiffuseProbability(Albedo, Rf0, Roughness, NoV),
-				reflectionProbability = 1 - transmissionProbability;
-			diffuse = EvaluateDiffuseReflection(surfaceVectors, L, V) * reflectionProbability * diffuseProbability;
-			specular += EvaluateSpecularReflection(surfaceVectors, L, V) * reflectionProbability * (1 - diffuseProbability);
+			const float reflectionWeight = 1 - transmissionWeight;
+			diffuse = EvaluateDiffuseReflection(surfaceVectors, L, V, H) * reflectionWeight;
+			specular += EvaluateSpecularReflection(surfaceVectors, L, V, H) * reflectionWeight;
 		}
 	}
 
-	float EvaluatePDF(SurfaceVectors surfaceVectors, float3 L, float3 V, LobeType lobeType)
+	float EvaluatePDF(SurfaceVectors surfaceVectors, float3 L, float3 V, LobeWeightArray lobeWeights, LobeType lobeType)
 	{
+		const float transmissionWeight = lobeWeights[(uint)LobeType::SpecularTransmission];
+		const float3 H = ComputeHalfVector(surfaceVectors, L, V, transmissionWeight > 0);
+		const float lobeWeight = lobeWeights[(uint)lobeType];
 		switch (lobeType)
 		{
-			case LobeType::DiffuseReflection: return EvaluateDiffuseReflectionPDF(surfaceVectors, L);
-			case LobeType::SpecularReflection: return EvaluateSpecularReflectionPDF(surfaceVectors, L, V);
-			case LobeType::SpecularTransmission: return EvaluateSpecularTransmissionPDF(surfaceVectors, L, V);
+			case LobeType::DiffuseReflection: return EvaluateDiffuseReflectionPDF(surfaceVectors, L) * lobeWeight;
+			case LobeType::SpecularReflection: return EvaluateSpecularReflectionPDF(surfaceVectors, L, V, H) * lobeWeight;
+			case LobeType::SpecularTransmission: return EvaluateSpecularTransmissionPDF(surfaceVectors, L, V) * lobeWeight;
 			default: return 0;
 		}
 	}
 
-	float3 Evaluate(SurfaceVectors surfaceVectors, float3 L, float3 V, LobeType lobeType)
+	float3 Evaluate(SurfaceVectors surfaceVectors, float3 L, float3 V, LobeWeightArray lobeWeights, LobeType lobeType)
 	{
-		switch (lobeType)
+		const float transmissionWeight = lobeWeights[(uint)LobeType::SpecularTransmission];
+		const float3 H = ComputeHalfVector(surfaceVectors, L, V, transmissionWeight > 0);
+		if (lobeType == LobeType::SpecularTransmission)
 		{
-			case LobeType::DiffuseReflection: return EvaluateDiffuseReflection(surfaceVectors, L, V);
-			case LobeType::SpecularReflection: return EvaluateSpecularReflection(surfaceVectors, L, V);
-			case LobeType::SpecularTransmission: return EvaluateSpecularTransmission(surfaceVectors, L, V);
-			default: return 0;
+			return EvaluateSpecularTransmission(surfaceVectors, L, V) * transmissionWeight;
 		}
+		const float reflectionWeight = 1 - transmissionWeight;
+		if (lobeType == LobeType::DiffuseReflection)
+		{
+			return EvaluateDiffuseReflection(surfaceVectors, L, V, H) * reflectionWeight;
+		}
+		return EvaluateSpecularReflection(surfaceVectors, L, V, H) * reflectionWeight;
+	}
+
+	void EstimateDemodulationFactors(SurfaceVectors surfaceVectors, float3 V, out float3 diffuse, out float3 specular)
+	{
+		NRD_MaterialFactors(surfaceVectors.ShadingNormal, V, Albedo, F0, Roughness, diffuse, specular);
 	}
 };

@@ -50,8 +50,8 @@ RWTexture2D<float4> g_BaseColorMetalness : register(u6);
 RWTexture2D<float3> g_DiffuseAlbedo : register(u7);
 RWTexture2D<float3> g_SpecularAlbedo : register(u8);
 RWTexture2D<float4> g_NormalRoughness : register(u9);
-RWTexture2D<float> g_Transmission : register(u10);
-RWTexture2D<float> g_IOR : register(u11);
+RWTexture2D<float> g_IOR : register(u10);
+RWTexture2D<float> g_Transmission : register(u11);
 RWTexture2D<float3> g_Radiance : register(u12);
 
 #include "RaytracingHelpers.hlsli"
@@ -151,48 +151,48 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 			}
 		}
 
-		Material material;
+		BSDFSample BSDFSample;
 		if (g_constants.Flags & Flags::Material)
 		{
 			const ObjectData objectData = g_objectData[hitInfo.ObjectIndex];
 
 			bool hasSampledTexture;
-			material = EvaluateMaterial(
+			const Material material = EvaluateMaterial(
 				hitInfo.ShadingNormal, hitInfo.GetFrontTangent(),
 				objectData.Material,
 				objectData.TextureMapInfoArray, hitInfo.TextureCoordinates,
 				hasSampledTexture
 			);
+			BSDFSample.Initialize(material, hitInfo.IsFrontFace);
 
-			const float4 BaseColorMetalness = float4(material.BaseColor.rgb, material.Metallic);
+			const float4 BaseColorMetalness = float4(BSDFSample.BaseColor, BSDFSample.Metallic);
 			SET(BaseColorMetalness);
 
 			if (g_constants.Flags & Flags::Albedo)
 			{
-				float3 Albedo, Rf0;
-				BRDF::ConvertBaseColorMetalnessToAlbedoRf0(material.BaseColor.rgb, material.Metallic, Albedo, Rf0);
-				const float NoV = abs(dot(hitInfo.ShadingNormal, -rayDesc.Direction));
-				const float3 FEnvironment = BRDF::EnvironmentTerm_Rtg(Rf0, NoV, material.Roughness);
+				float3 DiffuseAlbedo, SpecularAlbedo;
+				SurfaceVectors surfaceVectors;
+				surfaceVectors.Initialize(hitInfo.IsFrontFace, hitInfo.GeometricNormal, hitInfo.ShadingNormal);
+				const float3 V = -rayDesc.Direction;
+				BSDFSample.EstimateDemodulationFactors(surfaceVectors, V, DiffuseAlbedo, SpecularAlbedo);
 				if (g_constants.Flags & Flags::DiffuseAlbedo)
 				{
-					const float3 DiffuseAlbedo = Albedo * (1 - FEnvironment);
 					SET(DiffuseAlbedo);
 				}
 				if (g_constants.Flags & Flags::SpecularAlbedo)
 				{
-					const float3 SpecularAlbedo = FEnvironment;
 					SET(SpecularAlbedo);
 				}
 			}
 
-			if (material.Metallic < 1)
+			const float IOR = material.IOR;
+			SET(IOR);
+
+			if (BSDFSample.Metallic < 1)
 			{
-				const float Transmission = material.Transmission;
+				const float Transmission = BSDFSample.Transmission;
 				SET(Transmission);
 			}
-
-			const float IOR = objectData.Material.IOR;
-			SET(IOR);
 
 			if (g_constants.Flags & Flags::Radiance)
 			{
@@ -205,7 +205,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		{
 			const float4 NormalRoughness = float4(
 				hitInfo.ShadingNormal,
-				g_constants.Flags & Flags::Material ? material.Roughness : 0
+				g_constants.Flags & Flags::Material ? BSDFSample.Roughness : 0
 			);
 			SET(NormalRoughness);
 		}

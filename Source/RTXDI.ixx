@@ -41,12 +41,11 @@ export struct RTXDI {
 			* MotionVector,
 			* PreviousBaseColorMetalness, * BaseColorMetalness,
 			* PreviousNormalRoughness, * NormalRoughness,
-			* PreviousTransmission, * Transmission,
 			* PreviousIOR, * IOR,
+			* PreviousTransmission, * Transmission,
 			* Radiance,
-			* LightRadiance,
-			* Diffuse,
-			* Specular,
+			* NoisyDiffuse,
+			* NoisySpecular,
 			* SpecularHitDistance;
 	} Textures{};
 
@@ -71,7 +70,7 @@ export struct RTXDI {
 		CreatePipelineState(m_DIFinalShading, L"DIFinalShading", g_DIFinalShading_dxil);
 	}
 
-	void SetConstants(const RTXDIResources& resources, bool isLastRenderPass, bool isReGIRCellVisualizationEnabled, const DenoisingSettings& denoisingSettings) noexcept {
+	void SetConstants(const RTXDIResources& resources, bool isLastRenderPass, bool isReGIRCellVisualizationEnabled, Denoiser denoiser) noexcept {
 		m_resources = &resources;
 
 		const auto& context = *m_resources->Context;
@@ -135,16 +134,12 @@ export struct RTXDI {
 					.shadingParams = ReSTIRDIContext.GetShadingParameters()
 				}
 			},
-			.Denoising = denoisingSettings
+			.Denoiser = denoiser
 		};
 	}
 
 	void Render(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure) {
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
-
-		if (!m_graphicsSettings.IsLastRenderPass) {
-			commandList.Clear(*Textures.LightRadiance);
-		}
 
 		commandList.Copy(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
@@ -163,14 +158,13 @@ export struct RTXDI {
 		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.PreviousNormalRoughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.NormalRoughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*Textures.PreviousTransmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*Textures.Transmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.PreviousIOR, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.IOR, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.PreviousTransmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.Transmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*m_resources->RIS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*m_resources->DIReservoir, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList.SetState(*Textures.Radiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		commandList.SetState(*Textures.LightRadiance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		uint32_t i = 0;
 		commandList->SetComputeRootShaderResourceView(i++, topLevelAccelerationStructure);
@@ -190,22 +184,21 @@ export struct RTXDI {
 		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousNormalRoughness->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetSRVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousTransmission->GetSRVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.Transmission->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousIOR->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.IOR->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.PreviousTransmission->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Transmission->GetSRVDescriptor());
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->RIS->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Radiance->GetUAVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.LightRadiance->GetUAVDescriptor());
-		if (Textures.Diffuse) {
-			commandList.SetState(*Textures.Diffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->SetComputeRootDescriptorTable(i, Textures.Diffuse->GetUAVDescriptor());
+		if (Textures.NoisyDiffuse) {
+			commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
 		}
 		i++;
-		if (Textures.Specular) {
-			commandList.SetState(*Textures.Specular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->SetComputeRootDescriptorTable(i, Textures.Specular->GetUAVDescriptor());
+		if (Textures.NoisySpecular) {
+			commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
 		}
 		i++;
 		if (Textures.SpecularHitDistance) {
@@ -260,7 +253,8 @@ private:
 			ReGIR_Parameters ReGIR;
 			ReSTIRDI_Parameters ReSTIRDI;
 		} RTXDI;
-		DenoisingSettings Denoising;
+		Denoiser Denoiser;
+		XMUINT3 _;
 	};
 
 	struct { unique_ptr<GPUBuffer> GraphicsSettings; } m_GPUBuffers;

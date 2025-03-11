@@ -24,7 +24,8 @@ struct GraphicsSettings
 	uint FrameIndex, Bounces, SamplesPerPixel;
 	float ThroughputThreshold;
 	bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
-	uint3 _;
+	Denoiser Denoiser;
+	uint2 _;
 	struct
 	{
 		struct
@@ -35,7 +36,6 @@ struct GraphicsSettings
 			uint3 _;
 		} SHARC;
 	} RTXGI;
-	DenoisingSettings Denoising;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
 
@@ -51,11 +51,10 @@ Texture2D<float2> g_geometricNormal : register(t4);
 Texture2D<float> g_linearDepth : register(t5);
 Texture2D<float4> g_baseColorMetalness : register(t6);
 Texture2D<float4> g_normalRoughness : register(t7);
-Texture2D<float> g_transmission : register(t8);
-Texture2D<float> g_IOR : register(t9);
-Texture2D<float4> g_lightRadiance : register(t10);
+Texture2D<float> g_IOR : register(t8);
+Texture2D<float> g_transmission : register(t9);
 #if SHARC_UPDATE
-Texture2D<float3> g_radiance : register(t11);
+Texture2D<float3> g_radiance : register(t10);
 #else
 RWTexture2D<float3> g_radiance : register(u0);
 #endif
@@ -96,9 +95,8 @@ GlobalRootSignature GlobalRootSignature =
 	"DescriptorTable(SRV(t7)),"
 	"DescriptorTable(SRV(t8)),"
 	"DescriptorTable(SRV(t9)),"
-	"DescriptorTable(SRV(t10)),"
 #if SHARC_UPDATE
-	"DescriptorTable(SRV(t11)),"
+	"DescriptorTable(SRV(t10)),"
 #else
 	"DescriptorTable(UAV(u0)),"
 #endif
@@ -132,7 +130,7 @@ void RayGeneration()
 
 	HitInfo primarySurfaceHitInfo;
 	BSDFSample primarySurfaceBSDFSample;
-	float3 lightRadiance = 0;
+	float3 directDiffuse = 0, directSpecular = 0, DI = 0;
 	float lightDistance = 0;
 	bool isDIValid = false;
 	const RayDesc primaryRayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
@@ -155,21 +153,23 @@ void RayGeneration()
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
 			normalRoughness.w,
+			LOAD(IOR),
 			baseColorMetalness.a < 1 ? LOAD(transmission) : 0,
-			LOAD(IOR)
+			primarySurfaceHitInfo.IsFrontFace
 		);
 
 		if (g_graphicsSettings.IsDIEnabled)
 		{
-#if !ENABLE_SHARC
-			if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None
-				|| g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
+			directDiffuse = LOAD(diffuse).rgb;
+			directSpecular = LOAD(specular).rgb;
+
+#if SHARC_QUERY
+			if (g_graphicsSettings.Denoiser == Denoiser::None
+				|| g_graphicsSettings.Denoiser == Denoiser::DLSSRayReconstruction)
 #endif
 			{
-				const float4 light = LOAD(lightRadiance);
-				lightRadiance = light.rgb;
-				lightDistance = light.a;
-				isDIValid = any(lightRadiance > 0);
+				DI = directDiffuse + directSpecular;
+				isDIValid = any(DI > 0);
 			}
 		}
 	}
@@ -311,7 +311,7 @@ void RayGeneration()
 					hasSampledTexture
 				);
 				emission = isDIValid && bounceIndex == 1 ? 0 : material.GetEmission();
-				BSDFSample.Initialize(material);
+				BSDFSample.Initialize(material, hitInfo.IsFrontFace);
 			}
 
 #if SHARC_UPDATE
@@ -319,14 +319,14 @@ void RayGeneration()
 
 			if (!SharcUpdateHit(
 				sharcParameters, sharcState, sharcHitData,
-				(isDIValid && !bounceIndex ? lightRadiance : 0) + emission,
+				(isDIValid && !bounceIndex ? DI : 0) + emission,
 				Rng::Hash::GetFloat()
 			))
 			{
 				break;
 			}
 #elif SHARC_QUERY
-			sampleRadiance += (isDIValid && !bounceIndex ? lightRadiance : 0) + throughput * emission;
+			sampleRadiance += (isDIValid && !bounceIndex ? DI : 0) + throughput * emission;
 #else
 			sampleRadiance += throughput * emission;
 #endif
@@ -336,24 +336,25 @@ void RayGeneration()
 
 			const float3 V = -rayDesc.Direction;
 
-			float lobeProbability;
-			if (!BSDFSample.Sample(surfaceVectors, V, Rng::Hash::GetFloat4(), L, lobeType, lobeProbability))
+			LobeWeightArray lobeWeights;
+			BSDFSample.ComputeLobeWeights(surfaceVectors, V, lobeWeights);
+			if (!BSDFSample.Sample(surfaceVectors, V, lobeWeights, Rng::Hash::GetFloat4(), L, lobeType))
 			{
 				break;
 			}
 
-			const float PDF = BSDFSample.EvaluatePDF(surfaceVectors, L, V, lobeType);
+			const float PDF = BSDFSample.EvaluatePDF(surfaceVectors, L, V, lobeWeights, lobeType);
 			if (PDF == 0)
 			{
 				break;
 			}
 
-			const float3 currentThroughput = BSDFSample.Evaluate(surfaceVectors, L, V, lobeType);
+			const float3 currentThroughput = BSDFSample.Evaluate(surfaceVectors, L, V, lobeWeights, lobeType);
 			if (all(currentThroughput == 0))
 			{
 				break;
 			}
-			throughput *= currentThroughput / (PDF * lobeProbability);
+			throughput *= currentThroughput / PDF;
 
 			if (g_graphicsSettings.IsRussianRouletteEnabled && bounceIndex > 3)
 			{
@@ -386,18 +387,18 @@ void RayGeneration()
 #if !SHARC_UPDATE
 	radiance = all(isfinite(radiance)) ? radiance / samplesPerPixel : 0;
 
-	if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None)
+	if (g_graphicsSettings.Denoiser == Denoiser::None)
 	{
 #if !SHARC_QUERY
-		radiance += lightRadiance;
+		radiance += DI;
 #endif
 
 		g_radiance[pixelPosition] = radiance;
 	}
-	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
+	else if (g_graphicsSettings.Denoiser == Denoiser::DLSSRayReconstruction)
 	{
 #if !SHARC_QUERY
-		radiance += lightRadiance;
+		radiance += DI;
 #endif
 
 		g_radiance[pixelPosition] = radiance;
@@ -407,22 +408,19 @@ void RayGeneration()
 			g_specularHitDistance[pixelPosition] = hitDistance;
 		}
 	}
-	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReBLUR
-		|| g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReLAX)
+	else if (g_graphicsSettings.Denoiser == Denoiser::NRDReBLUR
+		|| g_graphicsSettings.Denoiser == Denoiser::NRDReLAX)
 	{
-		const float4 radianceHitDistance = float4(max(radiance - primaryRadiance, 0), hitDistance);
-		NRDPackNoisySignals(
-			g_graphicsSettings.Denoising,
-			primarySurfaceHitInfo.ShadingNormal, -primaryRayDesc.Direction, linearDepth,
-			primarySurfaceBSDFSample,
 #if SHARC_QUERY
-			0, 0, 0,
-#else
-			g_diffuse[pixelPosition].rgb, g_specular[pixelPosition].rgb, lightDistance,
+		directDiffuse = directSpecular = 0;
 #endif
-			isDiffuse ? radianceHitDistance : 0, isDiffuse ? 0 : radianceHitDistance, false,
-			g_diffuse[pixelPosition], g_specular[pixelPosition]
-		);
+
+		const float4
+			radianceHitDistance = float4(max(radiance - primaryRadiance, 0), hitDistance),
+			indirectDiffuse = isDiffuse ? radianceHitDistance : 0,
+			indirectSpecular = isDiffuse ? 0 : radianceHitDistance;
+		g_diffuse[pixelPosition] = float4(directDiffuse + indirectDiffuse.rgb, indirectDiffuse.a);
+		g_specular[pixelPosition] = float4(directSpecular + indirectSpecular.rgb, indirectSpecular.a);
 	}
 #endif
 }

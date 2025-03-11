@@ -35,7 +35,8 @@ struct GraphicsSettings
 		ReGIR_Parameters ReGIR;
 		ReSTIRDI_Parameters ReSTIRDI;
 	} RTXDI;
-	DenoisingSettings Denoising;
+	Denoiser Denoiser;
+	uint3 _;
 };
 ConstantBuffer<GraphicsSettings> g_graphicsSettings : register(b0);
 
@@ -56,19 +57,18 @@ Texture2D<float4> g_previousBaseColorMetalness : register(t11);
 Texture2D<float4> g_baseColorMetalness : register(t12);
 Texture2D<float4> g_previousNormalRoughness : register(t13);
 Texture2D<float4> g_normalRoughness : register(t14);
-Texture2D<float> g_previousTransmission : register(t15);
-Texture2D<float> g_transmission : register(t16);
-Texture2D<float> g_previousIOR : register(t17);
-Texture2D<float> g_IOR : register(t18);
+Texture2D<float> g_previousIOR : register(t15);
+Texture2D<float> g_IOR : register(t16);
+Texture2D<float> g_previousTransmission : register(t17);
+Texture2D<float> g_transmission : register(t18);
 
 RWStructuredBuffer<uint2> g_RIS : register(u0);
 RWStructuredBuffer<RTXDI_PackedDIReservoir> g_DIReservoir : register(u1);
 
 RWTexture2D<float3> g_radiance : register(u2);
-RWTexture2D<float4> g_lightRadiance : register(u3);
-RWTexture2D<float4> g_diffuse : register(u4);
-RWTexture2D<float4> g_specular : register(u5);
-RWTexture2D<float> g_specularHitDistance : register(u6);
+RWTexture2D<float4> g_diffuse : register(u3);
+RWTexture2D<float4> g_specular : register(u4);
+RWTexture2D<float> g_specularHitDistance : register(u5);
 
 #include "RaytracingHelpers.hlsli"
 
@@ -106,8 +106,7 @@ RWTexture2D<float> g_specularHitDistance : register(u6);
 		"DescriptorTable(UAV(u2))," \
 		"DescriptorTable(UAV(u3))," \
 		"DescriptorTable(UAV(u4))," \
-		"DescriptorTable(UAV(u5))," \
-		"DescriptorTable(UAV(u6))" \
+		"DescriptorTable(UAV(u5))" \
 	)]
 
 int2 RAB_ClampSamplePositionIntoView(int2 pixelPosition, bool previousFrame)
@@ -246,22 +245,22 @@ struct RAB_Surface
 	float3 Position, ViewDirection;
 	SurfaceVectors Vectors;
 	RAB_Material Material;
+	LobeWeightArray LobeWeights;
 
 	bool Sample(inout RAB_RandomSamplerState rng, out float3 L)
 	{
 		LobeType lobeType;
-		float lobeProbability;
-		return Material.Sample(Vectors, ViewDirection, rng.GetFloat4(), L, lobeType, lobeProbability);
+		return Material.Sample(Vectors, ViewDirection, LobeWeights, rng.GetFloat4(), L, lobeType);
 	}
 
 	float EvaluatePDF(float3 L)
 	{
-		return Material.EvaluatePDF(Vectors, L, ViewDirection);
+		return Material.EvaluatePDF(Vectors, L, ViewDirection, LobeWeights);
 	}
 
 	void Evaluate(float3 L, out float3 diffuse, out float3 specular)
 	{
-		Material.Evaluate(Vectors, L, ViewDirection, diffuse, specular);
+		Material.Evaluate(Vectors, L, ViewDirection, LobeWeights, diffuse, specular);
 	}
 
 	void Shade(float3 samplePosition, float3 radiance, out float3 diffuse, out float3 specular)
@@ -273,16 +272,13 @@ struct RAB_Surface
 
 	void Shade(RAB_LightSample lightSample, out float3 diffuse, out float3 specular)
 	{
+		diffuse = specular = 0;
 		if (lightSample.SolidAnglePDF > 0)
 		{
 			Shade(lightSample.Position, lightSample.Radiance, diffuse, specular);
 			const float invPDF = 1 / lightSample.SolidAnglePDF;
 			diffuse *= invPDF;
 			specular *= invPDF;
-		}
-		else
-		{
-			diffuse = specular = 0;
 		}
 	}
 };
@@ -296,12 +292,13 @@ RAB_Surface RAB_EmptySurface()
 
 RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 {
+	const float MinRoughness = 0.05f;
 	RAB_Surface surface = RAB_EmptySurface();
 	if (all(pixelPosition < g_graphicsSettings.RenderSize))
 	{
 		float2 geometricNormal;
 		float4 baseColorMetalness, normalRoughenss;
-		float transmission = 0, IOR = 1;
+		float IOR, transmission = 0;
 		if (previousFrame)
 		{
 			if (!isfinite(surface.LinearDepth = g_previousLinearDepth[pixelPosition])
@@ -311,10 +308,10 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			}
 			geometricNormal = g_previousGeometricNormal[pixelPosition];
 			baseColorMetalness = g_previousBaseColorMetalness[pixelPosition];
+			IOR = g_previousIOR[pixelPosition];
 			if (baseColorMetalness.a < 1)
 			{
 				transmission = g_previousTransmission[pixelPosition];
-				IOR = g_previousIOR[pixelPosition];
 			}
 		}
 		else
@@ -326,27 +323,26 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixelPosition, bool previousFrame)
 			}
 			geometricNormal = g_geometricNormal[pixelPosition];
 			baseColorMetalness = g_baseColorMetalness[pixelPosition];
+			IOR = g_IOR[pixelPosition];
 			if (baseColorMetalness.a < 1)
 			{
 				transmission = g_transmission[pixelPosition];
-				IOR = g_IOR[pixelPosition];
 			}
 		}
 		surface.Position = g_camera.ReconstructWorldPosition(Math::CalculateNDC(Math::CalculateUV(pixelPosition, g_graphicsSettings.RenderSize, g_camera.Jitter)), surface.LinearDepth, previousFrame);
 		surface.ViewDirection = normalize((previousFrame ? g_camera.PreviousPosition : g_camera.Position) - surface.Position);
 		const float3 normal = Packing::DecodeUnitVector(geometricNormal, true);
-		surface.Vectors.Initialize(
-			dot(normal, surface.ViewDirection) > 0,
-			normalRoughenss.xyz,
-			normal
-		);
+		const bool isFrontFace = dot(normal, surface.ViewDirection) > 0;
+		surface.Vectors.Initialize(isFrontFace, normal, normalRoughenss.xyz);
 		surface.Material.Initialize(
 			baseColorMetalness.rgb,
 			baseColorMetalness.a,
 			normalRoughenss.w,
+			IOR,
 			transmission,
-			IOR
+			isFrontFace
 		);
+		surface.Material.ComputeLobeWeights(surface.Vectors, surface.ViewDirection, surface.LobeWeights);
 	}
 	return surface;
 }
@@ -384,7 +380,7 @@ RAB_Material RAB_GetMaterial(RAB_Surface surface)
 bool RAB_AreMaterialsSimilar(RAB_Material a, RAB_Material b)
 {
 	return RTXDI_CompareRelativeDifference(a.Roughness, b.Roughness, 0.5f)
-		&& abs(Color::Luminance(a.Rf0) - Color::Luminance(b.Rf0)) <= 0.25f
+		&& abs(Color::Luminance(a.F0) - Color::Luminance(b.F0)) <= 0.25f
 		&& abs(Color::Luminance(a.Albedo) - Color::Luminance(b.Albedo)) <= 0.25f;
 }
 
@@ -471,6 +467,8 @@ RAB_LightSample RAB_SamplePolymorphicLight(RAB_LightInfo lightInfo, RAB_Surface 
 
 bool RAB_TraceRayForLocalLight(float3 origin, float3 direction, float tMin, float tMax, out uint o_lightIndex, out float2 o_randXY)
 {
+	o_lightIndex = RTXDI_InvalidLightIndex;
+	o_randXY = 0;
 	const RayDesc rayDesc = { origin, tMin, direction, tMax };
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
 	TraceRay(q, rayDesc, RAY_FLAG_NONE, ~0u);
@@ -483,11 +481,6 @@ bool RAB_TraceRayForLocalLight(float3 origin, float3 direction, float tMin, floa
 			o_lightIndex += q.CommittedPrimitiveIndex();
 			o_randXY = Math::RandomFromBarycentrics(q.CommittedTriangleBarycentrics());
 		}
-	}
-	else
-	{
-		o_lightIndex = RTXDI_InvalidLightIndex;
-		o_randXY = 0;
 	}
 	return hit;
 }

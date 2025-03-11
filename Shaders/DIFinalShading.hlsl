@@ -79,22 +79,7 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 	}
 
 	const float lightDistance = length(lightSample.Position - surface.Position);
-	if (!g_graphicsSettings.IsLastRenderPass)
-	{
-		g_lightRadiance[pixelPosition] = float4(radiance, lightDistance);
-
-		if (g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReBLUR
-			|| g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReLAX)
-		{
-			g_diffuse[pixelPosition].rgb = diffuse;
-			g_specular[pixelPosition].rgb = specular;
-		}
-	}
-	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::None)
-	{
-		g_radiance[pixelPosition] += radiance;
-	}
-	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::DLSSRayReconstruction)
+	if (g_graphicsSettings.IsLastRenderPass)
 	{
 		g_radiance[pixelPosition] += radiance;
 
@@ -103,16 +88,9 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 			g_specularHitDistance[pixelPosition] = lightDistance;
 		}
 	}
-	else if (g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReBLUR
-		|| g_graphicsSettings.Denoising.Denoiser == Denoiser::NRDReLAX)
+	else
 	{
-		NRDPackNoisySignals(
-			g_graphicsSettings.Denoising,
-			surface.Vectors.ShadingNormal, surface.ViewDirection, surface.LinearDepth,
-			surface.Material,
-			diffuse, specular, lightDistance,
-			0, 0, false,
-			g_diffuse[pixelPosition], g_specular[pixelPosition]
-		);
+		g_diffuse[pixelPosition] = float4(diffuse, lightDistance);
+		g_specular[pixelPosition] = float4(specular, lightDistance);
 	}
 }

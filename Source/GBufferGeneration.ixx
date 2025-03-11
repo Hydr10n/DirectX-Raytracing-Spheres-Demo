@@ -62,8 +62,8 @@ export struct GBufferGeneration {
 			* DiffuseAlbedo,
 			* SpecularAlbedo,
 			* NormalRoughness,
-			* Transmission,
 			* IOR,
+			* Transmission,
 			* Radiance;
 	} Textures{};
 
@@ -109,8 +109,8 @@ export struct GBufferGeneration {
 		SET1(DiffuseAlbedo);
 		SET1(SpecularAlbedo);
 		SET1(NormalRoughness);
-		SET2(Transmission);
 		SET2(IOR);
+		SET2(Transmission);
 		SET1(Radiance);
 
 		commandList->Dispatch((constants.RenderSize.x + 15) / 16, (constants.RenderSize.y + 15) / 16, 1);

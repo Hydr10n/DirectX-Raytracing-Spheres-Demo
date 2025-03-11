@@ -71,22 +71,22 @@ export {
 			commandList->SetComputeRootUnorderedAccessView(4, GPUBuffers.PreviousVoxelData->GetNative()->GetGPUVirtualAddress());
 			commandList->SetComputeRootUnorderedAccessView(5, GPUBuffers.VoxelData->GetNative()->GetGPUVirtualAddress());
 
-			const auto Dispatch = [&](bool isResolve) {
+			const auto Dispatch = [&](bool resolve) {
 				commandList.SetUAVBarrier(*GPUBuffers.HashEntries);
 				commandList.SetUAVBarrier(*GPUBuffers.HashCopyOffset);
 
-				if (isResolve) {
+				if (resolve) {
 					commandList.SetUAVBarrier(*GPUBuffers.PreviousVoxelData);
 					commandList.SetUAVBarrier(*GPUBuffers.VoxelData);
 				}
 
 				const struct {
-					uint32_t IsResolve;
+					uint32_t Resolve;
 					uint32_t Capacity, AccumulationFrames, MaxStaleFrames;
 					float SceneScale;
 					uint32_t IsAntiFireflyEnabled;
 				} _constants{
-					.IsResolve = isResolve,
+					.Resolve = resolve,
 					.Capacity = static_cast<uint32_t>(GPUBuffers.HashEntries->GetCapacity()),
 					.AccumulationFrames = constants.AccumulationFrames,
 					.MaxStaleFrames = constants.MaxStaleFrames,

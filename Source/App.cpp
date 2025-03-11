@@ -50,8 +50,8 @@ import LightPreparation;
 import Material;
 import MyScene;
 import PostProcessing.Bloom;
-import PostProcessing.DenoisedComposition;
 import PostProcessing.MipmapGeneration;
+import PostProcessing.NRDComposition;
 import Raytracing;
 import RTXDI;
 import RTXDIResources;
@@ -62,7 +62,6 @@ import StringConverters;
 import Texture;
 import ThreadHelpers;
 
-using namespace D3D12MA;
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 using namespace DisplayHelpers;
@@ -235,7 +234,7 @@ struct App::Impl : IDeviceNotify {
 
 		m_XeSS.reset();
 
-		m_denoisedComposition.reset();
+		m_NRDComposition.reset();
 		m_NRD.reset();
 
 		m_streamline.reset();
@@ -321,7 +320,7 @@ private:
 	sl::DLSSDOptions m_DLSSDOptions;
 
 	unique_ptr<NRD> m_NRD;
-	unique_ptr<DenoisedComposition> m_denoisedComposition;
+	unique_ptr<NRDComposition> m_NRDComposition;
 
 	unique_ptr<XeSS> m_XeSS;
 
@@ -350,15 +349,16 @@ private:
 		MAKE_NAMEW(BaseColorMetalness);
 		MAKE_NAMEW(PreviousNormalRoughness);
 		MAKE_NAMEW(NormalRoughness);
-		MAKE_NAMEW(PreviousTransmission);
-		MAKE_NAMEW(Transmission);
 		MAKE_NAMEW(PreviousIOR);
 		MAKE_NAMEW(IOR);
-		MAKE_NAMEW(LightRadiance);
+		MAKE_NAMEW(PreviousTransmission);
+		MAKE_NAMEW(Transmission);
 		MAKE_NAMEW(Radiance);
-		MAKE_NAMEW(Diffuse);
-		MAKE_NAMEW(Specular);
+		MAKE_NAMEW(DiffuseAlbedo);
+		MAKE_NAMEW(SpecularAlbedo);
 		MAKE_NAMEW(SpecularHitDistance);
+		MAKE_NAMEW(NoisyDiffuse);
+		MAKE_NAMEW(NoisySpecular);
 		MAKE_NAMEW(DenoisedDiffuse);
 		MAKE_NAMEW(DenoisedSpecular);
 		MAKE_NAMEW(Validation);
@@ -440,11 +440,10 @@ private:
 			CreateTexture(TextureNames::BaseColorMetalness, DXGI_FORMAT_R8G8B8A8_UNORM);
 			CreateTexture(TextureNames::PreviousNormalRoughness, DXGI_FORMAT_R16G16B16A16_SNORM);
 			CreateTexture(TextureNames::NormalRoughness, DXGI_FORMAT_R16G16B16A16_SNORM);
-			CreateTexture(TextureNames::PreviousTransmission, DXGI_FORMAT_R8_UNORM);
-			CreateTexture(TextureNames::Transmission, DXGI_FORMAT_R8_UNORM);
 			CreateTexture(TextureNames::PreviousIOR, DXGI_FORMAT_R16_FLOAT);
 			CreateTexture(TextureNames::IOR, DXGI_FORMAT_R16_FLOAT);
-			CreateTexture(TextureNames::LightRadiance, m_HDRTextureFormat, true);
+			CreateTexture(TextureNames::PreviousTransmission, DXGI_FORMAT_R8_UNORM);
+			CreateTexture(TextureNames::Transmission, DXGI_FORMAT_R8_UNORM);
 			CreateTexture(TextureNames::Radiance, m_HDRTextureFormat, true);
 
 			{
@@ -461,17 +460,19 @@ private:
 				const auto
 					isNRDAvailable = m_NRD->IsAvailable(),
 					isDLSSRayReconstructionAvailable = m_streamline->IsAvailable(sl::kFeatureDLSS_RR);
-				if (isNRDAvailable) {
-					CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
-					CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, false);
-					CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM);
-				}
 				if (isNRDAvailable || isDLSSRayReconstructionAvailable) {
-					CreateTexture(TextureNames::Diffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false);
-					CreateTexture(TextureNames::Specular, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false);
-				}
-				if (isDLSSRayReconstructionAvailable) {
-					CreateTexture(TextureNames::SpecularHitDistance, DXGI_FORMAT_R16_FLOAT, true, false);
+					CreateTexture(TextureNames::DiffuseAlbedo, DXGI_FORMAT_R16G16B16A16_FLOAT, true);
+					CreateTexture(TextureNames::SpecularAlbedo, DXGI_FORMAT_R16G16B16A16_FLOAT, true);
+					if (isNRDAvailable) {
+						CreateTexture(TextureNames::NoisyDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false);
+						CreateTexture(TextureNames::NoisySpecular, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false);
+						CreateTexture(TextureNames::DenoisedDiffuse, DXGI_FORMAT_R16G16B16A16_FLOAT);
+						CreateTexture(TextureNames::DenoisedSpecular, DXGI_FORMAT_R16G16B16A16_FLOAT);
+						CreateTexture(TextureNames::Validation, DXGI_FORMAT_R8G8B8A8_UNORM);
+					}
+					if (isDLSSRayReconstructionAvailable) {
+						CreateTexture(TextureNames::SpecularHitDistance, DXGI_FORMAT_R16_FLOAT, true, false);
+					}
 				}
 
 				SelectDenoiser();
@@ -619,8 +620,8 @@ private:
 					swap(m_textures.at(TextureNames::PreviousLinearDepth), m_textures.at(TextureNames::LinearDepth));
 					swap(m_textures.at(TextureNames::PreviousBaseColorMetalness), m_textures.at(TextureNames::BaseColorMetalness));
 					swap(m_textures.at(TextureNames::PreviousNormalRoughness), m_textures.at(TextureNames::NormalRoughness));
-					swap(m_textures.at(TextureNames::PreviousTransmission), m_textures.at(TextureNames::Transmission));
 					swap(m_textures.at(TextureNames::PreviousIOR), m_textures.at(TextureNames::IOR));
+					swap(m_textures.at(TextureNames::PreviousTransmission), m_textures.at(TextureNames::Transmission));
 				}
 			}
 
@@ -748,7 +749,7 @@ private:
 	void CreatePostProcessing() {
 		const auto& deviceContext = m_deviceResources->GetDeviceContext();
 
-		m_denoisedComposition = make_unique<DenoisedComposition>(deviceContext);
+		m_NRDComposition = make_unique<NRDComposition>(deviceContext);
 
 		m_bloom = make_unique<Bloom>(deviceContext);
 
@@ -1123,33 +1124,24 @@ private:
 			motionVector = FindTexture(TextureNames::MotionVector),
 			baseColorMetalness = FindTexture(TextureNames::BaseColorMetalness),
 			normalRoughness = FindTexture(TextureNames::NormalRoughness),
-			transmission = FindTexture(TextureNames::Transmission),
 			IOR = FindTexture(TextureNames::IOR),
-			lightRadiance = FindTexture(TextureNames::LightRadiance),
+			transmission = FindTexture(TextureNames::Transmission),
 			radiance = FindTexture(TextureNames::Radiance),
-			diffuse = FindTexture(TextureNames::Diffuse),
-			specular = FindTexture(TextureNames::Specular),
+			diffuseAlbedo = FindTexture(TextureNames::DiffuseAlbedo),
+			specularAlbedo = FindTexture(TextureNames::SpecularAlbedo),
+			noisyDiffuse = FindTexture(TextureNames::NoisyDiffuse),
+			noisySpecular = FindTexture(TextureNames::NoisySpecular),
 			specularHitDistance = FindTexture(TextureNames::SpecularHitDistance);
 
 		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
 
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
-		const auto& ReSTIRDISettings = raytracingSettings.RTXDI.ReSTIRDI;
-		auto isReSTIRDIEnabled = ReSTIRDISettings.IsEnabled;
-		if (isReSTIRDIEnabled) {
-			PrepareReSTIRDI();
-			isReSTIRDIEnabled &= m_RTXDIResources.LightInfo != nullptr;
-		}
-
-		const DenoisingSettings denoisingSettings{
-			.Denoiser = ShouldDenoise() ? g_graphicsSettings.PostProcessing.Denoising.Denoiser : Denoiser::None,
-			.NRDReBLURHitDistance = reinterpret_cast<const XMFLOAT4&>(nrd::ReblurSettings().hitDistanceParameters)
-		};
-		if (denoisingSettings.Denoiser != Denoiser::None) {
-			commandList.Clear(*diffuse);
-			commandList.Clear(*specular);
-			if (denoisingSettings.Denoiser == ::Denoiser::DLSSRayReconstruction) {
+		const auto denoiser = ShouldDenoise() ? g_graphicsSettings.PostProcessing.Denoising.Denoiser : Denoiser::None;
+		if (denoiser != Denoiser::None) {
+			commandList.Clear(*diffuseAlbedo);
+			commandList.Clear(*specularAlbedo);
+			if (denoiser == Denoiser::DLSSRayReconstruction) {
 				commandList.Clear(*specularHitDistance);
 			}
 		}
@@ -1170,11 +1162,11 @@ private:
 				.NormalizedDepth = FindTexture(TextureNames::NormalizedDepth),
 				.MotionVector = motionVector,
 				.BaseColorMetalness = baseColorMetalness,
-				.DiffuseAlbedo = diffuse,
-				.SpecularAlbedo = specular,
+				.DiffuseAlbedo = diffuseAlbedo,
+				.SpecularAlbedo = specularAlbedo,
 				.NormalRoughness = normalRoughness,
-				.Transmission = transmission,
 				.IOR = IOR,
+				.Transmission = transmission,
 				.Radiance = radiance
 			};
 
@@ -1183,8 +1175,7 @@ private:
 				scene,
 				{
 					.RenderSize = m_renderSize,
-					.Flags = ~0u
-						& ~(denoisingSettings.Denoiser == Denoiser::DLSSRayReconstruction ? 0 : GBufferGeneration::Flags::Albedo)
+					.Flags = ~0u & ~(denoiser != Denoiser::None ? 0 : GBufferGeneration::Flags::Albedo)
 				}
 			);
 		}
@@ -1193,42 +1184,48 @@ private:
 			return;
 		}
 
+		const auto& ReSTIRDISettings = raytracingSettings.RTXDI.ReSTIRDI;
+		auto isReSTIRDIEnabled = ReSTIRDISettings.IsEnabled;
 		if (isReSTIRDIEnabled) {
-			m_RTXDI->GPUBuffers = {
+			PrepareReSTIRDI();
+			if ((isReSTIRDIEnabled &= m_RTXDIResources.LightInfo != nullptr)) {
+				commandList.Clear(*noisyDiffuse);
+				commandList.Clear(*noisySpecular);
+
+				m_RTXDI->GPUBuffers = {
 				.Camera = m_GPUBuffers.Camera.get(),
 				.ObjectData = m_GPUBuffers.ObjectData.get()
-			};
+				};
 
-			m_RTXDI->Textures = {
-				.PreviousGeometricNormal = FindTexture(TextureNames::PreviousGeometricNormal),
-				.GeometricNormal = geometricNormal,
-				.PreviousLinearDepth = FindTexture(TextureNames::PreviousLinearDepth),
-				.LinearDepth = linearDepth,
-				.MotionVector = motionVector,
-				.PreviousBaseColorMetalness = FindTexture(TextureNames::PreviousBaseColorMetalness),
-				.BaseColorMetalness = baseColorMetalness,
-				.PreviousNormalRoughness = FindTexture(TextureNames::PreviousNormalRoughness),
-				.NormalRoughness = normalRoughness,
-				.PreviousTransmission = FindTexture(TextureNames::PreviousTransmission),
-				.Transmission = transmission,
-				.PreviousIOR = FindTexture(TextureNames::PreviousIOR),
-				.IOR = IOR,
-				.Radiance = radiance,
-				.LightRadiance = lightRadiance,
-				.Diffuse = diffuse,
-				.Specular = specular,
-				.SpecularHitDistance = specularHitDistance
-			};
+				m_RTXDI->Textures = {
+					.PreviousGeometricNormal = FindTexture(TextureNames::PreviousGeometricNormal),
+					.GeometricNormal = geometricNormal,
+					.PreviousLinearDepth = FindTexture(TextureNames::PreviousLinearDepth),
+					.LinearDepth = linearDepth,
+					.MotionVector = motionVector,
+					.PreviousBaseColorMetalness = FindTexture(TextureNames::PreviousBaseColorMetalness),
+					.BaseColorMetalness = baseColorMetalness,
+					.PreviousNormalRoughness = FindTexture(TextureNames::PreviousNormalRoughness),
+					.NormalRoughness = normalRoughness,
+					.PreviousIOR = FindTexture(TextureNames::PreviousIOR),
+					.IOR = IOR,
+					.PreviousTransmission = FindTexture(TextureNames::PreviousTransmission),
+					.Transmission = transmission,
+					.Radiance = radiance,
+					.NoisyDiffuse = noisyDiffuse,
+					.NoisySpecular = noisySpecular,
+					.SpecularHitDistance = specularHitDistance
+				};
 
-			m_RTXDI->SetConstants(
-				m_RTXDIResources,
-				!raytracingSettings.Bounces,
-				ReSTIRDISettings.ReGIR.Cell.IsVisualizationEnabled,
-				!raytracingSettings.Bounces || raytracingSettings.RTXGI.Technique == RTXGITechnique::None ?
-				denoisingSettings : DenoisingSettings()
-			);
+				m_RTXDI->SetConstants(
+					m_RTXDIResources,
+					!raytracingSettings.Bounces,
+					ReSTIRDISettings.ReGIR.Cell.IsVisualizationEnabled,
+					!raytracingSettings.Bounces || raytracingSettings.RTXGI.Technique == RTXGITechnique::None ? denoiser : Denoiser::None
+				);
 
-			m_RTXDI->Render(commandList, scene);
+				m_RTXDI->Render(commandList, scene);
+			}
 		}
 
 		if (!raytracingSettings.Bounces) {
@@ -1248,12 +1245,11 @@ private:
 			.LinearDepth = linearDepth,
 			.BaseColorMetalness = baseColorMetalness,
 			.NormalRoughness = normalRoughness,
-			.Transmission = transmission,
 			.IOR = IOR,
-			.LightRadiance = lightRadiance,
+			.Transmission = transmission,
 			.Radiance = radiance,
-			.Diffuse = diffuse,
-			.Specular = specular,
+			.NoisyDiffuse = noisyDiffuse,
+			.NoisySpecular = noisySpecular,
 			.SpecularHitDistance = specularHitDistance
 		};
 
@@ -1265,7 +1261,7 @@ private:
 			.IsRussianRouletteEnabled = raytracingSettings.IsRussianRouletteEnabled,
 			.IsShaderExecutionReorderingEnabled = IsShaderExecutionReorderingEnabled(),
 			.IsDIEnabled = isReSTIRDIEnabled,
-			.Denoising = denoisingSettings
+			.Denoiser = denoiser
 			});
 
 		switch (raytracingSettings.RTXGI.Technique)
@@ -1558,11 +1554,33 @@ private:
 
 		auto
 			& linearDepth = *m_textures.at(TextureNames::LinearDepth),
-			& baseColorMetalness = *m_textures.at(TextureNames::BaseColorMetalness),
 			& normalRoughness = *m_textures.at(TextureNames::NormalRoughness),
+			& noisyDiffuse = *m_textures.at(TextureNames::NoisyDiffuse),
+			& noisySpecular = *m_textures.at(TextureNames::NoisySpecular),
 			& denoisedDiffuse = *m_textures.at(TextureNames::DenoisedDiffuse),
 			& denoisedSpecular = *m_textures.at(TextureNames::DenoisedSpecular),
 			& radiance = *m_textures.at(TextureNames::Radiance);
+
+		m_NRDComposition->Textures = {
+			.LinearDepth = &linearDepth,
+			.DiffuseAlbedo = m_textures.at(TextureNames::DiffuseAlbedo).get(),
+			.SpecularAlbedo = m_textures.at(TextureNames::SpecularAlbedo).get(),
+			.NormalRoughness = &normalRoughness,
+			.NoisyDiffuse = &noisyDiffuse,
+			.NoisySpecular = &noisySpecular,
+			.DenoisedDiffuse = &denoisedDiffuse,
+			.DenoisedSpecular = &denoisedSpecular,
+			.Radiance = &radiance
+		};
+
+		NRDComposition::Constants constants{
+			.RenderSize = m_renderSize,
+			.Denoiser = denoisingSettings.Denoiser,
+			.ReBLURHitDistance = reinterpret_cast<const XMFLOAT4&>(nrd::ReblurSettings().hitDistanceParameters)
+		};
+
+		constants.Pack = true;
+		m_NRDComposition->Process(commandList, constants);
 
 		{
 			m_NRD->NewFrame();
@@ -1570,10 +1588,10 @@ private:
 			const auto Tag = [&](nrd::ResourceType resourceType, Texture& texture) { m_NRD->Tag(resourceType, texture); };
 			Tag(nrd::ResourceType::IN_VIEWZ, linearDepth);
 			Tag(nrd::ResourceType::IN_MV, *m_textures.at(TextureNames::MotionVector));
-			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, baseColorMetalness);
+			Tag(nrd::ResourceType::IN_BASECOLOR_METALNESS, *m_textures.at(TextureNames::BaseColorMetalness));
 			Tag(nrd::ResourceType::IN_NORMAL_ROUGHNESS, normalRoughness);
-			Tag(nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, *m_textures.at(TextureNames::Diffuse));
-			Tag(nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST, *m_textures.at(TextureNames::Specular));
+			Tag(nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, noisyDiffuse);
+			Tag(nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST, noisySpecular);
 			Tag(nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, denoisedDiffuse);
 			Tag(nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, denoisedSpecular);
 			Tag(nrd::ResourceType::OUT_VALIDATION, *m_textures.at(TextureNames::Validation));
@@ -1620,18 +1638,8 @@ private:
 			m_NRD->Denoise(initializer_list{ denoiser });
 		}
 
-		m_denoisedComposition->GPUBuffers = { .Camera = m_GPUBuffers.Camera.get() };
-
-		m_denoisedComposition->Textures = {
-			.LinearDepth = &linearDepth,
-			.BaseColorMetalness = &baseColorMetalness,
-			.NormalRoughness = &normalRoughness,
-			.DenoisedDiffuse = &denoisedDiffuse,
-			.DenoisedSpecular = &denoisedSpecular,
-			.Radiance = &radiance
-		};
-
-		m_denoisedComposition->Process(commandList, { .RenderSize = m_renderSize, .Denoiser = denoisingSettings.Denoiser });
+		constants.Pack = false;
+		m_NRDComposition->Process(commandList, constants);
 	}
 
 	void ProcessDLSSSuperResolution() {
@@ -1656,8 +1664,8 @@ private:
 			CreateResourceTagDesc(sl::kBufferTypeScalingInputColor, *m_textures.at(TextureNames::Radiance)),
 			CreateResourceTagDesc(sl::kBufferTypeScalingOutputColor, *m_textures.at(TextureNames::Color), false),
 			CreateResourceTagDesc(sl::kBufferTypeNormalRoughness, *m_textures.at(TextureNames::NormalRoughness)),
-			CreateResourceTagDesc(sl::kBufferTypeAlbedo, *m_textures.at(TextureNames::Diffuse)),
-			CreateResourceTagDesc(sl::kBufferTypeSpecularAlbedo, *m_textures.at(TextureNames::Specular)),
+			CreateResourceTagDesc(sl::kBufferTypeAlbedo, *m_textures.at(TextureNames::DiffuseAlbedo)),
+			CreateResourceTagDesc(sl::kBufferTypeSpecularAlbedo, *m_textures.at(TextureNames::SpecularAlbedo)),
 			CreateResourceTagDesc(sl::kBufferTypeSpecularHitDistance, *m_textures.at(TextureNames::SpecularHitDistance))
 		};
 		ignore = m_streamline->Evaluate(sl::kFeatureDLSS_RR, CreateResourceTags(resourceTagDescs));
@@ -1922,11 +1930,11 @@ private:
 				if (ImGuiEx::TreeNode treeNode("Raytracing", ImGuiTreeNodeFlags_DefaultOpen); treeNode) {
 					auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
-					m_resetHistory |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
-
 					m_resetHistory |= ImGui::SliderInt("Bounces", reinterpret_cast<int*>(&raytracingSettings.Bounces), 0, raytracingSettings.MaxBounces, "%u", ImGuiSliderFlags_AlwaysClamp);
 
 					if (raytracingSettings.Bounces) {
+						m_resetHistory |= ImGui::Checkbox("Russian Roulette", &raytracingSettings.IsRussianRouletteEnabled);
+
 						m_resetHistory |= ImGui::SliderInt("Samples/Pixel", reinterpret_cast<int*>(&raytracingSettings.SamplesPerPixel), 1, raytracingSettings.MaxSamplesPerPixel, "%u", ImGuiSliderFlags_AlwaysClamp);
 					}
 

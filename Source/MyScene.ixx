@@ -54,6 +54,7 @@ export {
 				GeometricPrimitive::VertexCollection vertices;
 				GeometricPrimitive::IndexCollection indices;
 				GeometricPrimitive::CreateGeoSphere(vertices, indices, 1, 6);
+				ranges::reverse(indices);
 
 				const auto vertexCount = size(vertices);
 				vector<XMFLOAT3> positions, normals, tangents(vertexCount);

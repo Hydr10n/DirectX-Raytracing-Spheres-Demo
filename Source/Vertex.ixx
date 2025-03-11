@@ -22,7 +22,7 @@ namespace {
 	}
 
 	auto EncodeTextureCoordinate(XMFLOAT2 value) {
-		return float2_to_float16_t2(reinterpret_cast<const float2&>(value));
+		return reinterpret_cast<const XMHALF2&>(float2_to_float16_t2(reinterpret_cast<const float2&>(value)));
 	}
 }
 
@@ -38,7 +38,7 @@ export {
 	struct VertexPositionNormalTangentTexture {
 		XMFLOAT3 Position;
 		int16_t3 Normal, Tangent;
-		float16_t2 TextureCoordinates[2];
+		XMHALF2 TextureCoordinates[2];
 
 		void StoreNormal(const XMFLOAT3& value) { Normal = EncodeUnitVector(value); }
 

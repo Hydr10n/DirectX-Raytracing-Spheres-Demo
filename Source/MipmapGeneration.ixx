@@ -36,7 +36,7 @@ export namespace PostProcessing {
 				return;
 			}
 
-			for (const auto i : views::iota(0u, min<UINT16>(texture->GetDesc().MipLevels, 16))) {
+			for (const auto i : views::iota(0u, min<uint16_t>(texture->GetDesc().MipLevels, 16))) {
 				texture.CreateUAV(i);
 			}
 			m_texture = &texture;
@@ -48,7 +48,7 @@ export namespace PostProcessing {
 
 			commandList.SetState(*m_texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			const auto mipLevels = min<UINT16>(m_texture->GetNative()->GetDesc().MipLevels, 16);
+			const auto mipLevels = min<uint16_t>(m_texture->GetNative()->GetDesc().MipLevels, 16);
 
 			struct { uint32_t MipLevelDescriptorIndices[16], MipLevels; } constants{ .MipLevels = mipLevels };
 			for (const auto i : views::iota(0u, mipLevels)) {
@@ -57,7 +57,7 @@ export namespace PostProcessing {
 			commandList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
 
 			auto size = GetTextureSize(*m_texture);
-			for (UINT16 mipLevel = 0; mipLevel < mipLevels; mipLevel += 5) {
+			for (uint16_t mipLevel = 0; mipLevel < mipLevels; mipLevel += 5) {
 				commandList->SetComputeRoot32BitConstant(1, mipLevel, 0);
 
 				commandList->Dispatch((max(size.x >> mipLevel, 1u) + 31) / 32, (max(size.y >> mipLevel, 1u) + 31) / 32, 1);

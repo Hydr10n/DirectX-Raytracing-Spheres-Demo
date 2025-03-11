@@ -69,7 +69,7 @@ export namespace PostProcessing {
 						}.AsUnorderedAccess()
 						);
 					texture->CreateSRV();
-					for (const auto i : views::iota(static_cast<UINT16>(0), BlurMipLevels)) {
+					for (const auto i : views::iota(static_cast<uint16_t>(0), BlurMipLevels)) {
 						texture->CreateUAV(i);
 					}
 				};
@@ -131,7 +131,7 @@ export namespace PostProcessing {
 		}
 
 	private:
-		static constexpr UINT16 BlurMipLevels = 5;
+		static constexpr uint16_t BlurMipLevels = 5;
 
 		Merge m_merge;
 

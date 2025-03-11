@@ -32,7 +32,7 @@ export struct Raytracing {
 		uint32_t FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold = 1e-3f;
 		bool IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
-		DenoisingSettings Denoising;
+		Denoiser Denoiser;
 	};
 
 	struct SHARCSettings : SHARC::Constants {
@@ -51,12 +51,11 @@ export struct Raytracing {
 			* LinearDepth,
 			* BaseColorMetalness,
 			* NormalRoughness,
-			* Transmission,
 			* IOR,
-			* LightRadiance,
+			* Transmission,
 			* Radiance,
-			* Diffuse,
-			* Specular,
+			* NoisyDiffuse,
+			* NoisySpecular,
 			* SpecularHitDistance;
 	} Textures{};
 
@@ -101,7 +100,7 @@ export struct Raytracing {
 			.IsRussianRouletteEnabled = graphicsSettings.IsRussianRouletteEnabled,
 			.IsShaderExecutionReorderingEnabled = graphicsSettings.IsShaderExecutionReorderingEnabled,
 			.IsDIEnabled = graphicsSettings.IsDIEnabled,
-			.Denoising = graphicsSettings.Denoising
+			.Denoiser = graphicsSettings.Denoiser
 		};
 	}
 
@@ -155,7 +154,8 @@ private:
 		uint32_t FrameIndex, Bounces, SamplesPerPixel;
 		float ThroughputThreshold;
 		uint32_t IsRussianRouletteEnabled, IsShaderExecutionReorderingEnabled, IsDIEnabled;
-		XMUINT3 _;
+		Denoiser Denoiser;
+		XMUINT2 _;
 		struct {
 			struct {
 				uint32_t Capacity;
@@ -164,7 +164,6 @@ private:
 				XMUINT3 _;
 			} SHARC;
 		} RTXGI;
-		DenoisingSettings Denoising;
 	};
 
 	struct { unique_ptr<GPUBuffer> GraphicsSettings; } m_GPUBuffers;
@@ -196,9 +195,8 @@ private:
 		commandList.SetState(*Textures.LinearDepth, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.BaseColorMetalness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.NormalRoughness, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*Textures.Transmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.IOR, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-		commandList.SetState(*Textures.LightRadiance, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		commandList.SetState(*Textures.Transmission, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*Textures.Radiance, &shader == &m_SHARCUpdate ? D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		uint32_t i = 0;
@@ -213,18 +211,17 @@ private:
 		commandList->SetComputeRootDescriptorTable(i++, Textures.LinearDepth->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.BaseColorMetalness->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.NormalRoughness->GetSRVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.Transmission->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.IOR->GetSRVDescriptor());
-		commandList->SetComputeRootDescriptorTable(i++, Textures.LightRadiance->GetSRVDescriptor());
+		commandList->SetComputeRootDescriptorTable(i++, Textures.Transmission->GetSRVDescriptor());
 		commandList->SetComputeRootDescriptorTable(i++, &shader == &m_SHARCUpdate ? Textures.Radiance->GetSRVDescriptor() : Textures.Radiance->GetUAVDescriptor());
-		if (Textures.Diffuse) {
-			commandList.SetState(*Textures.Diffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->SetComputeRootDescriptorTable(i, Textures.Diffuse->GetUAVDescriptor());
+		if (Textures.NoisyDiffuse) {
+			commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
 		}
 		i++;
-		if (Textures.Specular) {
-			commandList.SetState(*Textures.Specular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->SetComputeRootDescriptorTable(i, Textures.Specular->GetUAVDescriptor());
+		if (Textures.NoisySpecular) {
+			commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
 		}
 		i++;
 		if (Textures.SpecularHitDistance) {

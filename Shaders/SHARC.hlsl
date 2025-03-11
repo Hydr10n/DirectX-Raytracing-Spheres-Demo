@@ -4,7 +4,7 @@
 
 struct Constants
 {
-	bool IsResolve;
+	bool Resolve;
 	uint Capacity, AccumulationFrames, MaxStaleFrames;
 	float SceneScale;
 	bool IsAntiFireflyEnabled;
@@ -32,7 +32,7 @@ void main(uint dispatchThreadID : SV_DispatchThreadID)
 	HashMapData hashMapData;
 	hashMapData.capacity = g_constants.Capacity;
 	hashMapData.hashEntriesBuffer = g_hashEntries;
-	if (g_constants.IsResolve)
+	if (g_constants.Resolve)
 	{
 		SharcParameters sharcParameters;
 		sharcParameters.gridParameters.cameraPosition = g_camera.Position;

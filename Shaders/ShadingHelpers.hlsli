@@ -40,15 +40,12 @@ void GetTextureCoordinates(
 	[[unroll]]
 	for (uint i = 0; i < 2; i++)
 	{
+		textureCoordinates[i] = 0;
 		if (vertexDesc.AttributeOffsets.TextureCoordinates[i] != ~0u)
 		{
 			float2 vertexTextureCoordinates[3];
 			vertexDesc.LoadTextureCoordinates(vertices, indices, i, vertexTextureCoordinates);
 			textureCoordinates[i] = Vertex::Interpolate(vertexTextureCoordinates, barycentrics);
-		}
-		else
-		{
-			textureCoordinates[i] = 0;
 		}
 	}
 }

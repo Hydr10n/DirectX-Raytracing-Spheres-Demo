@@ -61,6 +61,9 @@ bool CastRay(
 #endif
 )
 {
+	hitInfo.Position = rayDesc.Origin + rayDesc.Direction * 1e8f;
+	hitInfo.Distance = 1.#INF;
+
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
 	TraceRay(
 		q, rayDesc, RAY_FLAG_NONE, ~0u
@@ -109,16 +112,13 @@ bool CastRay(
 			);
 		}
 
+		hitInfo.Tangent = 0;
 		if (vertexDesc.AttributeOffsets.Tangent != ~0u)
 		{
 			float3 tangents[3];
 			vertexDesc.LoadTangents(vertices, indices, tangents);
 			hitInfo.Tangent = Vertex::Interpolate(tangents, hitInfo.Barycentrics);
 			hitInfo.Tangent = normalize(Geometry::RotateVector((float3x3)objectToWorld, hitInfo.Tangent));
-		}
-		else
-		{
-			hitInfo.Tangent = 0;
 		}
 
 		GetTextureCoordinates(
@@ -128,11 +128,6 @@ bool CastRay(
 			q.CommittedTriangleBarycentrics(),
 			hitInfo.TextureCoordinates
 		);
-	}
-	else
-	{
-		hitInfo.Position = rayDesc.Origin + rayDesc.Direction * 1e8f;
-		hitInfo.Distance = 1.#INF;
 	}
 	return isHit;
 }
