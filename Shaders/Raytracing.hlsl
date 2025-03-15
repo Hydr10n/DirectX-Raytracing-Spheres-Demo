@@ -48,16 +48,11 @@ StructuredBuffer<ObjectData> g_objectData : register(t1);
 Texture2D<float4> g_position : register(t2);
 Texture2D<float2> g_flatNormal : register(t3);
 Texture2D<float2> g_geometricNormal : register(t4);
-Texture2D<float> g_linearDepth : register(t5);
-Texture2D<float4> g_baseColorMetalness : register(t6);
-Texture2D<float4> g_normalRoughness : register(t7);
-Texture2D<float> g_IOR : register(t8);
-Texture2D<float> g_transmission : register(t9);
-#if SHARC_UPDATE
-Texture2D<float3> g_radiance : register(t10);
-#else
+Texture2D<float4> g_baseColorMetalness : register(t5);
+Texture2D<float4> g_normalRoughness : register(t6);
+Texture2D<float> g_IOR : register(t7);
+Texture2D<float> g_transmission : register(t8);
 RWTexture2D<float3> g_radiance : register(u0);
-#endif
 RWTexture2D<float4> g_diffuse : register(u1);
 RWTexture2D<float4> g_specular : register(u2);
 RWTexture2D<float> g_specularHitDistance : register(u3);
@@ -94,12 +89,7 @@ GlobalRootSignature GlobalRootSignature =
 	"DescriptorTable(SRV(t6)),"
 	"DescriptorTable(SRV(t7)),"
 	"DescriptorTable(SRV(t8)),"
-	"DescriptorTable(SRV(t9)),"
-#if SHARC_UPDATE
-	"DescriptorTable(SRV(t10)),"
-#else
 	"DescriptorTable(UAV(u0)),"
-#endif
 	"DescriptorTable(UAV(u1)),"
 	"DescriptorTable(UAV(u2)),"
 	"DescriptorTable(UAV(u3)),"
@@ -125,7 +115,7 @@ void RayGeneration()
 #endif
 	);
 
-	const float linearDepth = LOAD(linearDepth);
+	const float4 position = LOAD(position);
 	const float3 primaryRadiance = LOAD(radiance);
 
 	HitInfo primarySurfaceHitInfo;
@@ -134,10 +124,9 @@ void RayGeneration()
 	float lightDistance = 0;
 	bool isDIValid = false;
 	const RayDesc primaryRayDesc = g_camera.GeneratePinholeRay(Math::CalculateNDC(UV));
-	const bool isPrimarySurfaceHit = isfinite(linearDepth);
+	const bool isPrimarySurfaceHit = isfinite(position.w);
 	if (isPrimarySurfaceHit)
 	{
-		const float4 position = LOAD(position);
 		const float4 normalRoughness = LOAD(normalRoughness);
 		primarySurfaceHitInfo.Initialize(
 			position.xyz, position.w,

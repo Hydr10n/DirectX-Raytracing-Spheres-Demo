@@ -59,7 +59,9 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 
 	float3 diffuse, specular;
 	surface.Shade(lightSample, diffuse, specular);
-	if (all(diffuse + specular == 0))
+
+	const float3 radiance = diffuse + specular;
+	if (all(radiance == 0) || any(!isfinite(radiance)))
 	{
 		return;
 	}
@@ -72,20 +74,26 @@ void main(uint2 globalIndex : SV_DispatchThreadID)
 		return;
 	}
 
-	const float3 radiance = diffuse + specular;
-	if (any(!isfinite(radiance)))
-	{
-		return;
-	}
-
 	const float lightDistance = length(lightSample.Position - surface.Position);
 	if (g_graphicsSettings.IsLastRenderPass)
 	{
-		g_radiance[pixelPosition] += radiance;
-
-		if (any(specular > 0))
+		if (g_graphicsSettings.Denoiser == Denoiser::None)
 		{
-			g_specularHitDistance[pixelPosition] = lightDistance;
+			g_radiance[pixelPosition] += radiance;
+		}
+		else if (g_graphicsSettings.Denoiser == Denoiser::DLSSRayReconstruction)
+		{
+			g_radiance[pixelPosition] += radiance;
+
+			if (any(specular > 0))
+			{
+				g_specularHitDistance[pixelPosition] = lightDistance;
+			}
+		}
+		else
+		{
+			g_diffuse[pixelPosition] = float4(diffuse, lightDistance);
+			g_specular[pixelPosition] = float4(specular, lightDistance);
 		}
 	}
 	else

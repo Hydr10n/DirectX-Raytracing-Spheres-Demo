@@ -23,7 +23,7 @@ struct Flags
 		Radiance = 0x200,
 		Geometry = Position | FlatNormal | GeometricNormal | LinearDepth | NormalizedDepth | MotionVector | NormalRoughness,
 		Material = 0x400 | Albedo | NormalRoughness | Radiance
-	};
+};
 };
 
 struct Constants
@@ -122,6 +122,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		return;
 	}
 
+	float4 Position = 1.#INF;
 	float LinearDepth = 1.#INF, NormalizedDepth = !g_camera.IsNormalizedDepthReversed;
 
 	const float2 UV = Math::CalculateUV(pixelPosition, pixelDimensions, g_camera.Jitter);
@@ -131,8 +132,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 	{
 		if (g_constants.Flags & Flags::Geometry)
 		{
-			const float4 Position = float4(hitInfo.Position, hitInfo.PositionOffset);
-			SET1(Position);
+			Position = float4(hitInfo.Position, hitInfo.PositionOffset);
 
 			const float2
 				FlatNormal = Packing::EncodeUnitVector(hitInfo.FlatNormal, true),
@@ -226,6 +226,7 @@ void main(uint2 pixelPosition : SV_DispatchThreadID)
 		}
 	}
 
+	SET1(Position);
 	SET1(LinearDepth);
 	SET1(NormalizedDepth);
 }

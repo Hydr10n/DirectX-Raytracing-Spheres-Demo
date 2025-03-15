@@ -72,8 +72,8 @@ RWTexture2D<float> g_specularHitDistance : register(u5);
 
 #include "RaytracingHelpers.hlsli"
 
-#define RTXDI_RIS_BUFFER g_RIS
 #define RTXDI_NEIGHBOR_OFFSETS_BUFFER g_neighborOffsets
+#define RTXDI_RIS_BUFFER g_RIS
 #define RTXDI_LIGHT_RESERVOIR_BUFFER g_DIReservoir
 
 #define ROOT_SIGNATURE \

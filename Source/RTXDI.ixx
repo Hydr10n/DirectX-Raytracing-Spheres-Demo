@@ -44,8 +44,8 @@ export struct RTXDI {
 			* PreviousIOR, * IOR,
 			* PreviousTransmission, * Transmission,
 			* Radiance,
-			* NoisyDiffuse,
-			* NoisySpecular,
+			* Diffuse,
+			* Specular,
 			* SpecularHitDistance;
 	} Textures{};
 
@@ -70,7 +70,7 @@ export struct RTXDI {
 		CreatePipelineState(m_DIFinalShading, L"DIFinalShading", g_DIFinalShading_dxil);
 	}
 
-	void SetConstants(const RTXDIResources& resources, bool isLastRenderPass, bool isReGIRCellVisualizationEnabled, Denoiser denoiser) noexcept {
+	void SetConstants(const RTXDIResources& resources, bool isLastRenderPass, bool isReGIRCellVisualizationEnabled, Denoiser denoiser) {
 		m_resources = &resources;
 
 		const auto& context = *m_resources->Context;
@@ -115,7 +115,7 @@ export struct RTXDI {
 
 		const auto& ReSTIRDIContext = context.GetReSTIRDIContext();
 		const auto& ReSTIRDIStaticParameters = ReSTIRDIContext.GetStaticParameters();
-		m_graphicsSettings = {
+		*static_cast<GraphicsSettings*>(m_GPUBuffers.GraphicsSettings->GetMappedData()) = {
 			.RenderSize{ ReSTIRDIStaticParameters.RenderWidth, ReSTIRDIStaticParameters.RenderHeight },
 			.IsLastRenderPass = isLastRenderPass,
 			.IsReGIRCellVisualizationEnabled = isReGIRCellVisualizationEnabled,
@@ -141,9 +141,7 @@ export struct RTXDI {
 	void Render(CommandList& commandList, D3D12_GPU_VIRTUAL_ADDRESS topLevelAccelerationStructure) {
 		commandList->SetComputeRootSignature(m_rootSignature.Get());
 
-		commandList.Copy(*m_GPUBuffers.GraphicsSettings, initializer_list{ m_graphicsSettings });
 		commandList.SetState(*m_GPUBuffers.GraphicsSettings, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-
 		commandList.SetState(*GPUBuffers.Camera, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		commandList.SetState(*GPUBuffers.ObjectData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 		commandList.SetState(*m_resources->LightInfo, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -191,14 +189,14 @@ export struct RTXDI {
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->RIS->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootUnorderedAccessView(i++, m_resources->DIReservoir->GetNative()->GetGPUVirtualAddress());
 		commandList->SetComputeRootDescriptorTable(i++, Textures.Radiance->GetUAVDescriptor());
-		if (Textures.NoisyDiffuse) {
-			commandList.SetState(*Textures.NoisyDiffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->SetComputeRootDescriptorTable(i, Textures.NoisyDiffuse->GetUAVDescriptor());
+		if (Textures.Diffuse) {
+			commandList.SetState(*Textures.Diffuse, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.Diffuse->GetUAVDescriptor());
 		}
 		i++;
-		if (Textures.NoisySpecular) {
-			commandList.SetState(*Textures.NoisySpecular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->SetComputeRootDescriptorTable(i, Textures.NoisySpecular->GetUAVDescriptor());
+		if (Textures.Specular) {
+			commandList.SetState(*Textures.Specular, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			commandList->SetComputeRootDescriptorTable(i, Textures.Specular->GetUAVDescriptor());
 		}
 		i++;
 		if (Textures.SpecularHitDistance) {
@@ -265,6 +263,4 @@ private:
 		m_DIInitialSampling, m_DITemporalResampling, m_DISpatialResampling, m_DIFinalShading;
 
 	const RTXDIResources* m_resources{};
-
-	GraphicsSettings m_graphicsSettings;
 };

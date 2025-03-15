@@ -1133,7 +1133,7 @@ private:
 			noisySpecular = FindTexture(TextureNames::NoisySpecular),
 			specularHitDistance = FindTexture(TextureNames::SpecularHitDistance);
 
-		const auto& scene = m_scene->GetTopLevelAccelerationStructure();
+		const auto topLevelAccelerationStructure = m_scene->GetTopLevelAccelerationStructure();
 
 		const auto& raytracingSettings = g_graphicsSettings.Raytracing;
 
@@ -1172,7 +1172,7 @@ private:
 
 			m_GBufferGeneration->Render(
 				commandList,
-				scene,
+				topLevelAccelerationStructure,
 				{
 					.RenderSize = m_renderSize,
 					.Flags = ~0u & ~(denoiser != Denoiser::None ? 0 : GBufferGeneration::Flags::Albedo)
@@ -1212,8 +1212,8 @@ private:
 					.PreviousTransmission = FindTexture(TextureNames::PreviousTransmission),
 					.Transmission = transmission,
 					.Radiance = radiance,
-					.NoisyDiffuse = noisyDiffuse,
-					.NoisySpecular = noisySpecular,
+					.Diffuse = noisyDiffuse,
+					.Specular = noisySpecular,
 					.SpecularHitDistance = specularHitDistance
 				};
 
@@ -1224,7 +1224,7 @@ private:
 					!raytracingSettings.Bounces || raytracingSettings.RTXGI.Technique == RTXGITechnique::None ? denoiser : Denoiser::None
 				);
 
-				m_RTXDI->Render(commandList, scene);
+				m_RTXDI->Render(commandList, topLevelAccelerationStructure);
 			}
 		}
 
@@ -1242,14 +1242,13 @@ private:
 			.Position = position,
 			.FlatNormal = flatNormal,
 			.GeometricNormal = geometricNormal,
-			.LinearDepth = linearDepth,
 			.BaseColorMetalness = baseColorMetalness,
 			.NormalRoughness = normalRoughness,
 			.IOR = IOR,
 			.Transmission = transmission,
 			.Radiance = radiance,
-			.NoisyDiffuse = noisyDiffuse,
-			.NoisySpecular = noisySpecular,
+			.Diffuse = noisyDiffuse,
+			.Specular = noisySpecular,
 			.SpecularHitDistance = specularHitDistance
 		};
 
@@ -1266,7 +1265,7 @@ private:
 
 		switch (raytracingSettings.RTXGI.Technique)
 		{
-			case RTXGITechnique::None: m_raytracing->Render(commandList, scene); break;
+			case RTXGITechnique::None: m_raytracing->Render(commandList, topLevelAccelerationStructure); break;
 
 			case RTXGITechnique::SHARC:
 			{
@@ -1277,7 +1276,7 @@ private:
 				};
 				SHARCSettings.SceneScale = raytracingSettings.RTXGI.SHARC.SceneScale;
 				SHARCSettings.IsAntiFireflyEnabled = true;
-				m_raytracing->Render(commandList, scene, *m_SHARC, SHARCSettings);
+				m_raytracing->Render(commandList, topLevelAccelerationStructure, *m_SHARC, SHARCSettings);
 			}
 			break;
 		}
@@ -1479,11 +1478,11 @@ private:
 
 			swap(inColor, outColor);
 		}
-		else if (isNRDEnabled) {
-			ProcessNRD();
-		}
+		else {
+			if (isNRDEnabled) {
+				ProcessNRD();
+			}
 
-		if (!isDLSSRayReconstructionEnabled) {
 			if (isDLSSSuperResolutionEnabled) {
 				ProcessDLSSSuperResolution();
 

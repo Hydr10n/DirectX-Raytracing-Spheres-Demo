@@ -22,9 +22,15 @@ float EstimateDiffuseProbability(float3 albedo, float3 f0, float roughness, floa
 {
 	const float3 Fenvironment = BRDF::EnvironmentTerm_Rtg(f0, NoV, roughness);
 	const float
-		diffuse = Color::Luminance(albedo * (1 - Fenvironment)), specular = Color::Luminance(Fenvironment),
-		diffuseProbability = diffuse / (diffuse + specular + 1e-6f);
-	return diffuseProbability < 5e-3f ? 0 : diffuseProbability;
+		diffuse = Color::Luminance(albedo * (1 - Fenvironment)),
+		specular = Color::Luminance(Fenvironment),
+		sum = diffuse + specular,
+		probability = sum > 0 ? diffuse / sum : 1;
+	if (0 < probability && probability < 1)
+	{
+		return clamp(probability, 0.05f, 0.95f);
+	}
+	return probability;
 }
 
 struct BSDFSample
